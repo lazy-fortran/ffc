@@ -157,12 +157,12 @@ Current main revisions:
   promotion, the #584 assumed-size-array FAIL fix, modules34/modules35 XFAIL
   closure, schema-10 `.fmod` compatibility, and strict sampled conformance
   gating; sampled manifest dispositions through seed 1037)
-- Open-PR audit on 2026-08-03: ffc #596 and #677 remain red/stale, fo #116 is
-  conflicting with an unresolved correctness review, fluff #269 is red,
-  fortfem #56 has requested changes, and fortnum #59--#61 are a red stacked
-  train. None is eligible for squash merge; finish each with local behavioral
-  evidence and review resolution before merging, and never bypass a red or
-  stale gate.
+- Open-PR audit on 2026-08-03: ffc #596 and #677 remain open without a green
+  merge gate, fo #116 remains open pending its checks and review resolution,
+  fluff #269 is red, fortfem #56 is merged, and fortnum #59--#61 remain a red
+  stacked train. The open PRs are not eligible for squash merge until their
+  local behavioral evidence, review state, and GitHub checks are green; never
+  bypass a red or stale gate.
 - FortFront `5ff07184`, main (public incomplete-expression diagnostics on top of recursive nested-array-postfix parsing, nested DO WHILE construct parsing, declaration-shape parsing, semantic conformance checks, full logical expressions in I/O argument lists, preserved logical literal kind suffixes, continued declaration statement-boundary handling, full BIND(C) interface return-kind preservation, and contextual `error` identifiers)
 - LIRIC `5436e5c`, main (#528)
 - fo `af075f4`, main (PR #118; #102)
