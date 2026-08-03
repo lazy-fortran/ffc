@@ -27,7 +27,9 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `6bfe998` (modules36 fixed-character-array promotion on top of the
+- Main: `a42c408` (array-constructor 02/03 promotion on top of the
+  complex ABS/IEEE NaN, allocatable inquiry, and allocatable complex-array
+  promotions, and the modules36 fixed-character-array promotion on top of the
   enum-lowering module extraction, the #584 assumed-size-array
   FAIL fix, modules34/modules35 XFAIL closure, schema-10 `.fmod`
   compatibility, and strict sampled conformance gating, on top of the
@@ -53,9 +55,9 @@ explicit decision.
   legacy typed MIN aliases, legacy typed MAX aliases, and mixed opaque module
   dummy metadata, and corrected constant HUGE array-bound classification,
   with
-  sampled manifest dispositions through seed 1037). FortFront `98666075`.
+  sampled manifest dispositions through seed 1037). FortFront `9ff6605e`.
   LIRIC `5436e5c`.
-- `fo build` passes for ffc 444/444 and FortFront 379/379 at those revisions.
+- `fo build` passes for ffc 446/446 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
   unexpected `FAIL` or `XPASS` after exact manifest classification, including
   seeds 1035, 1036, and 1037. The formerly XFAIL `associate_18.f90` now
@@ -68,6 +70,19 @@ explicit decision.
   array-expression materialisation, and the DO WHILE header all pass. Keep the
   random sample at 900 until the next owned XFAIL tranche is selected and
   reaches zero.
+- The exact XFAIL-first tranche of `abs_04.f90`, `abs_06.f90`,
+  `allocated_01.f90`, `allocated_04.f90`, `allocated_05.f90`,
+  `array_constructor_02.f90`, and `array_constructor_03.f90` is now fully
+  promoted. Normal and XFAIL-disabled LFortran runs both report
+  `PASS=7`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`; independent gfortran output
+  checks and the focused complex/reduction compiler tests agree. FortFront
+  `9ff6605e` supplies the recursive nested-array-postfix parser fix used by
+  the nested ABS case.
+- The latest full local `fo` workflow is a unit/conformance diagnostic, not a
+  corpus gate: build `446/446` and static checks `463/463` pass, while the
+  339-test phase reports `316` passes and `23` known adjacent failures. Keep
+  those failures in the next XFAIL/FAIL queue; do not hide them with manifest
+  edits or expand the random sample until the selected queue tranche is zero.
 - The next owned tranche is complete as well: `boolean_assign_bare_true.lf`
   and `boolean_assign_bare_false.lf` pass in the FortFront-LF suite with
   `XFAIL=0`, `XPASS=0`, and `FAIL=0`. The shared literal classifier and value
@@ -248,7 +263,7 @@ explicit decision.
   independent gfortran module-chain compile/link/run oracle passes, and a
   bounded unit sample at seed 1729 passed `10/10`. FFC now exports direct USE
   dependencies recursively and preserves opaque public subroutine interfaces
-  in `.fmod`; FortFront `98666075` correctly treats `error` as a contextual
+  in `.fmod`; FortFront `9ff6605e` correctly treats `error` as a contextual
   identifier. The three stale modules29 XFAIL rows were removed only after
   these checks.
 - The modules30 family is green: exact normal and XFAIL-disabled runs of
@@ -360,7 +375,7 @@ binary is unchanged.
    for rejection cases it is the documented compile/rejection contract. A
    test that only checks repository state is not an oracle.
 3. Build once per code change and keep the compiler sequential to protect RAM.
-   The current `fo test` wrapper rebuilds its 443-test target on each separate
+   The current `fo test` wrapper rebuilds its 446-test target on each separate
    invocation, so batch all focused names from one code change in a single
    command; never launch several `fo test` builds concurrently:
 
