@@ -372,22 +372,25 @@ for SUITE in $SUITES; do
 
     # Parse summary
     if [ -f "$REPORT" ]; then
-        summary=$(grep '"status":"SUMMARY"' "$REPORT" || echo "")
+        # A caller may deliberately reuse a scratch directory while another
+        # bounded invocation is finishing.  Consume one complete summary line
+        # rather than concatenating duplicate records into shell integers.
+        summary=$(grep '"status":"SUMMARY"' "$REPORT" | tail -n 1 || echo "")
         if [ -n "$summary" ]; then
-            fail_count=$(echo "$summary" | grep -o '"fail":[0-9]*' | grep -o '[0-9]*')
-            xpass_count=$(echo "$summary" | grep -o '"xpass":[0-9]*' | grep -o '[0-9]*')
-            pass_count=$(echo "$summary" | grep -o '"pass":[0-9]*' | grep -o '[0-9]*')
-            xfail_count=$(echo "$summary" | grep -o '"xfail":[0-9]*' | grep -o '[0-9]*')
-            noref_count=$(echo "$summary" | grep -o '"noref":[0-9]*' | grep -o '[0-9]*' || true)
-            skip_count=$(echo "$summary" | grep -o '"skip":[0-9]*' | grep -o '[0-9]*' || true)
-            warning_count=$(echo "$summary" | grep -o '"warning_unchecked":[0-9]*' | grep -o '[0-9]*' || true)
-            total_count=$(echo "$summary" | grep -o '"total":[0-9]*' | grep -o '[0-9]*')
+            fail_count=$(echo "$summary" | grep -o '"fail":[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+            xpass_count=$(echo "$summary" | grep -o '"xpass":[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+            pass_count=$(echo "$summary" | grep -o '"pass":[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+            xfail_count=$(echo "$summary" | grep -o '"xfail":[0-9][0-9]*' | grep -o '[0-9][0-9]*')
+            noref_count=$(echo "$summary" | grep -o '"noref":[0-9][0-9]*' | grep -o '[0-9][0-9]*' || true)
+            skip_count=$(echo "$summary" | grep -o '"skip":[0-9][0-9]*' | grep -o '[0-9][0-9]*' || true)
+            warning_count=$(echo "$summary" | grep -o '"warning_unchecked":[0-9][0-9]*' | grep -o '[0-9][0-9]*' || true)
+            total_count=$(echo "$summary" | grep -o '"total":[0-9][0-9]*' | grep -o '[0-9][0-9]*')
 
             echo "  $SUITE: PASS=$pass_count XFAIL=$xfail_count XPASS=$xpass_count FAIL=$fail_count TOTAL=$total_count"
 
             # The flaky field is present only when the count is nonzero.
             flaky_count=$(echo "$summary" | grep -o '"flaky":[0-9]*' | \
-                grep -o '[0-9]*' || true)
+                grep -o '[0-9][0-9]*' || true)
             if [ "${fail_count:-0}" -gt 0 ]; then
                 HAS_FAIL=1
             fi
