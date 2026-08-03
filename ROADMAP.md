@@ -141,6 +141,12 @@ explicit decision.
   `reject_const_init.inc` migration builds but fails its independent rejection
   oracle because invalid input compiles and exits zero. None was integrated or
   promoted.
+- The high-impact follow-up remains explicitly blocked: `array_section_01.f90`
+  still emits malformed LIR (`instruction type missing`); `derived_types_121.f90`
+  still reaches `direct LIRIC session cannot pass this scalar argument`; and
+  FortFront-LF `issue_1968_lazy_function_result.lf` still leaves an invalid
+  inferred dimension index. These attempts made no manifest changes or main
+  commits; keep them ahead of sample expansion.
 - Fresh strict pass-only sampling remains bounded at 900. Seed 1038 supplied a
   red baseline: its two `fortfront-lf` failures are now fixed, while twenty
   LFortran failures were observed before the run was stopped. No sample
