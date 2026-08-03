@@ -150,9 +150,11 @@ explicit decision.
 - The high-impact follow-up remains explicitly blocked: `array_section_01.f90`
   still emits malformed LIR (`instruction type missing`); `derived_types_121.f90`
   still reaches `direct LIRIC session cannot pass this scalar argument`; and
-  FortFront-LF `issue_1968_lazy_function_result.lf` still leaves an invalid
-  inferred dimension index. These attempts made no manifest changes or main
-  commits; keep them ahead of sample expansion.
+  FortFront-LF `issue_1968_lazy_function_result.lf` still fails in ffc with
+  `array dimension index does not reference an AST node`, even though current
+  FortFront public APIs expose the deferred shape correctly. The exact
+  XFAIL-disabled issue-1968 gate is `FAIL=1`; keep all three ahead of sample
+  expansion and do not classify the ffc failure as a frontend fix.
 - `floor_01.f90` is now promoted. Public-session FLOOR lowering accepts the
   optional `KIND=8` result through an f64-to-i64 `FPTOSI` wrapper while retaining
   the default integer kind. Normal and XFAIL-disabled exact runs both report
