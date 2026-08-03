@@ -475,7 +475,6 @@ callback_06.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar exp
 call_subroutine_without_type_01.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 call_subroutine_without_type.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 case_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-case_05.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 case_06.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 c_f_proc_ptr_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 character_01.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations

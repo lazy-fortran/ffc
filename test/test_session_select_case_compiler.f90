@@ -1,5 +1,5 @@
 program test_session_select_case_compiler
-    use ffc_test_support, only: expect_exit_status
+    use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
 
     logical :: all_passed
@@ -18,6 +18,7 @@ program test_session_select_case_compiler
     if (.not. test_select_case_character_match()) all_passed = .false.
     if (.not. test_select_case_character_default()) all_passed = .false.
     if (.not. test_select_case_character_blank_padded()) all_passed = .false.
+    if (.not. test_select_case_character_initialized_empty_arm()) all_passed = .false.
     if (.not. test_select_case_closed_range()) all_passed = .false.
     if (.not. test_select_case_unbounded_low()) all_passed = .false.
     if (.not. test_select_case_unbounded_high()) all_passed = .false.
@@ -280,6 +281,30 @@ contains
         test_select_case_character_blank_padded = expect_exit_status( &
             source, 2, '/tmp/ffc_session_select_char_padded_test')
     end function test_select_case_character_blank_padded
+
+    logical function test_select_case_character_initialized_empty_arm()
+        ! A declaration initializer must materialise a one-character selector
+        ! before SELECT CASE reaches an empty matching arm.
+        character(len=*), parameter :: source = &
+            'program case_05'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  character :: grade = ''B'''//new_line('a')// &
+            '  select case (grade)'//new_line('a')// &
+            '  case (''A'')'//new_line('a')// &
+            '    print *, "Excellent!"'//new_line('a')// &
+            '  case (''B'')'//new_line('a')// &
+            '  case (''C'')'//new_line('a')// &
+            '    print *, "Well done"'//new_line('a')// &
+            '  case default'//new_line('a')// &
+            '    print *, "Invalid grade"'//new_line('a')// &
+            '  end select'//new_line('a')// &
+            '  print *, "Your grade is ", grade'//new_line('a')// &
+            'end program case_05'//new_line('a')
+
+        test_select_case_character_initialized_empty_arm = expect_output( &
+            source, ' Your grade is B'//new_line('a'), &
+            '/tmp/ffc_session_select_char_initialized_test')
+    end function test_select_case_character_initialized_empty_arm
 
     logical function test_select_case_closed_range()
         character(len=*), parameter :: source = &

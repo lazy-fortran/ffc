@@ -294,7 +294,10 @@
         end if
         lowered = lowercase_text(node%type_name)
         if (trim(lowered) == 'character') then
-            ! Deferred character: no len=N specified
+            ! A bare character declaration has the default length one. An
+            ! explicitly deferred character uses character(len=:), while an
+            ! assumed-length dummy uses character(len=*).
+            character_length = 1
             return
         end if
         call parse_character_length(node%type_name, character_length, parse_error)
