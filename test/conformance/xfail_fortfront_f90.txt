@@ -59,7 +59,6 @@ issue_2487_parameter_statement.f90 # owner=lazy-fortran/ffc#347; reason=migrate 
 issue_2489_interface_in_procedure.f90 # owner=lazy-fortran/ffc#430; reason=classify undefined and unlinked reference cases
 issue_2490_hollerith_format.f90 # scope=legacy; reason=deleted Hollerith FORMAT descriptor
 issue_2493_char_array_constructor.f90 # owner=lazy-fortran/ffc#347; reason=migrate character arrays to contiguous descriptors
-issue_2495_data_null_intrinsic.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 issue_2497_include_line_standalone.f90 # owner=lazy-fortran/ffc#354; reason=expand Fortran INCLUDE lines
 issue_2520_doubled_quotes_format_string.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 issue_2559_select_type_case_variations.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards

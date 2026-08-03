@@ -384,6 +384,21 @@
 
         call next_data_value(arena, node, cursor, context, vidx, error_msg)
         if (len_trim(error_msg) > 0) return
+        if (context%symbols(sym)%is_pointer) then
+            if (pointer_target_is_null(arena, vidx)) then
+                ! DATA with NULL() disassociates a scalar data pointer before
+                ! execution, just like a declaration initializer or NULLIFY.
+                context%symbols(sym)%is_associated = .false.
+                context%symbols(sym)%has_runtime_association = .false.
+                context%symbols(sym)%has_address = .false.
+                context%symbols(sym)%is_reference = .false.
+                call set_empty(error_msg)
+            else
+                error_msg = 'DATA initializer for pointer '''//trim(name)// &
+                    ''' must be NULL()'
+            end if
+            return
+        end if
         call lower_scalar_initializer(context, name, &
                                       context%symbols(sym)%value_kind, vidx, &
                                       error_msg)
@@ -781,7 +796,8 @@
         obj_class = ''
         do i = 1, size(node%object_indices)
             call check_data_object_node(arena, node%object_indices(i), &
-                                        obj_class, error_msg)
+                                        obj_class, error_msg, &
+                                        data_object_has_null_value(arena, node, i))
             if (len_trim(error_msg) > 0) return
         end do
         if (.not. allocated(node%value_indices)) return
@@ -814,11 +830,13 @@
         end select
     end subroutine collect_implied_do_names
 
-    recursive subroutine check_data_object_node(arena, idx, obj_class, error_msg)
+    recursive subroutine check_data_object_node(arena, idx, obj_class, error_msg, &
+                                               allow_null_pointer)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: idx
         character(len=:), allocatable, intent(inout) :: obj_class
         character(len=:), allocatable, intent(out) :: error_msg
+        logical, intent(in) :: allow_null_pointer
         character(len=:), allocatable :: name
         integer :: j, decl
 
@@ -829,7 +847,7 @@
             if (.not. allocated(nd%object_indices)) return
             do j = 1, size(nd%object_indices)
                 call check_data_object_node(arena, nd%object_indices(j), &
-                                            obj_class, error_msg)
+                                            obj_class, error_msg, .false.)
                 if (len_trim(error_msg) > 0) return
             end do
             return
@@ -839,13 +857,32 @@
         decl = declaration_index_for_name(arena, name)
         if (decl <= 0) return
         obj_class = data_type_class_of_declaration(arena, decl)
-        call check_data_object_attributes(arena, decl, name, idx, error_msg)
+        call check_data_object_attributes(arena, decl, name, idx, &
+                                          allow_null_pointer, error_msg)
     end subroutine check_data_object_node
 
-    subroutine check_data_object_attributes(arena, decl, name, idx, error_msg)
+    logical function data_object_has_null_value(arena, node, object_position)
+        type(ast_arena_t), intent(in) :: arena
+        type(data_statement_node), intent(in) :: node
+        integer, intent(in) :: object_position
+        integer :: object_index
+
+        data_object_has_null_value = .false.
+        if (size(node%object_indices) /= 1) return
+        if (.not. allocated(node%value_indices)) return
+        if (size(node%value_indices) /= 1) return
+        object_index = node%object_indices(object_position)
+        if (.not. is_identifier(arena, object_index)) return
+        data_object_has_null_value = pointer_target_is_null(arena, &
+                                                            node%value_indices(1))
+    end function data_object_has_null_value
+
+    subroutine check_data_object_attributes(arena, decl, name, idx, &
+                                            allow_null_pointer, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: decl, idx
         character(len=*), intent(in) :: name
+        logical, intent(in) :: allow_null_pointer
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=64) :: location
 
@@ -857,7 +894,7 @@
             if (dn%is_parameter) then
                 error_msg = 'named constant '''//trim(name)//''' shall not '// &
                     'appear in a DATA statement'//trim(location)
-            else if (dn%is_pointer) then
+            else if (dn%is_pointer .and. .not. allow_null_pointer) then
                 error_msg = 'data-stmt-object '''//trim(name)//''' has the '// &
                     'POINTER attribute'//trim(location)
             else if (dn%has_initializer) then
