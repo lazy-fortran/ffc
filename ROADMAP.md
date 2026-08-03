@@ -27,7 +27,7 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `6c24be4` (keyword AINT/ANINT actuals are promoted for
+- Main: `b53987b` (keyword AINT/ANINT actuals are promoted for
   `intrinsics_114.f90`, on top of deferred-shape issue-1968 lowering, on top of
   ALLOCATED keyword arguments and scalar `DATA p / NULL() /`
   pointer disassociation are promoted, on top of the incomplete-expression
@@ -782,3 +782,12 @@ directly only to isolate one named test or diagnose a `fo` failure. Use
 is zero; require several 100%-clean seeds before increasing `N`. CI runs the
 same bounded workflow on every push and pull request. A full `fo` workflow is a
 delivery-boundary check, not permission to run the external corpus wholesale.
+
+Open PRs are part of the same delivery boundary: enumerate them for ffc,
+FortFront, and LIRIC; rebase each candidate onto current `main`; inspect its
+diff and review threads; and merge only a current head with all relevant local
+and GitHub checks green. Never bypass a red check with an administrator merge.
+Squash is valid only when it preserves provenance invariants; a snapshot whose
+recorded ffc revision would cease to be an ancestor after squashing must be
+regenerated against the current base or merged using the method required by
+`docs/CONFORMANCE.md`.
