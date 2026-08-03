@@ -99,8 +99,9 @@ AST workaround.
 This checkpoint supersedes older historical bullets in this file when they
 disagree with the current repository state.
 
-- ffc `main` is `5de3ecf` and is pushed to `origin/main`. It includes the
-  rank-one-through-rank-four runtime scalar array-section implementation and
+- ffc `main` is `61f472d` and is pushed to `origin/main`; the implementation
+  baseline is `5de3ecf`. It includes the rank-one-through-rank-four runtime
+  scalar array-section implementation and
   its independent compiler-test oracle. The implementation is not promoted
   in the conformance manifest yet: the exact `array_section_01.f90` normal
   and XFAIL-disabled gates still have to be rerun from a working LIRIC-linked
@@ -130,8 +131,9 @@ disagree with the current repository state.
 
 Current main revisions:
 
-- ffc `5de3ecf`, main (rank-one-through-rank-four runtime scalar array-section
-  lowering is pushed but not yet manifest-promoted; module integer parameters
+- ffc `61f472d`, main (implementation baseline `5de3ecf`; rank-one-through-
+  rank-four runtime scalar array-section lowering is pushed but not yet
+  manifest-promoted; module integer parameters
   are bound before derived-type
   layout, promoting `derived_types_121.f90`; SIZE keyword/positional mapping
   promotes `arrays_01_size.f90`; selected-real-kind module dummy metadata now preserves
