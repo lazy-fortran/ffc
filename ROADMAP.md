@@ -27,7 +27,8 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `96cfefb` (ALLOCATED keyword arguments and scalar `DATA p / NULL() /`
+- Main: `225edc8` (deferred-shape issue-1968 lowering is promoted, on top of
+  ALLOCATED keyword arguments and scalar `DATA p / NULL() /`
   pointer disassociation are promoted, on top of the incomplete-expression
   diagnostic, on top of
   the comparison typechecking submodule, on top of
@@ -147,14 +148,16 @@ explicit decision.
   `reject_const_init.inc` migration builds but fails its independent rejection
   oracle because invalid input compiles and exits zero. None was integrated or
   promoted.
-- The high-impact follow-up remains explicitly blocked: `array_section_01.f90`
-  still emits malformed LIR (`instruction type missing`); `derived_types_121.f90`
-  still reaches `direct LIRIC session cannot pass this scalar argument`; and
-  FortFront-LF `issue_1968_lazy_function_result.lf` still fails in ffc with
-  `array dimension index does not reference an AST node`, even though current
-  FortFront public APIs expose the deferred shape correctly. The exact
-  XFAIL-disabled issue-1968 gate is `FAIL=1`; keep all three ahead of sample
-  expansion and do not classify the ffc failure as a frontend fix.
+- The issue-1968 lowering blocker is now promoted: ffc handles FortFront’s zero
+  deferred-shape sentinel for the assumed-shape lazy result. The focused lazy
+  function test and both exact gates report `PASS=1`, `XFAIL=0`, `XPASS=0`, and
+  `FAIL=0`; its XFAIL row was removed only after the rebuilt main binary passed.
+- The remaining high-impact queue is explicit: `array_section_01.f90` still
+  requires a known positive RHS extent for runtime scalar broadcasting and a
+  prior attempt emitted malformed LIR (`instruction type missing`);
+  `derived_types_121.f90` still reaches `direct LIRIC session cannot pass this
+  scalar argument`. Keep both ahead of sample expansion and do not classify
+  their failures as manifest workarounds.
 - `floor_01.f90` is now promoted. Public-session FLOOR lowering accepts the
   optional `KIND=8` result through an f64-to-i64 `FPTOSI` wrapper while retaining
   the default integer kind. Normal and XFAIL-disabled exact runs both report
