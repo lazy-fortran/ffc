@@ -242,7 +242,7 @@
         call apply_lazy_real_kind(context, record%type_kind, node%has_kind, &
                                   record%kind_value)
         record%value_kind = declaration_metadata_value_kind( &
-            record%type_kind, record%kind_value, record%type_name)
+            record%type_kind, record%kind_value, record%type_name, context)
     end subroutine make_parameter_record
 
     subroutine make_function_result_record(arena, node, binding, context, record)
@@ -345,6 +345,25 @@
         case (TREAL)
             if (kind_value == 8) then
                 value_kind = VALUE_F64
+            else if (len_trim(type_name) > 0) then
+                ! FortFront preserves a nested selector such as
+                ! real(selected_real_kind(15, 307)) in the public type text,
+                ! while its resolved metadata may still carry the default kind.
+                ! Reconcile that text before classifying the storage ABI.
+                candidate = VALUE_F32
+                call set_empty(kind_error)
+                if (present(context)) then
+                    call type_name_value_kind(type_name, source_line, &
+                        source_column, candidate, kind_error, context)
+                else
+                    call type_name_value_kind(type_name, source_line, &
+                        source_column, candidate, kind_error)
+                end if
+                if (len_trim(kind_error) == 0) then
+                    value_kind = candidate
+                else
+                    value_kind = VALUE_F32
+                end if
             else
                 value_kind = VALUE_F32
             end if
@@ -1033,6 +1052,8 @@
         if (is_integer_literal_text(kind_spec)) then
             read (kind_spec, *) kind_value
             has_value = .true.
+        else if (resolve_selected_real_kind_spec(kind_spec, kind_value)) then
+            has_value = .true.
         else if (present(context)) then
             call resolve_kind_parameter_value(context, kind_spec, resolved, &
                                               kind_value, reference_index)
@@ -1103,6 +1124,10 @@
         integer(c_int64_t) :: resolved_value
 
         real_kind_is_f64 = .false.
+        if (resolve_selected_real_kind_spec(kind_spec, resolved_value)) then
+            real_kind_is_f64 = resolved_value == 8_c_int64_t
+            return
+        end if
         if (present(context)) then
             call resolve_kind_parameter_value(context, kind_spec, resolved, &
                                               resolved_value, reference_index)
@@ -1119,6 +1144,42 @@
             return
         end select
     end function real_kind_is_f64
+
+    logical function resolve_selected_real_kind_spec(kind_spec, kind_value)
+        character(len=*), intent(in) :: kind_spec
+        integer(c_int64_t), intent(out) :: kind_value
+        character(len=:), allocatable :: compact, arguments, precision_text
+        character(len=:), allocatable :: range_text
+        integer(c_int64_t) :: precision, range
+        integer :: i, comma_pos, close_pos, ios
+
+        kind_value = 0_c_int64_t
+        resolve_selected_real_kind_spec = .false.
+        compact = ''
+        do i = 1, len_trim(kind_spec)
+            if (kind_spec(i:i) /= ' ') then
+                compact = compact//lowercase_text(kind_spec(i:i))
+            end if
+        end do
+        if (index(compact, 'selected_real_kind(') /= 1) return
+        close_pos = index(compact, ')', back=.true.)
+        if (close_pos /= len_trim(compact)) return
+        arguments = compact(len('selected_real_kind(') + 1:close_pos - 1)
+        comma_pos = index(arguments, ',')
+        if (comma_pos > 0) then
+            precision_text = arguments(:comma_pos - 1)
+            range_text = arguments(comma_pos + 1:)
+        else
+            precision_text = arguments
+            range_text = '0'
+        end if
+        read (precision_text, *, iostat=ios) precision
+        if (ios /= 0) return
+        read (range_text, *, iostat=ios) range
+        if (ios /= 0) return
+        kind_value = selected_real_kind_value(precision, range)
+        resolve_selected_real_kind_spec = .true.
+    end function resolve_selected_real_kind_spec
 
     ! Returns true when the complex kind spec selects double precision (kind
     ! 8). Bare complex and complex(4) are c4 (two f32s); a declared "integer,

@@ -959,7 +959,7 @@
             type_text = ''
             if (allocated(entry%type_name)) type_text = trim(entry%type_name)
             value_kind = declaration_metadata_value_kind( &
-                entry%resolved_type_kind, kind_value, type_text)
+                entry%resolved_type_kind, kind_value, type_text, context)
         end select
     end function parameter_entry_value_kind
 
