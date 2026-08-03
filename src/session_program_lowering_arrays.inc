@@ -6,6 +6,15 @@
         integer, intent(in) :: dim_index
 
         is_assumed = .false.
+        ! FortFront's public declaration contract uses a zero dimension index
+        ! for a deferred-shape colon when there is no AST bounds node to point
+        ! at.  A non-allocatable declaration with that rank metadata is an
+        ! assumed-shape dummy; declaration_is_assumed_shape keeps allocatable
+        ! deferred-shape arrays on their separate lowering path.
+        if (dim_index == 0) then
+            is_assumed = .true.
+            return
+        end if
         if (.not. node_exists(arena, dim_index)) return
         select type (dim_node => arena%entries(dim_index)%node)
         type is (range_expression_node)
@@ -594,6 +603,9 @@
         lowers = 1
         do i = 1, dim_count
             dim_index = node%dimension_indices(i)
+            ! A zero dimension index is FortFront's public representation of a
+            ! bare deferred-shape colon.  Its lower bound defaults to one.
+            if (dim_index == 0) cycle
             if (.not. node_exists(context%arena, dim_index)) then
                 error_msg = 'assumed-shape dimension index is invalid'
                 return

@@ -24,6 +24,23 @@ program test_session_lazy_toplevel_function_compiler
         'print *, x'//new_line('a'), &
         '           8', 'ffc_lazy_toplevel_add')) ok = .false.
 
+    ! An inferred rank-1 dummy is exposed by FortFront as arr(:) with a
+    ! deferred-shape dimension sentinel. ffc must lower that public contract
+    ! as an assumed-shape dummy and preserve the caller's runtime extent.
+    if (.not. lazy_runs( &
+        'function array_sum(arr, n)'//new_line('a')// &
+        '    total = 0.0'//new_line('a')// &
+        '    do i = 1, n'//new_line('a')// &
+        '        total = total + arr(i)'//new_line('a')// &
+        '    end do'//new_line('a')// &
+        '    array_sum = total'//new_line('a')// &
+        'end function'//new_line('a')// &
+        ''//new_line('a')// &
+        'arr = [1.0, 2.0, 3.0]'//new_line('a')// &
+        'print *, array_sum(arr, 3)'//new_line('a'), &
+        '   6.0000000000000000', 'ffc_lazy_function_array_dummy')) &
+        ok = .false.
+
     ! A top-level subroutine through the same standardization path.
     if (.not. lazy_runs( &
         'subroutine show(n)'//new_line('a')// &

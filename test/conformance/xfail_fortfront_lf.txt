@@ -18,7 +18,6 @@ issue_1784_subroutine_wrapping.lf # owner=lazy-fortran/ffc#350; reason=centraliz
 issue_1814_nested_lazy_function.lf # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 issue_1816_multiple_return_values.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 issue_1816_multiple_returns.lf # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-issue_1968_lazy_function_result.lf # owner=lazy-fortran/ffc#425; reason=infer Lazy Fortran array declarations
 issue_2012_subroutine_local_not_inferred.lf # owner=lazy-fortran/ffc#438; reason=apply Lazy Fortran default type and intent policy
 issue_2062_nested_do_missing_var_type_mismatch.lf # owner=lazy-fortran/ffc#425; reason=infer Lazy Fortran array declarations
 issue_2063_deferred_char_function_syntax.lf # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
