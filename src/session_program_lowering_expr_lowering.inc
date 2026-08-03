@@ -603,6 +603,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: args(:)
         type(lr_operand_desc_t) :: element_addr
+        type(lr_operand_desc_t) :: wide_value
         integer, allocatable :: copyback_indices(:)
         integer :: intrinsic_id
         character(len=:), allocatable :: call_name
@@ -625,6 +626,19 @@
         end if
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session real(4) function call requires a name'
+            return
+        end if
+
+        ! A contained real(8) function called in a real(4) expression still
+        ! returns through the f64 ABI. Lower the call at its declared kind and
+        ! narrow the result only after the call (#448). This path is also used
+        ! while lowering mutually recursive same-unit functions, so the callee
+        ! name must remain resolved against the current procedure context.
+        if (is_contained_f64_function(context, node%name)) then
+            call lower_f64_call(arena, node, context, wide_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_to_f32(context%session, wide_value, value, &
+                                            error_msg)) return
             return
         end if
         if (complex_component_kind(arena, node, context) /= SCALAR_REAL_NONE) then
