@@ -2300,6 +2300,37 @@ module session_program_lowering
         end subroutine check_purity_attribute_restrictions
     end interface
     interface
+        module subroutine check_comparison_operand_types(arena, bin_op, left_idx, &
+                                                          right_idx, line, col, &
+                                                          context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: bin_op
+            integer, intent(in) :: left_idx, right_idx, line, col
+            type(lowering_context_t), intent(in) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_comparison_operand_types
+        module function is_relational_operator(op) result(is_rel)
+            logical :: is_rel
+            character(len=*), intent(in) :: op
+        end function is_relational_operator
+        recursive module function comparison_operand_class(arena, node_index, &
+                                                            context) result(cls)
+            integer :: cls
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+        end function comparison_operand_class
+        module function comparison_value_kind_class(value_kind) result(cls)
+            integer :: cls
+            integer, intent(in) :: value_kind
+        end function comparison_value_kind_class
+        module function is_hollerith_literal(arena, node_index) result(is_holl)
+            logical :: is_holl
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+        end function is_hollerith_literal
+    end interface
+    interface
         module subroutine lower_enum_block(arena, node_index, context, error_msg, &
                                            handled)
             type(ast_arena_t), intent(in) :: arena
@@ -3965,7 +3996,6 @@ contains
     include 'session_program_lowering_write_ops.inc'
     include 'session_program_lowering_open_close.inc'
     include 'session_program_lowering_io_typecheck.inc'
-    include 'session_program_lowering_cmp_typecheck.inc'
     include 'session_program_lowering_inquire.inc'
     include 'session_program_lowering_read_ops.inc'
     include 'session_program_lowering_read_al.inc'
