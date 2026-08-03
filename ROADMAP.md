@@ -128,6 +128,12 @@ explicit decision.
   448/448, `git diff --check` is clean, and an isolated storage-rejection
   source produced identical diagnostic text and exit status before and after
   migration. No manifest row was changed, and the sample remains 900.
+- The next bounded probe remains red and did not alter manifests:
+  `intrinsics_114.f90`/`intrinsics_115.f90` still fail XFAIL-disabled with
+  `ffc direct-session lowering only supports integer expressions`, while
+  `issue_1771_module_parameter_types.f90` still fails XFAIL-disabled with
+  `mismatched scalar kind in argument to square`. Keep both rows in the queue;
+  do not count the normal XFAIL-wrapped runs as passes.
 - Fresh strict pass-only sampling remains bounded at 900. Seed 1038 supplied a
   red baseline: its two `fortfront-lf` failures are now fixed, while twenty
   LFortran failures were observed before the run was stopped. No sample
