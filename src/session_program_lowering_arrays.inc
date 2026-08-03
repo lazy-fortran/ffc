@@ -3744,6 +3744,24 @@
         if (array_index <= 0) error_msg = 'size requires an array argument'
     end subroutine intrinsic_size_args
 
+    subroutine lower_array_size_intrinsic_i64(arena, node, context, value, &
+                                               error_msg)
+        ! SIZE computes an i32 extent internally; widen that value at the
+        ! scalar result boundary so integer(8) assignment uses the i64 ABI.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: narrow_value
+
+        call lower_array_size_intrinsic(arena, node, context, narrow_value, &
+                                        error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, narrow_value, value, &
+                                        error_msg)) return
+    end subroutine lower_array_size_intrinsic_i64
+
     subroutine lower_array_size_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node

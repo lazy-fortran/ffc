@@ -1357,6 +1357,12 @@
             end if
             if (node%base_expr_index <= 0 .and. allocated(node%name)) then
                 if (.not. is_contained_function_reference(node, context) .and. &
+                    same_name(node%name, 'size')) then
+                    call lower_array_size_intrinsic_i64(arena, node, context, &
+                                                        value, error_msg)
+                    return
+                end if
+                if (.not. is_contained_function_reference(node, context) .and. &
                     same_name(node%name, 'floor')) then
                     call lower_i64_from_f64_intrinsic(arena, node, 'floor', &
                                                       context, value, error_msg)
