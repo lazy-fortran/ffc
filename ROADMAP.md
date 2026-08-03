@@ -27,7 +27,12 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `52c51ab` (keyword AINT/ANINT actuals and the array-valued
+- Main: `00fa56e` (deferred-character calls now reuse canonical reference
+  argument preparation, including class/derived visible actuals; focused
+  compiler regression and `fo build` pass. The exact
+  `derived_types_121.f90` XFAIL remains: its separate-compilation path still
+  loses imported `ilp` kind metadata before LIRIC, so no manifest row was
+  removed.) On top of keyword AINT/ANINT actuals and the array-valued
   `intrinsics_115.f90` are promoted for
   `intrinsics_114.f90`, on top of deferred-shape issue-1968 lowering, on top of
   ALLOCATED keyword arguments and scalar `DATA p / NULL() /`
@@ -114,9 +119,11 @@ explicit decision.
   the independent gfortran regression and focused compiler test pass.
 - The next XFAIL queue remains explicit: `array_section_01.f90` still rejects
   scalar RHS broadcasting in runtime section assignment and a first attempted
-  dynamic-loop patch emitted malformed LIR; `derived_types_121.f90` still needs
-  the deferred-character dummy contract propagated into class/derived actual
-  lowering. Neither case has been promoted or hidden in its manifest.
+  dynamic-loop patch emitted malformed LIR; `derived_types_121.f90` still
+  loses imported `ilp` kind metadata in separate compilation (owner #413).
+  The deferred-character class/derived actual contract now has a focused green
+  regression, but neither corpus case has been promoted or hidden in its
+  manifest.
 - Bounded Luna triage on 2026-08-03 rejected several proposed shortcuts without
   edits or manifest drift: `issue_1968_lazy_function_result.lf` still has an
   invalid inferred-array dimension node; `allocatable_component_struct_array_01.f90`
@@ -170,9 +177,9 @@ explicit decision.
 - The remaining high-impact queue is explicit: `array_section_01.f90` still
   requires a known positive RHS extent for runtime scalar broadcasting and a
   prior attempt emitted malformed LIR (`instruction type missing`);
-  `derived_types_121.f90` still reaches `direct LIRIC session cannot pass this
-  scalar argument`. Keep both ahead of sample expansion and do not classify
-  their failures as manifest workarounds.
+  `derived_types_121.f90` still reaches an unsupported imported `ilp` kind
+  diagnostic in its separate-compilation path. Keep both ahead of sample
+  expansion and do not classify their failures as manifest workarounds.
 - `floor_01.f90` is now promoted. Public-session FLOOR lowering accepts the
   optional `KIND=8` result through an f64-to-i64 `FPTOSI` wrapper while retaining
   the default integer kind. Normal and XFAIL-disabled exact runs both report
