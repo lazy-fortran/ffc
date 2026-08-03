@@ -14,6 +14,7 @@ program test_session_select_type_compiler
     if (.not. test_select_type_two_arms_second_matches()) all_passed = .false.
     if (.not. test_select_type_class_default_matches_neither()) all_passed = .false.
     if (.not. test_host_select_type_class_is()) all_passed = .false.
+    if (.not. test_host_select_type_type_is()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: class(*) and select type lower through direct LIRIC'
@@ -117,6 +118,29 @@ contains
             source, ' class is t'//new_line('a'), &
             '/tmp/ffc_session_host_class_select')
     end function test_host_select_type_class_is
+
+    logical function test_host_select_type_type_is()
+        ! TYPE IS uses the same host-associated class descriptor as CLASS IS.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type t'//new_line('a')// &
+            '  end type t'//new_line('a')// &
+            '  class(t), allocatable :: x'//new_line('a')// &
+            '  allocate (t :: x)'//new_line('a')// &
+            '  call s'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine s'//new_line('a')// &
+            '    select type (x)'//new_line('a')// &
+            '    type is (t)'//new_line('a')// &
+            "      print *, 'type is t'"//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '  end subroutine s'//new_line('a')// &
+            'end program main'
+
+        test_host_select_type_type_is = expect_output( &
+            source, ' type is t'//new_line('a'), &
+            '/tmp/ffc_session_host_type_select')
+    end function test_host_select_type_type_is
 
     function two_arm_source(actual) result(source)
         ! integer arm -> 1, real arm -> 2, class default -> 9.
