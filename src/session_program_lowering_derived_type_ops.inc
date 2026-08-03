@@ -1431,46 +1431,41 @@
         end select
     end subroutine lower_alloc_array_component_size
 
-    subroutine lower_fixed_char_component_size(arena, node, context, value, &
-                                               handled, error_msg)
+    subroutine lower_fixed_char_component_size(arena, array_index, dim_index, &
+                                               context, value, handled, error_msg)
         ! Lower size(obj%comp) for a fixed-length character array component.
         ! Its metadata stores the element extent in component_array_size and
         ! uses component_dim1 as the array marker; scalar character components
         ! retain their packed slot-count representation.
         type(ast_arena_t), intent(in) :: arena
-        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: array_index, dim_index
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: symbol_index, type_index, component_index, nargs
+        integer :: symbol_index, type_index, component_index
         integer(c_int64_t) :: dim_value
         character(len=:), allocatable :: component_name
 
         handled = .false.
         call set_empty(error_msg)
-        if (.not. allocated(node%arg_indices)) return
-        if (size(node%arg_indices) < 1) return
-        select type (arg => arena%entries(node%arg_indices(1))%node)
+        if (.not. node_exists(arena, array_index)) return
+        select type (arg => arena%entries(array_index)%node)
         type is (component_access_node)
-            call resolve_component_ref(arena, node%arg_indices(1), context, &
+            call resolve_component_ref(arena, array_index, context, &
                                        symbol_index, type_index, component_index, &
                                        component_name, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. component_is_fixed_char_array(context, type_index, &
                                                     component_index)) return
-            nargs = size(node%arg_indices)
-            if (nargs == 2) then
-                call eval_i32_constant(arena, node%arg_indices(2), context, &
+            if (dim_index > 0) then
+                call eval_i32_constant(arena, dim_index, context, &
                                        dim_value, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (dim_value /= 1_c_int64_t) then
                     error_msg = 'size dim out of range for: '//trim(component_name)
                     return
                 end if
-            else if (nargs /= 1) then
-                error_msg = 'size requires one or two arguments'
-                return
             end if
             value = i32_immediate(context%session, int(context%derived_types( &
                 type_index)%component_array_size(component_index), c_int64_t))

@@ -2061,6 +2061,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: sym, nargs, arr_rank, component_symbol
         integer :: component_type, component_index
+        integer :: array_index, dim_index, kind_index
         integer(c_int64_t) :: dim
         integer :: arr_size, arr_dim_sizes(ARRAY_MAX_RANK)
         logical :: ok
@@ -2072,14 +2073,17 @@
             return
         end if
         nargs = size(node%arg_indices)
-        if (nargs < 1 .or. nargs > 2) then
-            error_msg = 'size requires one or two arguments'
+        if (nargs < 1 .or. nargs > 3) then
+            error_msg = 'size requires one to three arguments'
             return
         end if
-        if (node_exists(arena, node%arg_indices(1))) then
-            select type (component => arena%entries(node%arg_indices(1))%node)
+        call intrinsic_size_args(arena, node, array_index, dim_index, kind_index, &
+                                 error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (node_exists(arena, array_index)) then
+            select type (component => arena%entries(array_index)%node)
             type is (component_access_node)
-                call resolve_component_ref(arena, node%arg_indices(1), context, &
+                call resolve_component_ref(arena, array_index, context, &
                     component_symbol, component_type, component_index, &
                     component_name, error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -2090,8 +2094,8 @@
                                component_array_size(component_index)
                     arr_dim_sizes = 0
                     arr_dim_sizes(1) = arr_size
-                    if (nargs == 2) then
-                        call eval_i32_constant(arena, node%arg_indices(2), &
+                    if (dim_index > 0) then
+                        call eval_i32_constant(arena, dim_index, &
                                                context, dim, error_msg)
                         if (len_trim(error_msg) > 0) return
                         if (dim /= 1_c_int64_t) then
@@ -2110,11 +2114,11 @@
             class default
             end select
         end if
-        if (.not. is_identifier(arena, node%arg_indices(1))) then
+        if (.not. is_identifier(arena, array_index)) then
             error_msg = 'size argument is not a named array'
             return
         end if
-        call get_identifier_name(arena, node%arg_indices(1), id_name, error_msg)
+        call get_identifier_name(arena, array_index, id_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol_compat(context, id_name)
         if (sym > 0) then
@@ -2145,13 +2149,13 @@
             return
         end if
 
-        if (nargs == 1) then
+        if (dim_index <= 0) then
             constant_value = int(arr_size, c_int64_t)
             call set_empty(error_msg)
             return
         end if
 
-        call eval_i32_constant(arena, node%arg_indices(2), context, dim, error_msg)
+        call eval_i32_constant(arena, dim_index, context, dim, error_msg)
         if (len_trim(error_msg) > 0) return
         if (dim < 1 .or. dim > int(arr_rank, c_int64_t)) then
             error_msg = 'size dim out of range for: '//trim(id_name)
@@ -3688,6 +3692,58 @@
         call set_empty(error_msg)
     end subroutine lower_shape_intrinsic_element
 
+    subroutine intrinsic_size_args(arena, node, array_index, dim_index, kind_index, &
+                                   error_msg)
+        !! Map SIZE's typed optional arguments instead of using raw positions.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(out) :: array_index, dim_index, kind_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: keyword
+        integer :: i, actual_index, positional_count
+
+        array_index = 0
+        dim_index = 0
+        kind_index = 0
+        positional_count = 0
+        call set_empty(error_msg)
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'size requires an array argument'
+            return
+        end if
+        do i = 1, size(node%arg_indices)
+            call unwrap_intrinsic_arg(arena, node%arg_indices(i), keyword, &
+                                      actual_index)
+            select case (trim(keyword))
+            case ('array')
+                array_index = actual_index
+            case ('dim')
+                dim_index = actual_index
+            case ('kind')
+                kind_index = actual_index
+            case default
+                if (len_trim(keyword) > 0) then
+                    error_msg = 'size has unsupported keyword argument: '// &
+                                trim(keyword)
+                    return
+                end if
+                positional_count = positional_count + 1
+                select case (positional_count)
+                case (1)
+                    array_index = actual_index
+                case (2)
+                    dim_index = actual_index
+                case (3)
+                    kind_index = actual_index
+                case default
+                    error_msg = 'size requires one to three arguments'
+                    return
+                end select
+            end select
+        end do
+        if (array_index <= 0) error_msg = 'size requires an array argument'
+    end subroutine intrinsic_size_args
+
     subroutine lower_array_size_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
@@ -3695,27 +3751,30 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: array_name
-        integer :: source_index
+        integer :: source_index, array_index, dim_index, kind_index
         integer :: nargs
         integer(c_int64_t) :: dim_val
         type(lr_operand_desc_t) :: total_size
 
         nargs = 0
         if (allocated(node%arg_indices)) nargs = size(node%arg_indices)
-        if (nargs < 1 .or. nargs > 2) then
-            error_msg = 'size requires one or two arguments'
+        if (nargs < 1 .or. nargs > 3) then
+            error_msg = 'size requires one to three arguments'
             return
         end if
+        call intrinsic_size_args(arena, node, array_index, dim_index, kind_index, &
+                                 error_msg)
+        if (len_trim(error_msg) > 0) return
         block
             logical :: handled
-            call lower_alloc_array_component_size(arena, node%arg_indices(1), &
+            call lower_alloc_array_component_size(arena, array_index, &
                                                   context, value, handled, error_msg)
             if (handled .or. len_trim(error_msg) > 0) return
-            call lower_fixed_char_component_size(arena, node, context, value, &
-                                                handled, error_msg)
+            call lower_fixed_char_component_size(arena, array_index, dim_index, &
+                                                 context, value, handled, error_msg)
             if (handled .or. len_trim(error_msg) > 0) return
         end block
-        call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
+        call get_identifier_name(arena, array_index, array_name, error_msg)
         if (len_trim(error_msg) > 0) return
         source_index = find_symbol_compat(context, array_name)
         if (source_index <= 0) then
@@ -3723,8 +3782,8 @@
             return
         end if
         if (context%symbols(source_index)%is_allocatable) then
-            if (nargs == 2) then
-                call eval_i32_constant(arena, node%arg_indices(2), context, &
+            if (dim_index > 0) then
+                call eval_i32_constant(arena, dim_index, context, &
                                        dim_val, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (dim_val < 1_c_int64_t .or. dim_val > int( &
@@ -3756,7 +3815,7 @@
             error_msg = 'size requires an array argument: '//trim(array_name)
             return
         end if
-        if (nargs == 1) then
+        if (dim_index <= 0) then
             ! Only walk the runtime loop when no constant element count is
             ! known. A descriptor-bound dummy always caches its dimension
             ! extents, so a dummy that ALSO carries a compile-time array_size
@@ -3797,8 +3856,7 @@
             call set_empty(error_msg)
             return
         end if
-        call eval_i32_constant(arena, node%arg_indices(2), context, dim_val, &
-                               error_msg)
+        call eval_i32_constant(arena, dim_index, context, dim_val, error_msg)
         if (len_trim(error_msg) > 0) return
         if (dim_val < 1 .or. &
             dim_val > int(context%symbols(source_index)%array_rank, c_int64_t)) then
