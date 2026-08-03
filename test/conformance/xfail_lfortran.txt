@@ -96,8 +96,6 @@ array_bound_3.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-
 array_bound_6.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 array_bound_7.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
 array_concat.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
-array_constructor_02.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-array_constructor_03.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 array_constructor_04.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 array_constructor_05.f90 # owner=lazy-fortran/ffc#459; reason=lower typed array constructors
 array_constructor_06.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
