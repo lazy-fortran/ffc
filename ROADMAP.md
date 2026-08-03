@@ -160,9 +160,10 @@ Current main revisions:
 - Open-PR audit on 2026-08-03: ffc #596 and #677 remain open without a green
   merge gate, fo #116 remains open pending its checks and review resolution,
   fluff #269 is red, fortfem #56 is merged, and fortnum #59--#61 remain a red
-  stacked train. The open PRs are not eligible for squash merge until their
-  local behavioral evidence, review state, and GitHub checks are green; never
-  bypass a red or stale gate.
+  FortNum #59--#61 are now flattened and integrated on main with their
+  superseded PRs closed. The remaining open PRs are not eligible for merge
+  until their local behavioral evidence, review state, and GitHub checks are
+  green; never bypass a red or stale gate.
 - FortFront `5ff07184`, main (public incomplete-expression diagnostics on top of recursive nested-array-postfix parsing, nested DO WHILE construct parsing, declaration-shape parsing, semantic conformance checks, full logical expressions in I/O argument lists, preserved logical literal kind suffixes, continued declaration statement-boundary handling, full BIND(C) interface return-kind preservation, and contextual `error` identifiers)
 - LIRIC `5436e5c`, main (#528)
 - fo `af075f4`, main (PR #118; #102)
