@@ -27,7 +27,8 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `a8e52ee` (lazy whole-array constructor reallocation fix on top of the
+- Main: `d638f02` (contained f64 calls in f32 expressions on top of the lazy
+  whole-array constructor reallocation fix and the
   mixed-kind unary real promotion and the
   ANY DIM assignment promotion and the
   array-constructor 02/03 promotion, the
@@ -96,6 +97,15 @@ explicit decision.
   gfortran oracle and `test_session_allocatable_constructor_compiler` agree;
   whole-array constructor operands are materialized before old allocation is
   released.
+- The `functions_11.f90` XFAIL is now promoted: normal and XFAIL-disabled exact
+  runs report `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`. The contained f64
+  function call now uses its f64 ABI before conversion to an f32 assignment;
+  the independent gfortran regression and focused compiler test pass.
+- The next XFAIL queue remains explicit: `array_section_01.f90` still rejects
+  scalar RHS broadcasting in runtime section assignment and a first attempted
+  dynamic-loop patch emitted malformed LIR; `derived_types_121.f90` still needs
+  the deferred-character dummy contract propagated into class/derived actual
+  lowering. Neither case has been promoted or hidden in its manifest.
 - Fresh strict pass-only sampling remains bounded at 900. Seed 1038 supplied a
   red baseline: its two `fortfront-lf` failures are now fixed, while twenty
   LFortran failures were observed before the run was stopped. No sample
