@@ -136,11 +136,13 @@ explicit decision.
   source produced identical diagnostic text and exit status before and after
   migration. No manifest row was changed, and the sample remains 900.
 - The next bounded probe remains red and did not alter manifests:
-  `intrinsics_114.f90`/`intrinsics_115.f90` still fail XFAIL-disabled with
-  `ffc direct-session lowering only supports integer expressions`, while
-  `issue_1771_module_parameter_types.f90` still fails XFAIL-disabled with
-  `mismatched scalar kind in argument to square`. Keep both rows in the queue;
-  do not count the normal XFAIL-wrapped runs as passes.
+  `intrinsics_114.f90`/`intrinsics_115.f90` still fail XFAIL-disabled because
+  keyword actuals (`a=`, `b=`, and `kind=`) remain FortFront assignment nodes
+  when ffc lowers real intrinsic arguments, reaching the integer-only path.
+  `issue_1771_module_parameter_types.f90` still fails before LIRIC with
+  `mismatched scalar kind in argument to square`, although its gfortran oracle
+  prints `Square: 6.25`. Keep both rows in the queue; do not count normal
+  XFAIL-wrapped runs as passes.
 - The following disjoint probe also remained red: `arrays_02_size.f90`
   still fails during ffc compilation; `issue_2495_data_null_intrinsic.f90`
   reaches an ffc lowering failure (`data-stmt-object 'ptr2' has the POINTER
@@ -148,6 +150,10 @@ explicit decision.
   `reject_const_init.inc` migration builds but fails its independent rejection
   oracle because invalid input compiles and exits zero. None was integrated or
   promoted.
+- `arrays_01_size.f90` remains red for a narrower reason: ffc’s SIZE lowering
+  treats the `kind=4` keyword as the `DIM` argument and reports `size dim out
+  of range for: a`; FortFront’s public parse and semantic diagnostics are
+  clean. Keep it ahead of sample expansion without a manifest change.
 - The issue-1968 lowering blocker is now promoted: ffc handles FortFront’s zero
   deferred-shape sentinel for the assumed-shape lazy result. The focused lazy
   function test and both exact gates report `PASS=1`, `XFAIL=0`, `XPASS=0`, and
