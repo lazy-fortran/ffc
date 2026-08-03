@@ -27,7 +27,8 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `63da3fc` (enum-lowering module extraction, the #584 assumed-size-array
+- Main: `6bfe998` (modules36 fixed-character-array promotion on top of the
+  enum-lowering module extraction, the #584 assumed-size-array
   FAIL fix, modules34/modules35 XFAIL closure, schema-10 `.fmod`
   compatibility, and strict sampled conformance gating, on top of the
   modules31/modules33 separate-compilation support:
@@ -293,10 +294,15 @@ explicit decision.
   assumed-size classifier, and runtime reductions use descriptor-aware loads.
 - `session_program_lowering_enum.inc` is now a real
   `session_program_lowering_enum` submodule with an explicit build-order
-  module; enum and module-constant focused tests pass. The remaining
-  modules36 XFAIL is intentionally still first in queue: it requires the
-  broader fixed-length character-array component ABI and `SIZE(component)`
-  lowering, not a manifest change.
+  module; enum and module-constant focused tests pass. The modules36 XFAIL
+  is now green: exact normal and XFAIL-disabled runs report
+  `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`; an independent gfortran
+  compile/run oracle agrees. Fixed-length character-array components now carry
+  element-count and packed-slot metadata, `SIZE(component)` folds in
+  specification expressions, and `ANY(.NOT.array)` accepts FortFront's unary
+  operator spelling. Element access remains an explicit diagnostic until its
+  character-array ABI is implemented; the XFAIL row was removed only after
+  the exact behavioral checks and focused tests passed.
 - The focused constant-expression rejection regression is green again:
   `test_session_reject_const_01_compiler` passes after `HUGE` bounds stop being
   misclassified as runtime extents. The constant-overflow checker is now a real
@@ -452,9 +458,10 @@ sample modestly.
    its two XFAIL rows are removed. The modules31 and modules33 families are
    complete as recorded above. The modules34 and modules35 XFAIL tranches are
    complete. The #584 assumed-size FAIL closure is green on its bounded cases.
-   Keep `modules_36.f90` (#417) as the next XFAIL-first implementation target
-   before any sample increase; its required character-array component ABI is a
-   real code change, not an exclusion.
+   The `modules_36.f90` (#417) XFAIL-first tranche is complete: its fixed
+   character-array declaration and `SIZE` path pass the exact normal and
+   XFAIL-disabled checks plus the independent gfortran oracle. Keep the next
+   owned XFAIL/FAIL tranche first and do not increase the sample count yet.
 3. Continue replacing the remaining textual `.inc` fragments in the lowerer with real
    Fortran modules/submodules in dependency order. The first verified seams
    are diagnostics, constant folding, scalar-kind/scalar-expression lowering,
