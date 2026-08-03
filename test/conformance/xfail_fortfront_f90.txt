@@ -28,7 +28,6 @@ issue_1619_nested_types_complex.f90 # owner=lazy-fortran/ffc#447; reason=central
 issue_1621_intent_out_array_shape.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 issue_1738_derived_type_allocatable.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
 issue_1740_optional_keyword_arguments.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-issue_1771_module_parameter_types.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
 issue_1782_procedure_pointer.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 issue_1827_submodule_simple.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules
 issue_1827_submodule_with_contents.f90 # owner=lazy-fortran/ffc#297; reason=consume parent interfaces for separate submodules

@@ -27,12 +27,14 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `00fa56e` (deferred-character calls now reuse canonical reference
-  argument preparation, including class/derived visible actuals; focused
-  compiler regression and `fo build` pass. The exact
-  `derived_types_121.f90` XFAIL remains: its separate-compilation path still
-  loses imported `ilp` kind metadata before LIRIC, so no manifest row was
-  removed.) On top of keyword AINT/ANINT actuals and the array-valued
+- Main: `9253efa` (selected-real-kind module dummy metadata now preserves the
+  resolved f64 ABI; `issue_1771_module_parameter_types.f90` is promoted after
+  normal/no-XFAIL exact gates, an independent gfortran oracle, and a focused
+  compiler regression. Deferred-character calls also reuse canonical reference
+  argument preparation, with its focused class/derived actual regression green.
+  The exact `derived_types_121.f90` XFAIL remains: its separate-compilation
+  path still loses imported `ilp` kind metadata before LIRIC, so that manifest
+  row was not removed.) On top of keyword AINT/ANINT actuals and the array-valued
   `intrinsics_115.f90` are promoted for
   `intrinsics_114.f90`, on top of deferred-shape issue-1968 lowering, on top of
   ALLOCATED keyword arguments and scalar `DATA p / NULL() /`
@@ -124,6 +126,11 @@ explicit decision.
   The deferred-character class/derived actual contract now has a focused green
   regression, but neither corpus case has been promoted or hidden in its
   manifest.
+- `issue_1771_module_parameter_types.f90` is now promoted: the declaration and
+  function metadata paths retain the resolved `selected_real_kind(15, 307)`
+  ABI. Normal and XFAIL-disabled exact runs both report `PASS=1`, `XFAIL=0`,
+  `XPASS=0`, and `FAIL=0`; the independent gfortran output is `Square: 6.25`.
+  Its exact XFAIL row was removed only after the rebuilt main binary passed.
 - Bounded Luna triage on 2026-08-03 rejected several proposed shortcuts without
   edits or manifest drift: `issue_1968_lazy_function_result.lf` still has an
   invalid inferred-array dimension node; `allocatable_component_struct_array_01.f90`
