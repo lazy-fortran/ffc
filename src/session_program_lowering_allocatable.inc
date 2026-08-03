@@ -2772,6 +2772,7 @@
         type(lr_operand_desc_t) :: data_ptr
         integer :: symbol_index
         logical :: handled
+        integer :: actual_index
 
         if (.not. allocated(arg_indices)) then
             error_msg = 'allocated requires exactly one argument'
@@ -2781,15 +2782,18 @@
             error_msg = 'allocated requires exactly one argument'
             return
         end if
-        call lower_allocated_scalar_component(arena, arg_indices(1), context, &
+        call unwrap_allocated_keyword_argument(arena, arg_indices(1), actual_index, &
+                                               error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_allocated_scalar_component(arena, actual_index, context, &
                                               value, handled, error_msg)
         if (len_trim(error_msg) > 0) return
         if (handled) return
-        if (.not. is_identifier(arena, arg_indices(1))) then
+        if (.not. is_identifier(arena, actual_index)) then
             error_msg = 'allocated argument must be an allocatable variable'
             return
         end if
-        call identifier_name(arena, arg_indices(1), name, error_msg)
+        call identifier_name(arena, actual_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
 
         symbol_index = find_symbol_compat(context, name)
@@ -2825,6 +2829,25 @@
                 null_ptr_operand(context), value, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_allocated
+
+    subroutine unwrap_allocated_keyword_argument(arena, arg_index, actual_index, &
+                                                  error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_index
+        integer, intent(out) :: actual_index
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        actual_index = arg_index
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, arg_index)) return
+        select type (arg => arena%entries(arg_index)%node)
+        type is (assignment_node)
+            ! Function-reference actuals use this assignment shape without
+            ! setting is_keyword_argument; an assignment cannot be a normal
+            ! expression in an intrinsic actual-argument slot.
+            actual_index = arg%value_index
+        end select
+    end subroutine unwrap_allocated_keyword_argument
 
     subroutine lower_allocated_scalar_component(arena, arg_index, context, value, &
                                                 handled, error_msg)

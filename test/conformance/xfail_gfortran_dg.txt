@@ -133,7 +133,6 @@ allocate_with_source_5.f90 # owner=lazy-fortran/ffc#334; reason=pass assumed-sha
 allocate_with_typespec_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 allocate_zerosize_1.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 allocate_zerosize_2.f90 # owner=lazy-fortran/ffc#423; reason=move scalar formatted output behind runtime calls
-allocated_1.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 allocated_4.f90 # owner=lazy-fortran/ffc#336; reason=migrate allocatable arrays to descriptors
 ambiguous_specific_2.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 and_or_xor.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
