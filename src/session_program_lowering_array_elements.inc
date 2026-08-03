@@ -2642,6 +2642,89 @@
         call set_empty(error_msg)
     end subroutine lower_array_section_assignment
 
+    logical function is_call_or_subscript_array_section(arena, target, context) &
+            result(is_section)
+        !! Some FortFront paths retain a section as a call_or_subscript node.
+        !! Its range metadata is authoritative in arg_indices; scalar subscripts
+        !! use the same node type and must continue through the scalar path.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: target
+        type(lowering_context_t), intent(in) :: context
+        integer :: i, symbol_index
+
+        is_section = .false.
+        if (.not. allocated(target%name)) return
+        if (.not. allocated(target%arg_indices)) return
+        symbol_index = find_symbol_compat(context, target%name)
+        if (symbol_index <= 0) return
+        if (.not. context%symbols(symbol_index)%is_array) return
+        do i = 1, size(target%arg_indices)
+            if (.not. node_exists(arena, target%arg_indices(i))) return
+            select type (subscript => arena%entries(target%arg_indices(i))%node)
+            type is (range_expression_node)
+                is_section = .true.
+                return
+            type is (array_bounds_node)
+                is_section = .true.
+                return
+            end select
+        end do
+    end function is_call_or_subscript_array_section
+
+    subroutine lower_call_or_subscript_section_assignment(arena, node, target, &
+                                                          context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(call_or_subscript_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_slice_node) :: slice
+        integer :: base_index, i
+
+        base_index = array_section_base_identifier(arena, target, context)
+        if (base_index <= 0) then
+            error_msg = 'array section target has no resolvable array base'
+            return
+        end if
+        slice%array_index = base_index
+        slice%num_dimensions = min(size(target%arg_indices), &
+                                   size(slice%bounds_indices))
+        slice%bounds_indices = 0
+        do i = 1, slice%num_dimensions
+            slice%bounds_indices(i) = target%arg_indices(i)
+        end do
+        slice%line = target%line
+        slice%column = target%column
+        call lower_array_section_assignment(arena, node, slice, context, error_msg)
+    end subroutine lower_call_or_subscript_section_assignment
+
+    integer function array_section_base_identifier(arena, target, context) &
+            result(base_index)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: target
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: candidate_name, name_error
+        integer :: i, target_symbol
+
+        base_index = 0
+        target_symbol = find_symbol_compat(context, target%name)
+        if (target_symbol <= 0) return
+        do i = arena%size, 1, -1
+            if (.not. node_exists(arena, i)) cycle
+            select type (candidate => arena%entries(i)%node)
+            type is (identifier_node)
+                call get_identifier_name(arena, i, candidate_name, name_error)
+                if (len_trim(name_error) > 0) cycle
+                if (.not. same_name(candidate_name, target%name)) cycle
+                if (resolve_symbol_at_node(context, i, candidate_name) == &
+                    target_symbol) then
+                    base_index = i
+                    return
+                end if
+            end select
+        end do
+    end function array_section_base_identifier
+
     subroutine lower_runtime_array_section_scalar_broadcast(arena, target, tinfo, &
                                                             context, value, error_msg)
         !! Broadcast one already-evaluated scalar through a runtime-bounded

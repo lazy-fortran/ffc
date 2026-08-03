@@ -14,6 +14,7 @@ program test_session_array_section_compiler
     if (.not. test_sum_section()) all_passed = .false.
     if (.not. test_section_after_string()) all_passed = .false.
     if (.not. test_empty_section()) all_passed = .false.
+    if (.not. test_runtime_scalar_section_dispatch()) all_passed = .false.
 
     if (.not. all_passed) stop 1
 
@@ -131,4 +132,30 @@ contains
         test_empty_section = expect_output( &
             source, new_line('a'), '/tmp/ffc_session_empty_array_section_test')
     end function test_empty_section
+
+    logical function test_runtime_scalar_section_dispatch()
+        ! FortFront may retain a runtime-bounded section as a call_or_subscript
+        ! node. Keep a scalar element write in front of it to prove that the
+        ! scalar-subscript path still wins for a(i).
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  call work(5)'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine work(l)'//new_line('a')// &
+            '    integer, intent(in) :: l'//new_line('a')// &
+            '    real :: fvec(l)'//new_line('a')// &
+            '    integer :: i'//new_line('a')// &
+            '    fvec = 1.0'//new_line('a')// &
+            '    i = 1'//new_line('a')// &
+            '    fvec(i) = 2.0'//new_line('a')// &
+            '    fvec(2:l) = 0.0'//new_line('a')// &
+            '    if (fvec(1) /= 2.0) error stop 1'//new_line('a')// &
+            '    if (fvec(2) /= 0.0 .or. fvec(l) /= 0.0) error stop 2'// &
+            new_line('a')// &
+            '  end subroutine work'//new_line('a')// &
+            'end program main'
+
+        test_runtime_scalar_section_dispatch = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_runtime_scalar_section_dispatch_test')
+    end function test_runtime_scalar_section_dispatch
 end program test_session_array_section_compiler

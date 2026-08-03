@@ -3513,6 +3513,11 @@ contains
             call lower_vector_subscript_assignment(arena, node, target, context, &
                 handled, error_msg)
             if (handled .or. len_trim(error_msg) > 0) return
+            if (is_call_or_subscript_array_section(arena, target, context)) then
+                call lower_call_or_subscript_section_assignment(arena, node, target, &
+                    context, error_msg)
+                return
+            end if
             if (target%is_array_access) then
                 call lower_array_element_assignment(arena, node, target, context, &
                     value, error_msg)
