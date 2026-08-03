@@ -27,7 +27,8 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `2ded673` (comparison typechecking is now a real submodule, on top of
+- Main: `0fd2fbe` (the incomplete-expression diagnostic is promoted, on top of
+  the comparison typechecking submodule, on top of
   the FLOOR optional `KIND=8` lowering and public-session
   f64-to-i64 conversion are now green, on top of the storage-rejection checks
   as a real submodule, on top of
@@ -64,7 +65,7 @@ explicit decision.
   legacy typed MIN aliases, legacy typed MAX aliases, and mixed opaque module
   dummy metadata, and corrected constant HUGE array-bound classification,
   with
-  sampled manifest dispositions through seed 1037). FortFront `9ff6605e`.
+  sampled manifest dispositions through seed 1037). FortFront `5ff07184`.
   LIRIC `5436e5c`.
 - `fo build` passes for ffc 450/450 and FortFront 379/379 at those revisions.
 - Repeated deterministic random subsets reached 900 files per suite with no
@@ -160,10 +161,15 @@ explicit decision.
   compiler test passes, `fo build` is `450/450`, and no corpus manifest changed.
 - `allocated_1.f90` remains unpromoted: an isolated keyword-unwrapping attempt
   could not pass its exact gates because the rebuilt ffc binary still selected
-  the old lowering path. FortFront `issue_256` has a focused parser-test and
-  FortFront build commit, but its parent ffc gates remain unverified. Keep both
-  ahead of sample expansion and do not alter their manifests without complete
-  independent gates.
+  the old lowering path. Keep it ahead of sample expansion and do not alter its
+  manifest without a complete independent gate.
+- `issue_256_incomplete_expression.f90` is now promoted. FortFront emits the
+  focused incomplete-expression diagnostic while preserving valid logical
+  literals and continuations; the independent public-API regression passes,
+  FortFront builds `379/379`, and ffc normal and XFAIL-disabled exact runs both
+  report `PASS=1`, `XFAIL=0`, `XPASS=0`, `FAIL=0` (the invalid fixture is
+  classified `NOREF=1` because gfortran rejects it). Its XFAIL row was removed
+  only after these gates passed.
 - Fresh strict pass-only sampling remains bounded at 900. Seed 1038 supplied a
   red baseline: its two `fortfront-lf` failures are now fixed, while twenty
   LFortran failures were observed before the run was stopped. No sample
