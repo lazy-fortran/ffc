@@ -194,7 +194,7 @@ module session_program_lowering_types
     ! symbol_t, so this caps those fixed arrays (Fortran 2003 max rank).
     integer, parameter, public :: ARRAY_MAX_RANK = 7
     ! Byte size of an allocatable array descriptor: data pointer plus the
-    ! lower/upper bound pair of each of the two supported dimensions, all i64.
+    ! lower/upper bound pair of each supported dimension, all i64.
     ! Allocatable arrays are described by the canonical array descriptor
     ! (docs/ARRAY_DESCRIPTOR_ABI.md), so their stack or global slot is that
     ! record's size (#336).
@@ -418,15 +418,15 @@ module session_program_lowering_types
         integer :: source_index = 0
         integer :: source_rank = 0
         integer :: result_rank = 0
-        integer :: kept_dims(2) = 0
-        logical :: keep_dim(2) = .false.
-        integer(c_int64_t) :: source_lowers(2) = 0_c_int64_t
-        integer(c_int64_t) :: source_sizes(2) = 0_c_int64_t
-        integer(c_int64_t) :: section_lowers(2) = 0_c_int64_t
-        integer(c_int64_t) :: section_uppers(2) = 0_c_int64_t
-        integer(c_int64_t) :: section_strides(2) = 1_c_int64_t
-        integer(c_int64_t) :: section_extents(2) = 0_c_int64_t
-        integer(c_int64_t) :: scalar_indices(2) = 0_c_int64_t
+        integer :: kept_dims(ARRAY_MAX_RANK) = 0
+        logical :: keep_dim(ARRAY_MAX_RANK) = .false.
+        integer(c_int64_t) :: source_lowers(ARRAY_MAX_RANK) = 0_c_int64_t
+        integer(c_int64_t) :: source_sizes(ARRAY_MAX_RANK) = 0_c_int64_t
+        integer(c_int64_t) :: section_lowers(ARRAY_MAX_RANK) = 0_c_int64_t
+        integer(c_int64_t) :: section_uppers(ARRAY_MAX_RANK) = 0_c_int64_t
+        integer(c_int64_t) :: section_strides(ARRAY_MAX_RANK) = 1_c_int64_t
+        integer(c_int64_t) :: section_extents(ARRAY_MAX_RANK) = 0_c_int64_t
+        integer(c_int64_t) :: scalar_indices(ARRAY_MAX_RANK) = 0_c_int64_t
         logical :: has_runtime_bounds = .false.
     end type array_section_info_t
 

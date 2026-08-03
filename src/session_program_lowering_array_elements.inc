@@ -66,11 +66,11 @@
         end select
 
         source_rank = context%symbols(source_index)%array_rank
-        if (source_rank < 1 .or. source_rank > 2) then
+        if (source_rank < 1 .or. source_rank > 4) then
             call unsupported_feature_error('array section', slice_node%line, &
                                            slice_node%column, &
                                            'direct LIRIC session supports at '// &
-                                           'most rank-2 array sections', error_msg)
+                                           'most rank-4 array sections', error_msg)
             return
         end if
         if (slice_node%num_dimensions > source_rank) then
@@ -507,49 +507,27 @@
             result(source_linear)
         type(array_section_info_t), intent(in) :: info
         integer(c_int64_t), intent(in) :: linear_index
-        integer(c_int64_t) :: coord1
-        integer(c_int64_t) :: coord2
-        integer(c_int64_t) :: inner_index
-        integer :: inner_dim
-        integer :: outer_dim
+        integer(c_int64_t) :: remaining, section_index, source_stride
+        integer(c_int64_t) :: coordinate
+        integer :: dim
 
         source_linear = 0_c_int64_t
-        if (info%source_rank == 1) then
-            if (info%result_rank >= 1) then
-                inner_dim = info%kept_dims(1)
-                coord1 = info%section_lowers(inner_dim) + &
-                         linear_index * info%section_strides(inner_dim)
+        remaining = linear_index
+        source_stride = 1_c_int64_t
+        do dim = 1, info%source_rank
+            if (info%keep_dim(dim)) then
+                if (info%section_extents(dim) <= 0_c_int64_t) return
+                section_index = mod(remaining, info%section_extents(dim))
+                remaining = remaining / info%section_extents(dim)
+                coordinate = info%section_lowers(dim) + section_index * &
+                             info%section_strides(dim)
             else
-                coord1 = info%scalar_indices(1)
+                coordinate = info%scalar_indices(dim)
             end if
-            source_linear = coord1 - info%source_lowers(1)
-            return
-        end if
-
-        if (info%result_rank == 2) then
-            inner_dim = info%kept_dims(1)
-            outer_dim = info%kept_dims(2)
-            inner_index = mod(linear_index, info%section_extents(inner_dim))
-            coord1 = info%section_lowers(inner_dim) + &
-                     inner_index * info%section_strides(inner_dim)
-            coord2 = info%section_lowers(outer_dim) + &
-                     (linear_index / info%section_extents(inner_dim)) * &
-                     info%section_strides(outer_dim)
-        else if (info%result_rank == 1) then
-            if (info%keep_dim(1)) then
-                coord1 = info%section_lowers(1) + linear_index * info%section_strides(1)
-                coord2 = info%scalar_indices(2)
-            else
-                coord1 = info%scalar_indices(1)
-                coord2 = info%section_lowers(2) + linear_index * info%section_strides(2)
-            end if
-        else
-            coord1 = info%scalar_indices(1)
-            coord2 = info%scalar_indices(2)
-        end if
-
-        source_linear = (coord1 - info%source_lowers(1)) + &
-                        info%source_sizes(1) * (coord2 - info%source_lowers(2))
+            source_linear = source_linear + (coordinate - info%source_lowers(dim)) * &
+                            source_stride
+            source_stride = source_stride * info%source_sizes(dim)
+        end do
     end function array_section_source_linear_index
 
     subroutine lower_array_section_element_from_info(info, linear_index, context, &
@@ -728,6 +706,20 @@
             return
         end if
         source_rank = context%symbols(source_index)%array_rank
+        if (source_rank > 2) then
+            call lower_runtime_array_section_element_address_operand_generic(arena, &
+                slice_node, linear_index, context, element_address, error_msg)
+            return
+        end if
+
+        call identifier_name(arena, slice_node%array_index, source_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_index = find_symbol_compat(context, source_name)
+        if (source_index <= 0) then
+            error_msg = 'array section base was not declared: '//trim(source_name)
+            return
+        end if
+        source_rank = context%symbols(source_index)%array_rank
         if (source_rank < 1 .or. source_rank > 2) then
             error_msg = 'runtime array sections support rank-1 and rank-2 arrays'
             return
@@ -891,6 +883,220 @@
         call lower_runtime_descriptor_array_element_address(context, source_index, &
             source_linear, element_address, error_msg)
     end subroutine lower_runtime_array_section_element_address_operand
+
+    subroutine lower_runtime_array_section_element_address_operand_generic( &
+            arena, slice_node, linear_index, context, element_address, error_msg)
+        !! Lower one element of a runtime-bounded section for any supported
+        !! source rank.  The linear index enumerates kept dimensions in
+        !! Fortran column-major order; scalar subscripts stay fixed coordinates.
+        type(ast_arena_t), intent(in) :: arena
+        type(array_slice_node), intent(in) :: slice_node
+        type(lr_operand_desc_t), intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: element_address
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source_name
+        integer :: source_index, source_rank, dim, bounds_index, kept_dim
+        logical :: keep_dim(ARRAY_MAX_RANK)
+        type(lr_operand_desc_t) :: lower_op(ARRAY_MAX_RANK)
+        type(lr_operand_desc_t) :: upper_op(ARRAY_MAX_RANK)
+        type(lr_operand_desc_t) :: stride_op(ARRAY_MAX_RANK)
+        type(lr_operand_desc_t) :: extent_op(ARRAY_MAX_RANK)
+        type(lr_operand_desc_t) :: source_extent_op(ARRAY_MAX_RANK)
+        type(lr_operand_desc_t) :: coord_op(ARRAY_MAX_RANK)
+        type(lr_operand_desc_t) :: temp_op, diff_op, term_op, source_linear
+        type(lr_operand_desc_t) :: stride_product, next_stride_product
+        type(lr_operand_desc_t) :: quotient, position
+        type(lr_operand_desc_t) :: source_stride, next_source_stride
+        type(lr_operand_desc_t) :: next_source_linear
+        integer(c_int64_t) :: source_lower, source_extent
+
+        call identifier_name(arena, slice_node%array_index, source_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_index = find_symbol_compat(context, source_name)
+        if (source_index <= 0) then
+            error_msg = 'array section base was not declared: '//trim(source_name)
+            return
+        end if
+        source_rank = context%symbols(source_index)%array_rank
+        if (source_rank < 1 .or. source_rank > 4) then
+            error_msg = 'runtime array sections support ranks one through four'
+            return
+        end if
+        if (slice_node%num_dimensions > source_rank) then
+            error_msg = 'array section has too many subscripts'
+            return
+        end if
+
+        keep_dim = .false.
+        kept_dim = 0
+        do dim = 1, source_rank
+            source_lower = int(context%symbols(source_index)%array_dim_lowers(dim), &
+                               c_int64_t)
+            if (context%symbols(source_index)%has_runtime_dim_size(dim)) then
+                source_extent_op(dim) = &
+                    context%symbols(source_index)%runtime_dim_size(dim)
+            else
+                source_extent = int(context%symbols(source_index)%array_dim_sizes(dim), &
+                                    c_int64_t)
+                source_extent_op(dim) = i32_immediate(context%session, source_extent)
+            end if
+
+            bounds_index = 0
+            if (dim <= slice_node%num_dimensions) then
+                bounds_index = slice_node%bounds_indices(dim)
+            end if
+            if (bounds_index <= 0) then
+                keep_dim(dim) = .true.
+                kept_dim = kept_dim + 1
+                lower_op(dim) = i32_immediate(context%session, source_lower)
+                stride_op(dim) = i32_immediate(context%session, 1_c_int64_t)
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, lower_op(dim), &
+                        source_extent_op(dim), temp_op, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
+                        i32_immediate(context%session, 1_c_int64_t), upper_op(dim), &
+                        error_msg)) return
+                extent_op(dim) = source_extent_op(dim)
+                cycle
+            end if
+
+            if (.not. node_exists(arena, bounds_index)) then
+                error_msg = 'array section bound index does not reference an AST node'
+                return
+            end if
+            select type (bounds_node => arena%entries(bounds_index)%node)
+            type is (range_expression_node)
+                keep_dim(dim) = .true.
+                kept_dim = kept_dim + 1
+                if (bounds_node%start_index > 0) then
+                    call lower_i32_expression(arena, bounds_node%start_index, context, &
+                                              lower_op(dim), error_msg)
+                else
+                    lower_op(dim) = i32_immediate(context%session, source_lower)
+                end if
+                if (len_trim(error_msg) > 0) return
+                if (bounds_node%stride_index > 0) then
+                    call lower_i32_expression(arena, bounds_node%stride_index, context, &
+                                              stride_op(dim), error_msg)
+                else
+                    stride_op(dim) = i32_immediate(context%session, 1_c_int64_t)
+                end if
+                if (len_trim(error_msg) > 0) return
+                if (bounds_node%end_index > 0) then
+                    call lower_i32_expression(arena, bounds_node%end_index, context, &
+                                              upper_op(dim), error_msg)
+                else
+                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                            i32_immediate(context%session, source_lower), &
+                            source_extent_op(dim), temp_op, error_msg)) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
+                            i32_immediate(context%session, 1_c_int64_t), upper_op(dim), &
+                            error_msg)) return
+                end if
+            type is (array_bounds_node)
+                keep_dim(dim) = .true.
+                kept_dim = kept_dim + 1
+                if (bounds_node%is_assumed_rank .or. bounds_node%is_assumed_size .or. &
+                    bounds_node%is_assumed_shape .or. bounds_node%is_deferred_shape) then
+                    lower_op(dim) = i32_immediate(context%session, source_lower)
+                    stride_op(dim) = i32_immediate(context%session, 1_c_int64_t)
+                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                            i32_immediate(context%session, source_lower), &
+                            source_extent_op(dim), temp_op, error_msg)) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
+                            i32_immediate(context%session, 1_c_int64_t), upper_op(dim), &
+                            error_msg)) return
+                else
+                    if (bounds_node%lower_bound_index > 0) then
+                        call lower_i32_expression(arena, bounds_node%lower_bound_index, &
+                            context, lower_op(dim), error_msg)
+                    else
+                        lower_op(dim) = i32_immediate(context%session, source_lower)
+                    end if
+                    if (len_trim(error_msg) > 0) return
+                    if (bounds_node%upper_bound_index > 0) then
+                        call lower_i32_expression(arena, bounds_node%upper_bound_index, &
+                            context, upper_op(dim), error_msg)
+                    else
+                        if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                                i32_immediate(context%session, source_lower), &
+                                source_extent_op(dim), temp_op, error_msg)) return
+                        if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
+                                i32_immediate(context%session, 1_c_int64_t), &
+                                upper_op(dim), error_msg)) return
+                    end if
+                    if (len_trim(error_msg) > 0) return
+                    if (bounds_node%stride_index > 0) then
+                        call lower_i32_expression(arena, bounds_node%stride_index, &
+                            context, stride_op(dim), error_msg)
+                    else
+                        stride_op(dim) = i32_immediate(context%session, 1_c_int64_t)
+                    end if
+                end if
+            class default
+                call lower_i32_expression(arena, bounds_index, context, &
+                                           coord_op(dim), error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+
+            if (keep_dim(dim)) then
+                if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_op(dim), &
+                        lower_op(dim), temp_op, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_SDIV, temp_op, &
+                        stride_op(dim), diff_op, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, diff_op, &
+                        i32_immediate(context%session, 1_c_int64_t), extent_op(dim), &
+                        error_msg)) return
+            end if
+        end do
+
+        if (kept_dim < 1) then
+            error_msg = 'runtime array section has no kept dimensions'
+            return
+        end if
+
+        stride_product = i32_immediate(context%session, 1_c_int64_t)
+        do dim = 1, source_rank
+            if (keep_dim(dim)) then
+                if (.not. emit_i32_binary(context%session, LR_OP_SDIV, linear_index, &
+                        stride_product, quotient, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_SREM, quotient, &
+                        extent_op(dim), position, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, position, &
+                        stride_op(dim), temp_op, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, lower_op(dim), &
+                        temp_op, coord_op(dim), error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, stride_product, &
+                        extent_op(dim), next_stride_product, error_msg)) return
+                stride_product = next_stride_product
+            end if
+        end do
+
+        source_linear = i32_immediate(context%session, 0_c_int64_t)
+        source_stride = i32_immediate(context%session, 1_c_int64_t)
+        do dim = 1, source_rank
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, coord_op(dim), &
+                    i32_immediate(context%session, int( &
+                    context%symbols(source_index)%array_dim_lowers(dim), c_int64_t)), &
+                    diff_op, error_msg)) return
+            if (dim == 1) then
+                source_linear = diff_op
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, diff_op, &
+                        source_stride, term_op, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, source_linear, &
+                        term_op, next_source_linear, error_msg)) return
+                source_linear = next_source_linear
+            end if
+            if (dim < source_rank) then
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, source_stride, &
+                        source_extent_op(dim), next_source_stride, error_msg)) return
+                source_stride = next_source_stride
+            end if
+        end do
+        call lower_runtime_descriptor_array_element_address(context, source_index, &
+            source_linear, element_address, error_msg)
+    end subroutine lower_runtime_array_section_element_address_operand_generic
 
     recursive integer function array_expression_symbol(arena, node_index, context) &
             result(symbol_index)
@@ -2728,8 +2934,8 @@
     subroutine lower_runtime_array_section_scalar_broadcast(arena, target, tinfo, &
                                                             context, value, error_msg)
         !! Broadcast one already-evaluated scalar through a runtime-bounded
-        !! rank-1 section. The loop count and section coordinates are live
-        !! LIRIC operands because an automatic array can use a dummy bound.
+        !! section. The loop count and section coordinates are live LIRIC
+        !! operands because an automatic array can use dummy bounds.
         type(ast_arena_t), intent(in) :: arena
         type(array_slice_node), intent(in) :: target
         type(array_section_info_t), intent(in) :: tinfo
@@ -2803,17 +3009,51 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: extent
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: dim, bounds_index
+        integer :: dim
+        logical :: have_extent
+        type(lr_operand_desc_t) :: dim_extent, total_extent, next_total_extent
+
+        if (tinfo%result_rank < 1) then
+            error_msg = 'runtime scalar section broadcast requires a section'
+            return
+        end if
+
+        total_extent = i32_immediate(context%session, 1_c_int64_t)
+        have_extent = .false.
+        do dim = 1, tinfo%source_rank
+            if (.not. tinfo%keep_dim(dim)) cycle
+            call lower_runtime_array_section_dimension_extent(arena, target, tinfo, &
+                dim, context, dim_extent, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. have_extent) then
+                total_extent = dim_extent
+                have_extent = .true.
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, total_extent, &
+                        dim_extent, next_total_extent, error_msg)) return
+                total_extent = next_total_extent
+            end if
+        end do
+        extent = total_extent
+        call set_empty(error_msg)
+    end subroutine lower_runtime_array_section_extent
+
+    subroutine lower_runtime_array_section_dimension_extent(arena, target, tinfo, &
+                                                            dim, context, extent, &
+                                                            error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(array_slice_node), intent(in) :: target
+        type(array_section_info_t), intent(in) :: tinfo
+        integer, intent(in) :: dim
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: extent
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: bounds_index
         type(lr_operand_desc_t) :: lower_op, upper_op, stride_op, upper_with_extent
         type(lr_operand_desc_t) :: difference, quotient, raw_extent, condition
         type(lr_operand_desc_t) :: zero_extent
         integer(c_int32_t) :: nonempty_block, empty_block, merge_block
 
-        if (tinfo%result_rank /= 1) then
-            error_msg = 'runtime scalar section broadcast requires one kept dimension'
-            return
-        end if
-        dim = tinfo%kept_dims(1)
         bounds_index = 0
         if (dim <= target%num_dimensions) bounds_index = target%bounds_indices(dim)
         if (bounds_index <= 0) then
@@ -2944,7 +3184,7 @@
         if (.not. emit_liric_i32_phi(context%session, raw_extent, nonempty_block, &
                 zero_extent, empty_block, extent, error_msg)) return
         call set_empty(error_msg)
-    end subroutine lower_runtime_array_section_extent
+    end subroutine lower_runtime_array_section_dimension_extent
 
     subroutine store_section_elements(context, tinfo, values, error_msg)
         !! Store an already-evaluated rank-1 right-hand side into a rank-1

@@ -15,6 +15,7 @@ program test_session_array_section_compiler
     if (.not. test_section_after_string()) all_passed = .false.
     if (.not. test_empty_section()) all_passed = .false.
     if (.not. test_runtime_scalar_section_dispatch()) all_passed = .false.
+    if (.not. test_runtime_scalar_section_ranks()) all_passed = .false.
 
     if (.not. all_passed) stop 1
 
@@ -158,4 +159,49 @@ contains
         test_runtime_scalar_section_dispatch = expect_exit_status( &
             source, 0, '/tmp/ffc_session_runtime_scalar_section_dispatch_test')
     end function test_runtime_scalar_section_dispatch
+
+    logical function test_runtime_scalar_section_ranks()
+        ! Exercise scalar RHS broadcast through runtime sections of ranks one
+        ! through four.  The printed sums are the independent oracle: they
+        ! distinguish each selected section from an accidental whole-array
+        ! write and also verify scalar subscripts remain fixed coordinates.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  call work(4, 3, 2, 2)'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine work(l, m, n, o)'//new_line('a')// &
+            '    integer, intent(in) :: l, m, n, o'//new_line('a')// &
+            '    integer :: i, j, k'//new_line('a')// &
+            '    integer :: fvec(l), fvec2d(l, m), fvec3d(l, m, n)'// &
+            new_line('a')// &
+            '    integer :: fvec4d(l, m, n, o)'//new_line('a')// &
+            '    i = 2'//new_line('a')// &
+            '    j = 1'//new_line('a')// &
+            '    k = 2'//new_line('a')// &
+            '    fvec = 9'//new_line('a')// &
+            '    fvec(1) = 7'//new_line('a')// &
+            '    fvec(2:l) = 0'//new_line('a')// &
+            '    fvec2d = 1'//new_line('a')// &
+            '    fvec2d(:, k) = 2'//new_line('a')// &
+            '    fvec3d = 1'//new_line('a')// &
+            '    fvec3d(:, k, :i) = 3'//new_line('a')// &
+            '    fvec4d = 1'//new_line('a')// &
+            '    fvec4d(:, k, :i, j) = 4'//new_line('a')// &
+            '    print *, fvec(1) + fvec(2) + fvec(l)'//new_line('a')// &
+            '    print *, fvec2d(1, 1) + fvec2d(1, k) + fvec2d(l, m)'// &
+            new_line('a')// &
+            '    print *, fvec3d(1, 1, 1) + fvec3d(1, k, 1)'// &
+            ' + fvec3d(1, k, i) + fvec3d(l, m, n)'//new_line('a')// &
+            '    print *, fvec4d(1, 1, 1, 1) + fvec4d(1, k, 1, j)'// &
+            ' + fvec4d(1, k, i, j) + fvec4d(1, k, 1, o)'//new_line('a')// &
+            '  end subroutine work'//new_line('a')// &
+            'end program main'
+
+        test_runtime_scalar_section_ranks = expect_output( &
+            source, '           7'//new_line('a')// &
+            '           4'//new_line('a')// &
+            '           8'//new_line('a')// &
+            '          10'//new_line('a'), &
+            '/tmp/ffc_session_runtime_scalar_section_ranks_test')
+    end function test_runtime_scalar_section_ranks
 end program test_session_array_section_compiler
