@@ -27,7 +27,8 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `a42c408` (array-constructor 02/03 promotion on top of the
+- Main: `053f0aa` (ANY DIM assignment promotion on top of the
+  array-constructor 02/03 promotion, the
   complex ABS/IEEE NaN, allocatable inquiry, and allocatable complex-array
   promotions, and the modules36 fixed-character-array promotion on top of the
   enum-lowering module extraction, the #584 assumed-size-array
@@ -78,6 +79,16 @@ explicit decision.
   checks and the focused complex/reduction compiler tests agree. FortFront
   `9ff6605e` supplies the recursive nested-array-postfix parser fix used by
   the nested ABS case.
+- Luna also completed and promoted `any_01.f90`: normal and XFAIL-disabled
+  exact runs both report `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`, with the
+  independent gfortran output oracle and `test_session_array_mask_reduction_compiler`
+  agreeing. The fix covers `ANY(..., DIM)` assignment into assumed-shape
+  runtime arrays.
+- Fresh strict pass-only sampling remains bounded at 900. Seed 1038 is red,
+  with two `fortfront-lf` failures (`test_209_all.lf`, `test_209_complex.lf`)
+  and twenty observed LFortran failures before the run was stopped; no sample
+  increase or follow-up seeds are justified until this XFAIL/FAIL queue is
+  repaired.
 - The latest full local `fo` workflow is a unit/conformance diagnostic, not a
   corpus gate: build `446/446` and static checks `463/463` pass, while the
   339-test phase reports `316` passes and `23` known adjacent failures. Keep
