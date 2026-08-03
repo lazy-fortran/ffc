@@ -27,7 +27,9 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `2f26020` (storage-rejection checks are now a real submodule, on top of
+- Main: `abd0b59` (FLOOR optional `KIND=8` lowering and public-session
+  f64-to-i64 conversion are now green, on top of the storage-rejection checks
+  as a real submodule, on top of
   the bare-character SELECT CASE fix and the contained f64 calls in f32
   expressions, on top of the lazy
   whole-array constructor reallocation fix and the
@@ -147,15 +149,16 @@ explicit decision.
   FortFront-LF `issue_1968_lazy_function_result.lf` still leaves an invalid
   inferred dimension index. These attempts made no manifest changes or main
   commits; keep them ahead of sample expansion.
-- The next audit/implementation wave also produced no promotion: `floor_01.f90`
-  still reports `invalid argument count for scalar intrinsic: floor`; the
-  `cmp_typecheck.inc` migration stops at a missing `is_relational_operator`
-  interface; and the FortFront `issue_256_incomplete_expression.f90` patch has
-  only a focused parser-test pass while its parent ffc build/gates remain
-  unverified. No manifests changed and no partial patches entered `main`.
-- Follow-up attempts remain unpromoted: the FLOOR arity change still loses
-  `KIND=8`, and the comparison-submodule source compiles but its isolated link
-  cannot find `libliric.a`; neither has a focused green oracle or commit.
+- `floor_01.f90` is now promoted. Public-session FLOOR lowering accepts the
+  optional `KIND=8` result through an f64-to-i64 `FPTOSI` wrapper while retaining
+  the default integer kind. Normal and XFAIL-disabled exact runs both report
+  `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`; the focused integer-intrinsic
+  compiler test and independent gfortran oracle agree. The sample remains 900.
+- The comparison-submodule migration remains unpromoted: its source compiles,
+  but the isolated link still cannot find `libliric.a`; `issue_256` still has
+  only a focused parser-test result while its parent ffc gates are unverified.
+  Keep both bounded candidates ahead of sample expansion and do not alter their
+  manifests without a complete independent gate.
 - Fresh strict pass-only sampling remains bounded at 900. Seed 1038 supplied a
   red baseline: its two `fortfront-lf` failures are now fixed, while twenty
   LFortran failures were observed before the run was stopped. No sample
