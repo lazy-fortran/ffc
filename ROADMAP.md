@@ -27,7 +27,8 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `b53987b` (keyword AINT/ANINT actuals are promoted for
+- Main: `52c51ab` (keyword AINT/ANINT actuals and the array-valued
+  `intrinsics_115.f90` are promoted for
   `intrinsics_114.f90`, on top of deferred-shape issue-1968 lowering, on top of
   ALLOCATED keyword arguments and scalar `DATA p / NULL() /`
   pointer disassociation are promoted, on top of the incomplete-expression
@@ -141,10 +142,12 @@ explicit decision.
   report `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`, with the independent
   gfortran output oracle agreeing. Its XFAIL row was removed only after the
   rebuilt main binary passed.
-- The next bounded probe remains red and did not alter manifests:
-  `intrinsics_115.f90` still fails XFAIL-disabled in its array initializer path;
-  keyword scalar cases are covered by the `intrinsics_114` promotion. Keep the
-  row in the queue and do not count the normal XFAIL-wrapped run as a pass.
+- `intrinsics_115.f90` is now promoted. Shared array-expression lowering handles
+  compile-time parameter initializers and runtime AINT/ANINT arrays; normal and
+  XFAIL-disabled exact runs both report `PASS=1`, `XFAIL=0`, `XPASS=0`, and
+  `FAIL=0`, with focused parameter/runtime regressions and the independent
+  gfortran output oracle agreeing. Its XFAIL row was removed only after the
+  rebuilt main binary passed.
   `issue_1771_module_parameter_types.f90` still fails before LIRIC with
   `mismatched scalar kind in argument to square`, although its gfortran oracle
   prints `Square: 6.25`. Keep both rows in the queue; do not count normal
