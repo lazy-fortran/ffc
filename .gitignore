@@ -50,6 +50,7 @@ debug_*.mlir
 *.tmp
 *.temp
 *~
+\.wt/
 .*.swp
 .*.swo
 
