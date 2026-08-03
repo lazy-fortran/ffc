@@ -828,6 +828,19 @@
         vk = context%symbols(dst_sym)%value_kind
         if (.not. runtime_local_array_kind_ok(vk)) return
 
+        ! A DIM reduction is an array-valued intrinsic expression.  Handle it
+        ! before the scalar-broadcast and identifier-copy cases so an
+        ! assumed-shape dummy can receive the reduced values directly.
+        if (node_exists(arena, node%value_index)) then
+            select type (rhs => arena%entries(node%value_index)%node)
+            type is (call_or_subscript_node)
+                call lower_dim_reduction_assignment(arena, rhs, dst_sym, &
+                                                    context, handled, error_msg)
+                if (handled .or. len_trim(error_msg) > 0) return
+            class default
+            end select
+        end if
+
         ! b = [...] : store each constructor element into the entry-sized
         ! storage. The extent is only known at run time, so no compile-time
         ! element-count check applies.

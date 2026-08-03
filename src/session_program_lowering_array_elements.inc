@@ -3509,10 +3509,12 @@
     end subroutine unsupported_array_subscript
 
     ! sum/product/count/any/all(source, dim) reduced along one dimension of a
-    ! rank-2 source into the rank-1 target symbol. All extents are known at
-    ! compile time, so the reduction unrolls to a fixed sequence of loads and
-    ! accumulations. Declines (handled=.false., no error) for any form outside
-    ! this scope so the caller keeps its existing behaviour.
+    ! rank-2 source into the rank-1 target symbol. The source extents are known
+    ! at compile time, so the reduction unrolls to a fixed sequence of loads
+    ! and accumulations. A runtime-shaped target is also supported when its
+    ! descriptor supplies the destination storage. Declines (handled=.false.,
+    ! no error) for any form outside this scope so the caller keeps its
+    ! existing behaviour.
     subroutine lower_dim_reduction_assignment(arena, rhs, symbol_index, context, &
                                               handled, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -3528,7 +3530,7 @@
         integer :: d1, d2, out_size, reduce_extent
         integer :: source_vk, result_vk, compare_vk, predicate
         integer(c_int64_t) :: dim_value, lin
-        logical :: is_comparison
+        logical :: is_comparison, target_runtime
         character(len=:), allocatable :: cmp_op
         type(lr_operand_desc_t) :: acc, cond, elem
 
@@ -3556,9 +3558,11 @@
         end if
         if (dim_value /= 1_c_int64_t .and. dim_value /= 2_c_int64_t) return
 
-        ! The target must be a plain rank-1 array of statically known size.
+        ! The target must be a plain rank-1 array. Runtime-shaped targets are
+        ! valid here because their descriptor provides the destination storage.
         if (context%symbols(symbol_index)%is_allocatable) return
         if (context%symbols(symbol_index)%array_rank /= 1) return
+        target_runtime = context%symbols(symbol_index)%has_runtime_dim_size(1)
         result_vk = context%symbols(symbol_index)%value_kind
 
         ! Resolve the source: either a stored rank-2 array, or an elementwise
@@ -3593,7 +3597,8 @@
             reduce_extent = d2
             out_size = d1
         end if
-        if (out_size /= context%symbols(symbol_index)%array_size) return
+        if (.not. target_runtime .and. out_size /= &
+                context%symbols(symbol_index)%array_size) return
 
         ! Numeric sum/product keep the source kind; mask reductions work in i32
         ! (count -> integer count, any/all -> logical 0/1).
@@ -3634,8 +3639,15 @@
                 call dim_reduction_norm2_slice(context, src_sym, source_vk, &
                     dim_value, d1, i, reduce_extent, acc, error_msg)
                 if (len_trim(error_msg) > 0) return
-                call store_array_linear_element(context, symbol_index, &
-                                                int(i, c_int64_t), acc, error_msg)
+                if (target_runtime) then
+                    call store_array_element_at_operand(context, symbol_index, &
+                        i32_immediate(context%session, int(i, c_int64_t)), acc, &
+                        error_msg)
+                else
+                    call store_array_linear_element(context, symbol_index, &
+                                                    int(i, c_int64_t), acc, &
+                                                    error_msg)
+                end if
                 if (len_trim(error_msg) > 0) return
                 cycle
             end if
@@ -3665,8 +3677,14 @@
                     if (len_trim(error_msg) > 0) return
                 end if
             end do
-            call store_array_linear_element(context, symbol_index, &
-                                            int(i, c_int64_t), acc, error_msg)
+            if (target_runtime) then
+                call store_array_element_at_operand(context, symbol_index, &
+                    i32_immediate(context%session, int(i, c_int64_t)), acc, &
+                    error_msg)
+            else
+                call store_array_linear_element(context, symbol_index, &
+                                                int(i, c_int64_t), acc, error_msg)
+            end if
             if (len_trim(error_msg) > 0) return
         end do
         handled = .true.
