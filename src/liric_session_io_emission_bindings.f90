@@ -47,6 +47,7 @@ module liric_session_io_emission_bindings
     public :: emit_liric_i32_to_i16
     public :: emit_liric_i1_to_i32
     public :: emit_liric_f64_to_i32
+    public :: emit_liric_f64_to_i64
     public :: emit_liric_char_byte_zext
     public :: emit_liric_i32_to_i64
     public :: emit_liric_i64_to_i32
@@ -888,6 +889,25 @@ contains
         emit_liric_f64_to_i32 = .true.
     end function emit_liric_f64_to_i32
 
+    logical function emit_liric_f64_to_i64(session, source, result, error_msg)
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: source
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+
+        emit_liric_f64_to_i64 = .false.
+        if (.not. require_open_session(session, error_msg)) return
+
+        vreg = emit_cast_i64(session%handle, LR_OP_FPTOSI, source, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+
+        result = i64_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_liric_f64_to_i64 = .true.
+    end function emit_liric_f64_to_i64
+
     function emit_cast_i32(handle, opcode, source, error) result(vreg)
         type(c_ptr), intent(in) :: handle
         integer(c_int), intent(in) :: opcode
@@ -916,6 +936,35 @@ contains
         call clear_liric_error(error)
         vreg = lr_session_emit(handle, inst, error)
     end function emit_cast_i32
+
+    function emit_cast_i64(handle, opcode, source, error) result(vreg)
+        type(c_ptr), intent(in) :: handle
+        integer(c_int), intent(in) :: opcode
+        type(lr_operand_desc_t), intent(in) :: source
+        type(lr_error_t), intent(inout) :: error
+        integer(c_int32_t) :: vreg
+        type(lr_operand_desc_t), target :: operands(1)
+        type(lr_inst_desc_t) :: inst
+
+        operands(1) = source
+
+        inst%op = opcode
+        inst%typ = lr_type_i64_s(handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = 1_c_int32_t
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+
+        call clear_liric_error(error)
+        vreg = lr_session_emit(handle, inst, error)
+    end function emit_cast_i64
 
     logical function emit_liric_char_byte_zext(session, base, index_op, result, &
             error_msg)

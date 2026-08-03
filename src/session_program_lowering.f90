@@ -183,6 +183,7 @@ module session_program_lowering
         emit_liric_i32_to_f64, &
         emit_liric_i1_to_i32, &
         emit_liric_f64_to_i32, &
+        emit_liric_f64_to_i64, &
         emit_liric_char_byte_zext, &
         emit_liric_i32_to_i64, &
         emit_liric_i32_to_i8, &

@@ -1169,7 +1169,6 @@ fixed_form_select_case_02.f90 # scope=legacy; reason=legacy or preprocessed sour
 fixed_form_select_rank_01.f90 # scope=legacy; reason=legacy or preprocessed source form
 fixed_form_stmt_func_01.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 fixed_form_where_01.f90 # owner=lazy-fortran/ffc#412; reason=fold typed scalar and array named constants
-floor_01.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 floor_02.f90 # owner=lazy-fortran/ffc#329; reason=resolve specification expressions by binding identity
 flush_02.f90 # owner=lazy-fortran/ffc#376; reason=select and load the matching runtime archive
 flush_05.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values

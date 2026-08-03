@@ -23,6 +23,7 @@ program test_session_integer_intrinsic_compiler
     if (.not. test_int_truncates_toward_zero()) all_passed = .false.
     if (.not. test_nint_rounds_half_away()) all_passed = .false.
     if (.not. test_floor_negative()) all_passed = .false.
+    if (.not. test_floor_kind_argument()) all_passed = .false.
     if (.not. test_ceiling_positive()) all_passed = .false.
     if (.not. test_real_intrinsic_values()) all_passed = .false.
     if (.not. test_real_conversion_intrinsic()) all_passed = .false.
@@ -245,6 +246,23 @@ contains
             source, 2, &
             '/tmp/ffc_session_floor_test')
     end function test_floor_negative
+
+    logical function test_floor_kind_argument()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer(8) :: wide'//new_line('a')// &
+            '  integer :: narrow'//new_line('a')// &
+            '  wide = floor(-3.5, kind=8)'//new_line('a')// &
+            '  narrow = floor(-3.5, kind=4)'//new_line('a')// &
+            '  if (wide /= -4_8) error stop 1'//new_line('a')// &
+            '  if (narrow /= -4) error stop 2'//new_line('a')// &
+            '  stop abs(narrow)'//new_line('a')// &
+            'end program main'
+
+        ! The optional KIND selects i64 only for KIND=8; default/KIND=4 stays i32.
+        test_floor_kind_argument = expect_exit_status( &
+            source, 4, '/tmp/ffc_session_floor_kind_test')
+    end function test_floor_kind_argument
 
     logical function test_ceiling_positive()
         character(len=*), parameter :: source = &

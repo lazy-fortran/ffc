@@ -918,7 +918,7 @@
         type(lr_operand_desc_t) :: arg
         type(lr_operand_desc_t) :: rounded
 
-        if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+        if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
         call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, arg, &
                                      error_msg)
         if (len_trim(error_msg) > 0) return
@@ -934,6 +934,32 @@
         if (.not. emit_liric_f64_to_i32(context%session, rounded, value, &
                                         error_msg)) return
     end subroutine lower_i32_from_f64_intrinsic
+
+    subroutine lower_i64_from_f64_intrinsic(arena, node, libm_name, context, &
+                                            value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        character(len=*), intent(in) :: libm_name
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: arg
+        type(lr_operand_desc_t) :: rounded
+
+        if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
+        call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, arg, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (len_trim(libm_name) > 0) then
+            if (.not. emit_liric_f64_call(context%session, libm_name, [arg], &
+                                          rounded, error_msg)) return
+        else
+            rounded = arg
+        end if
+        if (.not. emit_liric_f64_to_i64(context%session, rounded, value, &
+                                        error_msg)) return
+    end subroutine lower_i64_from_f64_intrinsic
 
     recursive subroutine lower_f64_abs_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
