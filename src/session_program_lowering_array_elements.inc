@@ -793,7 +793,8 @@
                                               upper_op(dim), error_msg)
                     if (len_trim(error_msg) > 0) return
                 else
-                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, lower_op(dim), &
+                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                        i32_immediate(context%session, source_lower), &
                         source_extent_op(dim), temp_op, error_msg)) return
                     if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
                         i32_immediate(context%session, 1_c_int64_t), upper_op(dim), &
@@ -806,7 +807,8 @@
                     kept_dim = kept_dim + 1
                     lower_op(dim) = i32_immediate(context%session, source_lower)
                     stride_op(dim) = i32_immediate(context%session, 1_c_int64_t)
-                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, lower_op(dim), &
+                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                        i32_immediate(context%session, source_lower), &
                         source_extent_op(dim), temp_op, error_msg)) return
                     if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
                         i32_immediate(context%session, 1_c_int64_t), upper_op(dim), &
@@ -826,7 +828,8 @@
                             context, upper_op(dim), error_msg)
                         if (len_trim(error_msg) > 0) return
                     else
-                        if (.not. emit_i32_binary(context%session, LR_OP_ADD, lower_op(dim), &
+                        if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                            i32_immediate(context%session, source_lower), &
                             source_extent_op(dim), temp_op, error_msg)) return
                         if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
                             i32_immediate(context%session, 1_c_int64_t), upper_op(dim), &
@@ -2719,7 +2722,9 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: dim, bounds_index
         type(lr_operand_desc_t) :: lower_op, upper_op, stride_op, upper_with_extent
-        type(lr_operand_desc_t) :: difference, quotient
+        type(lr_operand_desc_t) :: difference, quotient, raw_extent, condition
+        type(lr_operand_desc_t) :: zero_extent
+        integer(c_int32_t) :: nonempty_block, empty_block, merge_block
 
         if (tinfo%result_rank /= 1) then
             error_msg = 'runtime scalar section broadcast requires one kept dimension'
@@ -2757,7 +2762,10 @@
                 call lower_i32_expression(arena, bounds_node%end_index, context, &
                                           upper_op, error_msg)
             else if (context%symbols(tinfo%source_index)%has_runtime_dim_size(dim)) then
-                if (.not. emit_i32_binary(context%session, LR_OP_ADD, lower_op, &
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                        i32_immediate(context%session, int( &
+                            context%symbols(tinfo%source_index)%array_dim_lowers(dim), &
+                            c_int64_t)), &
                         context%symbols(tinfo%source_index)%runtime_dim_size(dim), &
                         upper_with_extent, error_msg)) return
                 if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_with_extent, &
@@ -2789,7 +2797,10 @@
                 call lower_i32_expression(arena, bounds_node%upper_bound_index, context, &
                                           upper_op, error_msg)
             else if (context%symbols(tinfo%source_index)%has_runtime_dim_size(dim)) then
-                if (.not. emit_i32_binary(context%session, LR_OP_ADD, lower_op, &
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                        i32_immediate(context%session, int( &
+                            context%symbols(tinfo%source_index)%array_dim_lowers(dim), &
+                            c_int64_t)), &
                         context%symbols(tinfo%source_index)%runtime_dim_size(dim), &
                         upper_with_extent, error_msg)) return
                 if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_with_extent, &
@@ -2818,7 +2829,37 @@
         if (.not. emit_i32_binary(context%session, LR_OP_SDIV, difference, stride_op, &
                 quotient, error_msg)) return
         if (.not. emit_i32_binary(context%session, LR_OP_ADD, quotient, &
-                i32_immediate(context%session, 1_c_int64_t), extent, error_msg)) return
+                i32_immediate(context%session, 1_c_int64_t), raw_extent, &
+                error_msg)) return
+
+        ! A runtime section can be empty when the bound direction disagrees
+        ! with the stride.  Clamp the trip count before the loop so the LIR
+        ! extent itself remains nonnegative.
+        nonempty_block = create_liric_block(context%session)
+        empty_block = create_liric_block(context%session)
+        merge_block = create_liric_block(context%session)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGT, raw_extent, &
+                i32_immediate(context%session, 0_c_int64_t), condition, &
+                error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, nonempty_block, &
+                empty_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, nonempty_block, error_msg)) return
+        context%current_block_id = nonempty_block
+        context%current_block_terminated = .false.
+        if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, empty_block, error_msg)) return
+        context%current_block_id = empty_block
+        context%current_block_terminated = .false.
+        zero_extent = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, merge_block, error_msg)) return
+        context%current_block_id = merge_block
+        context%current_block_terminated = .false.
+        if (.not. emit_liric_i32_phi(context%session, raw_extent, nonempty_block, &
+                zero_extent, empty_block, extent, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_runtime_array_section_extent
 
