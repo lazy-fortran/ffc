@@ -1,3 +1,7 @@
+submodule (session_program_lowering) session_program_lowering_reject_storage
+    use session_program_lowering_reject_storage_order
+    implicit none
+contains
     ! Storage-association restrictions on COMMON, EQUIVALENCE, SAVE, and
     ! BLOCK DATA (#392). These constraints are about how named objects are
     ! placed in shared storage, so each rule works from the declared
@@ -26,9 +30,7 @@
     ! fires only on a statement whose first line already shows the violation,
     ! so a continuation can only make a check silent, never wrong.
 
-    subroutine check_storage_association_restrictions(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_storage_association_restrictions
         character(len=256), allocatable :: lines(:)
         character(len=64) :: common_names(256)
         integer :: line_count, common_count
@@ -55,16 +57,12 @@
         if (len_trim(error_msg) > 0) return
         call check_block_data_objects_in_common(arena, lines, line_count, &
                                                 error_msg)
-    end subroutine check_storage_association_restrictions
+    end procedure check_storage_association_restrictions
 
-    subroutine storage_source_lines(arena, lines, line_count, found)
+    module procedure storage_source_lines
         ! Split the unit's source into comment-stripped, lower-cased,
         ! left-justified lines so the statement-level scans below all see the
         ! same normalised form.
-        type(ast_arena_t), intent(in) :: arena
-        character(len=256), allocatable, intent(out) :: lines(:)
-        integer, intent(out) :: line_count
-        logical, intent(out) :: found
         character(len=:), allocatable :: source, line, code
         integer :: pos, next_nl, total
 
@@ -95,12 +93,9 @@
             line_count = line_count + 1
             lines(line_count) = adjustl(lowercase_text(code))
         end do
-    end subroutine storage_source_lines
+    end procedure storage_source_lines
 
-    subroutine append_storage_name(names, count, name)
-        character(len=*), intent(inout) :: names(:)
-        integer, intent(inout) :: count
-        character(len=*), intent(in) :: name
+    module procedure append_storage_name
         integer :: i
 
         if (len_trim(name) == 0) return
@@ -110,12 +105,9 @@
         if (count >= size(names)) return
         count = count + 1
         names(count) = name
-    end subroutine append_storage_name
+    end procedure append_storage_name
 
-    logical function storage_name_listed(names, count, name) result(listed)
-        character(len=*), intent(in) :: names(:)
-        integer, intent(in) :: count
-        character(len=*), intent(in) :: name
+    module procedure storage_name_listed
         integer :: i
 
         listed = .false.
@@ -125,7 +117,7 @@
                 return
             end if
         end do
-    end function storage_name_listed
+    end procedure storage_name_listed
 
     subroutine collect_common_member_names(lines, line_count, names, count)
         ! Gather every object named in a COMMON statement. Text between
@@ -837,3 +829,4 @@
             return
         end do
     end subroutine storage_declared_derived_type_of
+end submodule session_program_lowering_reject_storage

@@ -2264,6 +2264,29 @@ module session_program_lowering
         end subroutine check_result_and_entry_rules
     end interface
     interface
+        module subroutine check_storage_association_restrictions(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_storage_association_restrictions
+        module subroutine storage_source_lines(arena, lines, line_count, found)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=256), allocatable, intent(out) :: lines(:)
+            integer, intent(out) :: line_count
+            logical, intent(out) :: found
+        end subroutine storage_source_lines
+        module subroutine append_storage_name(names, count, name)
+            character(len=*), intent(inout) :: names(:)
+            integer, intent(inout) :: count
+            character(len=*), intent(in) :: name
+        end subroutine append_storage_name
+        module function storage_name_listed(names, count, name) result(listed)
+            logical :: listed
+            character(len=*), intent(in) :: names(:)
+            integer, intent(in) :: count
+            character(len=*), intent(in) :: name
+        end function storage_name_listed
+    end interface
+    interface
         module subroutine check_array_shape_expressions(arena, error_msg)
             type(ast_arena_t), intent(in) :: arena
             character(len=:), allocatable, intent(out) :: error_msg
@@ -4918,5 +4941,4 @@ contains
 
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_reject_const_init.inc'
-    include 'session_program_lowering_reject_storage.inc'
 end module session_program_lowering
