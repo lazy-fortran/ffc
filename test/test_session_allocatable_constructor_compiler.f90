@@ -3,6 +3,10 @@ program test_session_allocatable_constructor
     ! Assigns [e1, e2, ...] to an integer 1-D allocatable: frees old data,
     ! allocates fresh storage, fills in order, then reads back via element access.
     use ffc_test_support, only: expect_exit_status
+    use fortfront_compiler, only: compiler_frontend_options_t, &
+        compiler_frontend_result_t, compile_frontend_from_string, &
+        INPUT_MODE_STANDARD
+    use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
 
     logical :: all_passed
@@ -13,6 +17,7 @@ program test_session_allocatable_constructor
     if (.not. test_constructor_assign_and_read()) all_passed = .false.
     if (.not. test_constructor_reassign()) all_passed = .false.
     if (.not. test_identifier_copy()) all_passed = .false.
+    if (.not. test_lazy_209_array_operands()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: allocatable constructor assignment lowers through LIRIC'
@@ -64,5 +69,101 @@ contains
         test_identifier_copy = expect_exit_status( &
             source, 20, '/tmp/ffc_alloc_ctor_copy')
     end function test_identifier_copy
+
+    logical function test_lazy_209_array_operands()
+        ! These are the Fortran forms emitted by FortFront for the two
+        ! fortfront-lf/test_209_* corpus cases. Compare ffc's output with an
+        ! independently compiled gfortran executable, including the values
+        ! after each whole-array constructor reallocation.
+        character(len=*), parameter :: all_source = &
+            'program main'//new_line('a')// &
+            '  integer, allocatable :: x(:)'//new_line('a')// &
+            '  integer, allocatable :: y(:)'//new_line('a')// &
+            '  integer, allocatable :: z(:)'//new_line('a')// &
+            '  x = [1, 2]'//new_line('a')// &
+            '  y = [3, 4]'//new_line('a')// &
+            '  z = [5, 6]'//new_line('a')// &
+            '  x = [x, 3]'//new_line('a')// &
+            '  y = [y, 7]'//new_line('a')// &
+            '  z = [z, 8]'//new_line('a')// &
+            '  print *, x'//new_line('a')// &
+            '  print *, y'//new_line('a')// &
+            '  print *, z'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: complex_source = &
+            'program main'//new_line('a')// &
+            '  real(8), allocatable :: x(:)'//new_line('a')// &
+            '  real(8), allocatable :: y(:)'//new_line('a')// &
+            '  x = [1.0_8, 2.0_8]'//new_line('a')// &
+            '  y = [3.0_8, 4.0_8]'//new_line('a')// &
+            '  x = [x, 5.0_8]'//new_line('a')// &
+            '  y = [y, 6.0_8]'//new_line('a')// &
+            '  print *, x'//new_line('a')// &
+            '  print *, y'//new_line('a')// &
+            'end program main'
+
+        test_lazy_209_array_operands = &
+            matches_gfortran(all_source, 'lazy_209_all') .and. &
+            matches_gfortran(complex_source, 'lazy_209_complex')
+    end function test_lazy_209_array_operands
+
+    logical function matches_gfortran(source, stem)
+        character(len=*), intent(in) :: source, stem
+        type(compiler_frontend_options_t) :: options
+        type(compiler_frontend_result_t) :: frontend_result
+        character(len=:), allocatable :: error_msg, base, src, exe, ref
+        character(len=:), allocatable :: ffc_out, ref_out
+        integer :: unit, exit_stat, status
+
+        matches_gfortran = .false.
+        base = '/tmp/ffc_alloc_ctor_'//trim(stem)
+        src = base//'.f90'
+        exe = base//'.ffc'
+        ref = base//'.gf'
+        ffc_out = base//'.ffc.out'
+        ref_out = base//'.gf.out'
+        options = compiler_frontend_options_t()
+        options%run_semantics = .true.
+        options%input_mode = INPUT_MODE_STANDARD
+        call compile_frontend_from_string(source, frontend_result, options)
+        if (.not. frontend_result%success()) then
+            print *, 'FAIL[', trim(stem), ']: FortFront rejected source'
+            return
+        end if
+        call lower_program_to_liric_exe(frontend_result%arena, &
+            frontend_result%root_index, exe, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL[', trim(stem), ']: ffc lowering failed: ', trim(error_msg)
+            return
+        end if
+        open (newunit=unit, file=src, status='replace', action='write')
+        write (unit, '(A)') source
+        close (unit)
+        call execute_command_line('gfortran -w '//src//' -o '//ref, &
+            exitstat=exit_stat)
+        if (exit_stat /= 0) then
+            print *, 'FAIL[', trim(stem), ']: gfortran rejected source'
+            return
+        end if
+        call execute_command_line(exe//' > '//ffc_out, exitstat=exit_stat)
+        if (exit_stat /= 0) then
+            print *, 'FAIL[', trim(stem), ']: ffc executable failed'
+            return
+        end if
+        call execute_command_line(ref//' > '//ref_out, exitstat=exit_stat)
+        if (exit_stat /= 0) then
+            print *, 'FAIL[', trim(stem), ']: gfortran executable failed'
+            return
+        end if
+        call execute_command_line('diff -b '//ffc_out//' '//ref_out// &
+            ' > /dev/null 2>&1', exitstat=status)
+        if (status /= 0) then
+            print *, 'FAIL[', trim(stem), ']: ffc output differs from gfortran'
+            return
+        end if
+        call execute_command_line('rm -f '//src//' '//exe//' '//ref//' '// &
+            ffc_out//' '//ref_out)
+        matches_gfortran = .true.
+    end function matches_gfortran
 
 end program test_session_allocatable_constructor

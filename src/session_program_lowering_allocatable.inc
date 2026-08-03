@@ -1148,11 +1148,11 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: n_i32, elem_addr, value
-        type(lr_operand_desc_t) :: re_value, im_value
         type(lr_operand_desc_t) :: descriptor, data_ptr
         integer :: i, n, vk
         integer(c_int64_t) :: stride
-        integer, allocatable :: flat(:)
+        integer, allocatable :: flat(:), source_symbols(:), source_offsets(:)
+        type(lr_operand_desc_t), allocatable :: values(:), re_values(:), im_values(:)
 
         if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
             error_msg = 'array constructor assignment to a character '// &
@@ -1163,15 +1163,45 @@
             error_msg = 'array constructor has no elements'
             return
         end if
-        allocate(flat(0))
-        call flatten_constructor_elements(arena, ctor%element_indices, flat, &
-                                          error_msg)
+        call expand_allocatable_constructor_elements(arena, ctor%element_indices, &
+            context, flat, source_symbols, source_offsets, error_msg)
         if (len_trim(error_msg) > 0) return
         n = size(flat)
         if (n <= 0) then
             error_msg = 'array constructor has no elements'
             return
         end if
+        vk = context%symbols(symbol_index)%value_kind
+
+        ! Materialize every RHS value before freeing the old allocation. Lazy
+        ! array constructors permit a whole array operand, e.g. [x, 3], and
+        ! Fortran evaluates that operand from the pre-assignment value.
+        allocate(values(n))
+        if (vk == VALUE_C4 .or. vk == VALUE_C8) then
+            allocate(re_values(n), im_values(n))
+        end if
+        do i = 1, n
+            if (source_symbols(i) > 0) then
+                if (vk == VALUE_C4 .or. vk == VALUE_C8) then
+                    call load_complex_array_linear_element(context, &
+                        source_symbols(i), source_offsets(i), vk, re_values(i), &
+                        im_values(i), error_msg)
+                else
+                    call load_array_linear_element(context, source_symbols(i), &
+                        int(source_offsets(i), c_int64_t), values(i), error_msg)
+                end if
+            else if (vk == VALUE_C4) then
+                call eval_c4_rhs(arena, flat(i), context, re_values(i), &
+                                 im_values(i), error_msg)
+            else if (vk == VALUE_C8) then
+                call eval_c8_rhs(arena, flat(i), context, re_values(i), &
+                                 im_values(i), error_msg)
+            else
+                call lower_allocatable_element_value(arena, flat(i), vk, context, &
+                                                     values(i), error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+        end do
 
         ! Free old allocation if any.
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
@@ -1193,25 +1223,17 @@
             return
         do i = 1, n
             if (vk == VALUE_C4) then
-                call eval_c4_rhs(arena, flat(i), context, re_value, im_value, &
-                                 error_msg)
-                if (len_trim(error_msg) > 0) return
                 call store_allocatable_complex_element(context, symbol_index, &
-                    i - 1, vk, re_value, im_value, error_msg)
+                    i - 1, vk, re_values(i), im_values(i), error_msg)
                 if (len_trim(error_msg) > 0) return
                 cycle
             else if (vk == VALUE_C8) then
-                call eval_c8_rhs(arena, flat(i), context, re_value, im_value, &
-                                 error_msg)
-                if (len_trim(error_msg) > 0) return
                 call store_allocatable_complex_element(context, symbol_index, &
-                    i - 1, vk, re_value, im_value, error_msg)
+                    i - 1, vk, re_values(i), im_values(i), error_msg)
                 if (len_trim(error_msg) > 0) return
                 cycle
             end if
-            call lower_allocatable_element_value(arena, flat(i), vk, context, &
-                                                 value, error_msg)
-            if (len_trim(error_msg) > 0) return
+            value = values(i)
             if (.not. emit_ptr_offset(context%session, data_ptr, &
                     int(i - 1, c_int64_t) * stride, elem_addr, error_msg)) return
             if (.not. emit_allocatable_element_store(context, vk, value, &
@@ -1219,6 +1241,59 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_allocatable_constructor_assignment
+
+    subroutine expand_allocatable_constructor_elements(arena, indices, context, &
+                                                        elements, source_symbols, &
+                                                        source_offsets, error_msg)
+        ! Flatten nested constructors and expand a whole rank-one array operand
+        ! into element references. The latter is Lazy Fortran's concatenation
+        ! form, used by the corpus cases `[x, 3]` and `[x, 5.0]`.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: indices(:)
+        type(lowering_context_t), intent(in) :: context
+        integer, allocatable, intent(out) :: elements(:), source_symbols(:), &
+            source_offsets(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: flat(:)
+        integer :: i, j, sym, extent
+        character(len=:), allocatable :: name, local_error
+
+        allocate(flat(0), elements(0), source_symbols(0), source_offsets(0))
+        call flatten_constructor_elements(arena, indices, flat, error_msg)
+        if (len_trim(error_msg) > 0) return
+        do i = 1, size(flat)
+            sym = 0
+            if (is_identifier(arena, flat(i))) then
+                call get_identifier_name(arena, flat(i), name, local_error)
+                if (len_trim(local_error) > 0) then
+                    error_msg = local_error
+                    return
+                end if
+                sym = find_symbol_compat(context, name)
+                if (sym > 0) then
+                    if (.not. is_elementwise_array_operand(context, sym) .or. &
+                        context%symbols(sym)%array_rank > 1) sym = 0
+                end if
+            end if
+            if (sym <= 0) then
+                elements = [elements, flat(i)]
+                source_symbols = [source_symbols, 0]
+                source_offsets = [source_offsets, 0]
+                cycle
+            end if
+            extent = effective_array_extent(context, sym)
+            if (extent <= 0) then
+                error_msg = 'whole-array constructor operand requires a positive extent'
+                return
+            end if
+            do j = 0, extent - 1
+                elements = [elements, flat(i)]
+                source_symbols = [source_symbols, sym]
+                source_offsets = [source_offsets, j]
+            end do
+        end do
+        call set_empty(error_msg)
+    end subroutine expand_allocatable_constructor_elements
 
     subroutine store_allocatable_complex_element(context, symbol_index, index, &
                                                  vk, re_value, im_value, &
