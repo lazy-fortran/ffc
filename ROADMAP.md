@@ -99,7 +99,7 @@ AST workaround.
 This checkpoint supersedes older historical bullets in this file when they
 disagree with the current repository state.
 
-- ffc `main` is `61f472d` and is pushed to `origin/main`; the implementation
+- ffc `main` is `aaa4d38` and is pushed to `origin/main`; the implementation
   baseline is `5de3ecf`. It includes the rank-one-through-rank-four runtime
   scalar array-section implementation and
   its independent compiler-test oracle. The implementation is not promoted
@@ -131,7 +131,7 @@ disagree with the current repository state.
 
 Current main revisions:
 
-- ffc `61f472d`, main (implementation baseline `5de3ecf`; rank-one-through-
+- ffc `aaa4d38`, main (implementation baseline `5de3ecf`; rank-one-through-
   rank-four runtime scalar array-section lowering is pushed but not yet
   manifest-promoted; module integer parameters
   are bound before derived-type
