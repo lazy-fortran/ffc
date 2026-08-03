@@ -147,6 +147,12 @@ explicit decision.
   FortFront-LF `issue_1968_lazy_function_result.lf` still leaves an invalid
   inferred dimension index. These attempts made no manifest changes or main
   commits; keep them ahead of sample expansion.
+- The next audit/implementation wave also produced no promotion: `floor_01.f90`
+  still reports `invalid argument count for scalar intrinsic: floor`; the
+  `cmp_typecheck.inc` migration stops at a missing `is_relational_operator`
+  interface; and the FortFront `issue_256_incomplete_expression.f90` patch has
+  only a focused parser-test pass while its parent ffc build/gates remain
+  unverified. No manifests changed and no partial patches entered `main`.
 - Fresh strict pass-only sampling remains bounded at 900. Seed 1038 supplied a
   red baseline: its two `fortfront-lf` failures are now fixed, while twenty
   LFortran failures were observed before the run was stopped. No sample
