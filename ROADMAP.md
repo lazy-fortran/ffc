@@ -27,7 +27,9 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `0fd2fbe` (the incomplete-expression diagnostic is promoted, on top of
+- Main: `96cfefb` (ALLOCATED keyword arguments and scalar `DATA p / NULL() /`
+  pointer disassociation are promoted, on top of the incomplete-expression
+  diagnostic, on top of
   the comparison typechecking submodule, on top of
   the FLOOR optional `KIND=8` lowering and public-session
   f64-to-i64 conversion are now green, on top of the storage-rejection checks
@@ -159,10 +161,16 @@ explicit decision.
 - `cmp_typecheck.inc` is now a real comparison-typecheck submodule with the
   missing public relational-operator interface supplied. The focused behavioral
   compiler test passes, `fo build` is `450/450`, and no corpus manifest changed.
-- `allocated_1.f90` remains unpromoted: an isolated keyword-unwrapping attempt
-  could not pass its exact gates because the rebuilt ffc binary still selected
-  the old lowering path. Keep it ahead of sample expansion and do not alter its
-  manifest without a complete independent gate.
+- `allocated_1.f90` is now promoted. ALLOCATED unwraps scalar and array keyword
+  arguments before lowering; its focused compiler oracle and independent
+  gfortran output agree, and both exact gates report `PASS=1`, `XFAIL=0`,
+  `XPASS=0`, and `FAIL=0`. Its XFAIL row was removed only after the rebuilt
+  main binary passed.
+- `issue_2495_data_null_intrinsic.f90` is now promoted. Scalar pointer DATA
+  with `NULL()` lowers to disassociation, while an independent negative
+  gfortran oracle still rejects a non-NULL pointer initializer. Normal and
+  XFAIL-disabled exact runs both report `PASS=1`, `XFAIL=0`, `XPASS=0`, and
+  `FAIL=0`; its XFAIL row was removed only after both gates passed.
 - `issue_256_incomplete_expression.f90` is now promoted. FortFront emits the
   focused incomplete-expression diagnostic while preserving valid logical
   literals and continuations; the independent public-API regression passes,
