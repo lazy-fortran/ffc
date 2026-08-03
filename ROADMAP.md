@@ -27,7 +27,8 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `053f0aa` (ANY DIM assignment promotion on top of the
+- Main: `d59c37b` (mixed-kind unary real promotion on top of the
+  ANY DIM assignment promotion and the
   array-constructor 02/03 promotion, the
   complex ABS/IEEE NaN, allocatable inquiry, and allocatable complex-array
   promotions, and the modules36 fixed-character-array promotion on top of the
@@ -84,6 +85,10 @@ explicit decision.
   independent gfortran output oracle and `test_session_array_mask_reduction_compiler`
   agreeing. The fix covers `ANY(..., DIM)` assignment into assumed-shape
   runtime arrays.
+- Luna then promoted `array_op_03.f90`: normal and XFAIL-disabled exact runs
+  both report `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`, with the focused
+  scalar-expression test and independent gfortran oracle green. Mixed-kind
+  f64 operands now lower at f64 before safe conversion into an f32 context.
 - Fresh strict pass-only sampling remains bounded at 900. Seed 1038 is red,
   with two `fortfront-lf` failures (`test_209_all.lf`, `test_209_complex.lf`)
   and twenty observed LFortran failures before the run was stopped; no sample
