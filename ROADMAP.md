@@ -134,6 +134,13 @@ explicit decision.
   `issue_1771_module_parameter_types.f90` still fails XFAIL-disabled with
   `mismatched scalar kind in argument to square`. Keep both rows in the queue;
   do not count the normal XFAIL-wrapped runs as passes.
+- The following disjoint probe also remained red: `arrays_02_size.f90`
+  still fails during ffc compilation; `issue_2495_data_null_intrinsic.f90`
+  reaches an ffc lowering failure (`data-stmt-object 'ptr2' has the POINTER
+  attribute`) while FortFront's focused parser test passes; and the attempted
+  `reject_const_init.inc` migration builds but fails its independent rejection
+  oracle because invalid input compiles and exits zero. None was integrated or
+  promoted.
 - Fresh strict pass-only sampling remains bounded at 900. Seed 1038 supplied a
   red baseline: its two `fortfront-lf` failures are now fixed, while twenty
   LFortran failures were observed before the run was stopped. No sample
