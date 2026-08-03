@@ -153,6 +153,9 @@ explicit decision.
   interface; and the FortFront `issue_256_incomplete_expression.f90` patch has
   only a focused parser-test pass while its parent ffc build/gates remain
   unverified. No manifests changed and no partial patches entered `main`.
+- Follow-up attempts remain unpromoted: the FLOOR arity change still loses
+  `KIND=8`, and the comparison-submodule source compiles but its isolated link
+  cannot find `libliric.a`; neither has a focused green oracle or commit.
 - Fresh strict pass-only sampling remains bounded at 900. Seed 1038 supplied a
   red baseline: its two `fortfront-lf` failures are now fixed, while twenty
   LFortran failures were observed before the run was stopped. No sample
