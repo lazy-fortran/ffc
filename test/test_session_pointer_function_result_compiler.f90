@@ -49,6 +49,29 @@ program test_session_pointer_function_result
         'end program main', 9, &
         '/tmp/ffc_session_pointer_result_null')) stop 1
 
+    ! A pointer result may allocate its own scalar target before returning.
+    ! The caller must receive that target address, not a copied/temporary value.
+    if (.not. expect_exit_status( &
+        'program main'//new_line('a')// &
+        'integer, pointer :: p'//new_line('a')// &
+        'p => make(ll(40))'//new_line('a')// &
+        'if (.not. associated(p)) stop 1'//new_line('a')// &
+        'stop p'//new_line('a')// &
+        'contains'//new_line('a')// &
+        'elemental function ll(i)'//new_line('a')// &
+        'integer, intent(in) :: i'//new_line('a')// &
+        'integer :: ll'//new_line('a')// &
+        'll = i + 1'//new_line('a')// &
+        'end function ll'//new_line('a')// &
+        'function make(i) result(r)'//new_line('a')// &
+        'integer, intent(in) :: i'//new_line('a')// &
+        'integer, pointer :: r'//new_line('a')// &
+        'allocate (r)'//new_line('a')// &
+        'r = i'//new_line('a')// &
+        'end function make'//new_line('a')// &
+        'end program main', 41, &
+        '/tmp/ffc_session_pointer_result_allocated')) stop 1
+
     ! Returning a pointer to a local automatic target is statically detectable
     ! and rejected: that storage dies with the function invocation.
     if (.not. expect_error_contains( &
