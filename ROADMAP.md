@@ -27,7 +27,8 @@ explicit decision.
 
 ## Current status (2026-08-03)
 
-- Main: `d59c37b` (mixed-kind unary real promotion on top of the
+- Main: `a8e52ee` (lazy whole-array constructor reallocation fix on top of the
+  mixed-kind unary real promotion and the
   ANY DIM assignment promotion and the
   array-constructor 02/03 promotion, the
   complex ABS/IEEE NaN, allocatable inquiry, and allocatable complex-array
@@ -89,12 +90,19 @@ explicit decision.
   both report `PASS=1`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`, with the focused
   scalar-expression test and independent gfortran oracle green. Mixed-kind
   f64 operands now lower at f64 before safe conversion into an f32 context.
-- Fresh strict pass-only sampling remains bounded at 900. Seed 1038 is red,
-  with two `fortfront-lf` failures (`test_209_all.lf`, `test_209_complex.lf`)
-  and twenty observed LFortran failures before the run was stopped; no sample
-  increase or follow-up seeds are justified until this XFAIL/FAIL queue is
-  repaired.
-- The latest full local `fo` workflow is a unit/conformance diagnostic, not a
+- The two red `fortfront-lf` sample cases from seed 1038 are now green:
+  `test_209_all.lf` and `test_209_complex.lf` pass in normal and XFAIL-disabled
+  exact runs with `PASS=2`, `XFAIL=0`, `XPASS=0`, and `FAIL=0`. The independent
+  gfortran oracle and `test_session_allocatable_constructor_compiler` agree;
+  whole-array constructor operands are materialized before old allocation is
+  released.
+- Fresh strict pass-only sampling remains bounded at 900. Seed 1038 supplied a
+  red baseline: its two `fortfront-lf` failures are now fixed, while twenty
+  LFortran failures were observed before the run was stopped. No sample
+  increase or follow-up seeds are justified until the remaining XFAIL/FAIL
+  queue is repaired.
+- The last full local `fo` workflow, before the latest sampled fixes, is a
+  unit/conformance diagnostic, not a
   corpus gate: build `446/446` and static checks `463/463` pass, while the
   339-test phase reports `316` passes and `23` known adjacent failures. Keep
   those failures in the next XFAIL/FAIL queue; do not hide them with manifest
