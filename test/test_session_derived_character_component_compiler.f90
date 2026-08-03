@@ -3,9 +3,11 @@ program test_session_derived_character_component_compiler
     ! (ceil((len+1)/4) byte-storage slots, the extra byte holding a NUL
     ! terminator) so a derived type that declares them lowers and runs.
     ! Reading and writing a character component through obj%comp, printing it,
-    ! and passing a literal to a structure constructor are all supported
-    ! (#265); a character ARRAY component stays unsupported.
-    use ffc_test_support, only: expect_no_error, expect_error_contains, &
+    ! passing a literal to a structure constructor, and querying a fixed array's
+    ! size are all supported
+    ! (#265); fixed character ARRAY size() is supported while element access
+    ! remains deliberately outside this slice.
+    use ffc_test_support, only: expect_no_error, &
         expect_output
     implicit none
 
@@ -20,7 +22,7 @@ program test_session_derived_character_component_compiler
     if (.not. test_character_component_rhs_expression()) all_passed = .false.
     if (.not. test_character_component_constructor()) all_passed = .false.
     if (.not. test_character_component_argument()) all_passed = .false.
-    if (.not. test_character_array_component_rejected()) all_passed = .false.
+    if (.not. test_character_array_component_size()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: derived character components lower into the slot layout'
@@ -161,21 +163,22 @@ contains
             source, expected, '/tmp/ffc_derived_char_component_arg_test')
     end function test_character_component_argument
 
-    logical function test_character_array_component_rejected()
-        ! A character ARRAY component stays unsupported: the flat scalar slot
-        ! layout only reserves inline byte storage for a scalar character.
+    logical function test_character_array_component_size()
+        ! A fixed character array reserves one packed character value per
+        ! element, and SIZE reports its element count independently of slots.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: roster_t'//new_line('a')// &
             '    character(len=4) :: tags(2)'//new_line('a')// &
             '  end type roster_t'//new_line('a')// &
             '  type(roster_t) :: r'//new_line('a')// &
-            '  print *, "unused"'//new_line('a')// &
+            '  print *, size(r%tags)'//new_line('a')// &
             'end program main'
+        character(len=*), parameter :: expected = &
+            '           2'//new_line('a')
 
-        test_character_array_component_rejected = expect_error_contains( &
-            source, 'character array', &
-            '/tmp/ffc_derived_char_array_component_reject_test')
-    end function test_character_array_component_rejected
+        test_character_array_component_size = expect_output( &
+            source, expected, '/tmp/ffc_derived_char_array_component_size_test')
+    end function test_character_array_component_size
 
 end program test_session_derived_character_component_compiler

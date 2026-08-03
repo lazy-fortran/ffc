@@ -962,6 +962,7 @@
                     is_allocatable=parent%component_is_allocatable(c), &
                     comp_char_length=parent%component_char_length(c), &
                     is_alloc_array=parent%component_is_alloc_array(c), &
+                    comp_dim1=parent%component_dim1(c), &
                     is_pointer=parent%component_is_pointer(c))
                 if (len_trim(error_msg) > 0) return
             end do
@@ -1163,6 +1164,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         integer :: nested_type_index
         logical :: comp_allocatable
         logical :: comp_alloc_array
+        logical :: fixed_char_array
         logical :: comp_pointer
         integer :: char_length
         if (.not. node_exists(context%arena, component_index)) then
@@ -1246,6 +1248,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             default_value = 0_c_int64_t
             array_size = 1
             char_length = 0
+            fixed_char_array = .false.
             if (comp_alloc_array .and. value_kind == VALUE_CHARACTER) then
                 array_size = 1
                 call declaration_character_length(context, component, &
@@ -1257,6 +1260,12 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 call component_array_count(component, context, array_size, &
                                            error_msg)
                 if (len_trim(error_msg) > 0) return
+                if (value_kind == VALUE_CHARACTER) then
+                    call declaration_character_length(context, component, &
+                                                      char_length, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    fixed_char_array = .true.
+                end if
             else if (value_kind == VALUE_CHARACTER .and. .not. comp_allocatable) then
                 ! Reuse array_size as the component's slot count: a character
                 ! value occupies ceil((len+1)/4) byte-storage slots at width 1,
@@ -1296,6 +1305,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                                array_size, value_kind, error_msg, &
                                                is_allocatable=comp_allocatable, &
                                                comp_char_length=char_length, &
+                                               comp_dim1=merge(array_size, 0, &
+                                                               fixed_char_array), &
                                                is_alloc_array=comp_alloc_array, &
                                                is_pointer=comp_pointer)
                     if (len_trim(error_msg) > 0) return
@@ -1307,6 +1318,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                            value_kind, error_msg, &
                                            is_allocatable=comp_allocatable, &
                                            comp_char_length=char_length, &
+                                           comp_dim1=merge(array_size, 0, &
+                                                           fixed_char_array), &
                                            is_alloc_array=comp_alloc_array, &
                                            is_pointer=comp_pointer)
             else
@@ -1602,17 +1615,26 @@ subroutine collect_component_declaration(component_index, parent_line, &
             ! f64 array element spans two i32 slots (handled by slot width).
         case (VALUE_CHARACTER)
             if (component%is_array) then
-                if (.not. component%is_allocatable .or. component%is_pointer .or. &
-                    .not. component_alloc_array_rank_one(component)) then
+                if (component%is_pointer) then
                     call unsupported_feature_error( &
                         'derived type array component', component%line, &
                         component%column, 'character array components are not '// &
-                        'supported; only rank-1 allocatable arrays', error_msg)
+                        'supported for pointer components', error_msg)
                     return
                 end if
-                ! A fixed-length character allocatable array has a four-slot
-                ! data/extent descriptor. Element access remains rejected until
-                ! the derived-component character descriptor path is complete.
+                if (component%is_allocatable) then
+                    if (.not. component_alloc_array_rank_one(component)) then
+                        call unsupported_feature_error( &
+                            'derived type array component', component%line, &
+                            component%column, 'only rank-1 allocatable character '// &
+                            'arrays are supported', error_msg)
+                        return
+                    end if
+                    ! A fixed-length character allocatable array has a four-slot
+                    ! data/extent descriptor. Element access remains rejected
+                    ! until the derived-component character descriptor path is
+                    ! complete.
+                end if
                 call validate_character_component_length(component, context, &
                                                          error_msg)
                 return
@@ -1786,7 +1808,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                      has_default, default_value, array_size, &
                                      value_kind, error_msg, comp_type_index, &
                                      is_allocatable, comp_char_length, &
-                                     is_alloc_array, is_pointer)
+                                     is_alloc_array, comp_dim1, is_pointer)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
         character(len=*), intent(in) :: name
@@ -1808,6 +1830,10 @@ subroutine collect_component_declaration(component_index, parent_line, &
         ! Declared length of a VALUE_CHARACTER component; 0 (or absent) for
         ! every other kind.
         integer, intent(in), optional :: comp_char_length
+        ! Positive first-dimension extent for a fixed-size array component;
+        ! also marks fixed-length character arrays, whose component_array_size
+        ! stores element count rather than scalar-character slot count.
+        integer, intent(in), optional :: comp_dim1
         integer :: component_index
 
         if (find_derived_component(context, type_index, name) > 0) then
@@ -1851,6 +1877,10 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (present(comp_char_length)) &
             context%derived_types(type_index)%component_char_length(component_index) = &
                 comp_char_length
+        context%derived_types(type_index)%component_dim1(component_index) = 0
+        if (present(comp_dim1)) &
+            context%derived_types(type_index)%component_dim1(component_index) = &
+                comp_dim1
         context%derived_types(type_index)%component_count = component_index
         call set_empty(error_msg)
     end subroutine add_derived_component

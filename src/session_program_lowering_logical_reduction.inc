@@ -41,7 +41,8 @@
             call set_empty(error_msg)
             return
         end if
-        if (trim(adjustl(lowercase_text(op))) == '.not.') then
+        if (trim(adjustl(lowercase_text(op))) == '.not.' .or. &
+            trim(adjustl(lowercase_text(op))) == 'not') then
             call try_bare_mask_reduction(arena, node, context, accumulate, &
                                          handled, value, error_msg)
             return

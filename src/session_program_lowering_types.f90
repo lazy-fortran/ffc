@@ -478,12 +478,14 @@ module session_program_lowering_types
         ! at byte 8. A null data pointer marks it unallocated.
         logical, allocatable :: component_is_alloc_array(:)
         ! Declared character length of a VALUE_CHARACTER component (0 for
-        ! every other kind); component_array_size holds the derived slot
-        ! count, not the length itself.
+        ! every other kind). Scalar character components keep their historical
+        ! slot count in component_array_size; fixed character arrays keep their
+        ! element count there and use component_dim1 as the fixed-array marker.
         integer, allocatable :: component_char_length(:)
-        ! Extent of the first dimension of a rank-2 fixed-size derived array
-        ! component (0 for every other component). Column-major element
-        ! addressing of comp(i,j) needs this stride.
+        ! Extent of the first dimension of a fixed-size component when needed
+        ! for addressing (0 for scalars). Column-major element addressing of
+        ! comp(i,j) needs this stride; fixed character arrays also use a
+        ! positive value as their array marker.
         integer, allocatable :: component_dim1(:)
         ! Name of the type this one extends (empty when it extends nothing).
         ! Lets a polymorphic dummy check accept an extension of its declared

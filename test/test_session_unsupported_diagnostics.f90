@@ -205,8 +205,9 @@ contains
 
     logical function test_derived_type_diagnostic()
         ! A fixed-length scalar character component reads and writes through
-        ! obj%comp (#265); a character ARRAY component stays unsupported since
-        ! the flat slot layout only reserves inline byte storage for a scalar.
+        ! obj%comp (#265); element access on a character ARRAY component stays
+        ! unsupported even though its fixed-size declaration and SIZE inquiry
+        ! are supported.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: point'//new_line('a')// &
@@ -515,8 +516,9 @@ contains
 
     logical function test_cli_derived_type_diagnostic()
         ! A fixed-length scalar character component reads and writes through
-        ! obj%comp (#265); a character ARRAY component stays unsupported since
-        ! the flat slot layout only reserves inline byte storage for a scalar.
+        ! obj%comp (#265); element access on a character ARRAY component stays
+        ! unsupported even though its fixed-size declaration and SIZE inquiry
+        ! are supported.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: point'//new_line('a')// &

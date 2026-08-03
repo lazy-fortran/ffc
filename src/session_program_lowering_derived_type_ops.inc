@@ -37,7 +37,9 @@
     integer function component_slot_width(context, type_index, comp_index)
         ! i32 slots one element of a component occupies: an allocatable component
         ! holds an 8-byte data pointer (two slots); f64 spans two 4-byte slots;
-        ! every other supported scalar kind fits in one.
+        ! every other supported scalar kind fits in one. A fixed character array
+        ! stores one declared character value per element, so its width is the
+        ! packed byte-storage span rather than one scalar slot.
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         integer, intent(in) :: comp_index
@@ -61,6 +63,13 @@
         end if
         if (.not. allocated(context%derived_types(type_index)% &
                             component_value_kind)) return
+        if (context%derived_types(type_index)%component_value_kind(comp_index) == &
+                VALUE_CHARACTER .and. context%derived_types(type_index)% &
+                component_dim1(comp_index) > 0) then
+            component_slot_width = character_component_slots( &
+                context%derived_types(type_index)%component_char_length(comp_index))
+            return
+        end if
         if (context%derived_types(type_index)%component_value_kind(comp_index) == &
             VALUE_F64 .or. context%derived_types(type_index)% &
             component_value_kind(comp_index) == VALUE_I64) component_slot_width = 2
@@ -131,6 +140,28 @@
             context%derived_types(type_index)%component_value_kind(comp_index) == &
             VALUE_CHARACTER
     end function component_is_alloc_char
+
+    logical function component_is_fixed_char_array(context, type_index, comp_index)
+        ! True for a fixed-length character array component. Scalar character
+        ! components intentionally keep component_array_size as their packed
+        ! slot count, so component_dim1 is the unambiguous array marker.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+
+        component_is_fixed_char_array = .false.
+        if (type_index <= 0 .or. type_index > context%derived_type_count) return
+        if (.not. allocated(context%derived_types(type_index)% &
+                            component_value_kind)) return
+        if (comp_index < 1 .or. comp_index > size(context%derived_types(type_index)% &
+                                                  component_value_kind)) return
+        if (context%derived_types(type_index)%component_value_kind(comp_index) /= &
+                VALUE_CHARACTER) return
+        if (component_is_alloc_array(context, type_index, comp_index)) return
+        if (.not. allocated(context%derived_types(type_index)%component_dim1)) return
+        component_is_fixed_char_array = &
+            context%derived_types(type_index)%component_dim1(comp_index) > 0
+    end function component_is_fixed_char_array
 
     logical function component_is_pointer(context, type_index, comp_index)
         ! True for a scalar data-pointer component (inline target address).
@@ -1289,6 +1320,11 @@
         call resolve_array_component(arena, access_index, context, symbol_index, &
                                      type_index, component_index, error_msg)
         if (len_trim(error_msg) > 0) return
+        if (component_kind(context, type_index, component_index) == &
+                VALUE_CHARACTER) then
+            error_msg = 'character array component element access is not supported'
+            return
+        end if
         if (present(comp_kind)) &
             comp_kind = component_kind(context, type_index, component_index)
         width = component_slot_width(context, type_index, component_index)
@@ -1394,6 +1430,53 @@
         end select
     end subroutine lower_alloc_array_component_size
 
+    subroutine lower_fixed_char_component_size(arena, node, context, value, &
+                                               handled, error_msg)
+        ! Lower size(obj%comp) for a fixed-length character array component.
+        ! Its metadata stores the element extent in component_array_size and
+        ! uses component_dim1 as the array marker; scalar character components
+        ! retain their packed slot-count representation.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index, type_index, component_index, nargs
+        integer(c_int64_t) :: dim_value
+        character(len=:), allocatable :: component_name
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(node%arg_indices)) return
+        if (size(node%arg_indices) < 1) return
+        select type (arg => arena%entries(node%arg_indices(1))%node)
+        type is (component_access_node)
+            call resolve_component_ref(arena, node%arg_indices(1), context, &
+                                       symbol_index, type_index, component_index, &
+                                       component_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. component_is_fixed_char_array(context, type_index, &
+                                                    component_index)) return
+            nargs = size(node%arg_indices)
+            if (nargs == 2) then
+                call eval_i32_constant(arena, node%arg_indices(2), context, &
+                                       dim_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (dim_value /= 1_c_int64_t) then
+                    error_msg = 'size dim out of range for: '//trim(component_name)
+                    return
+                end if
+            else if (nargs /= 1) then
+                error_msg = 'size requires one or two arguments'
+                return
+            end if
+            value = i32_immediate(context%session, int(context%derived_types( &
+                type_index)%component_array_size(component_index), c_int64_t))
+            handled = .true.
+        end select
+    end subroutine lower_fixed_char_component_size
+
     subroutine resolve_component_ref(arena, access_index, context, symbol_index, &
                                      type_index, component_index, comp_name, &
                                      error_msg)
@@ -1480,13 +1563,15 @@
         end if
         if (component_kind(context, type_index, component_index) == &
             VALUE_CHARACTER) then
-            ! A character component reuses component_array_size as its slot count,
-            ! so exclude it from the intrinsic-array-component path.
-            error_msg = 'component is not an array: '//trim(comp_name)
-            return
-        end if
-        if (context%derived_types(type_index)%component_array_size(component_index) &
-            <= 1) then
+            if (.not. component_is_fixed_char_array(context, type_index, &
+                                                    component_index)) then
+                ! A scalar character component reuses component_array_size as
+                ! its slot count, so it is not an intrinsic array.
+                error_msg = 'component is not an array: '//trim(comp_name)
+                return
+            end if
+        else if (context%derived_types(type_index)%component_array_size(component_index) &
+                 <= 1) then
             error_msg = 'component is not an array: '//trim(comp_name)
             return
         end if

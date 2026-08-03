@@ -91,6 +91,8 @@
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: idx
         type(lowering_context_t), intent(in) :: context
+        integer(c_int64_t) :: folded
+        character(len=:), allocatable :: fold_error
 
         ! Default to runtime (safe: never decline a valid runtime array). Only a
         ! provably pure-constant bound - a literal, or arithmetic over literals -
@@ -114,7 +116,10 @@
             has_var = bound_expr_references_variable(arena, n%end_index, context)
         type is (call_or_subscript_node)
             if (.not. allocated(n%name)) return
-            if (same_name(n%name, 'huge')) then
+            if (same_name(n%name, 'size')) then
+                call eval_i32_constant(arena, idx, context, folded, fold_error)
+                has_var = len_trim(fold_error) > 0
+            else if (same_name(n%name, 'huge')) then
                 if (.not. allocated(n%arg_indices) .or. &
                     size(n%arg_indices) /= 1) return
                 has_var = bound_expr_references_variable(arena, &
@@ -2029,11 +2034,12 @@
         type(lowering_context_t), intent(in) :: context
         integer(c_int64_t), intent(out) :: constant_value
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: sym, nargs, arr_rank
+        integer :: sym, nargs, arr_rank, component_symbol
+        integer :: component_type, component_index
         integer(c_int64_t) :: dim
         integer :: arr_size, arr_dim_sizes(ARRAY_MAX_RANK)
         logical :: ok
-        character(len=:), allocatable :: id_name
+        character(len=:), allocatable :: id_name, component_name
 
         constant_value = 0_c_int64_t
         if (.not. allocated(node%arg_indices)) then
@@ -2044,6 +2050,40 @@
         if (nargs < 1 .or. nargs > 2) then
             error_msg = 'size requires one or two arguments'
             return
+        end if
+        if (node_exists(arena, node%arg_indices(1))) then
+            select type (component => arena%entries(node%arg_indices(1))%node)
+            type is (component_access_node)
+                call resolve_component_ref(arena, node%arg_indices(1), context, &
+                    component_symbol, component_type, component_index, &
+                    component_name, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (component_is_fixed_char_array(context, component_type, &
+                                                  component_index)) then
+                    arr_rank = 1
+                    arr_size = context%derived_types(component_type)% &
+                               component_array_size(component_index)
+                    arr_dim_sizes = 0
+                    arr_dim_sizes(1) = arr_size
+                    if (nargs == 2) then
+                        call eval_i32_constant(arena, node%arg_indices(2), &
+                                               context, dim, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        if (dim /= 1_c_int64_t) then
+                            error_msg = 'size dim out of range for: '// &
+                                        trim(component_name)
+                            return
+                        end if
+                    end if
+                    constant_value = int(arr_size, c_int64_t)
+                    call set_empty(error_msg)
+                    return
+                end if
+                error_msg = 'size argument is not a fixed-size array: '// &
+                            trim(component_name)
+                return
+            class default
+            end select
         end if
         if (.not. is_identifier(arena, node%arg_indices(1))) then
             error_msg = 'size argument is not a named array'
@@ -3613,6 +3653,9 @@
             logical :: handled
             call lower_alloc_array_component_size(arena, node%arg_indices(1), &
                                                   context, value, handled, error_msg)
+            if (handled .or. len_trim(error_msg) > 0) return
+            call lower_fixed_char_component_size(arena, node, context, value, &
+                                                handled, error_msg)
             if (handled .or. len_trim(error_msg) > 0) return
         end block
         call get_identifier_name(arena, node%arg_indices(1), array_name, error_msg)
