@@ -76,6 +76,22 @@
         end select
     end function assumed_shape_actual_symbol
 
+    logical function assumed_shape_empty_constructor(arena, node_index) &
+            result(is_empty)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+
+        is_empty = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (actual => arena%entries(node_index)%node)
+        type is (array_literal_node)
+            if (allocated(actual%element_indices)) then
+                is_empty = size(actual%element_indices) == 0
+            end if
+        class default
+        end select
+    end function assumed_shape_empty_constructor
+
     integer function assumed_shape_actual_rank(arena, node_index, context) &
             result(rank)
         ! Rank the actual presents to the dummy: a whole array's declared rank,
@@ -87,6 +103,10 @@
         character(len=:), allocatable :: id_name, err
 
         rank = 0
+        if (assumed_shape_empty_constructor(arena, node_index)) then
+            rank = 1
+            return
+        end if
         if (actual_is_contiguous_section(arena, node_index, context)) then
             rank = 1
             return
@@ -150,6 +170,12 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index, type_index, component_index
 
+        if (assumed_shape_empty_constructor(arena, node_index)) then
+            base = null_ptr_operand(context)
+            call set_empty(error_msg)
+            return
+        end if
+
         if (component_access_is_derived_array(arena, node_index, context)) then
             call resolve_derived_array_component(arena, node_index, context, &
                                                  symbol_index, type_index, &
@@ -189,6 +215,17 @@
         character(len=:), allocatable :: id_name
         logical :: ok
         integer :: symbol_index, type_index, component_index
+
+        if (assumed_shape_empty_constructor(arena, node_index)) then
+            if (dim /= 1) then
+                error_msg = 'empty array constructor assumed-shape actual supports '// &
+                            'rank 1 only'
+                return
+            end if
+            extent = i64_immediate(context%session, 0_c_int64_t)
+            call set_empty(error_msg)
+            return
+        end if
 
         call set_empty(error_msg)
         if (component_access_is_derived_array(arena, node_index, context)) then
@@ -285,8 +322,10 @@
         integer :: component_type, component_index
         integer(c_int64_t) :: element_bytes
         integer(c_int32_t) :: flags
-        logical :: is_component_projection, has_dummy_lowers
+        logical :: is_component_projection, has_dummy_lowers, is_empty_actual
         character(len=32) :: rank_text, actual_rank_text
+        character(len=:), allocatable :: dummy_type_name
+        integer :: dummy_type_index
 
         actual_rank = assumed_shape_actual_rank(arena, node_index, context)
         if (actual_rank /= rank) then
@@ -304,8 +343,9 @@
         if (len_trim(error_msg) > 0) return
         if (.not. has_dummy_lowers) dummy_lowers(1:rank) = 1
 
+        is_empty_actual = assumed_shape_empty_constructor(arena, node_index)
         symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
-        if (symbol_index <= 0) then
+        if (symbol_index <= 0 .and. .not. is_empty_actual) then
             error_msg = 'assumed-shape actual was not declared'
             return
         end if
@@ -319,8 +359,29 @@
             is_component_projection = .true.
         class default
         end select
-        value_kind = context%symbols(symbol_index)%value_kind
-        if (is_component_projection) then
+        if (is_empty_actual) then
+            call callee_dummy_declared_derived_type(arena, callee_name, param_pos, &
+                                                    .false., dummy_type_name)
+            if (len_trim(dummy_type_name) == 0) then
+                error_msg = 'empty array constructor actual needs a derived-type '// &
+                            'assumed-shape dummy'
+                return
+            end if
+            dummy_type_index = find_derived_type(context, dummy_type_name)
+            if (dummy_type_index <= 0) then
+                error_msg = 'empty array constructor actual derived type was not '// &
+                            'registered'
+                return
+            end if
+            value_kind = VALUE_DERIVED
+            element_bytes = 4_c_int64_t*int(total_component_slots(context, &
+                dummy_type_index), c_int64_t)
+        else
+            value_kind = context%symbols(symbol_index)%value_kind
+        end if
+        if (is_empty_actual) then
+            base = null_ptr_operand(context)
+        else if (is_component_projection) then
             value_kind = component_kind(context, component_type, component_index)
             element_bytes = int(equivalence_kind_size(value_kind), c_int64_t)
         else if (value_kind == VALUE_DERIVED) then
@@ -357,7 +418,7 @@
         ! The dummy borrows the actual's storage: allocated and associated, and
         ! contiguous for every actual form this ABI accepts, but never owning.
         flags = ARRAY_FLAG_ALLOCATED + ARRAY_FLAG_ASSOCIATED
-        if (.not. is_component_projection) then
+        if (.not. is_component_projection .and. .not. is_empty_actual) then
             if (context%symbols(symbol_index)%array_stride_bytes == 0 .or. &
                 context%symbols(symbol_index)%array_stride_bytes == element_bytes) then
                 flags = flags + ARRAY_FLAG_CONTIGUOUS
@@ -372,7 +433,9 @@
 
         ! Column-major strides: dimension 1 steps one element, dimension d steps
         ! the product of every lower dimension's extent.
-        if (is_component_projection) then
+        if (is_empty_actual) then
+            running = i64_immediate(context%session, element_bytes)
+        else if (is_component_projection) then
             running = i64_immediate(context%session, int( &
                 total_component_slots(context, component_type) * 4, c_int64_t))
         else if (context%symbols(symbol_index)%array_stride_bytes > 0) then

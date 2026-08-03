@@ -871,7 +871,8 @@
             call get_array_bounds(node, context, lower_bound, n_elems, error_msg)
             if (len_trim(error_msg) > 0) return
         end if
-        if (n_elems <= 0) then
+        if (n_elems <= 0 .and. .not. (is_dummy .and. is_assumed .and. &
+                                     n_elems == 0)) then
             call unsupported_feature_error('derived array declaration', node%line, &
                 node%column, 'derived arrays need a positive compile-time size', &
                 error_msg)
@@ -2411,16 +2412,6 @@
             comp_index = 0
             if (type_index > 0) comp_index = find_derived_component(context, &
                 type_index, target%component_name)
-            if (comp_index > 0) then
-                if (context%derived_types(type_index)% &
-                        component_type_index(comp_index) > 0) then
-                    call unsupported_feature_error('allocatable derived array '// &
-                        'component assignment', target%line, target%column, &
-                        'whole-array assignment of an allocatable derived array '// &
-                        'component is not supported', error_msg)
-                    return
-                end if
-            end if
             call lower_alloc_array_component_assignment(arena, node, target, &
                                                         context, error_msg)
             return
@@ -3072,6 +3063,11 @@
         logical :: from_ctor
 
         comp_kind = derived_component_access_kind(arena, target, context)
+        if (comp_kind == VALUE_DERIVED) then
+            call lower_alloc_derived_array_component_assignment(arena, node, target, &
+                                                                context, error_msg)
+            return
+        end if
         if (comp_kind == VALUE_CHARACTER) then
             call unsupported_feature_error('allocatable array component '// &
                 'assignment', target%line, target%column, 'character allocatable '// &
@@ -3102,6 +3098,165 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_alloc_array_component_assignment
+
+    subroutine lower_alloc_derived_array_component_assignment(arena, node, target, &
+                                                              context, error_msg)
+        ! Handle a derived allocatable component constructor that combines an
+        ! existing derived array with one or more derived constructors. The old
+        ! component is snapshotted first because the source and destination may
+        ! be the same component (Fortran evaluates the whole RHS before store).
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(component_access_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: source_desc, target_desc, source_data
+        type(lr_operand_desc_t) :: old_target_data, snapshot, new_data
+        type(lr_operand_desc_t) :: source_extent, old_bytes, new_extent, new_bytes
+        type(lr_operand_desc_t) :: offset_elements, offset_bytes, destination
+        integer :: type_index, component_index, element_type
+        integer :: source_count, constructor_count, i, source_index
+        integer(c_int64_t) :: element_bytes
+        logical :: is_source
+
+        call set_empty(error_msg)
+        type_index = component_base_type_index(arena, target%base_expr_index, &
+                                               context)
+        if (type_index <= 0) then
+            error_msg = 'allocatable derived array component has no base type'
+            return
+        end if
+        component_index = find_derived_component(context, type_index, &
+                                                 target%component_name)
+        if (component_index <= 0) then
+            error_msg = 'allocatable derived array component was not declared'
+            return
+        end if
+        element_type = context%derived_types(type_index)% &
+            component_type_index(component_index)
+        if (element_type <= 0) then
+            error_msg = 'allocatable derived array component has no element type'
+            return
+        end if
+        if (.not. node_exists(arena, node%value_index)) then
+            error_msg = 'allocatable derived array component rhs is not a node'
+            return
+        end if
+        select type (rhs => arena%entries(node%value_index)%node)
+        type is (array_literal_node)
+            if (is_implied_do_constructor(arena, rhs) .or. &
+                .not. allocated(rhs%element_indices)) then
+                error_msg = 'allocatable derived array component requires an '// &
+                            'explicit constructor'
+                return
+            end if
+            source_count = 0
+            constructor_count = 0
+            source_index = 0
+            do i = 1, size(rhs%element_indices)
+                is_source = .false.
+                if (node_exists(arena, rhs%element_indices(i))) then
+                    select type (item => arena%entries(rhs%element_indices(i))%node)
+                    type is (component_access_node)
+                        if (component_access_is_alloc_array(arena, item, context)) then
+                            is_source = .true.
+                            source_count = source_count + 1
+                            source_index = rhs%element_indices(i)
+                        end if
+                    end select
+                end if
+                if (is_source) then
+                    cycle
+                else if (is_derived_constructor_call(arena, &
+                        rhs%element_indices(i), context, element_type)) then
+                    constructor_count = constructor_count + 1
+                else
+                    error_msg = 'allocatable derived array component constructor '// &
+                                'contains an unsupported element'
+                    return
+                end if
+            end do
+        class default
+            error_msg = 'allocatable derived array component requires an array '// &
+                        'constructor'
+            return
+        end select
+        if (source_count /= 1) then
+            error_msg = 'allocatable derived array component constructor requires '// &
+                        'one existing derived array'
+            return
+        end if
+
+        element_bytes = int(total_component_slots(context, element_type), &
+                            c_int64_t) * 4_c_int64_t
+        call alloc_array_component_descriptor(arena, source_index, context, &
+                                              source_desc, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_load(context%session, source_desc, source_data, &
+                                error_msg)) return
+        if (.not. emit_i64_load_at(context%session, source_desc, 8_c_int64_t, &
+                                   source_extent, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, source_extent, &
+                i64_immediate(context%session, element_bytes), old_bytes, &
+                error_msg)) return
+        if (.not. emit_malloc(context%session, old_bytes, snapshot, error_msg)) return
+        if (.not. emit_memcpy(context%session, snapshot, source_data, old_bytes, &
+                              error_msg)) return
+
+        call alloc_array_component_descriptor(arena, node%target_index, context, &
+                                              target_desc, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_load(context%session, target_desc, old_target_data, &
+                                error_msg)) return
+        if (.not. emit_free(context%session, old_target_data, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, source_extent, &
+                i64_immediate(context%session, int(constructor_count, c_int64_t)), &
+                new_extent, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, new_extent, &
+                i64_immediate(context%session, element_bytes), new_bytes, &
+                error_msg)) return
+        if (.not. emit_malloc(context%session, new_bytes, new_data, error_msg)) return
+        if (.not. emit_ptr_store(context%session, new_data, target_desc, &
+                                 error_msg)) return
+        if (.not. emit_i64_store_at(context%session, new_extent, target_desc, &
+                                    8_c_int64_t, error_msg)) return
+
+        offset_elements = i64_immediate(context%session, 0_c_int64_t)
+        select type (rhs => arena%entries(node%value_index)%node)
+        type is (array_literal_node)
+            do i = 1, size(rhs%element_indices)
+                is_source = .false.
+                if (rhs%element_indices(i) == source_index) is_source = .true.
+                if (is_source) then
+                    if (.not. emit_i64_binary(context%session, LR_OP_MUL, &
+                            offset_elements, i64_immediate(context%session, &
+                                element_bytes), offset_bytes, error_msg)) return
+                    if (.not. emit_ptr_offset_dyn(context%session, new_data, &
+                            offset_bytes, destination, error_msg)) return
+                    if (.not. emit_memcpy(context%session, destination, snapshot, &
+                                          old_bytes, error_msg)) return
+                    if (.not. emit_i64_binary(context%session, LR_OP_ADD, &
+                            offset_elements, source_extent, offset_elements, &
+                            error_msg)) return
+                else
+                    if (.not. emit_i64_binary(context%session, LR_OP_MUL, &
+                            offset_elements, i64_immediate(context%session, &
+                                element_bytes), offset_bytes, error_msg)) return
+                    if (.not. emit_ptr_offset_dyn(context%session, new_data, &
+                            offset_bytes, destination, error_msg)) return
+                    call emit_nested_constructor_at_address(arena, &
+                        rhs%element_indices(i), context, destination, element_type, &
+                        error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_i64_binary(context%session, LR_OP_ADD, &
+                            offset_elements, i64_immediate(context%session, &
+                                1_c_int64_t), offset_elements, error_msg)) return
+                end if
+            end do
+        end select
+        if (.not. emit_free(context%session, snapshot, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_alloc_derived_array_component_assignment
 
     subroutine lower_alloc_array_component_section_assignment(arena, node, target, &
                                                                context, error_msg)

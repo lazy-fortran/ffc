@@ -111,6 +111,7 @@
 
         do i = 1, size(context%derived_types)
             context%derived_types(i)%name = ''
+            context%derived_types(i)%layout_registered = .false.
             context%derived_types(i)%component_count = 0
             context%derived_types(i)%duplicate_binding_name = ''
             if (allocated(context%derived_types(i)%component_names)) then
@@ -129,6 +130,7 @@
         select type (program => arena%entries(root_index)%node)
         type is (program_node)
             if (.not. allocated(program%body_indices)) return
+            call reserve_derived_type_names(arena, program%body_indices, context)
             do i = 1, size(program%body_indices)
                 select type (node => arena%entries(program%body_indices(i))%node)
                 type is (derived_type_node)
@@ -148,6 +150,7 @@
             ! Multi-unit source (#2830 container): register derived types from
             ! every contained module and any top-level type, as for a program.
             if (.not. allocated(program%body_indices)) return
+            call reserve_derived_type_names(arena, program%body_indices, context)
             do i = 1, size(program%body_indices)
                 select type (node => arena%entries(program%body_indices(i))%node)
                 type is (derived_type_node)
@@ -170,6 +173,31 @@
             if (len_trim(error_msg) > 0) return
         end select
     end subroutine collect_derived_type_definitions
+
+    subroutine reserve_derived_type_names(arena, indices, context)
+        ! Pointer components may name a derived type defined later in the same
+        ! scoping unit. Reserve every local type name before collecting any
+        ! layout so those forward references resolve to a stable type index.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        integer :: i, type_index
+
+        do i = 1, size(indices)
+            if (.not. node_exists(arena, indices(i))) cycle
+            select type (node => arena%entries(indices(i))%node)
+            type is (derived_type_node)
+                if (.not. allocated(node%name)) cycle
+                if (find_derived_type(context, trim(node%name)) > 0) cycle
+                call grow_derived_types(context)
+                type_index = context%derived_type_count + 1
+                context%derived_types(type_index)%name = trim(node%name)
+                context%derived_types(type_index)%layout_registered = .false.
+                context%derived_types(type_index)%component_count = 0
+                context%derived_type_count = type_index
+            end select
+        end do
+    end subroutine reserve_derived_type_names
 
     subroutine collect_module_derived_types(arena, mod_node, context, error_msg)
         ! Register module-defined derived types into the derived-type table so a
@@ -633,13 +661,15 @@
 
         type_index = find_derived_type(context, layout_name)
         if (type_index > 0) then
-            call set_empty(error_msg)
-            return
+            if (context%derived_types(type_index)%layout_registered) then
+                call set_empty(error_msg)
+                return
+            end if
+        else
+            call grow_derived_types(context)
+            type_index = context%derived_type_count + 1
+            context%derived_type_count = type_index
         end if
-
-        call grow_derived_types(context)
-
-        type_index = context%derived_type_count + 1
         ! A module may reject a type after partially collecting its layout. The
         ! module collector intentionally keeps going for unrelated declarations;
         ! clear the reusable slot first so the failed type cannot contaminate
@@ -683,6 +713,7 @@
         if (allocated(context%derived_types(type_index)%binding_pass_args)) &
             deallocate(context%derived_types(type_index)%binding_pass_args)
         context%derived_types(type_index)%name = trim(layout_name)
+        context%derived_types(type_index)%layout_registered = .false.
         context%derived_types(type_index)%binding_count = 0
         if (allocated(node%extends_parent)) then
             parent_name = trim(node%extends_parent)
@@ -713,6 +744,7 @@
         if (len_trim(error_msg) > 0) return
 
         context%derived_type_count = type_index
+        context%derived_types(type_index)%layout_registered = .true.
         call set_empty(error_msg)
     end subroutine register_derived_type_layout
 

@@ -534,6 +534,11 @@
         nested_type = context%derived_types(type_index)%component_type_index(comp_index)
         if (nested_type /= 0) then
             if (component_is_alloc_array(context, type_index, comp_index)) return
+            if (component_is_pointer(context, type_index, comp_index)) then
+                constructor_component_storeable = &
+                    nested_element_count(context, type_index, comp_index) == 1
+                return
+            end if
             nested_count = nested_element_count(context, type_index, comp_index)
             if (nested_count /= 1) return
             constructor_component_storeable = &
@@ -567,10 +572,10 @@
         do c = 1, context%derived_types(type_index)%component_count
             if (component_is_allocatable(context, type_index, c) .or. &
                 component_is_alloc_array(context, type_index, c)) return
-            if (component_is_pointer(context, type_index, c)) return
             nested_type = context%derived_types(type_index)% &
                           component_type_index(c)
             if (nested_type /= 0) then
+                if (component_is_pointer(context, type_index, c)) cycle
                 if (nested_element_count(context, type_index, c) /= 1) return
                 if (.not. plain_constructor_type_supported(context, nested_type)) &
                     return
@@ -722,6 +727,12 @@
             return
         end if
         if (nested_type /= 0) then
+            if (component_is_pointer(context, type_index, comp_index)) then
+                call emit_pointer_constructor_component(arena, context, &
+                    context%symbols(symbol_index)%element_address, type_index, &
+                    comp_index, value_index, error_msg)
+                return
+            end if
             call emit_component_slot_address(context, symbol_index, type_index, &
                                              comp_index, nested_address, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -846,6 +857,11 @@
         if (len_trim(error_msg) > 0) return
         nested_type = context%derived_types(type_index)%component_type_index(comp_index)
         if (nested_type /= 0) then
+            if (component_is_pointer(context, type_index, comp_index)) then
+                call emit_pointer_constructor_component(arena, context, &
+                    base_address, type_index, comp_index, value_index, error_msg)
+                return
+            end if
             call emit_nested_constructor_value(arena, context, component_address, &
                                                nested_type, value_index, error_msg)
             return
@@ -874,6 +890,62 @@
                                         component_value, component_address, &
                                         error_msg)
     end subroutine emit_constructor_component_at_address
+
+    subroutine emit_pointer_constructor_component(arena, context, base_address, &
+                                                  type_index, comp_index, &
+                                                  value_index, error_msg)
+        ! A derived pointer component in a structure constructor stores the
+        ! target object's address, rather than an inline nested constructor.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: base_address
+        integer, intent(in) :: type_index, comp_index, value_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot_address, target_address
+        character(len=:), allocatable :: target_name, name_error
+        integer :: target_symbol, target_type
+
+        call component_address_from_base(context, base_address, type_index, &
+                                          comp_index, slot_address, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. is_identifier(arena, value_index)) then
+            error_msg = 'derived pointer constructor component requires a target variable'
+            return
+        end if
+        call get_identifier_name(arena, value_index, target_name, name_error)
+        if (len_trim(name_error) > 0) then
+            error_msg = name_error
+            return
+        end if
+        target_symbol = find_symbol_compat(context, target_name)
+        if (target_symbol <= 0) then
+            error_msg = 'pointer constructor target was not declared: '// &
+                        trim(target_name)
+            return
+        end if
+        target_type = context%derived_types(type_index)% &
+            component_type_index(comp_index)
+        if (.not. context%symbols(target_symbol)%is_derived .or. &
+            context%symbols(target_symbol)%derived_type_index /= target_type) then
+            error_msg = 'pointer constructor target derived types do not match'
+            return
+        end if
+        if (.not. (context%symbols(target_symbol)%is_target .or. &
+                   context%symbols(target_symbol)%is_pointer .or. &
+                   context%symbols(target_symbol)%is_dummy_argument)) then
+            error_msg = 'right of a derived pointer constructor is not a target: '// &
+                        trim(target_name)
+            return
+        end if
+        if (context%symbols(target_symbol)%has_address) then
+            target_address = context%symbols(target_symbol)%element_address
+        else
+            target_address = null_ptr_operand(context)
+        end if
+        if (.not. emit_ptr_store(context%session, target_address, slot_address, &
+                                 error_msg)) return
+        call set_empty(error_msg)
+    end subroutine emit_pointer_constructor_component
 
     subroutine component_address_from_base(context, base_address, type_index, &
                                            comp_index, component_address, &

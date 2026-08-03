@@ -450,6 +450,7 @@ module session_program_lowering_types
 
     type, public :: derived_type_info_t
         character(len=64) :: name = ''
+        logical :: layout_registered = .false.
         integer :: component_count = 0
         character(len=64), allocatable :: component_names(:)
         logical, allocatable :: component_has_default(:)

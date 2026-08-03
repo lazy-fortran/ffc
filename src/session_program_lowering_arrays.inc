@@ -750,6 +750,19 @@
                 end if
             end if
             if (.not. site_ok) then
+                select type (actual => context%arena%entries( &
+                        arg_indices(param_pos))%node)
+                type is (array_literal_node)
+                    if (allocated(actual%element_indices)) then
+                        if (size(actual%element_indices) == 0 .and. dim_count == 1) then
+                            site_extents(1) = 0
+                            site_ok = .true.
+                        end if
+                    end if
+                class default
+                end select
+            end if
+            if (.not. site_ok) then
                 call section_actual_decl_extents(context, &
                     arg_indices(param_pos), dim_count, site_extents, site_ok)
             end if
