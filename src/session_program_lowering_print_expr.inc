@@ -621,6 +621,20 @@
                 call lower_print_logical_value(context, value, error_msg)
                 return
             end if
+            if (allocated(node%name)) then
+                ! ALLOCATED and ASSOCIATED are scalar logical inquiries, not
+                ! integer intrinsics. Route them through the shared logical
+                ! dispatcher so PRINT sees the same descriptor/component state
+                ! as an IF condition.
+                if (same_name(node%name, 'allocated') .or. &
+                    same_name(node%name, 'associated')) then
+                    call lower_logical_expression(arena, node_index, context, &
+                                                  value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call lower_print_logical_value(context, value, error_msg)
+                    return
+                end if
+            end if
             ! obj%comp(i): array-component element, formatted by element kind.
             if (node%base_expr_index > 0) then
                 call lower_print_component_element_value(arena, node, node_index, &

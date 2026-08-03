@@ -146,6 +146,7 @@ module session_program_lowering
         LR_FCMP_OLE, &
         LR_FCMP_OEQ, &
         LR_FCMP_ONE, &
+        LR_FCMP_UNO, &
         LR_CMP_SGE, &
         LR_CMP_SGT, &
         LR_CMP_SLE, &
@@ -941,7 +942,7 @@ module session_program_lowering
             integer(c_int64_t) :: value
             character(len=*), intent(in) :: text
         end function logical_i32_value
-        module function literal_is_f64(text, context, reference_index)
+        recursive module function literal_is_f64(text, context, reference_index)
             logical :: literal_is_f64
             character(len=*), intent(in) :: text
             type(lowering_context_t), intent(in) :: context

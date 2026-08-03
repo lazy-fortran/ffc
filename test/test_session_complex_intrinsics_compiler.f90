@@ -49,6 +49,26 @@ program test_session_complex_intrinsics_compiler
         'end program main', &
         'abs8')) all_passed = .false.
 
+    ! IEEE_VALUE NaNs survive complex ABS, and IEEE_IS_NAN observes both kinds.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  use, intrinsic :: ieee_arithmetic, only: ieee_value, '// &
+        'ieee_quiet_nan, ieee_is_nan'//new_line('a')// &
+        '  complex :: a'//new_line('a')// &
+        '  complex(8) :: b'//new_line('a')// &
+        '  real :: r'//new_line('a')// &
+        '  real(8) :: s'//new_line('a')// &
+        '  a = cmplx(ieee_value(1.0, ieee_quiet_nan), 0.0)'//new_line('a')// &
+        '  r = abs(a)'//new_line('a')// &
+        '  if (.not. ieee_is_nan(r)) error stop 1'//new_line('a')// &
+        '  b = cmplx(0.0d0, ieee_value(1.0d0, ieee_quiet_nan), 8)'// &
+        new_line('a')// &
+        '  s = abs(b)'//new_line('a')// &
+        '  if (.not. ieee_is_nan(s)) error stop 2'//new_line('a')// &
+        '  print *, "all tests passed"'//new_line('a')// &
+        'end program main', &
+        'abs_ieee_nan')) all_passed = .false.
+
     ! cmplx with keyword kind selector on two real arguments
     if (.not. matches_gfortran( &
         'program main'//new_line('a')// &

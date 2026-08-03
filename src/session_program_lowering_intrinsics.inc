@@ -572,6 +572,73 @@
         call select_value(context, condition, arg, negative, value, error_msg)
     end subroutine lower_f32_abs_intrinsic
 
+    subroutine lower_ieee_value_intrinsic(arena, node, context, value_kind, &
+                                          value, error_msg)
+        use, intrinsic :: ieee_arithmetic, only: ieee_quiet_nan, ieee_value
+        use, intrinsic :: iso_c_binding, only: c_double, c_float
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: class_name
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        if (.not. is_identifier(arena, node%arg_indices(2))) then
+            error_msg = 'ieee_value currently supports IEEE_QUIET_NAN only'
+            return
+        end if
+        call get_identifier_name(arena, node%arg_indices(2), class_name, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. same_name(class_name, 'ieee_quiet_nan')) then
+            error_msg = 'ieee_value currently supports IEEE_QUIET_NAN only'
+            return
+        end if
+
+        select case (value_kind)
+        case (VALUE_F32)
+            value = liric_f32_immediate(context%session, &
+                ieee_value(0.0_c_float, ieee_quiet_nan))
+        case (VALUE_F64)
+            value = liric_f64_immediate(context%session, &
+                ieee_value(0.0_c_double, ieee_quiet_nan))
+        case default
+            error_msg = 'ieee_value requires a real(4) or real(8) argument'
+        end select
+    end subroutine lower_ieee_value_intrinsic
+
+    subroutine lower_ieee_is_nan_intrinsic(arena, node, context, value, &
+                                            error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: arg
+        integer :: value_kind
+
+        if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+        value_kind = scalar_real_expr_kind(arena, node%arg_indices(1), context)
+        select case (value_kind)
+        case (VALUE_F32)
+            call lower_f32_expression(arena, node%arg_indices(1), context, arg, &
+                                       error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_UNO, arg, arg, &
+                                          value, error_msg)) return
+        case (VALUE_F64)
+            call lower_f64_expression(arena, node%arg_indices(1), context, arg, &
+                                       error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_UNO, arg, arg, &
+                                          value, error_msg)) return
+        case default
+            error_msg = 'ieee_is_nan requires a real(4) or real(8) argument'
+        end select
+    end subroutine lower_ieee_is_nan_intrinsic
+
     subroutine lower_f32_minmax_intrinsic(arena, node, predicate, context, &
                                           value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -679,7 +746,7 @@
                                         error_msg)) return
     end subroutine lower_f32_intrinsic_arg
 
-    subroutine lower_f64_intrinsic_call(arena, node, intrinsic_id, context, &
+    recursive subroutine lower_f64_intrinsic_call(arena, node, intrinsic_id, context, &
                                         value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
@@ -868,7 +935,7 @@
                                         error_msg)) return
     end subroutine lower_i32_from_f64_intrinsic
 
-    subroutine lower_f64_abs_intrinsic(arena, node, context, value, error_msg)
+    recursive subroutine lower_f64_abs_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -1339,7 +1406,7 @@
                                       error_msg)) return
     end subroutine lower_f64_libm_call
 
-    subroutine lower_f64_intrinsic_arg(arena, node_index, context, value, &
+    recursive subroutine lower_f64_intrinsic_arg(arena, node_index, context, value, &
                                        error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index

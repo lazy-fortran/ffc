@@ -12,6 +12,7 @@ program test_session_array_mask_reduction_compiler
     if (.not. test_array_vs_constructor()) all_passed = .false.
     if (.not. test_real_and_allocatable()) all_passed = .false.
     if (.not. test_elemental_abs_mask()) all_passed = .false.
+    if (.not. test_complex_allocatable_abs_mask()) all_passed = .false.
     if (.not. test_user_elemental_abs_mask()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -99,6 +100,25 @@ contains
             source, ' values exceed tolerance'//new_line('a'), &
             '/tmp/ffc_mask_elemental_abs')
     end function test_elemental_abs_mask
+
+    logical function test_complex_allocatable_abs_mask()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '    complex(8), allocatable :: z(:)'//new_line('a')// &
+            '    real(8) :: tolerance, magnitude'//new_line('a')// &
+            '    allocate(z(3))'//new_line('a')// &
+            '    z = [(1.0d0, 2.0d0), (3.0d0, 4.0d0), (5.0d0, 6.0d0)]'//new_line('a')// &
+            '    tolerance = 1.0d-6'//new_line('a')// &
+            '    if (.not. any(aimag(z) > tolerance * abs(abs(z)))) error stop 1'//new_line('a')// &
+            '    magnitude = abs(z(1))'//new_line('a')// &
+            '    if (abs(magnitude - sqrt(5.0d0)) > tolerance) error stop 2'//new_line('a')// &
+            '    if (any(abs(abs(z)) < 0.0d0)) error stop 3'//new_line('a')// &
+            '    print *, "ok"'//new_line('a')// &
+            'end program main'
+
+        test_complex_allocatable_abs_mask = expect_output( &
+            source, ' ok'//new_line('a'), '/tmp/ffc_mask_complex_alloc')
+    end function test_complex_allocatable_abs_mask
 
     logical function test_user_elemental_abs_mask()
         character(len=*), parameter :: source = &

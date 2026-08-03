@@ -444,6 +444,8 @@ module session_program_lowering_types
         integer :: vk = VALUE_I32
         integer :: extent = -1
         logical :: apply_abs = .false.
+        logical :: apply_complex_abs = .false.
+        integer :: component = 0
     end type reduction_operand_t
 
     type, public :: derived_type_info_t

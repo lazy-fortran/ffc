@@ -29,7 +29,8 @@
                         trim(node%name)
             return
         end if
-        if (.not. context%symbols(symbol_index)%is_array) then
+        if (.not. context%symbols(symbol_index)%is_array .and. &
+            .not. context%symbols(symbol_index)%is_allocatable) then
             error_msg = trim(node%name)//' is not an array'
             return
         end if
@@ -41,7 +42,14 @@
                                               diagnostic_feature)
         if (len_trim(error_msg) > 0) return
 
-        if (vk == VALUE_C4) then
+        if (context%symbols(symbol_index)%is_allocatable) then
+            call lower_runtime_descriptor_array_element_address(context, &
+                symbol_index, linear_index, re_address, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_ptr_offset(context%session, re_address, &
+                    merge(4_c_int64_t, 8_c_int64_t, vk == VALUE_C4), &
+                    im_address, error_msg)) return
+        else if (vk == VALUE_C4) then
             if (.not. emit_f32_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
                     context%symbols(symbol_index)%element_address, &
@@ -101,6 +109,49 @@
                                           error_msg)) return
         end if
     end subroutine load_complex_array_element
+
+    subroutine load_complex_array_linear_element(context, symbol_index, index, &
+                                                  vk, re_val, im_val, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index, index, vk
+        type(lr_operand_desc_t), intent(out) :: re_val, im_val
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr, re_addr, im_addr
+        integer(c_int64_t) :: stride, component_offset
+
+        call set_empty(error_msg)
+        if (context%symbols(symbol_index)%is_allocatable) then
+            descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+            if (.not. emit_ptr_load(context%session, descriptor, data_ptr, &
+                    error_msg)) return
+            if (vk == VALUE_C4) then
+                stride = 8_c_int64_t
+                component_offset = 4_c_int64_t
+            else
+                stride = 16_c_int64_t
+                component_offset = 8_c_int64_t
+            end if
+            if (.not. emit_ptr_offset(context%session, data_ptr, &
+                    int(index, c_int64_t) * stride, re_addr, error_msg)) return
+            if (.not. emit_ptr_offset(context%session, re_addr, component_offset, &
+                    im_addr, error_msg)) return
+        else
+            call complex_array_linear_addresses(context, symbol_index, index, vk, &
+                                                re_addr, im_addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (vk == VALUE_C4) then
+            if (.not. emit_liric_f32_load(context%session, re_addr, re_val, &
+                    error_msg)) return
+            if (.not. emit_liric_f32_load(context%session, im_addr, im_val, &
+                    error_msg)) return
+        else
+            if (.not. emit_liric_f64_load(context%session, re_addr, re_val, &
+                    error_msg)) return
+            if (.not. emit_liric_f64_load(context%session, im_addr, im_val, &
+                    error_msg)) return
+        end if
+    end subroutine load_complex_array_linear_element
 
     subroutine lower_complex_array_element_assignment(arena, node, target, &
                                                        context, sym_idx, vk, &

@@ -1851,7 +1851,7 @@
         call set_empty(error_msg)
     end subroutine make_complex_reference_argument
 
-integer function expression_value_kind(arena, node_index, context, &
+recursive integer function expression_value_kind(arena, node_index, context, &
                                             default_kind) result(value_kind)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -1941,7 +1941,7 @@ integer function expression_value_kind(arena, node_index, context, &
         end select
     end function expression_value_kind
 
- subroutine call_argument_kinds(arena, node, context, default_kind, &
+ recursive subroutine call_argument_kinds(arena, node, context, default_kind, &
                                    arg_count, arg_kinds)
         ! Expand the actual argument kinds at a call site for generic signature
         ! matching.

@@ -252,19 +252,24 @@
             error_msg = 'module export is not a declaration'
             return
         end select
-        call get_declaration_type_name(arena, var_idx, type_name, kind_err)
-        if (len_trim(kind_err) > 0) then
-            error_msg = kind_err
-            return
-        end if
-        call type_name_value_kind(type_name, line, column, value_kind, &
-                                  kind_err, context)
-        if (len_trim(kind_err) > 0) then
-            error_msg = kind_err
-            return
+        if (module_var_derived_type_index(arena, var_idx, context) > 0) then
+            value_kind = VALUE_DERIVED
+        else
+            call get_declaration_type_name(arena, var_idx, type_name, kind_err)
+            if (len_trim(kind_err) > 0) then
+                error_msg = kind_err
+                return
+            end if
+            call type_name_value_kind(type_name, line, column, value_kind, &
+                                      kind_err, context)
+            if (len_trim(kind_err) > 0) then
+                error_msg = kind_err
+                return
+            end if
         end if
         select case (value_kind)
-        case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL, VALUE_C4, VALUE_C8)
+        case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL, VALUE_C4, VALUE_C8, &
+              VALUE_DERIVED)
         case default
             error_msg = 'direct LIRIC session stores only integer(4), real, '// &
                         'logical, and fixed-size complex module arrays'
@@ -1008,7 +1013,8 @@
         integer(c_int32_t), allocatable, target :: init_slots(:)
         type(c_ptr) :: gtype
         integer(c_int32_t) :: global_id
-        integer :: di, slots
+        integer :: di, slots, extent, lower_bound, element, element_slots
+        integer :: value_kind
         logical(c_bool) :: c_false_local
 
         c_false_local = .false.
@@ -1019,17 +1025,30 @@
         end if
         call get_declaration_var_name(arena, var_idx, var_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        slots = total_component_slots(context, di)
+        element_slots = total_component_slots(context, di)
+        extent = 1
+        lower_bound = 1
+        if (module_declaration_is_array(arena, var_idx)) then
+            call module_array_variable_info(arena, var_idx, context, value_kind, &
+                extent, lower_bound, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        slots = element_slots * extent
         if (slots <= 0) then
             error_msg = 'derived module variable has no storage: '//trim(var_name)
             return
         end if
         allocate (init_slots(slots))
         init_slots = 0_c_int32_t
-        call fill_type_default_slots(context, di, 0, init_slots)
-        call fold_module_derived_constructor_slots(arena, var_idx, di, context, &
-                                                   init_slots, error_msg)
-        if (len_trim(error_msg) > 0) return
+        do element = 0, extent - 1
+            call fill_type_default_slots(context, di, element * element_slots, &
+                                         init_slots)
+        end do
+        if (.not. module_declaration_is_array(arena, var_idx)) then
+            call fold_module_derived_constructor_slots(arena, var_idx, di, context, &
+                                                       init_slots, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         mangled = module_procedure_mangled(module_name, trim(var_name))
         call to_c_chars(mangled, c_name)
         gtype = lr_type_array_s(context%session%handle, &
@@ -1344,7 +1363,7 @@
         integer(c_int32_t), intent(in) :: global_id
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: di, sym_idx
+        integer :: di, sym_idx, array_size, array_lower, value_kind
 
         di = module_var_derived_type_index(arena, var_idx, context)
         if (di <= 0) then
@@ -1359,6 +1378,16 @@
         context%symbols(sym_idx)%is_derived = .true.
         context%symbols(sym_idx)%derived_type_index = di
         context%symbols(sym_idx)%array_size = total_component_slots(context, di)
+        if (module_declaration_is_array(arena, var_idx)) then
+            call module_array_variable_info(arena, var_idx, context, value_kind, &
+                array_size, array_lower, error_msg)
+            if (len_trim(error_msg) > 0) return
+            context%symbols(sym_idx)%is_array = .true.
+            context%symbols(sym_idx)%array_rank = 1
+            context%symbols(sym_idx)%array_size = array_size
+            context%symbols(sym_idx)%array_dim_sizes(1) = array_size
+            context%symbols(sym_idx)%array_dim_lowers(1) = array_lower
+        end if
         context%symbols(sym_idx)%element_address%kind = LR_OP_KIND_GLOBAL
         context%symbols(sym_idx)%element_address%payload = int(global_id, c_int64_t)
         context%symbols(sym_idx)%element_address%typ = &

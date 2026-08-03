@@ -2,8 +2,6 @@
 # Format: path # owner=ORG/REPO#N; reason=text or path # scope=TAG; reason=text
 # Lines starting with # and blank lines are ignored.
 # Promote entries by removing them when ffc starts passing.
-abs_04.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
-abs_06.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 allocatable_cchar_01.f90 # owner=lazy-fortran/ffc#350; reason=centralize runtime-length character operations
 allocatable_component_assign_recursive_01.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 allocatable_component_reshape_unallocated_01.f90 # owner=lazy-fortran/ffc#335; reason=migrate runtime automatic arrays to descriptors
@@ -78,9 +76,6 @@ allocate_69.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed r
 allocate_70.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
 allocate_72.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 allocate_73.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-allocated_01.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
-allocated_04.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
-allocated_05.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 allocate_source_ptr_01.f90 # owner=lazy-fortran/ffc#428; reason=provide descriptor-backed runtime allocation helpers
 any_01.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 any_02.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views

@@ -91,7 +91,8 @@
             if (.not. allocated(node%name)) return
             sym = find_symbol_compat(context, node%name)
             if (sym <= 0) return
-            if (.not. context%symbols(sym)%is_array) return
+            if (.not. context%symbols(sym)%is_array .and. &
+                .not. context%symbols(sym)%is_allocatable) return
             is_c = context%symbols(sym)%value_kind == want_kind
         class default
             if (.not. is_identifier(arena, node_index)) return
@@ -284,24 +285,27 @@
             ext_idx = 0
             if (allocated(rhs%name)) ext_idx = external_procedure_index(context, &
                                                                          rhs%name)
-            if (ext_idx > 0 .and. context%external_procedures(ext_idx)% &
-                    return_value_kind == VALUE_C4) then
-                call lower_external_complex_call(arena, rhs, ext_idx, context, &
-                    .false., re_val, im_val, error_msg)
-                return
-            else if (ext_idx > 0 .and. context%external_procedures(ext_idx)% &
-                    return_value_kind == VALUE_C8) then
-                call lower_external_complex_call(arena, rhs, ext_idx, context, &
-                    .true., lre, lim, error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (.not. emit_liric_f64_to_f32(context%session, lre, re_val, &
-                                                error_msg)) return
-                if (.not. emit_liric_f64_to_f32(context%session, lim, im_val, &
-                                                error_msg)) return
-                return
+            if (ext_idx > 0) then
+                if (context%external_procedures(ext_idx)%return_value_kind == &
+                        VALUE_C4) then
+                    call lower_external_complex_call(arena, rhs, ext_idx, context, &
+                        .false., re_val, im_val, error_msg)
+                    return
+                else if (context%external_procedures(ext_idx)%return_value_kind == &
+                        VALUE_C8) then
+                    call lower_external_complex_call(arena, rhs, ext_idx, context, &
+                        .true., lre, lim, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f64_to_f32(context%session, lre, re_val, &
+                                                    error_msg)) return
+                    if (.not. emit_liric_f64_to_f32(context%session, lim, im_val, &
+                                                    error_msg)) return
+                    return
+                end if
             end if
             if (sym > 0) then
-                if (context%symbols(sym)%is_array .and. &
+                if ((context%symbols(sym)%is_array .or. &
+                     context%symbols(sym)%is_allocatable) .and. &
                     context%symbols(sym)%value_kind == VALUE_C4) then
                     call load_complex_array_element(arena, rhs, context, &
                         VALUE_C4, re_val, im_val, error_msg)
@@ -416,24 +420,27 @@
             ext_idx = 0
             if (allocated(rhs%name)) ext_idx = external_procedure_index(context, &
                                                                          rhs%name)
-            if (ext_idx > 0 .and. context%external_procedures(ext_idx)% &
-                    return_value_kind == VALUE_C8) then
-                call lower_external_complex_call(arena, rhs, ext_idx, context, &
-                    .true., re_val, im_val, error_msg)
-                return
-            else if (ext_idx > 0 .and. context%external_procedures(ext_idx)% &
-                    return_value_kind == VALUE_C4) then
-                call lower_external_complex_call(arena, rhs, ext_idx, context, &
-                    .false., lre, lim, error_msg)
-                if (len_trim(error_msg) > 0) return
-                if (.not. emit_liric_f32_to_f64(context%session, lre, re_val, &
-                                                error_msg)) return
-                if (.not. emit_liric_f32_to_f64(context%session, lim, im_val, &
-                                                error_msg)) return
-                return
+            if (ext_idx > 0) then
+                if (context%external_procedures(ext_idx)%return_value_kind == &
+                        VALUE_C8) then
+                    call lower_external_complex_call(arena, rhs, ext_idx, context, &
+                        .true., re_val, im_val, error_msg)
+                    return
+                else if (context%external_procedures(ext_idx)%return_value_kind == &
+                        VALUE_C4) then
+                    call lower_external_complex_call(arena, rhs, ext_idx, context, &
+                        .false., lre, lim, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f32_to_f64(context%session, lre, re_val, &
+                                                    error_msg)) return
+                    if (.not. emit_liric_f32_to_f64(context%session, lim, im_val, &
+                                                    error_msg)) return
+                    return
+                end if
             end if
             if (sym > 0) then
-                if (context%symbols(sym)%is_array .and. &
+                if ((context%symbols(sym)%is_array .or. &
+                     context%symbols(sym)%is_allocatable) .and. &
                     context%symbols(sym)%value_kind == VALUE_C8) then
                     call load_complex_array_element(arena, rhs, context, &
                         VALUE_C8, re_val, im_val, error_msg)
@@ -846,7 +853,8 @@
             if (.not. allocated(arg%arg_indices)) return
             sym = find_symbol_compat(context, arg%name)
             if (sym <= 0) return
-            if (.not. context%symbols(sym)%is_array) return
+            if (.not. context%symbols(sym)%is_array .and. &
+                .not. context%symbols(sym)%is_allocatable) return
             matches = context%symbols(sym)%value_kind == want_kind
         end select
     end function is_complex_array_element_arg

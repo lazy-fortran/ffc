@@ -204,6 +204,13 @@
         call_name = degeneric_call_name(context, node%name, &
             call_arg_count, call_arg_kinds, call_arg_ranks)
 
+        if (same_name(call_name, 'ieee_is_nan') .and. &
+            .not. is_contained_logical_function(context, call_name)) then
+            call lower_ieee_is_nan_intrinsic(arena, node, context, value, &
+                                             error_msg)
+            return
+        end if
+
         if (same_name(call_name, 'kind') .and. .not. &
             is_contained_logical_function(context, call_name)) then
             call lower_kind_intrinsic(arena, node, context, value, error_msg)
@@ -623,6 +630,13 @@
         call_name = degeneric_call_name(context, node%name, &
             call_arg_count, call_arg_kinds, call_arg_ranks)
 
+        if (same_name(call_name, 'ieee_value') .and. &
+            .not. is_contained_f32_function(context, call_name)) then
+            call lower_ieee_value_intrinsic(arena, node, context, VALUE_F32, &
+                                            value, error_msg)
+            return
+        end if
+
         external_index = external_procedure_index(context, call_name)
         if (external_index > 0) then
             if (.not. context%external_procedures(external_index)%by_reference) then
@@ -834,7 +848,7 @@
         end select
     end subroutine lower_f64_expression
 
-    subroutine lower_f64_call(arena, node, context, value, error_msg)
+    recursive subroutine lower_f64_call(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -886,6 +900,13 @@
         if (len_trim(error_msg) > 0) return
         call_name = degeneric_call_name(context, node%name, &
             call_arg_count, call_arg_kinds, call_arg_ranks)
+
+        if (same_name(call_name, 'ieee_value') .and. &
+            .not. is_contained_f64_function(context, call_name)) then
+            call lower_ieee_value_intrinsic(arena, node, context, VALUE_F64, &
+                                            value, error_msg)
+            return
+        end if
 
         if (external_procedure_index(context, call_name) > 0) then
             if (context%external_procedures( &

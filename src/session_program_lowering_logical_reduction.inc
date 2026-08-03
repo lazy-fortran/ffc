@@ -241,6 +241,8 @@
         side%vk = VALUE_I32
         side%extent = -1
         side%apply_abs = .false.
+        side%apply_complex_abs = .false.
+        side%component = 0
         if (.not. node_exists(arena, idx)) return
 
         if (is_binary_op(arena, idx)) then
@@ -286,6 +288,24 @@
                 ok = .true.
                 return
             end if
+            if (trim(bin_op) == '+' .or. trim(bin_op) == '-' .or. &
+                trim(bin_op) == '*' .or. trim(bin_op) == '/' .or. &
+                trim(bin_op) == '**') then
+                call classify_mask_side(arena, context, bin_left, left_side, lok)
+                call classify_mask_side(arena, context, bin_right, right_side, rok)
+                if (.not. lok .or. .not. rok) return
+                if (left_side%extent > 0 .or. right_side%extent > 0) then
+                    side%mode = 4
+                    side%scalar_idx = idx
+                    side%sym = left_side%sym
+                    if (side%sym <= 0) side%sym = right_side%sym
+                    side%vk = merge(VALUE_F64, VALUE_F32, &
+                        left_side%vk == VALUE_F64 .or. right_side%vk == VALUE_F64)
+                    side%extent = max(left_side%extent, right_side%extent)
+                    ok = side%extent > 0
+                    return
+                end if
+            end if
         end if
 
         select type (n => arena%entries(idx)%node)
@@ -325,23 +345,48 @@
                 ok = .true.
                 return
             end if
-            if (.not. n%is_intrinsic) return
-            if (.not. allocated(n%name)) return
-            if (.not. same_name(n%name, 'abs')) return
-            if (.not. allocated(n%arg_indices)) return
-            if (size(n%arg_indices) /= 1) return
-            call classify_mask_side(arena, context, n%arg_indices(1), side, ok)
-            if (.not. ok) return
-            if (side%extent <= 0) then
+            if (n%is_intrinsic .and. allocated(n%name) .and. &
+                same_name(n%name, 'abs') .and. allocated(n%arg_indices) .and. &
+                size(n%arg_indices) == 1) then
+                call classify_mask_side(arena, context, n%arg_indices(1), side, ok)
+                if (.not. ok) return
+                if (side%extent <= 0) then
+                    ok = .false.
+                    return
+                end if
+                if (side%vk /= VALUE_F32 .and. side%vk /= VALUE_F64) then
+                    if (side%vk == VALUE_C4 .or. side%vk == VALUE_C8) then
+                        side%vk = merge(VALUE_F32, VALUE_F64, side%vk == VALUE_C4)
+                        side%apply_complex_abs = .true.
+                    else
+                        ok = .false.
+                        return
+                    end if
+                end if
+                side%apply_abs = .true.
+                return
+            end if
+        end select
+
+        select type (n => arena%entries(idx)%node)
+        type is (call_or_subscript_node)
+            if (.not. n%is_array_access .and. allocated(n%name) .and. &
+                allocated(n%arg_indices) .and. size(n%arg_indices) == 1 .and. &
+                same_name(n%name, 'aimag')) then
+                call classify_mask_side(arena, context, n%arg_indices(1), side, ok)
+                if (.not. ok .or. side%extent <= 0) then
+                    ok = .false.
+                    return
+                end if
+                if (side%vk == VALUE_C4 .or. side%vk == VALUE_C8) then
+                    side%vk = merge(VALUE_F32, VALUE_F64, side%vk == VALUE_C4)
+                    side%component = 1
+                    ok = .true.
+                    return
+                end if
                 ok = .false.
                 return
             end if
-            if (side%vk /= VALUE_F32 .and. side%vk /= VALUE_F64) then
-                ok = .false.
-                return
-            end if
-            side%apply_abs = .true.
-            return
         end select
 
         if (is_identifier(arena, idx)) then
@@ -456,6 +501,29 @@
         call set_empty(error_msg)
         select case (side%mode)
         case (1)
+            if (side%apply_complex_abs .or. side%component == 1) then
+                block
+                    type(lr_operand_desc_t) :: re_value, im_value
+                    integer :: complex_vk
+                    complex_vk = merge(VALUE_C4, VALUE_C8, side%vk == VALUE_F32)
+                    call load_complex_array_linear_element(context, side%sym, i, &
+                        complex_vk, re_value, im_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (side%component == 1) then
+                        raw = im_value
+                    else if (side%vk == VALUE_F32) then
+                        if (.not. emit_liric_f32_call(context%session, 'hypotf', &
+                                [re_value, im_value], raw, error_msg)) return
+                    else
+                        if (.not. emit_liric_f64_call(context%session, 'hypot', &
+                                [re_value, im_value], raw, error_msg)) return
+                    end if
+                    value = raw
+                    if (side%apply_abs) call mask_real_abs(context, compare_vk, &
+                        value, error_msg)
+                    return
+                end block
+            end if
             call load_array_linear_element(context, side%sym, &
                                            int(i, c_int64_t), raw, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -482,13 +550,165 @@
             call mask_scalar_element(arena, expr_idx, context, compare_vk, &
                                      is_equiv, value, error_msg)
         case (4)
-            call lower_array_elementwise_value(arena, side%scalar_idx, side%sym, &
+            call lower_mask_expression_element(arena, side%scalar_idx, side%vk, &
                                                i, context, value, error_msg)
         case default
             call mask_scalar_element(arena, side%scalar_idx, context, &
                                      compare_vk, is_equiv, value, error_msg)
         end select
     end subroutine mask_side_element
+
+    recursive subroutine lower_mask_expression_element(arena, idx, compare_vk, &
+                                                       linear_index, context, &
+                                                       value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx, compare_vk, linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, op, err
+        integer :: sym, left, right, line, column, opcode
+        type(lr_operand_desc_t) :: lhs, rhs, re_value, im_value, promoted
+        integer :: complex_vk
+
+        call set_empty(error_msg)
+        if (is_identifier(arena, idx)) then
+            call get_identifier_name(arena, idx, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            sym = find_symbol_compat(context, name)
+            if (sym > 0 .and. (context%symbols(sym)%is_array .or. &
+                (context%symbols(sym)%is_allocatable .and. &
+                 context%symbols(sym)%array_rank >= 1))) then
+                call load_array_linear_element(context, sym, &
+                    int(linear_index, c_int64_t), value, error_msg)
+                return
+            end if
+            if (compare_vk == VALUE_F32) then
+                call lower_f32_expression(arena, idx, context, value, error_msg)
+            else
+                call lower_f64_expression(arena, idx, context, value, error_msg)
+            end if
+            return
+        end if
+
+        select type (node => arena%entries(idx)%node)
+        type is (call_or_subscript_node)
+            if (allocated(node%name) .and. allocated(node%arg_indices) .and. &
+                size(node%arg_indices) == 1 .and. .not. node%is_array_access) then
+                if (same_name(node%name, 'abs')) then
+                    if (is_complex_valued(arena, node%arg_indices(1), context, &
+                            VALUE_C4)) then
+                        complex_vk = VALUE_C4
+                    else if (is_complex_valued(arena, node%arg_indices(1), context, &
+                            VALUE_C8)) then
+                        complex_vk = VALUE_C8
+                    else
+                        call lower_mask_expression_element(arena, node%arg_indices(1), &
+                            compare_vk, linear_index, context, value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        call mask_real_abs(context, compare_vk, value, error_msg)
+                        return
+                    end if
+                    call mask_complex_array_element(arena, node%arg_indices(1), &
+                        linear_index, context, complex_vk, re_value, im_value, &
+                        error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (complex_vk == VALUE_C4) then
+                        if (.not. emit_liric_f32_call(context%session, 'hypotf', &
+                                [re_value, im_value], value, error_msg)) return
+                        if (compare_vk == VALUE_F64) then
+                            if (.not. emit_liric_f32_to_f64(context%session, value, &
+                                    promoted, error_msg)) return
+                            value = promoted
+                        end if
+                    else
+                        if (.not. emit_liric_f64_call(context%session, 'hypot', &
+                                [re_value, im_value], value, error_msg)) return
+                    end if
+                    return
+                else if (same_name(node%name, 'aimag')) then
+                    if (is_complex_valued(arena, node%arg_indices(1), context, &
+                            VALUE_C4)) then
+                        complex_vk = VALUE_C4
+                    else
+                        complex_vk = VALUE_C8
+                    end if
+                    call mask_complex_array_element(arena, node%arg_indices(1), &
+                        linear_index, context, complex_vk, re_value, im_value, &
+                        error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    value = im_value
+                    if (complex_vk == VALUE_C4 .and. compare_vk == VALUE_F64) then
+                        if (.not. emit_liric_f32_to_f64(context%session, value, &
+                                promoted, error_msg)) return
+                        value = promoted
+                    end if
+                    return
+                end if
+            end if
+        end select
+
+        if (is_binary_op(arena, idx)) then
+            call get_binary_op_info(arena, idx, op, left, right, line, column, err)
+            if (len_trim(err) > 0) then
+                error_msg = err
+                return
+            end if
+            call lower_mask_expression_element(arena, left, compare_vk, linear_index, &
+                context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_mask_expression_element(arena, right, compare_vk, linear_index, &
+                context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (trim(op) == '**') then
+                if (compare_vk == VALUE_F32) then
+                    if (.not. emit_liric_f32_call(context%session, 'powf', &
+                            [lhs, rhs], value, error_msg)) return
+                else
+                    if (.not. emit_liric_f64_call(context%session, 'pow', &
+                            [lhs, rhs], value, error_msg)) return
+                end if
+                return
+            end if
+            call real_opcode(op, line, column, opcode, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (compare_vk == VALUE_F32) then
+                if (.not. emit_liric_f32_binary(context%session, opcode, lhs, rhs, &
+                        value, error_msg)) return
+            else
+                if (.not. emit_liric_f64_binary(context%session, opcode, lhs, rhs, &
+                        value, error_msg)) return
+            end if
+            return
+        end if
+        error_msg = 'array mask expression is not supported'
+    end subroutine lower_mask_expression_element
+
+    subroutine mask_complex_array_element(arena, idx, linear_index, context, vk, &
+                                          re_value, im_value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx, linear_index, vk
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: re_value, im_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: sym
+
+        if (.not. is_identifier(arena, idx)) then
+            error_msg = 'complex array mask operand is not an identifier'
+            return
+        end if
+        call get_identifier_name(arena, idx, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        sym = find_symbol_compat(context, name)
+        if (sym <= 0 .or. .not. context%symbols(sym)%is_array .and. &
+            .not. context%symbols(sym)%is_allocatable) then
+            error_msg = 'complex array mask operand was not declared: '//trim(name)
+            return
+        end if
+        call load_complex_array_linear_element(context, sym, linear_index, vk, &
+                                               re_value, im_value, error_msg)
+    end subroutine mask_complex_array_element
 
     subroutine mask_real_abs(context, value_kind, value, error_msg)
         type(lowering_context_t), intent(inout) :: context

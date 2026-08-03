@@ -16,6 +16,8 @@ program test_session_procedure_dummy_argument
     print *, '=== procedure dummy argument compiler test ==='
 
     all_passed = .true.
+    if (.not. test_pure_formal_interfaces()) all_passed = .false.
+    if (.not. test_issue_2950_shape()) all_passed = .false.
     if (.not. test_real_function_dummy()) all_passed = .false.
     if (.not. test_intrinsic_actual_argument()) all_passed = .false.
     if (.not. test_wrong_result_is_observed()) all_passed = .false.
@@ -26,6 +28,77 @@ program test_session_procedure_dummy_argument
     print *, 'PASS: calls through procedure dummy arguments run correctly'
 
 contains
+
+    logical function test_pure_formal_interfaces()
+        ! The #609 neighbour has both a PURE and an impure formal-procedure
+        ! interface.  Exercise each body so the declarations are not merely
+        ! accepted as unused specification-part nodes.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  if (pure_apply(increment) /= 4) stop 1'//new_line('a')// &
+            '  if (impure_apply(increment) /= 4) stop 1'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  pure function pure_apply(proc) result(res)'//new_line('a')// &
+            '    integer :: res'//new_line('a')// &
+            '    interface'//new_line('a')// &
+            '      pure function proc()'//new_line('a')// &
+            '        integer :: proc'//new_line('a')// &
+            '      end function proc'//new_line('a')// &
+            '    end interface'//new_line('a')// &
+            '    res = proc()'//new_line('a')// &
+            '  end function pure_apply'//new_line('a')// &
+            '  function impure_apply(proc) result(res)'//new_line('a')// &
+            '    integer :: res'//new_line('a')// &
+            '    interface'//new_line('a')// &
+            '      function proc()'//new_line('a')// &
+            '        integer :: proc'//new_line('a')// &
+            '      end function proc'//new_line('a')// &
+            '    end interface'//new_line('a')// &
+            '    res = proc()'//new_line('a')// &
+            '  end function impure_apply'//new_line('a')// &
+            '  pure function increment() result(res)'//new_line('a')// &
+            '    integer :: res'//new_line('a')// &
+            '    res = 4'//new_line('a')// &
+            '  end function increment'//new_line('a')// &
+            'end program main'
+
+        test_pure_formal_interfaces = expect_exit_status( &
+            source, 0, '/tmp/ffc_proc_dummy_pure_formal')
+    end function test_pure_formal_interfaces
+
+    logical function test_issue_2950_shape()
+        ! Keep the exact #2950 actuals in a behavioral test: an intrinsic
+        ! procedure and a contained function both cross the dummy interface.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  intrinsic dcos'//new_line('a')// &
+            '  call apply(dcos)'//new_line('a')// &
+            '  call apply(expression)'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine apply(f)'//new_line('a')// &
+            '    interface'//new_line('a')// &
+            '      function f(x)'//new_line('a')// &
+            '        real(kind=8) :: f'//new_line('a')// &
+            '        real(kind=8), intent(in) :: x'//new_line('a')// &
+            '      end function f'//new_line('a')// &
+            '    end interface'//new_line('a')// &
+            '    real(kind=8) :: value'//new_line('a')// &
+            '    value = f(1.0d0)'//new_line('a')// &
+            '  end subroutine apply'//new_line('a')// &
+            '  function expression(x) result(y)'//new_line('a')// &
+            '    real(kind=8), intent(in) :: x'//new_line('a')// &
+            '    real(kind=8) :: y'//new_line('a')// &
+            '    y = x'//new_line('a')// &
+            '  end function expression'//new_line('a')// &
+            'end program main'
+
+        test_issue_2950_shape = expect_exit_status( &
+            source, 0, '/tmp/ffc_proc_dummy_issue_2950')
+    end function test_issue_2950_shape
 
     function apply_source(expected_for_intrinsic) result(source)
         ! Program shape of the maintained corpus case: one procedure dummy

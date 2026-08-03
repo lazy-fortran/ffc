@@ -95,11 +95,12 @@
         end if
         if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
             value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &
-            value_kind /= VALUE_CHARACTER) then
+            value_kind /= VALUE_CHARACTER .and. value_kind /= VALUE_C4 .and. &
+            value_kind /= VALUE_C8) then
             call unsupported_feature_error('allocatable declaration', &
                 node%line, node%column, &
-                'direct LIRIC session supports integer, real, logical, and '// &
-                'fixed-length character allocatable arrays only', error_msg)
+                'direct LIRIC session supports integer, real, logical, complex, '// &
+                'and fixed-length character allocatable arrays only', error_msg)
             return
         end if
 
@@ -174,7 +175,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
         integer :: size_index1, size_index2, symbol_index
-        logical :: handled
+        logical :: handled, no_shape
 
         if (.not. allocated(node%var_indices) .or. size(node%var_indices) < 1) then
             call unsupported_feature_error('allocate statement', node%line, &
@@ -186,6 +187,8 @@
             call lower_multi_var_allocate(arena, node, context, error_msg)
             return
         end if
+        no_shape = .not. allocated(node%shape_indices)
+        if (allocated(node%shape_indices)) no_shape = size(node%shape_indices) == 0
 
         if (allocated(node%type_spec)) then
             call lower_allocate_deferred_char_array(arena, node, context, &
@@ -218,8 +221,7 @@
         if (allocated(node%type_spec)) then
             if (len_trim(node%type_spec) > 0 .and. &
                 is_identifier(arena, node%var_indices(1)) .and. &
-                (.not. allocated(node%shape_indices) .or. &
-                 size(node%shape_indices) == 0)) then
+                no_shape) then
                 call lower_allocate_type_spec(arena, node, context, error_msg)
                 return
             end if
@@ -227,8 +229,7 @@
 
         ! allocate(x) for a bare scalar allocatable: no shape at all.
         if (is_identifier(arena, node%var_indices(1)) .and. &
-            (.not. allocated(node%shape_indices) .or. &
-             size(node%shape_indices) == 0)) then
+            no_shape) then
             call get_identifier_name(arena, node%var_indices(1), name, error_msg)
             if (len_trim(error_msg) > 0) return
             symbol_index = find_symbol_compat(context, name)
@@ -1147,6 +1148,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: n_i32, elem_addr, value
+        type(lr_operand_desc_t) :: re_value, im_value
         type(lr_operand_desc_t) :: descriptor, data_ptr
         integer :: i, n, vk
         integer(c_int64_t) :: stride
@@ -1190,6 +1192,23 @@
         if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
             return
         do i = 1, n
+            if (vk == VALUE_C4) then
+                call eval_c4_rhs(arena, flat(i), context, re_value, im_value, &
+                                 error_msg)
+                if (len_trim(error_msg) > 0) return
+                call store_allocatable_complex_element(context, symbol_index, &
+                    i - 1, vk, re_value, im_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            else if (vk == VALUE_C8) then
+                call eval_c8_rhs(arena, flat(i), context, re_value, im_value, &
+                                 error_msg)
+                if (len_trim(error_msg) > 0) return
+                call store_allocatable_complex_element(context, symbol_index, &
+                    i - 1, vk, re_value, im_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                cycle
+            end if
             call lower_allocatable_element_value(arena, flat(i), vk, context, &
                                                  value, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -1200,6 +1219,45 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_allocatable_constructor_assignment
+
+    subroutine store_allocatable_complex_element(context, symbol_index, index, &
+                                                 vk, re_value, im_value, &
+                                                 error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index, index, vk
+        type(lr_operand_desc_t), intent(in) :: re_value, im_value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr, re_addr, im_addr
+        integer(c_int64_t) :: component_stride
+
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        if (vk == VALUE_C4) then
+            component_stride = 8_c_int64_t
+            if (.not. emit_ptr_offset(context%session, data_ptr, &
+                    int(index, c_int64_t) * component_stride, re_addr, &
+                    error_msg)) return
+            if (.not. emit_ptr_offset(context%session, re_addr, 4_c_int64_t, &
+                    im_addr, error_msg)) return
+            if (.not. emit_liric_f32_store(context%session, re_value, re_addr, &
+                    error_msg)) return
+            if (.not. emit_liric_f32_store(context%session, im_value, im_addr, &
+                    error_msg)) return
+        else
+            component_stride = 16_c_int64_t
+            if (.not. emit_ptr_offset(context%session, data_ptr, &
+                    int(index, c_int64_t) * component_stride, re_addr, &
+                    error_msg)) return
+            if (.not. emit_ptr_offset(context%session, re_addr, 8_c_int64_t, &
+                    im_addr, error_msg)) return
+            if (.not. emit_liric_f64_store(context%session, re_value, re_addr, &
+                    error_msg)) return
+            if (.not. emit_liric_f64_store(context%session, im_value, im_addr, &
+                    error_msg)) return
+        end if
+        call set_empty(error_msg)
+    end subroutine store_allocatable_complex_element
 
     subroutine lower_allocatable_character_array_assignment(arena, node, &
                                                             symbol_index, context, &
@@ -2523,6 +2581,10 @@
         ! matching the array path.
         integer, intent(in) :: value_kind
         select case (value_kind)
+        case (VALUE_C8)
+            sz = 16_c_int64_t
+        case (VALUE_C4)
+            sz = 8_c_int64_t
         case (VALUE_F64, VALUE_I64, VALUE_CHARACTER)
             sz = 8_c_int64_t
         case default
@@ -2612,6 +2674,10 @@
         context%symbols(index)%is_allocatable = .true.
         context%symbols(index)%is_array = rank > 0
         context%symbols(index)%array_rank = rank
+        if (rank >= 1) then
+            context%symbols(index)%array_lower_bound = 1
+            context%symbols(index)%array_dim_lowers(1) = 1
+        end if
         context%symbols(index)%allocatable_descriptor_address = descriptor
         context%symbol_count = index
         call set_empty(error_msg)
