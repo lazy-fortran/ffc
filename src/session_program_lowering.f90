@@ -4947,6 +4947,59 @@ contains
         found = .true.
     end subroutine fold_named_constant_at_node
 
+    subroutine unwrap_intrinsic_arg(arena, arg_index, keyword, value_index)
+        !! FortFront represents intrinsic keyword actuals as assignments.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_index
+        character(len=:), allocatable, intent(out) :: keyword
+        integer, intent(out) :: value_index
+        character(len=:), allocatable :: id_name, id_error
+
+        keyword = ''
+        value_index = arg_index
+        if (.not. node_exists(arena, arg_index)) return
+        select type (arg => arena%entries(arg_index)%node)
+        type is (assignment_node)
+            if (arg%value_index > 0) value_index = arg%value_index
+            if (.not. node_exists(arena, arg%target_index)) return
+            if (.not. is_identifier(arena, arg%target_index)) return
+            call get_identifier_name(arena, arg%target_index, id_name, id_error)
+            if (len_trim(id_error) > 0) return
+            keyword = lowercase_text(trim(id_name))
+        end select
+    end subroutine unwrap_intrinsic_arg
+
+    subroutine intrinsic_real_conversion_args(arena, node, value_index, kind_index)
+        !! Locate the value and KIND actuals, including reordered keywords.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(out) :: value_index
+        integer, intent(out) :: kind_index
+        character(len=:), allocatable :: keyword
+        integer :: i, actual_index, positional_count
+
+        value_index = 0
+        kind_index = 0
+        positional_count = 0
+        if (.not. allocated(node%arg_indices)) return
+        do i = 1, size(node%arg_indices)
+            call unwrap_intrinsic_arg(arena, node%arg_indices(i), keyword, &
+                                       actual_index)
+            if (same_name(keyword, 'kind')) then
+                kind_index = actual_index
+            else if (len_trim(keyword) == 0) then
+                positional_count = positional_count + 1
+                if (positional_count == 1) then
+                    value_index = actual_index
+                else if (positional_count == 2) then
+                    kind_index = actual_index
+                end if
+            else if (same_name(keyword, 'a') .and. value_index == 0) then
+                value_index = actual_index
+            end if
+        end do
+    end subroutine intrinsic_real_conversion_args
+
     logical function same_name(lhs, rhs)
         character(len=*), intent(in) :: lhs
         character(len=*), intent(in) :: rhs

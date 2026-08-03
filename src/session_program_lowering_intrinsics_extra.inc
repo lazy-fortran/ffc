@@ -1220,7 +1220,7 @@
     end subroutine lower_repeat_deferred
 
     subroutine check_real_conversion_args(arena, node, context, wide_kind, &
-                                          error_msg)
+                                          argument_index, kind_index, error_msg)
         !! Shared argument check for AINT(A [,KIND]) and ANINT(A [,KIND]).
         !! A must be real, and a foldable KIND must name a supported real kind.
         !! wide_kind reports whether the KIND selector requests real(8).
@@ -1228,14 +1228,22 @@
         type(call_or_subscript_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
         logical, intent(out) :: wide_kind
+        integer, intent(out) :: argument_index
+        integer, intent(out) :: kind_index
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int64_t) :: kind_value
         character(len=:), allocatable :: kind_error
 
         wide_kind = .false.
         if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
+        call intrinsic_real_conversion_args(arena, node, argument_index, &
+                                            kind_index)
+        if (argument_index <= 0) then
+            error_msg = trim(node%name)//' requires a value argument'
+            return
+        end if
 
-        if (is_integer_operand(arena, node%arg_indices(1), context)) then
+        if (is_integer_operand(arena, argument_index, context)) then
             call unsupported_feature_error( &
                 trim(node%name)//' argument must be real', node%line, &
                 node%column, 'the direct LIRIC session lowers '// &
@@ -1244,8 +1252,8 @@
             return
         end if
 
-        if (size(node%arg_indices) < 2) return
-        call parse_i32_constant(arena, node%arg_indices(2), kind_value, &
+        if (kind_index <= 0) return
+        call parse_i32_constant(arena, kind_index, kind_value, &
                                 'real kind', kind_error)
         if (len_trim(kind_error) > 0) then
             ! An unfoldable selector keeps the conservative wide result.
@@ -1275,11 +1283,13 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: args(1)
         logical :: wide_kind
+        integer :: argument_index, kind_index
 
-        call check_real_conversion_args(arena, node, context, wide_kind, error_msg)
+        call check_real_conversion_args(arena, node, context, wide_kind, &
+                                        argument_index, kind_index, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, &
+        call lower_f32_intrinsic_arg(arena, argument_index, context, &
                                      args(1), error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_f32_call(context%session, libm_name, args, value, &
@@ -1298,11 +1308,13 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: args(1)
         logical :: wide_kind
+        integer :: argument_index, kind_index
 
-        call check_real_conversion_args(arena, node, context, wide_kind, error_msg)
+        call check_real_conversion_args(arena, node, context, wide_kind, &
+                                        argument_index, kind_index, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, &
+        call lower_f64_intrinsic_arg(arena, argument_index, context, &
                                      args(1), error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_f64_call(context%session, libm_name, args, value, &

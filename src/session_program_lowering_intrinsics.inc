@@ -678,21 +678,28 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         logical :: handled
+        integer :: argument_index, kind_index
 
         ! real(x) and real(x, 4)/real(x, kind=sp) convert x to f32. The optional
         ! second argument is the result kind; ignore it here.
         if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
+        call intrinsic_real_conversion_args(arena, node, argument_index, &
+                                            kind_index)
+        if (argument_index <= 0) then
+            error_msg = 'real requires a value argument'
+            return
+        end if
 
-        call lower_boz_real_bits(arena, node%arg_indices(1), context, .false., &
+        call lower_boz_real_bits(arena, argument_index, context, .false., &
                                  value, handled, error_msg)
         if (handled .or. len_trim(error_msg) > 0) return
 
-        call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, value, &
+        call lower_f32_intrinsic_arg(arena, argument_index, context, value, &
                                      error_msg)
     end subroutine lower_f32_real_intrinsic
 
-    subroutine lower_f32_intrinsic_arg(arena, node_index, context, value, &
-                                       error_msg)
+    recursive subroutine lower_f32_intrinsic_arg(arena, node_index, context, value, &
+                                                 error_msg)
         ! Lower an argument to an f32 intrinsic. Real literals and f32 variables
         ! lower as f32; integer literals/variables are promoted to f32.
         use, intrinsic :: iso_c_binding, only: c_float
@@ -704,6 +711,15 @@
         type(lr_operand_desc_t) :: integer_value
         real(c_double) :: lit_f64
         character(len=:), allocatable :: lit_value, lit_type
+        integer :: actual_index
+        character(len=:), allocatable :: keyword
+
+        call unwrap_intrinsic_arg(arena, node_index, keyword, actual_index)
+        if (actual_index /= node_index) then
+            call lower_f32_intrinsic_arg(arena, actual_index, context, value, &
+                                         error_msg)
+            return
+        end if
 
         if (is_literal(arena, node_index)) then
             if (is_real_literal(arena, node_index)) then
@@ -1395,17 +1411,24 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         logical :: handled
+        integer :: argument_index, kind_index
 
         ! real(x) and real(x, kind=dp)/real(x, 8): the optional second argument
         ! is the result kind, already resolved to f64 by the dispatch. Lower the
         ! value argument and ignore the kind selector.
         if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
+        call intrinsic_real_conversion_args(arena, node, argument_index, &
+                                            kind_index)
+        if (argument_index <= 0) then
+            error_msg = 'real requires a value argument'
+            return
+        end if
 
-        call lower_boz_real_bits(arena, node%arg_indices(1), context, .true., &
+        call lower_boz_real_bits(arena, argument_index, context, .true., &
                                  value, handled, error_msg)
         if (handled .or. len_trim(error_msg) > 0) return
 
-        call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, value, &
+        call lower_f64_intrinsic_arg(arena, argument_index, context, value, &
                                      error_msg)
     end subroutine lower_f64_real_intrinsic
 
@@ -1441,6 +1464,15 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: integer_value
         type(lr_operand_desc_t) :: f32_value
+        integer :: actual_index
+        character(len=:), allocatable :: keyword
+
+        call unwrap_intrinsic_arg(arena, node_index, keyword, actual_index)
+        if (actual_index /= node_index) then
+            call lower_f64_intrinsic_arg(arena, actual_index, context, value, &
+                                         error_msg)
+            return
+        end if
 
         if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F64) then
             call lower_f64_expression(arena, node_index, context, value, &
