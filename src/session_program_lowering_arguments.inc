@@ -369,14 +369,24 @@
                 ! Elementwise intrinsic expressions (for example abs(a)) carry
                 ! their array rank through an array actual argument. Reductions
                 ! are deliberately excluded: they return a scalar.
-                if (.not. node%is_intrinsic) return
                 if (allocated(node%name)) then
                     if (same_name(node%name, 'sum') .or. &
                         same_name(node%name, 'product') .or. &
                         same_name(node%name, 'count') .or. &
                         same_name(node%name, 'any') .or. &
                         same_name(node%name, 'all')) return
+                    if (same_name(node%name, 'aint') .or. &
+                        same_name(node%name, 'anint')) then
+                        do i = 1, size(node%arg_indices)
+                            if (actual_is_array_expression(arena, node%arg_indices(i), &
+                                                            context)) then
+                                is_array = .true.
+                                return
+                            end if
+                        end do
+                    end if
                 end if
+                if (.not. node%is_intrinsic) return
                 do i = 1, size(node%arg_indices)
                     if (actual_is_array_expression(arena, node%arg_indices(i), &
                                                     context)) then

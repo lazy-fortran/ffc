@@ -1642,7 +1642,6 @@ intrinsics_110.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element
 intrinsics_111.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 intrinsics_112.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 intrinsics_113.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
-intrinsics_115.f90 # owner=lazy-fortran/ffc#431; reason=lower AINT and ANINT kind conversions
 intrinsics_116.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 intrinsics_117.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 intrinsics_118.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering

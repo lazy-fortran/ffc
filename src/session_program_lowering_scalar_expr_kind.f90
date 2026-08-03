@@ -171,7 +171,7 @@ contains
         !! REAL(A[,KIND]) and AINT/ANINT(A[,KIND]) take their kind from the
         !! selector; every other intrinsic in the table is kind-preserving and
         !! takes the widest kind among its arguments.
-        integer :: i
+        integer :: i, argument_index, kind_index
 
         vk = SCALAR_REAL_NONE
 
@@ -186,7 +186,9 @@ contains
 
         if (real_conversion_intrinsic(node%name) .and. allocated(node%arg_indices)) then
             if (size(node%arg_indices) >= 2) then
-                if (real_conversion_kind_is_f64(arena, node%arg_indices(2))) then
+                call intrinsic_real_conversion_args(arena, node, argument_index, &
+                                                    kind_index)
+                if (real_conversion_kind_is_f64(arena, kind_index)) then
                     vk = VALUE_F64
                 else
                     vk = VALUE_F32

@@ -232,7 +232,7 @@
         character(len=:), allocatable :: bin_op
         integer :: s, bin_left, bin_right, bin_line, bin_col
         type(reduction_operand_t) :: left_side, right_side
-        logical :: lok, rok
+        logical :: lok, rok, array_real_call
 
         ok = .false.
         side%mode = 0
@@ -336,6 +336,30 @@
             ok = .true.
             return
         type is (call_or_subscript_node)
+            array_real_call = is_elemental_real_call(arena, idx)
+            if (.not. array_real_call) then
+                if (allocated(n%name)) then
+                    if (same_name(n%name, 'aint') .or. same_name(n%name, 'anint')) then
+                        if (allocated(n%arg_indices)) then
+                            array_real_call = size(n%arg_indices) == 1
+                        end if
+                    end if
+                end if
+            end if
+            if (array_real_call) then
+                call classify_mask_side(arena, context, n%arg_indices(1), &
+                                        right_side, ok)
+                if (.not. ok .or. right_side%extent <= 0) then
+                    ok = .false.
+                    return
+                end if
+                side%mode = 4
+                side%sym = right_side%sym
+                side%vk = right_side%vk
+                side%extent = right_side%extent
+                ok = side%vk == VALUE_F32 .or. side%vk == VALUE_F64
+                return
+            end if
             if (is_contained_function_reference(n, context)) then
                 if (contained_function_kind(context, n%name) /= VALUE_LOGICAL) return
                 side%mode = 0
@@ -454,9 +478,13 @@
         ok = .true.
         compare_vk = VALUE_I32
         if (is_equiv) return
-        if (mask_side_is(left, VALUE_F32) .or. mask_side_is(right, VALUE_F32)) &
+        if (mask_side_is(left, VALUE_F32) .or. mask_side_is(right, VALUE_F32) .or. &
+            mask_side_is_mode4(left, VALUE_F32) .or. &
+            mask_side_is_mode4(right, VALUE_F32)) &
             compare_vk = VALUE_F32
-        if (mask_side_is(left, VALUE_F64) .or. mask_side_is(right, VALUE_F64)) &
+        if (mask_side_is(left, VALUE_F64) .or. mask_side_is(right, VALUE_F64) .or. &
+            mask_side_is_mode4(left, VALUE_F64) .or. &
+            mask_side_is_mode4(right, VALUE_F64)) &
             compare_vk = VALUE_F64
         if (mask_side_unsupported_kind(left) .or. &
             mask_side_unsupported_kind(right)) ok = .false.
@@ -469,6 +497,13 @@
         match = .false.
         if (side%mode == 1 .or. side%mode == 2) match = side%vk == vk
     end function mask_side_is
+
+    logical function mask_side_is_mode4(side, vk) result(match)
+        type(reduction_operand_t), intent(in) :: side
+        integer, intent(in) :: vk
+
+        match = side%mode == 4 .and. side%vk == vk
+    end function mask_side_is_mode4
 
     logical function mask_side_unsupported_kind(side) result(bad)
         type(reduction_operand_t), intent(in) :: side
@@ -567,7 +602,8 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name, op, err
-        integer :: sym, left, right, line, column, opcode
+        integer :: sym, left, right, line, column, opcode, source_vk
+        logical :: array_real_call
         type(lr_operand_desc_t) :: lhs, rhs, re_value, im_value, promoted
         integer :: complex_vk
 
@@ -593,6 +629,29 @@
 
         select type (node => arena%entries(idx)%node)
         type is (call_or_subscript_node)
+            array_real_call = is_elemental_real_call(arena, idx)
+            if (.not. array_real_call) then
+                if (allocated(node%name) .and. allocated(node%arg_indices)) then
+                    array_real_call = size(node%arg_indices) == 1 .and. &
+                        (same_name(node%name, 'aint') .or. &
+                         same_name(node%name, 'anint'))
+                end if
+            end if
+            if (array_real_call) then
+                sym = whole_array_expr_shape_symbol(arena, idx, context)
+                if (sym <= 0) then
+                    error_msg = 'elemental array mask has no shape symbol'
+                    return
+                end if
+                source_vk = context%symbols(sym)%value_kind
+                call lower_array_elementwise_value(arena, idx, sym, linear_index, &
+                                                   context, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call coerce_reduction_operand(context, value, source_vk, &
+                                              compare_vk, promoted, error_msg)
+                value = promoted
+                return
+            end if
             if (allocated(node%name) .and. allocated(node%arg_indices) .and. &
                 size(node%arg_indices) == 1 .and. .not. node%is_array_access) then
                 if (same_name(node%name, 'abs')) then

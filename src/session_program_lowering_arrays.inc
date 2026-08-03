@@ -2295,6 +2295,7 @@
         character(len=:), allocatable :: binding_error
         type(lr_operand_desc_t) :: param_base
         type(lr_operand_desc_t) :: runtime_extent
+        type(array_expr_plan_t) :: expression_plan
 
         is_assumed = present(assumed_extents)
         is_prebound_parameter_array = .false.
@@ -2610,6 +2611,18 @@
                     else if (allocated(init%name) .and. same_name(init%name, 'reshape')) then
                         call lower_reshape_call(context%arena, init, index, &
                                                 context, error_msg)
+                    else if (allocated(init%name) .and. &
+                             (same_name(init%name, 'aint') .or. &
+                              same_name(init%name, 'anint')) .and. &
+                             allocated(init%arg_indices) .and. &
+                             size(init%arg_indices) == 1 .and. &
+                             actual_is_array_expression(context%arena, &
+                                init%arg_indices(1), context)) then
+                        call build_array_expression(context, index, &
+                            node%initializer_index, expression_plan, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        call emit_array_expression_assignment(context%arena, &
+                            expression_plan, context, error_msg)
                     else
                         call broadcast_scalar_initializer(context, index, &
                                                           node%initializer_index, &
@@ -2842,6 +2855,7 @@
         integer :: n
         integer :: vk
         integer, allocatable :: flat(:)
+        logical :: array_element_expression
 
         ! An implied-do constructor wraps a single do_loop_node. fortfront does
         ! not always tag syntax_style, so detect either marker structurally.
@@ -2879,7 +2893,25 @@
             return
         end if
         do i = 1, n
-            if (vk == VALUE_F32) then
+            array_element_expression = actual_is_array_expression(arena, flat(i), &
+                                                                  context)
+            if (.not. array_element_expression) then
+                select type (element => arena%entries(flat(i))%node)
+                type is (call_or_subscript_node)
+                    if (allocated(element%name) .and. &
+                        allocated(element%arg_indices) .and. &
+                        size(element%arg_indices) == 1 .and. &
+                        (same_name(element%name, 'aint') .or. &
+                         same_name(element%name, 'anint'))) then
+                        array_element_expression = .true.
+                    end if
+                end select
+            end if
+            if (array_element_expression .and. (vk == VALUE_F32 .or. &
+                                                vk == VALUE_F64)) then
+                call lower_array_elementwise_value(arena, flat(i), symbol_index, &
+                                                   i - 1, context, value, error_msg)
+            else if (vk == VALUE_F32) then
                 call lower_f32_expression(arena, flat(i), context, value, error_msg)
             else if (vk == VALUE_F64) then
                 call lower_f64_expression(arena, flat(i), context, value, error_msg)

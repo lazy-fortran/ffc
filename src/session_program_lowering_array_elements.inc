@@ -1218,6 +1218,7 @@
         type(lr_operand_desc_t) :: value
         integer :: sym
         integer :: target_sym
+        integer :: print_sym
         integer :: constructor_extent
         integer :: vk
         integer(c_int64_t) :: k, n
@@ -1254,14 +1255,38 @@
             vk /= VALUE_I16) return
 
         handled = .true.
-        do k = 0_c_int64_t, n - 1_c_int64_t
-            if (.not. emit_liric_print_space(context%session, error_msg)) return
-            call lower_array_elementwise_value(arena, expr_index, target_sym, &
-                                               int(k), context, value, error_msg)
+        if (sym > 0) then
+            call create_array_expression_temp(context, vk, int(n), 0, print_sym, &
+                                              error_msg)
             if (len_trim(error_msg) > 0) return
-            call emit_typed_array_print_value(context, vk, value, error_msg)
-            if (len_trim(error_msg) > 0) return
-        end do
+            do k = 0_c_int64_t, n - 1_c_int64_t
+                call lower_array_elementwise_value(arena, expr_index, target_sym, &
+                                                   int(k), context, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call store_array_linear_element(context, print_sym, k, value, &
+                                                error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+            do k = 0_c_int64_t, n - 1_c_int64_t
+                if (.not. emit_liric_print_space(context%session, error_msg)) &
+                    return
+                call load_array_linear_element(context, print_sym, k, value, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+                call emit_typed_array_print_value(context, vk, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else
+            do k = 0_c_int64_t, n - 1_c_int64_t
+                if (.not. emit_liric_print_space(context%session, error_msg)) &
+                    return
+                call lower_array_elementwise_value(arena, expr_index, target_sym, &
+                                                   int(k), context, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call emit_typed_array_print_value(context, vk, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        end if
         call set_empty(error_msg)
     end subroutine emit_whole_array_expr_print_items
 
