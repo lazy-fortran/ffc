@@ -124,8 +124,10 @@ passing, rebased commit at a time, in this order.
    without TOCTOU races and instrumented coverage remain; schema-2 records
    `coverage_mode=none` with an empty digest until that collector lands.
    SKIP/NOREF remain operational dispositions and are not silently PASS.
-4. Stop silent wrong code and nondeterminism: #671, #673, #626, #628, #649,
-   then the remaining crashes in #576.
+4. Stop silent wrong code and nondeterminism. #671 now has a gfortran-oracle
+   regression for exactly-once contained-call side effects and binding-keyed
+   host storage; continue with #673, #626, #628, #649, then the remaining
+   crashes in #576.
 5. Finish binding identity and module contracts: #584 plus the procedure,
    generic, external-unit, and Lazy-specialization issues that depend on it.
 6. Converge on one descriptor/expression/lifetime model: #337, #338, #348,
@@ -220,8 +222,8 @@ Extract the remaining leaves in this order:
 `logical_reduction` (1,615), and `reduction_expr` (954).
 
 The first extraction needs paired accepted/rejected compiler tests. Expression
-work must preserve exactly-once side effects and expose #671 before refactoring
-call evaluation.
+work must preserve #671's gfortran-oracle exactly-once side-effect regression
+while refactoring call evaluation.
 
 ### Wave 3A: structured control
 
