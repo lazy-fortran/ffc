@@ -39,9 +39,10 @@ contains
         character(len=:), allocatable :: report
 
         report = work_dir//'/sampled.jsonl'
-        if (.not. run_shell('timeout 300 bash '//GAUNTLET// &
+        if (.not. run_shell('(timeout 300 bash '//GAUNTLET// &
             ' --suite fortfront-f90 --sample 6 --seed 3 --report '// &
-            report//' > '//work_dir//'/sampled.log 2>&1')) then
+            report//' > '//work_dir//'/sampled.log 2>&1; '// &
+            'status=$?; [ "$status" -le 1 ])')) then
             print *, 'FAIL: sampled gauntlet run did not succeed'
             ok = .false.
             return
@@ -78,16 +79,18 @@ contains
         character(len=*), intent(in) :: work_dir
         logical, intent(inout) :: ok
 
-        if (.not. run_shell('timeout 300 bash '//GAUNTLET// &
+        if (.not. run_shell('(timeout 300 bash '//GAUNTLET// &
             ' --suite fortfront-f90 --sample 6 --seed 3 --report '// &
-            work_dir//'/repeat.jsonl > /dev/null 2>&1')) then
+            work_dir//'/repeat.jsonl > /dev/null 2>&1; '// &
+            'status=$?; [ "$status" -le 1 ])')) then
             print *, 'FAIL: repeated sampled run did not succeed'
             ok = .false.
             return
         end if
-        if (.not. run_shell('timeout 300 bash '//GAUNTLET// &
+        if (.not. run_shell('(timeout 300 bash '//GAUNTLET// &
             ' --suite fortfront-f90 --sample 6 --seed 9 --report '// &
-            work_dir//'/other_seed.jsonl > /dev/null 2>&1')) then
+            work_dir//'/other_seed.jsonl > /dev/null 2>&1; '// &
+            'status=$?; [ "$status" -le 1 ])')) then
             print *, 'FAIL: second-seed sampled run did not succeed'
             ok = .false.
             return
@@ -160,7 +163,7 @@ contains
         character(len=*), intent(in) :: work_dir
         logical, intent(inout) :: ok
         character(len=:), allocatable :: shim_dir, log_path, cache_dir
-        integer :: first_calls, second_calls
+        integer :: first_calls, second_calls, changed_calls, repeated_calls
 
         shim_dir = work_dir//'/shim'
         log_path = work_dir//'/gfortran_calls.log'
@@ -175,7 +178,7 @@ contains
             return
         end if
 
-        if (.not. run_shell(': > '//log_path//' && PATH='//shim_dir// &
+        if (.not. run_shell(': > '//log_path//' && GFORTRAN_CACHE_TEST=baseline PATH='//shim_dir// &
             ':$PATH timeout 600 bash '//GAUNTLET// &
             ' --suite fortfront-f90 --max-files 12 --ref-cache '//cache_dir// &
             ' --report '//work_dir//'/cache_first.jsonl > /dev/null 2>&1')) then
@@ -185,7 +188,7 @@ contains
         end if
         first_calls = count_lines(log_path)
 
-        if (.not. run_shell(': > '//log_path//' && PATH='//shim_dir// &
+        if (.not. run_shell(': > '//log_path//' && GFORTRAN_CACHE_TEST=baseline PATH='//shim_dir// &
             ':$PATH timeout 600 bash '//GAUNTLET// &
             ' --suite fortfront-f90 --max-files 12 --ref-cache '//cache_dir// &
             ' --report '//work_dir//'/cache_second.jsonl > /dev/null 2>&1')) &
@@ -207,6 +210,30 @@ contains
         end if
         if (second_calls >= first_calls) then
             print *, 'FAIL: cached run re-ran gfortran as often as the first'
+            ok = .false.
+        end if
+
+        if (.not. run_shell(': > '//log_path//' && GFORTRAN_CACHE_TEST=changed PATH='//shim_dir// &
+            ':$PATH timeout 600 bash '//GAUNTLET// &
+            ' --suite fortfront-f90 --max-files 12 --ref-cache '//cache_dir// &
+            ' --report '//work_dir//'/cache_changed.jsonl > /dev/null 2>&1')) then
+            print *, 'FAIL: changed-environment cache run did not succeed'
+            ok = .false.
+            return
+        end if
+        changed_calls = count_lines(log_path)
+
+        if (.not. run_shell(': > '//log_path//' && GFORTRAN_CACHE_TEST=changed PATH='//shim_dir// &
+            ':$PATH timeout 600 bash '//GAUNTLET// &
+            ' --suite fortfront-f90 --max-files 12 --ref-cache '//cache_dir// &
+            ' --report '//work_dir//'/cache_changed_repeat.jsonl > /dev/null 2>&1')) then
+            print *, 'FAIL: repeated changed-environment cache run failed'
+            ok = .false.
+            return
+        end if
+        repeated_calls = count_lines(log_path)
+        if (changed_calls <= repeated_calls) then
+            print *, 'FAIL: declared environment did not invalidate cache key'
             ok = .false.
         end if
     end subroutine check_reference_cache

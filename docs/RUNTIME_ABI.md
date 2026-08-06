@@ -549,6 +549,7 @@ a line-oriented subset of TOML, with no source locations or comments.
 [module]
 name = "shapes"
 ffc_version = "0.1.0"
+fmod_schema = 11
 
 [[parameter]]
 name = "max_pts"
@@ -563,7 +564,10 @@ components = [
 ]
 ```
 
-- `[module]` carries the module name and the emitting `ffc` version.
+- `[module]` carries the module name, the emitting `ffc` version, and the
+  mandatory `fmod_schema`. Writers emit schema 11. Readers accept schema 11
+  and the read-only legacy schema 10. They reject missing and unknown schema
+  values with a request to recompile the module.
 - Each `[[parameter]]` is a named constant: `name`, `kind` (the normalised
   scalar type token), and the literal `value`.
 - Each `[[derived_type]]` is a type definition with its `components`, each a

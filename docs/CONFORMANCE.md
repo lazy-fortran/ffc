@@ -94,7 +94,7 @@ Options:
 | `--timeout N` | Per-file timeout in seconds. Default: 5. |
 | `--sample N` | Measure a deterministic random subset of N files. Marks the report sampled and `full_run` false. |
 | `--seed S` | Seed for `--sample`. Default: 0. The same seed over the same corpus selects the same files. |
-| `--ref-cache DIR` | Reuse gfortran reference outputs cached under DIR, keyed by source content plus gfortran version. |
+| `--ref-cache DIR` | Reuse successful hermetic gfortran reference observations cached under DIR. The key binds the source closure, compiler and flags, target, runtime ABI, harness policy, corpus, and compile/run environment. |
 | `--require-provenance` | Build ffc with `fo`, require clean compiler/dependency/corpus inputs, and record exact tree and file-list identities. |
 
 Smoke run (20 files, auto-discovers ffc):
@@ -230,13 +230,19 @@ Compiler jobs remain sequential and bounded. A sampled command that exceeds
 the memory or timeout budget is a failed measurement and must be reduced or
 fixed before the sample is increased.
 
-`--ref-cache DIR` caches the gfortran reference outcome (compile status, exit
-status, stdout) keyed by the source content, the sibling sources compiled with
-it, and the gfortran version. Roughly half a run is spent producing those
-references, and the reuse is exact rather than statistical: a cached comparison
-that does not match is discarded and the reference is rebuilt and rerun, so a
-stale or nondeterministic cached output can only cost time, never change a
-verdict. Sampling and caching compound.
+`--ref-cache DIR` caches successful gfortran reference output. A cache key
+covers every input that can change that output: the main source and its sibling
+or extra-source dependency closure, the suite and corpus revision, the
+reference compiler executable hash and version, its target triple and flags
+(`-w` and the private `-J` module directory policy), the declared locale and
+runtime environment, the conformance harness scripts and policy, and the
+reference runtime ABI. A hit replaces only the gfortran compilation and run.
+The gauntlet still compiles and runs ffc for every selected case. Failed
+gfortran compilation or execution is measured on every invocation and is not
+stored for reuse. If a cached reference disagrees with the fresh ffc result,
+the runner discards the entry and measures the reference again. The key remains
+the cache-validity boundary: agreement with ffc is not proof that an entry from
+different inputs is valid. Sampling and reference caching compound.
 
 ## Repeated runs and FLAKY records
 
@@ -312,19 +318,25 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 
 | Manifest | Entries |
 |---|---:|
-| `test/conformance/xfail_fortfront_f90.txt` | 100 |
-| `test/conformance/xfail_fortfront_lf.txt` | 59 |
+| `test/conformance/xfail_fortfront_f90.txt` | 90 |
+| `test/conformance/xfail_fortfront_lf.txt` | 51 |
 | `test/conformance/noref_fortfront_f90.txt` | 5 |
-| `test/conformance/xfail_lfortran.txt` | 3419 |
-| `test/conformance/xfail_gfortran_dg.txt` | 2132 |
-| `test/conformance/skip_lfortran.txt` | 1 |
-| `test/conformance/skip_gfortran_dg.txt` | 2298 |
-| `test/conformance/fail_owners_lfortran.txt` | 11 |
-| `test/conformance/fail_owners_gfortran_dg.txt` | 333 |
-| `test/conformance/scopes_fortfront_f90.txt` | 4 |
+| `test/conformance/noref_lfortran.txt` | 6 |
+| `test/conformance/xfail_lfortran.txt` | 3213 |
+| `test/conformance/xfail_gfortran_dg.txt` | 2174 |
+| `test/conformance/skip_fortfront_f90.txt` | 2 |
+| `test/conformance/skip_lfortran.txt` | 3 |
+| `test/conformance/skip_gfortran_dg.txt` | 2300 |
+| `test/conformance/fail_owners_lfortran.txt` | 4 |
+| `test/conformance/fail_owners_gfortran_dg.txt` | 284 |
+| `test/conformance/scopes_fortfront_f90.txt` | 6 |
 | `test/conformance/scopes_lfortran.txt` | 302 |
 | `test/conformance/scopes_gfortran_dg.txt` | 219 |
 | `test/conformance/owner_subsystems.txt` | 135 |
+
+The aggregate manifest inventory is `XFAIL=5528`, `FAIL=288`, `NOREF=11`, and
+`SKIP=2305`. `FAIL` counts FAIL-owner rows. These are inventory facts, not fresh
+compiler outcomes.
 
 Use `docs/PARITY_PLAN.md` and issue #299 for the latest full-suite pass-rate
 snapshot. The seed baselines below are historical starting points, not current
@@ -335,7 +347,7 @@ scoreboard values.
 The observation sidecar has one raw record per selected file:
 
 ```json
-{"suite":"fortfront-f90","file":"example.f90","status":"PASS","ffc_exit":0,"ref_exit":0,"note":"output matches gfortran"}
+{"suite":"fortfront-f90","file":"example.f90","status":"PASS","ffc_exit":0,"ref_exit":0,"note":"output matches gfortran","source_sha256":"...","dependency_closure_sha256":"...","ffc_flags":"default","ref_flags":"-w -J @private-module-dir","compiler_flags_sha256":"...","environment_sha256":"...","target_triple":"x86_64-linux-gnu","runtime_abi_sha256":"...","harness_sha256":"...","toolchain_sha256":"...","phase":"compare","diagnostic_signature_sha256":"...","crash_signature_sha256":"...","ffc_output_sha256":"...","ref_output_sha256":"...","elapsed_ms":31,"ffc_compile_ms":12,"ffc_run_ms":2,"ref_compile_ms":15,"ref_run_ms":2,"peak_rss_kb":28400,"semantic_tags":"procedure","coverage_mode":"none","coverage_sha256":"..."}
 ```
 
 The classified report keeps that evidence and adds the expectation decision:
@@ -359,6 +371,15 @@ Fields:
 | `warning_expectation` | string | `unchecked` for warning-only gfortran.dg files; omitted otherwise |
 | `noref` | boolean | `true` when the case has no behavioral oracle; omitted otherwise |
 | `noref_reason` | string | Required with `noref`: an approved manifest category, `reference-rejected`, or `reference-runtime-failure` |
+| `source_sha256`, `dependency_closure_sha256` | SHA-256 | Main source and normalized source/include closure |
+| `ffc_flags`, `ref_flags`, `compiler_flags_sha256` | string/SHA-256 | Canonical compiler arguments and their joint digest |
+| `environment_sha256`, `target_triple` | SHA-256/string | Declared compile/run environment and target |
+| `runtime_abi_sha256`, `harness_sha256`, `toolchain_sha256` | SHA-256 | Runtime contract, harness implementation, and exact compiler toolchain |
+| `phase` | string | Last decisive phase: compile, run, reference, compare, skip, directive, or complete |
+| diagnostic, crash, and output SHA-256 fields | SHA-256 | Normalized diagnostics/crash evidence and byte-exact program outputs |
+| elapsed and per-phase `*_ms`, `peak_rss_kb` | int | Nonnegative resource measurements; repeat stability ignores these values |
+| `semantic_tags` | string | Deterministic comma-separated feature tags, or `none` |
+| `coverage_mode`, `coverage_sha256` | string/SHA-256 | Coverage collector and evidence digest; `none` binds the empty digest |
 
 A final SUMMARY record closes each file. The observation summary has
 `report_kind: "observation"`; each derived report changes that to
@@ -366,7 +387,7 @@ A final SUMMARY record closes each file. The observation summary has
 complete observation, and the SHA-256 of the expectation manifest:
 
 ```json
-{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"warning_unchecked":0,"total":21,"schema_version":1,"full_run":true,"provenance_verified":true,"ffc_revision":"...","ffc_source_sha256":"...","ffc_binary_sha256":"...","fortfront_revision":"...","fortfront_tree":"...","liric_revision":"...","liric_tree":"...","corpus_revision":"...","corpus_tree":"...","corpus_files_sha256":"...","worktree":"/home/you/ffc","report_kind":"classification","observation_schema_version":1,"reference_compiler":"GNU Fortran ...","reference_cache_enabled":false,"reference_cache_hits":0,"timeout_seconds":5,"skip_manifest_sha256":"...","noref_manifest_sha256":"...","classification_mode":"manifest","observation_sha256":"...","classification_manifest_sha256":"..."}
+{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"warning_unchecked":0,"total":21,"schema_version":2,"full_run":true,"provenance_verified":true,"ffc_revision":"...","ffc_source_sha256":"...","ffc_binary_sha256":"...","fortfront_revision":"...","fortfront_tree":"...","liric_revision":"...","liric_tree":"...","corpus_revision":"...","corpus_tree":"...","corpus_files_sha256":"...","worktree":"/home/you/ffc","report_kind":"classification","observation_schema_version":2,"reference_compiler":"GNU Fortran ...","reference_cache_enabled":false,"reference_cache_hits":0,"timeout_seconds":5,"skip_manifest_sha256":"...","noref_manifest_sha256":"...","target_triple":"x86_64-linux-gnu","environment_sha256":"...","runtime_abi_sha256":"...","harness_sha256":"...","toolchain_sha256":"...","compiler_flags_sha256":"...","coverage_mode":"none","classification_mode":"manifest","observation_sha256":"...","classification_manifest_sha256":"..."}
 ```
 
 The revision and tree fields are full Git hashes. `ffc_revision` identifies the
@@ -379,10 +400,10 @@ rejects a binary older than any tracked compiler or dependency input.
 `worktree` is the absolute path of the checkout that produced the report.
 The observation also binds the reference compiler, timeout, reference-cache
 use, and the operational skip/NOREF manifest digests. A classification binds
-the byte-exact observation and XFAIL manifest. Observation files are not an
-automatic execution cache: the runner always measures anew. Reuse is confined
-to the pure classifier, so it cannot accidentally accept evidence produced by
-different compiler, corpus, oracle, or operational-policy inputs.
+the byte-exact observation and XFAIL manifest. Reclassification reuses the raw
+observation without running either compiler. During observation, an explicit
+`--ref-cache` may reuse only the gfortran side of a case under the hermetic key
+described above. The runner still compiles and runs ffc for each selected case.
 `full_run` is false when a report used `--file`, `--files-from`,
 `--max-files`, or `--sample`. A sampled report additionally carries
 `sampled`, `sample_size`, `sample_population`, `sample_seed`, and
@@ -669,11 +690,13 @@ Full run against local GCC checkout: `PASS=1173`, `XFAIL=0`,
 The xfail manifest (`test/conformance/xfail_gfortran_dg.txt`) is seeded
 from the FAIL records of this run.
 
-### Current pinned measurement
+### Checked-in dashboard measurement
 
-At GCC revision `395e3d8131c189cd58e8c8061cdc77d1c44e3822`, the post-cleanup
-summary is `PASS=1175`, `XFAIL=2132`, `XPASS=0`, `FAIL=333`, `NOREF=1`,
-`SKIP=2298`, `WARNING_UNCHECKED=75`, `TOTAL=5938`.
+The stale checked-in dashboard was measured at GCC revision
+`395e3d8131c189cd58e8c8061cdc77d1c44e3822`. It records `PASS=1175`,
+`XFAIL=2132`, `XPASS=0`, `FAIL=333`, `NOREF=1`, `SKIP=2298`,
+`WARNING_UNCHECKED=75`, and `TOTAL=5938`. The current manifest inventory is
+listed above.
 
 ## LFortran integration tests
 
@@ -696,9 +719,10 @@ Seed baseline from lfortran commit `5e3229bd6`: `PASS=123`,
 `XFAIL=4134`, `XPASS=0`, `FAIL=0`, `NOREF=72`, `SKIP=0`,
 `TOTAL=4257`.
 
-At LFortran revision `caf87b660f803148f000046392a5da803f9fc630`, the current
-summary is `PASS=849`, `XFAIL=3419`, `XPASS=0`, `FAIL=11`, `NOREF=145`,
-`SKIP=1`, `TOTAL=4280`.
+The stale checked-in dashboard was measured at LFortran revision
+`caf87b660f803148f000046392a5da803f9fc630`. It records `PASS=849`,
+`XFAIL=3419`, `XPASS=0`, `FAIL=11`, `NOREF=145`, `SKIP=1`, and `TOTAL=4280`.
+The current manifest inventory is listed above.
 
 ## Separate compilation
 

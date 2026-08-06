@@ -158,7 +158,19 @@ function row_field_allowed(key) {
         key == "noref_manifest_category" ||
         key == "warning_expectation" ||
         key == "attempts" || key == "observed" ||
-        key == "observed_status" || key == "expectation"
+        key == "observed_status" || key == "expectation" ||
+        key == "source_sha256" || key == "dependency_closure_sha256" ||
+        key == "ffc_flags" || key == "ref_flags" ||
+        key == "compiler_flags_sha256" || key == "environment_sha256" ||
+        key == "target_triple" || key == "runtime_abi_sha256" ||
+        key == "harness_sha256" || key == "toolchain_sha256" ||
+        key == "phase" || key == "diagnostic_signature_sha256" ||
+        key == "crash_signature_sha256" || key == "ffc_output_sha256" ||
+        key == "ref_output_sha256" || key == "elapsed_ms" ||
+        key == "ffc_compile_ms" || key == "ffc_run_ms" ||
+        key == "ref_compile_ms" || key == "ref_run_ms" ||
+        key == "peak_rss_kb" || key == "semantic_tags" ||
+        key == "coverage_mode" || key == "coverage_sha256"
 }
 
 function summary_field_allowed(key) {
@@ -183,14 +195,19 @@ function summary_field_allowed(key) {
         key == "reference_cache_hits" || key == "timeout_seconds" ||
         key == "skip_manifest_sha256" || key == "noref_manifest_sha256" ||
         key == "classification_mode" || key == "observation_sha256" ||
-        key == "classification_manifest_sha256" || key == "attempt_count"
+        key == "classification_manifest_sha256" || key == "attempt_count" ||
+        key == "target_triple" || key == "environment_sha256" ||
+        key == "runtime_abi_sha256" || key == "harness_sha256" ||
+        key == "toolchain_sha256" || key == "compiler_flags_sha256" ||
+        key == "coverage_mode"
 }
 
 function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
         fail_count, noref_count, skip_count, warning_count, total_count,
         flaky_count, ffc_revision, source_digest, binary_digest, fortfront_revision,
         fortfront_tree, liric_revision, liric_tree, corpus_revision,
-        corpus_tree, corpus_files_digest) {
+        corpus_tree, corpus_files_digest, report_schema, observation_schema,
+        target, coverage) {
     for (key in field_value) {
         if (!summary_field_allowed(key)) report_error("unknown SUMMARY field: " key)
     }
@@ -208,7 +225,8 @@ function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
     flaky_count = 0
     if ("flaky" in field_value) flaky_count = require_integer("flaky", 1)
     if (counts["FLAKY"] != flaky_count) report_error("SUMMARY flaky mismatch")
-    if (require_integer("schema_version", 1) != 1) {
+    report_schema = require_integer("schema_version", 1)
+    if (report_schema != 1 && report_schema != 2) {
         report_error("unknown report schema version")
     }
     if ("sampled" in field_value && require_boolean("sampled")) {
@@ -234,7 +252,8 @@ function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
         if (require_string("report_kind") != "classification") {
             report_error("dashboard input is not a classification view")
         }
-        if (require_integer("observation_schema_version", 1) != 1) {
+        observation_schema = require_integer("observation_schema_version", 1)
+        if (observation_schema != report_schema) {
             report_error("unknown observation schema version")
         }
         require_string("reference_compiler")
@@ -254,6 +273,24 @@ function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
         if ("attempt_count" in field_value &&
                 require_integer("attempt_count", 1) < 2) {
             report_error("invalid repeat attempt count")
+        }
+        if (report_schema == 2) {
+            target = require_string("target_triple")
+            if (target !~ /^[A-Za-z0-9][A-Za-z0-9._+-]*$/) {
+                report_error("invalid target triple")
+            }
+            require_digest("environment_sha256")
+            require_digest("runtime_abi_sha256")
+            require_digest("harness_sha256")
+            require_digest("toolchain_sha256")
+            require_digest("compiler_flags_sha256")
+            coverage = require_string("coverage_mode")
+            if (coverage != "none" && coverage != "llvm-profraw") {
+                report_error("invalid coverage mode")
+            }
+            if (v2_row_count != row_count) {
+                report_error("schema-2 row lacks provenance fields")
+            }
         }
     } else if (classified_row_count != 0) {
         report_error("classification fields without classification SUMMARY")
@@ -285,7 +322,7 @@ function noref_reason_allowed(reason) {
 
 function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
         is_noref, noref_reason, warning, observed_status, expectation,
-        expected_status) {
+        expected_status, phase, tags, coverage, target) {
     for (key in field_value) {
         if (!row_field_allowed(key)) report_error("unknown result field: " key)
     }
@@ -300,6 +337,48 @@ function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
     if (file_name == "") report_error("empty file field")
     require_string("note")
     if (seen[file_name]++) report_error("duplicate report row: " file_name)
+    if ("source_sha256" in field_value) {
+        v2_row_count++
+        require_digest("source_sha256")
+        require_digest("dependency_closure_sha256")
+        if (require_string("ffc_flags") == "" ||
+                require_string("ref_flags") == "") {
+            report_error("empty compiler flags")
+        }
+        require_digest("compiler_flags_sha256")
+        require_digest("environment_sha256")
+        target = require_string("target_triple")
+        if (target !~ /^[A-Za-z0-9][A-Za-z0-9._+-]*$/) {
+            report_error("invalid target triple")
+        }
+        require_digest("runtime_abi_sha256")
+        require_digest("harness_sha256")
+        require_digest("toolchain_sha256")
+        phase = require_string("phase")
+        if (phase != "compile" && phase != "run" && phase != "compare" &&
+                phase != "skip" && phase != "directive" &&
+                phase != "reference" && phase != "complete" &&
+                phase != "flaky") report_error("invalid phase")
+        require_digest("diagnostic_signature_sha256")
+        require_digest("crash_signature_sha256")
+        require_digest("ffc_output_sha256")
+        require_digest("ref_output_sha256")
+        require_integer("elapsed_ms", 1)
+        require_integer("ffc_compile_ms", 1)
+        require_integer("ffc_run_ms", 1)
+        require_integer("ref_compile_ms", 1)
+        require_integer("ref_run_ms", 1)
+        require_integer("peak_rss_kb", 1)
+        tags = require_string("semantic_tags")
+        if (tags !~ /^[a-z0-9][a-z0-9._-]*(,[a-z0-9][a-z0-9._-]*)*$/) {
+            report_error("invalid semantic tags")
+        }
+        coverage = require_string("coverage_mode")
+        if (coverage != "none" && coverage != "llvm-profraw") {
+            report_error("invalid coverage mode")
+        }
+        require_digest("coverage_sha256")
+    }
     has_ffc = "ffc_exit" in field_value
     has_ref = "ref_exit" in field_value
     if (has_ffc != has_ref) report_error("result has only one exit field")

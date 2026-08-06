@@ -28,7 +28,74 @@ NOREF_REASONS = NOREF_CATEGORIES | {
     "reference-runtime-failure",
 }
 HEX40 = re.compile(r"^[0-9A-Fa-f]{40}$")
-HEX64 = re.compile(r"^[0-9A-Fa-f]{64}$")
+HEX64 = re.compile(r"^[0-9a-f]{64}$")
+TARGET_TRIPLE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]*$")
+SEMANTIC_TAG = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
+PHASES = {
+    "compile",
+    "run",
+    "compare",
+    "skip",
+    "directive",
+    "reference",
+    "complete",
+    "flaky",
+}
+COVERAGE_MODES = {"none", "llvm-profraw"}
+
+CASE_DIGEST_FIELDS = (
+    "source_sha256",
+    "dependency_closure_sha256",
+    "compiler_flags_sha256",
+    "environment_sha256",
+    "runtime_abi_sha256",
+    "harness_sha256",
+    "toolchain_sha256",
+    "diagnostic_signature_sha256",
+    "crash_signature_sha256",
+    "ffc_output_sha256",
+    "ref_output_sha256",
+    "coverage_sha256",
+)
+CASE_TEXT_FIELDS = ("ffc_flags", "ref_flags", "target_triple")
+CASE_METRIC_FIELDS = (
+    "elapsed_ms",
+    "ffc_compile_ms",
+    "ffc_run_ms",
+    "ref_compile_ms",
+    "ref_run_ms",
+    "peak_rss_kb",
+)
+LOCKED_CASE_FIELDS = (
+    "source_sha256",
+    "dependency_closure_sha256",
+    "ffc_flags",
+    "ref_flags",
+    "compiler_flags_sha256",
+    "environment_sha256",
+    "target_triple",
+    "runtime_abi_sha256",
+    "harness_sha256",
+    "toolchain_sha256",
+    "semantic_tags",
+    "coverage_mode",
+)
+DYNAMIC_DIGEST_FIELDS = (
+    "diagnostic_signature_sha256",
+    "crash_signature_sha256",
+    "ffc_output_sha256",
+    "ref_output_sha256",
+    "coverage_sha256",
+)
+SUMMARY_CASE_LOCK_FIELDS = (
+    "target_triple",
+    "environment_sha256",
+    "runtime_abi_sha256",
+    "harness_sha256",
+    "toolchain_sha256",
+    "coverage_mode",
+)
+EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 
 CASE_FIELDS = {
     "suite",
@@ -43,6 +110,12 @@ CASE_FIELDS = {
     "noref_manifest_category",
     "attempts",
     "observed",
+    *CASE_DIGEST_FIELDS,
+    *CASE_TEXT_FIELDS,
+    *CASE_METRIC_FIELDS,
+    "phase",
+    "semantic_tags",
+    "coverage_mode",
 }
 CLASSIFICATION_CASE_FIELDS = CASE_FIELDS | {"observed_status", "expectation"}
 SUMMARY_FIELDS = {
@@ -85,6 +158,13 @@ SUMMARY_FIELDS = {
     "skip_manifest_sha256",
     "noref_manifest_sha256",
     "attempt_count",
+    "target_triple",
+    "environment_sha256",
+    "runtime_abi_sha256",
+    "harness_sha256",
+    "toolchain_sha256",
+    "compiler_flags_sha256",
+    "coverage_mode",
 }
 CLASSIFICATION_SUMMARY_FIELDS = SUMMARY_FIELDS | {
     "classification_mode",
@@ -118,6 +198,13 @@ IDENTITY_FIELDS = (
     "timeout_seconds",
     "skip_manifest_sha256",
     "noref_manifest_sha256",
+    "target_triple",
+    "environment_sha256",
+    "runtime_abi_sha256",
+    "harness_sha256",
+    "toolchain_sha256",
+    "compiler_flags_sha256",
+    "coverage_mode",
 )
 
 
@@ -172,6 +259,54 @@ def validate_revision(record: dict[str, Any], key: str, location: str) -> None:
         raise ObservationError(f"{location}: malformed revision: {key}")
 
 
+def validate_nonempty_text(
+    record: dict[str, Any], key: str, location: str
+) -> str:
+    value = require_exact_type(record, key, str, location)
+    if not value or "\0" in value or "\n" in value or "\r" in value:
+        raise ObservationError(f"{location}: invalid text field: {key}")
+    return value
+
+
+def validate_case_provenance(
+    record: dict[str, Any], status: str, location: str
+) -> None:
+    for key in CASE_DIGEST_FIELDS:
+        validate_digest(record, key, location)
+    for key in CASE_TEXT_FIELDS:
+        validate_nonempty_text(record, key, location)
+    for key in CASE_METRIC_FIELDS:
+        nonnegative_int(record, key, location)
+
+    target_triple = record["target_triple"]
+    if not TARGET_TRIPLE.fullmatch(target_triple):
+        raise ObservationError(f"{location}: invalid target_triple")
+
+    phase = validate_nonempty_text(record, "phase", location)
+    if phase not in PHASES:
+        raise ObservationError(f"{location}: invalid phase: {phase}")
+    if (status == "FLAKY") != (phase == "flaky"):
+        raise ObservationError(f"{location}: phase/status mismatch")
+
+    semantic_tags = validate_nonempty_text(record, "semantic_tags", location)
+    tags = semantic_tags.split(",")
+    if (
+        any(not SEMANTIC_TAG.fullmatch(tag) for tag in tags)
+        or len(set(tags)) != len(tags)
+    ):
+        raise ObservationError(f"{location}: invalid semantic_tags")
+
+    coverage_mode = validate_nonempty_text(record, "coverage_mode", location)
+    if coverage_mode not in COVERAGE_MODES:
+        raise ObservationError(
+            f"{location}: invalid coverage_mode: {coverage_mode}"
+        )
+    if coverage_mode == "none" and record["coverage_sha256"] != EMPTY_SHA256:
+        raise ObservationError(
+            f"{location}: coverage_sha256 must hash empty content when coverage is none"
+        )
+
+
 def parse_jsonl(data: bytes, source: str) -> list[dict[str, Any]]:
     try:
         text = data.decode("utf-8")
@@ -211,6 +346,7 @@ def validate_case(
             f"{location}: classified status in raw observation: {status}"
         )
     note = require_exact_type(record, "note", str, location)
+    validate_case_provenance(record, status, location)
 
     has_ffc = "ffc_exit" in record
     has_ref = "ref_exit" in record
@@ -336,6 +472,11 @@ def validate_summary_metadata(
         "corpus_files_sha256",
         "skip_manifest_sha256",
         "noref_manifest_sha256",
+        "environment_sha256",
+        "runtime_abi_sha256",
+        "harness_sha256",
+        "toolchain_sha256",
+        "compiler_flags_sha256",
     ):
         validate_digest(summary, key, location)
     for key in ("worktree", "reference_compiler"):
@@ -345,6 +486,17 @@ def validate_summary_metadata(
     nonnegative_int(summary, "reference_cache_hits", location)
     if nonnegative_int(summary, "timeout_seconds", location) < 1:
         raise ObservationError(f"{location}: timeout_seconds must be positive")
+
+    target_triple = validate_nonempty_text(
+        summary, "target_triple", location
+    )
+    if not TARGET_TRIPLE.fullmatch(target_triple):
+        raise ObservationError(f"{location}: invalid target_triple")
+    coverage_mode = validate_nonempty_text(summary, "coverage_mode", location)
+    if coverage_mode not in COVERAGE_MODES:
+        raise ObservationError(
+            f"{location}: invalid coverage_mode: {coverage_mode}"
+        )
 
     sampled = summary.get("sampled", False)
     if not isinstance(sampled, bool):
@@ -377,6 +529,17 @@ def validate_summary_metadata(
         raise ObservationError(f"{location}: attempt_count must be at least two")
 
 
+def validate_summary_case_provenance(
+    cases: list[dict[str, Any]], summary: dict[str, Any], location: str
+) -> None:
+    for index, case in enumerate(cases, 1):
+        for key in SUMMARY_CASE_LOCK_FIELDS:
+            if case[key] != summary[key]:
+                raise ObservationError(
+                    f"{location}: case {index} differs from SUMMARY: {key}"
+                )
+
+
 def validate_summary(
     summary: dict[str, Any],
     suite: str,
@@ -395,11 +558,11 @@ def validate_summary(
         raise ObservationError(f"{location}: mixed or unexpected SUMMARY suite")
     if require_exact_type(summary, "status", str, location) != "SUMMARY":
         raise ObservationError(f"{location}: invalid SUMMARY status")
-    if nonnegative_int(summary, "schema_version", location) != 1:
+    if nonnegative_int(summary, "schema_version", location) != 2:
         raise ObservationError(f"{location}: unknown report schema")
     if require_exact_type(summary, "report_kind", str, location) != "observation":
         raise ObservationError(f"{location}: SUMMARY is not an observation")
-    if nonnegative_int(summary, "observation_schema_version", location) != 1:
+    if nonnegative_int(summary, "observation_schema_version", location) != 2:
         raise ObservationError(f"{location}: unknown observation schema")
 
     expected = {
@@ -443,11 +606,11 @@ def validate_classification_summary(
         raise ObservationError(f"{location}: mixed or unexpected SUMMARY suite")
     if require_exact_type(summary, "status", str, location) != "SUMMARY":
         raise ObservationError(f"{location}: invalid SUMMARY status")
-    if nonnegative_int(summary, "schema_version", location) != 1:
+    if nonnegative_int(summary, "schema_version", location) != 2:
         raise ObservationError(f"{location}: unknown report schema")
     if require_exact_type(summary, "report_kind", str, location) != "classification":
         raise ObservationError(f"{location}: SUMMARY is not a classification")
-    if nonnegative_int(summary, "observation_schema_version", location) != 1:
+    if nonnegative_int(summary, "observation_schema_version", location) != 2:
         raise ObservationError(f"{location}: unknown observation schema")
 
     expected = {
@@ -525,6 +688,7 @@ def load_observation(path: Path, suite: str) -> tuple[bytes, list[dict[str, Any]
         warning_count,
         len(cases),
     )
+    validate_summary_case_provenance(cases, summary, str(path))
     flaky_cases = [case for case in cases if case["status"] == "FLAKY"]
     if flaky_cases and "attempt_count" not in summary:
         raise ObservationError(f"{path}: FLAKY observation lacks attempt_count")
@@ -587,6 +751,7 @@ def load_classification(
         warning_count,
         len(cases),
     )
+    validate_summary_case_provenance(cases, summary, str(path))
     flaky_cases = [case for case in cases if case["status"] == "FLAKY"]
     if flaky_cases and "attempt_count" not in summary:
         raise ObservationError(f"{path}: FLAKY classification lacks attempt_count")
@@ -741,6 +906,7 @@ def validate_in_memory_observation(
         warning_count,
         len(cases),
     )
+    validate_summary_case_provenance(cases, summary, "merged observation")
 
 
 def validate_in_memory_classification(
@@ -769,6 +935,7 @@ def validate_in_memory_classification(
         warning_count,
         len(cases),
     )
+    validate_summary_case_provenance(cases, summary, "classification")
 
 
 def command_validate(args: argparse.Namespace) -> int:
@@ -863,6 +1030,31 @@ def command_classification_counts(args: argparse.Namespace) -> int:
     return 0
 
 
+def canonical_behavior(case: dict[str, Any]) -> str:
+    """Return the repeat oracle, excluding non-behavioral resource metrics."""
+    behavior = {
+        key: value
+        for key, value in case.items()
+        if key not in CASE_METRIC_FIELDS
+    }
+    return json.dumps(behavior, sort_keys=True, separators=(",", ":"))
+
+
+def aggregate_attempt_digests(
+    field: str, attempt_cases: list[dict[str, Any]]
+) -> str:
+    """Bind an aggregate digest to its field, attempt order, and every value."""
+    payload = json.dumps(
+        {
+            "field": field,
+            "attempts": [case[field] for case in attempt_cases],
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def command_merge(args: argparse.Namespace) -> int:
     if len(args.observations) < 2:
         raise ObservationError("repeat merge requires at least two observations")
@@ -889,16 +1081,17 @@ def command_merge(args: argparse.Namespace) -> int:
     merged_cases: list[dict[str, Any]] = []
     for case_index, file_name in enumerate(first_files):
         attempt_cases = [entry[1][case_index] for entry in loaded]
-        for key in ("warning_expectation", "noref_manifest_category"):
+        for key in (
+            *LOCKED_CASE_FIELDS,
+            "warning_expectation",
+            "noref_manifest_category",
+        ):
             values = [case.get(key) for case in attempt_cases]
             if any(value != values[0] for value in values[1:]):
                 raise ObservationError(
                     f"case metadata differs across attempts: {file_name}: {key}"
                 )
-        canonical_cases = [
-            json.dumps(case, sort_keys=True, separators=(",", ":"))
-            for case in attempt_cases
-        ]
+        canonical_cases = [canonical_behavior(case) for case in attempt_cases]
         states: list[str] = []
         for case in attempt_cases:
             state = case["status"]
@@ -921,7 +1114,24 @@ def command_merge(args: argparse.Namespace) -> int:
                 "note": f"unstable across {len(loaded)} attempts",
                 "attempts": len(loaded),
                 "observed": "|".join(states),
+                "phase": "flaky",
             }
+            for key in LOCKED_CASE_FIELDS:
+                flaky_case[key] = attempt_cases[0][key]
+            for key in DYNAMIC_DIGEST_FIELDS:
+                if key == "coverage_sha256" and (
+                    flaky_case["coverage_mode"] == "none"
+                ):
+                    flaky_case[key] = EMPTY_SHA256
+                else:
+                    flaky_case[key] = aggregate_attempt_digests(
+                        key, attempt_cases
+                    )
+            for key in CASE_METRIC_FIELDS[:-1]:
+                flaky_case[key] = sum(case[key] for case in attempt_cases)
+            flaky_case["peak_rss_kb"] = max(
+                case["peak_rss_kb"] for case in attempt_cases
+            )
             for key in ("warning_expectation", "noref_manifest_category"):
                 if key in attempt_cases[0]:
                     flaky_case[key] = attempt_cases[0][key]

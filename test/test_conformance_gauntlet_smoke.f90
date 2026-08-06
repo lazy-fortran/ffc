@@ -182,7 +182,7 @@ contains
             if (index(line, '"status":"SUMMARY"') > 0) then
                 has_summary = index(line, '"fail":0') > 0 .and. &
                     index(line, '"total":'//trim(total_text)//',') > 0 .and. &
-                    index(line, '"schema_version":1') > 0 .and. &
+                    index(line, '"schema_version":2') > 0 .and. &
                     index(line, '"provenance_verified":false') > 0 .and. &
                     index(line, '"ffc_source_sha256":"') > 0 .and. &
                     index(line, '"ffc_binary_sha256":"') > 0
@@ -302,7 +302,7 @@ contains
         if (.not. file_contains(DG_REPORT, &
             '"file":"true_error.f90","status":"PASS"')) passed = .false.
         if (.not. file_contains(DG_REPORT, &
-            '"warning_unchecked":2,"total":8,"schema_version":1')) &
+            '"warning_unchecked":2,"total":8,"schema_version":2')) &
             passed = .false.
         if (count_lines_with(DG_REPORT, 'options.f90","status":"PASS"', &
             'ffc -c succeeded') /= 4) passed = .false.

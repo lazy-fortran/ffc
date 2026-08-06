@@ -178,14 +178,37 @@ find_ffc() {
     return 1
 }
 
+# conformance_run_measured <label> <diagnostic_file> <command> [args...]
+# Run one compiler command while appending a stable timing/RSS record and its
+# diagnostics to the current case files. Outside the gauntlet the globals are
+# unset, so callers retain the historical quiet behavior.
+conformance_run_measured() {
+    local label="$1" diagnostic_file="$2"
+    local metrics_file="${CONFORMANCE_METRICS_FILE:-}" metric_tmp status
+    shift 2
+    [ -n "$diagnostic_file" ] || diagnostic_file=/dev/null
+    if [ -n "$metrics_file" ] && [ -x /usr/bin/time ]; then
+        metric_tmp="${metrics_file}.${BASHPID}.${RANDOM}.tmp"
+        /usr/bin/time -f "$label\t%e\t%M" -o "$metric_tmp" \
+            "$@" 2>> "$diagnostic_file"
+        status=$?
+        awk -F '\t' -v label="$label" \
+            '$1 == label && NF == 3 { print }' "$metric_tmp" >> "$metrics_file"
+        rm -f "$metric_tmp"
+        return "$status"
+    fi
+    "$@" 2>> "$diagnostic_file"
+}
+
 # compile_with_ffc <source> <exe> <ffc_path> [extra_args...]
 # Returns 0 on success, non-zero on failure. Extra arguments (e.g. -I dir and
 # prerequisite .o files for separate compilation) are passed straight to ffc.
 compile_with_ffc() {
     local source="$1" exe="$2" ffc="$3"
     shift 3
-    timeout "${FFC_COMPILE_TIMEOUT:-10}" "$ffc" "$source" -o "$exe" "$@" 2>/dev/null
-    return $?
+    conformance_run_measured ffc_compile \
+        "${FFC_COMPILER_DIAGNOSTIC_FILE:-}" \
+        timeout "${FFC_COMPILE_TIMEOUT:-10}" "$ffc" "$source" -o "$exe" "$@"
 }
 
 # modules_defined_in <source>
@@ -343,8 +366,9 @@ resolve_extra_sources() {
 # Returns 0 on success, non-zero on failure.
 compile_object_with_ffc() {
     local source="$1" object="$2" ffc="$3"
-    timeout "${FFC_COMPILE_TIMEOUT:-10}" "$ffc" "$source" -c -o "$object" 2>/dev/null
-    return $?
+    conformance_run_measured ffc_compile \
+        "${FFC_COMPILER_DIAGNOSTIC_FILE:-}" \
+        timeout "${FFC_COMPILE_TIMEOUT:-10}" "$ffc" "$source" -c -o "$object"
 }
 
 # compile_object_with_ffc_inc <source> <object> <ffc_path> <inc_dir>
@@ -354,9 +378,10 @@ compile_object_with_ffc() {
 # the .fmod where the main file's -I search later finds it.
 compile_object_with_ffc_inc() {
     local source="$1" object="$2" ffc="$3" inc_dir="$4"
-    timeout "${FFC_COMPILE_TIMEOUT:-10}" \
-        "$ffc" "$source" -c -o "$object" -I "$inc_dir" 2>/dev/null
-    return $?
+    conformance_run_measured ffc_compile \
+        "${FFC_COMPILER_DIAGNOSTIC_FILE:-}" \
+        timeout "${FFC_COMPILE_TIMEOUT:-10}" \
+        "$ffc" "$source" -c -o "$object" -I "$inc_dir"
 }
 
 # compile_object_with_extra_inc <source> <object> <ffc_path> <inc_dir>
@@ -370,17 +395,17 @@ compile_object_with_extra_inc() {
     case "$extension" in
         c)
             compiler="${CC:-cc}"
-            timeout "${C_COMPILE_TIMEOUT:-${FFC_COMPILE_TIMEOUT:-10}}" \
-                "$compiler" -I "$inc_dir" -c "$source" -o "$object" \
-                2>/dev/null
-            return $?
+            conformance_run_measured dependency_compile \
+                "${FFC_COMPILER_DIAGNOSTIC_FILE:-}" \
+                timeout "${C_COMPILE_TIMEOUT:-${FFC_COMPILE_TIMEOUT:-10}}" \
+                "$compiler" -I "$inc_dir" -c "$source" -o "$object"
             ;;
         C|cc|CC|cpp|CPP|cxx|CXX)
             compiler="${CXX:-c++}"
-            timeout "${CXX_COMPILE_TIMEOUT:-${FFC_COMPILE_TIMEOUT:-10}}" \
-                "$compiler" -I "$inc_dir" -c "$source" -o "$object" \
-                2>/dev/null
-            return $?
+            conformance_run_measured dependency_compile \
+                "${FFC_COMPILER_DIAGNOSTIC_FILE:-}" \
+                timeout "${CXX_COMPILE_TIMEOUT:-${FFC_COMPILE_TIMEOUT:-10}}" \
+                "$compiler" -I "$inc_dir" -c "$source" -o "$object"
             ;;
         *)
             extension="${extension,,}"
@@ -411,14 +436,16 @@ compile_with_gfortran() {
     shift 2
     local mod_dir status
     mod_dir=$(mktemp -d "${TMPDIR:-/tmp}/ffc_gfmod_XXXXXX") || return 1
-    timeout "${GFORTRAN_COMPILE_TIMEOUT:-${FFC_COMPILE_TIMEOUT:-10}}" \
-        gfortran -w -J "$mod_dir" "$@" "$source" -o "$exe" 2>/dev/null
+    conformance_run_measured ref_compile \
+        "${REF_COMPILER_DIAGNOSTIC_FILE:-}" \
+        timeout "${GFORTRAN_COMPILE_TIMEOUT:-${FFC_COMPILE_TIMEOUT:-10}}" \
+        gfortran -w -J "$mod_dir" "$@" "$source" -o "$exe"
     status=$?
     rm -rf "$mod_dir"
     return $status
 }
 
-# run_capture <exe> <out_file> <timeout_seconds>
+# run_capture <exe> <out_file> <timeout_seconds> [metric_label]
 # Runs the executable, captures stdout+stderr to out_file, respects timeout.
 # Returns the exit status of the executable (or 124 if timed out).
 # stdin is redirected from /dev/null: the caller drives the file list on the
@@ -426,17 +453,40 @@ compile_with_gfortran() {
 # those lines and corrupt later iterations.
 run_capture() {
     local exe="$1" out_file="$2" timeout="$3"
-    local sandbox status
+    local metric_label="${4:-run}" metrics_file="${CONFORMANCE_METRICS_FILE:-}"
+    local sandbox status metric_tmp
     # Run from a scratch directory, not the caller's cwd. A corpus program that
     # opens a file by bare name (lfortran integration_tests/file_08.f90 writes
     # 'file_08.txt') otherwise litters whatever directory drove the gauntlet,
     # which is the ffc repository root.
     sandbox=$(mktemp -d "${TMPDIR:-/tmp}/ffc-run-XXXXXX") || {
+        if [ -n "$metrics_file" ] && [ -x /usr/bin/time ]; then
+            metric_tmp="${metrics_file}.${BASHPID}.${RANDOM}.tmp"
+            /usr/bin/time -f "$metric_label\t%e\t%M" -o "$metric_tmp" \
+                timeout "$timeout" "$exe" > "$out_file" 2>&1 < /dev/null
+            status=$?
+            awk -F '\t' -v label="$metric_label" \
+                '$1 == label && NF == 3 { print }' "$metric_tmp" >> "$metrics_file"
+            rm -f "$metric_tmp"
+            return "$status"
+        fi
         timeout "$timeout" "$exe" > "$out_file" 2>&1 < /dev/null
         return $?
     }
-    ( cd "$sandbox" && timeout "$timeout" "$exe" ) > "$out_file" 2>&1 < /dev/null
-    status=$?
+    if [ -n "$metrics_file" ] && [ -x /usr/bin/time ]; then
+        metric_tmp="${metrics_file}.${BASHPID}.${RANDOM}.tmp"
+        ( cd "$sandbox" && /usr/bin/time -f "$metric_label\t%e\t%M" \
+            -o "$metric_tmp" timeout "$timeout" "$exe" ) \
+            > "$out_file" 2>&1 < /dev/null
+        status=$?
+        awk -F '\t' -v label="$metric_label" \
+            '$1 == label && NF == 3 { print }' "$metric_tmp" >> "$metrics_file"
+        rm -f "$metric_tmp"
+    else
+        ( cd "$sandbox" && timeout "$timeout" "$exe" ) \
+            > "$out_file" 2>&1 < /dev/null
+        status=$?
+    fi
     rm -rf "$sandbox"
     return $status
 }

@@ -110,8 +110,31 @@ program test_conformance_observation_once
                 '"file":"observed_pass_once.lf","status":"PASS"') .or. &
             .not. file_contains(observations, &
                 '"report_kind":"observation"') .or. &
+            .not. file_contains(observations, '"schema_version":2') .or. &
+            .not. file_contains(observations, '"source_sha256":"') .or. &
+            .not. file_contains(observations, &
+                '"dependency_closure_sha256":"') .or. &
+            .not. file_contains(observations, &
+                '"diagnostic_signature_sha256":"') .or. &
+            .not. file_contains(observations, '"elapsed_ms":') .or. &
+            .not. file_contains(observations, '"peak_rss_kb":') .or. &
+            .not. file_contains(observations, &
+                '"coverage_mode":"none"') .or. &
             file_contains(observations, '"expectation":')) then
         print *, 'FAIL: raw report is not one expectation-neutral observation'
+        passed = .false.
+    end if
+
+    ! Required evidence fields are schema, not optional annotations.
+    command = 'sed ''1s/,"coverage_sha256":"[0-9a-f]*"//'' '// &
+        observations//' > '//malformed_observations
+    call execute_command_line(command, exitstat=exit_status)
+    command = 'python3 '//OBSERVATION_TOOL//' validate --suite fortfront-lf '// &
+        malformed_observations//' >> '//log_file//' 2>&1'
+    call execute_command_line(command, exitstat=exit_status)
+    if (exit_status == 0 .or. .not. file_contains(log_file, &
+            'missing field: coverage_sha256')) then
+        print *, 'FAIL: strict schema accepted missing coverage provenance'
         passed = .false.
     end if
     if (.not. file_contains(normal_report, &

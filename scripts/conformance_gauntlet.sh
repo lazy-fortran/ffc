@@ -31,8 +31,8 @@
 #                       carries the 95% confidence margin of the sampled rate.
 #   --seed S            seed for --sample (default: 0); same seed and same
 #                       corpus select exactly the same files
-#   --ref-cache DIR     cache gfortran reference outputs under DIR, keyed by
-#                       source content plus gfortran version. Reuse is exact:
+#   --ref-cache DIR     cache successful gfortran reference outputs under DIR,
+#                       keyed by the complete execution descriptor. Reuse is exact:
 #                       a cached comparison that does not match is discarded
 #                       and the reference is rebuilt.
 #   --require-provenance require clean inputs and a freshly built compiler
@@ -332,6 +332,8 @@ classify_nonrunnable_noref() {
     local obj="$TMPDIR_WORK/noref_${TOTAL_COUNT}.o"
     local exe="$TMPDIR_WORK/noref_ref_${TOTAL_COUNT}"
     local ffc_status=1 ref_status=1 record_note
+    CASE_FFC_FLAGS="-c"
+    CASE_REF_FLAGS="-w -J @private-module-dir"
 
     if compile_with_gfortran "$source" "$exe"; then
         record_note="reference builds a runnable executable; $category not applicable"
@@ -367,7 +369,9 @@ classify_nonrunnable_noref() {
 write_result_record() {
     local file="$1" result_status="$2" compiler_exit="$3" reference_exit="$4"
     local result_note="$5" warning_expectation="$6" warning_json="" noref_json=""
-    local noref_manifest_json=""
+    local noref_manifest_json="" phase diagnostic_sha crash_sha ffc_output_sha
+    local ref_output_sha elapsed_ms ffc_compile_ms ffc_run_ms ref_compile_ms
+    local ref_run_ms peak_rss compiler_flags_sha
     if [ -n "$warning_expectation" ]; then
         warning_json=',"warning_expectation":"unchecked"'
     fi
@@ -379,32 +383,228 @@ write_result_record() {
         noref_manifest_json=$(printf ',"noref_manifest_category":"%s"' \
             "$(json_escape "$NOREF_MANIFEST_CATEGORY")")
     fi
-    printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"%s%s%s}\n' \
+    phase=$(case_phase "$result_status" "$compiler_exit" "$reference_exit" \
+        "$result_note")
+    diagnostic_sha=$(case_diagnostic_signature)
+    crash_sha=$(case_crash_signature "$compiler_exit" "$reference_exit")
+    ffc_output_sha=$(sha256_file_or_empty "${ffc_out:-}")
+    ref_output_sha=$(sha256_file_or_empty "${ref_out:-}")
+    ffc_compile_ms=$(case_metric_ms ffc_compile)
+    ffc_run_ms=$(case_metric_ms ffc_run)
+    ref_compile_ms=$(case_metric_ms ref_compile)
+    ref_run_ms=$(case_metric_ms ref_run)
+    elapsed_ms=$((ffc_compile_ms + ffc_run_ms + ref_compile_ms + ref_run_ms + $(case_metric_ms dependency_compile)))
+    peak_rss=$(case_peak_rss)
+    compiler_flags_sha=$(printf 'ffc:%s\nref:%s\n' \
+        "$CASE_FFC_FLAGS" "$CASE_REF_FLAGS" | sha256sum | cut -d ' ' -f 1)
+    printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"%s%s%s,"source_sha256":"%s","dependency_closure_sha256":"%s","ffc_flags":"%s","ref_flags":"%s","compiler_flags_sha256":"%s","environment_sha256":"%s","target_triple":"%s","runtime_abi_sha256":"%s","harness_sha256":"%s","toolchain_sha256":"%s","phase":"%s","diagnostic_signature_sha256":"%s","crash_signature_sha256":"%s","ffc_output_sha256":"%s","ref_output_sha256":"%s","elapsed_ms":%d,"ffc_compile_ms":%d,"ffc_run_ms":%d,"ref_compile_ms":%d,"ref_run_ms":%d,"peak_rss_kb":%d,"semantic_tags":"%s","coverage_mode":"none","coverage_sha256":"%s"}\n' \
         "$SUITE" "$(json_escape "$file")" "$result_status" "$compiler_exit" \
         "$reference_exit" "$(json_escape "$result_note")" "$warning_json" \
-        "$noref_json" "$noref_manifest_json" >> "$OBSERVATIONS"
+        "$noref_json" "$noref_manifest_json" "$CASE_SOURCE_SHA256" \
+        "$(case_dependency_closure_sha256)" "$(json_escape "$CASE_FFC_FLAGS")" \
+        "$(json_escape "$CASE_REF_FLAGS")" "$compiler_flags_sha" \
+        "$ENVIRONMENT_SHA256" "$(json_escape "$TARGET_TRIPLE")" \
+        "$RUNTIME_ABI_SHA256" "$HARNESS_SHA256" "$TOOLCHAIN_SHA256" \
+        "$phase" "$diagnostic_sha" "$crash_sha" "$ffc_output_sha" \
+        "$ref_output_sha" "$elapsed_ms" "$ffc_compile_ms" "$ffc_run_ms" \
+        "$ref_compile_ms" "$ref_run_ms" "$peak_rss" \
+        "$(json_escape "$CASE_SEMANTIC_TAGS")" "$EMPTY_SHA256" >> "$OBSERVATIONS"
 }
 
-# Reference-output cache. About half the gauntlet's work is running gfortran to
-# obtain the reference; its result changes only when the source, the sibling
-# sources compiled with it, or the gfortran version change. The key covers all
-# three, so a hit is exact rather than approximate, and any cached comparison
-# that does not match is thrown away and remeasured (see step 7b).
+sha256_file_or_empty() {
+    local path="${1:-}"
+    if [ -n "$path" ] && [ -f "$path" ]; then
+        sha256sum "$path" | cut -d ' ' -f 1
+    else
+        printf '%s\n' "$EMPTY_SHA256"
+    fi
+}
+
+digest_paths() {
+    local path file label
+    {
+        for path in "$@"; do
+            if [ -d "$path" ]; then
+                while IFS= read -r file; do
+                    label=${file#"$PROJECT_DIR"/}
+                    printf '%s\t%s\n' "$label" "$(sha256_file_or_empty "$file")"
+                done < <(find "$path" -type f -print | LC_ALL=C sort)
+            elif [ -f "$path" ]; then
+                label=${path#"$PROJECT_DIR"/}
+                printf '%s\t%s\n' "$label" "$(sha256_file_or_empty "$path")"
+            fi
+        done
+    } | LC_ALL=C sort -u | sha256sum | cut -d ' ' -f 1
+}
+
+declared_environment_sha256() {
+    env | LC_ALL=C awk -F= '
+        $1 == "PATH" || $1 == "LANG" || $1 == "LC_ALL" ||
+        $1 == "LC_CTYPE" || $1 == "TZ" || $1 == "LIBRARY_PATH" ||
+        $1 == "LD_LIBRARY_PATH" || $1 ~ /^GFORTRAN_/ ||
+        $1 ~ /^FORTRAN_/ || $1 ~ /^OMP_/ || $1 ~ /^ACC_/ ||
+        $1 ~ /^OBS_/ || ($1 ~ /^FFC_/ && $1 != "FFC_XFAIL_MANIFEST")
+    ' | LC_ALL=C sort | sha256sum | cut -d ' ' -f 1
+}
+
+case_add_dependency() {
+    local path="$1" label
+    [ -n "${CASE_DEPENDENCY_FILE:-}" ] || return 0
+    if [ -f "$path" ]; then
+        case "$path" in
+            "$SUITE_ROOT"/*) label="suite:${path#"$SUITE_ROOT"/}" ;;
+            "$PROJECT_DIR"/*) label="ffc:${path#"$PROJECT_DIR"/}" ;;
+            *) label="external:$(basename "$path")" ;;
+        esac
+        printf '%s\t%s\n' "$label" "$(sha256_file_or_empty "$path")" \
+            >> "$CASE_DEPENDENCY_FILE"
+    else
+        printf 'missing:%s\t%s\n' "$path" "$EMPTY_SHA256" \
+            >> "$CASE_DEPENDENCY_FILE"
+    fi
+}
+
+case_add_dependency_tree() {
+    local directory="$1" path
+    [ -d "$directory" ] || return 0
+    while IFS= read -r path; do
+        case_add_dependency "$path"
+    done < <(find "$directory" -type f -print | LC_ALL=C sort)
+}
+
+case_dependency_closure_sha256() {
+    LC_ALL=C sort -u "$CASE_DEPENDENCY_FILE" | sha256sum | cut -d ' ' -f 1
+}
+
+semantic_tags_for_source() {
+    local source="$1" tags=""
+    grep -Eiq '^[[:space:]]*module[[:space:]]' "$source" && tags="module"
+    grep -Eiq '^[[:space:]]*submodule[[:space:]]' "$source" && tags="${tags:+$tags,}submodule"
+    grep -Eiq '\b(coarray|sync[[:space:]]+(all|images|memory))\b' "$source" && tags="${tags:+$tags,}coarray"
+    grep -Eiq '\b(do[[:space:]]+concurrent|forall)\b' "$source" && tags="${tags:+$tags,}parallel"
+    grep -Eiq '\b(type|class)[[:space:]]*\(' "$source" && tags="${tags:+$tags,}derived-type"
+    grep -Eiq '\b(interface|procedure)\b' "$source" && tags="${tags:+$tags,}procedure"
+    printf '%s\n' "${tags:-none}"
+}
+
+initialize_case_provenance() {
+    local source="$1"
+    CASE_DEPENDENCY_FILE="$TMPDIR_WORK/dependencies_${TOTAL_COUNT}.tsv"
+    CONFORMANCE_METRICS_FILE="$TMPDIR_WORK/metrics_${TOTAL_COUNT}.tsv"
+    FFC_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ffc_diagnostic_${TOTAL_COUNT}.txt"
+    REF_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ref_diagnostic_${TOTAL_COUNT}.txt"
+    export CONFORMANCE_METRICS_FILE FFC_COMPILER_DIAGNOSTIC_FILE
+    export REF_COMPILER_DIAGNOSTIC_FILE
+    : > "$CASE_DEPENDENCY_FILE"
+    : > "$CONFORMANCE_METRICS_FILE"
+    : > "$FFC_COMPILER_DIAGNOSTIC_FILE"
+    : > "$REF_COMPILER_DIAGNOSTIC_FILE"
+    CASE_SOURCE_SHA256=$(sha256_file_or_empty "$source")
+    CASE_SEMANTIC_TAGS=$(semantic_tags_for_source "$source")
+    CASE_FFC_FLAGS="default"
+    if is_lazy_suite; then
+        CASE_REF_FLAGS="not-applicable"
+    else
+        CASE_REF_FLAGS="-w -J @private-module-dir"
+    fi
+    case_add_dependency "$source"
+}
+
+canonical_flags() {
+    local base="$1" arg rendered="$1"
+    shift
+    for arg in "$@"; do
+        case "$arg" in
+            "$TMPDIR_WORK"/*) arg="@case/${arg##*/}" ;;
+            "$SUITE_ROOT"/*) arg="@suite/${arg#"$SUITE_ROOT"/}" ;;
+            "$PROJECT_DIR"/*) arg="@ffc/${arg#"$PROJECT_DIR"/}" ;;
+        esac
+        rendered="$rendered $arg"
+    done
+    printf '%s\n' "$rendered"
+}
+
+case_metric_ms() {
+    local label="$1"
+    awk -F '\t' -v label="$label" '$1 == label { total += $2 * 1000 }
+        END { printf "%.0f\n", total }' "$CONFORMANCE_METRICS_FILE"
+}
+
+case_peak_rss() {
+    awk -F '\t' '$3 ~ /^[0-9]+$/ && $3 > peak { peak = $3 }
+        END { printf "%d\n", peak }' "$CONFORMANCE_METRICS_FILE"
+}
+
+case_diagnostic_signature() {
+    { cat "$FFC_COMPILER_DIAGNOSTIC_FILE" "$REF_COMPILER_DIAGNOSTIC_FILE"; } |
+        sed -E -e "s#${TMPDIR_WORK}#@case#g" \
+            -e 's#(/[^ /:]*)?/ffc_gfmod_[[:alnum:]]+#@ref-module#g' \
+            -e 's/0x[0-9A-Fa-f]+/<addr>/g; s/\r$//' |
+        sha256sum | cut -d ' ' -f 1
+}
+
+case_crash_signature() {
+    local ffc_status="$1" ref_status="$2"
+    if { [ "$ffc_status" -eq 124 ] || [ "$ffc_status" -ge 126 ]; } ||
+        { [ "$ref_status" -eq 124 ] || [ "$ref_status" -ge 126 ]; }; then
+        {
+            printf 'ffc=%s ref=%s\n' "$ffc_status" "$ref_status"
+            [ -f "${ffc_out:-}" ] && tail -n 20 "$ffc_out"
+            [ -f "${ref_out:-}" ] && tail -n 20 "$ref_out"
+        } | sed -E 's/0x[0-9A-Fa-f]+/<addr>/g; s/\r$//' |
+            sha256sum | cut -d ' ' -f 1
+    else
+        printf '%s\n' "$EMPTY_SHA256"
+    fi
+}
+
+case_phase() {
+    local result_status="$1" ffc_status="$2" ref_status="$3" note="$4"
+    if [ "$result_status" = "SKIP" ]; then printf 'skip\n'
+    elif [[ "$note" == *directive* ]]; then printf 'directive\n'
+    elif [[ "$note" == *runtime* ]]; then printf 'run\n'
+    elif [[ "$note" == *mismatch* ]] || [[ "$note" == *matches* ]]; then
+        printf 'compare\n'
+    elif [[ "$note" == *gfortran* ]] || [[ "$note" == *reference* ]]; then
+        printf 'reference\n'
+    elif [ "$ffc_status" -ne 0 ]; then printf 'compile\n'
+    elif [ "$ref_status" -ne 0 ]; then printf 'reference\n'
+    elif [ -f "${ref_out:-}" ]; then printf 'compare\n'
+    elif [ -f "${ffc_out:-}" ]; then printf 'run\n'
+    else printf 'complete\n'; fi
+}
+
+# Reference-output cache. The key binds every declared source, tool, flag,
+# environment, target, runtime ABI, corpus, and harness input. Any cached
+# comparison that does not match is thrown away and remeasured (see step 7b).
 reference_cache_key() {
     local source="$1" arg
     shift
     {
+        printf 'cache_schema:2\n'
         printf 'compiler:%s\n' "$REF_CACHE_COMPILER"
+        printf 'compiler_executable_sha256:%s\n' "$REFERENCE_COMPILER_SHA256"
+        printf 'target:%s\n' "$TARGET_TRIPLE"
+        printf 'environment_sha256:%s\n' "$ENVIRONMENT_SHA256"
+        printf 'flags:%s\n' "$CASE_REF_FLAGS"
+        printf 'runtime_abi_sha256:%s\n' "$RUNTIME_ABI_SHA256"
+        printf 'harness_sha256:%s\n' "$HARNESS_SHA256"
+        printf 'toolchain_sha256:%s\n' "$TOOLCHAIN_SHA256"
+        printf 'policy:timeout=%s;skip=%s;noref=%s\n' "$TIMEOUT" \
+            "$SKIP_MANIFEST_SHA256" "$NOREF_MANIFEST_SHA256"
         printf 'suite:%s\n' "$SUITE"
-        printf 'source:%s\n' "$(sha256sum "$source" | cut -d ' ' -f 1)"
+        printf 'corpus_revision:%s\ncorpus_tree:%s\n' \
+            "$CORPUS_REVISION" "$CORPUS_TREE"
+        printf 'source:%s\n' "$CASE_SOURCE_SHA256"
+        printf 'dependency_closure:%s\n' "$(case_dependency_closure_sha256)"
+        printf 'stdin:/dev/null\ncwd:empty-sandbox\n'
         for arg in "$@"; do
             if [ -f "$arg" ]; then
-                printf 'file:%s\n' "$(sha256sum "$arg" | cut -d ' ' -f 1)"
+                printf 'file:%s:%s\n' "${arg#"$SUITE_ROOT"/}" \
+                    "$(sha256sum "$arg" | cut -d ' ' -f 1)"
             elif [ -d "$arg" ]; then
                 printf 'dir:%s\n' \
-                    "$(find "$arg" -type f -exec sha256sum {} + 2>/dev/null | \
-                        cut -d ' ' -f 1 | LC_ALL=C sort | sha256sum | \
-                        cut -d ' ' -f 1)"
+                    "$(digest_paths "$arg")"
             else
                 printf 'arg:%s\n' "$arg"
             fi
@@ -414,21 +614,28 @@ reference_cache_key() {
 
 reference_cache_store() {
     local entry="$1" compile_status="$2" run_status="$3" out_file="$4"
+    local temporary output_sha ready_tmp
     [ -n "$REF_CACHE_DIR" ] || return 0
+    # Failures, timeouts, signals, and interrupted runs are observations, not
+    # reusable reference results. Only a normal compile and exit 0 is cached.
+    [ "$compile_status" -eq 0 ] && [ "$run_status" -eq 0 ] || return 0
+    [ -f "$out_file" ] || return 0
     mkdir -p "$(dirname "$entry")" || return 0
-    printf '%s\n' "$compile_status" > "$entry.compile"
-    printf '%s\n' "$run_status" > "$entry.exit"
-    if [ -f "$out_file" ]; then
-        cp "$out_file" "$entry.out"
-    else
-        : > "$entry.out"
-    fi
+    temporary=$(mktemp "$(dirname "$entry")/.cache_XXXXXX") || return 0
+    ready_tmp=$(mktemp "$(dirname "$entry")/.ready_XXXXXX") || {
+        rm -f "$temporary"; return 0; }
+    cp "$out_file" "$temporary" || { rm -f "$temporary" "$ready_tmp"; return 0; }
+    output_sha=$(sha256sum "$temporary" | cut -d ' ' -f 1)
+    printf '2\t0\t0\t%s\n' "$output_sha" > "$ready_tmp"
+    rm -f "$entry.ready"
+    mv "$temporary" "$entry.out" || { rm -f "$temporary" "$ready_tmp"; return 0; }
+    mv "$ready_tmp" "$entry.ready" || { rm -f "$ready_tmp"; return 0; }
 }
 
 reference_cache_discard() {
     local entry="$1"
     [ -n "$REF_CACHE_DIR" ] || return 0
-    rm -f "$entry.compile" "$entry.exit" "$entry.out"
+    rm -f "$entry.ready" "$entry.out" "$entry.compile" "$entry.exit"
 }
 
 git_revision() {
@@ -440,6 +647,7 @@ git_revision() {
 export FFC_COMPILE_TIMEOUT="$TIMEOUT"
 REFERENCE_COMPILER=$(gfortran --version 2>/dev/null | head -1)
 [ -n "$REFERENCE_COMPILER" ] || REFERENCE_COMPILER="unknown"
+REFERENCE_COMPILER_PATH=$(command -v gfortran 2>/dev/null || true)
 if [ -n "$REF_CACHE_DIR" ]; then
     mkdir -p "$REF_CACHE_DIR" || fail "cannot create cache dir: $REF_CACHE_DIR"
     REF_CACHE_COMPILER="$REFERENCE_COMPILER"
@@ -496,6 +704,29 @@ NOREF_MANIFEST_CATEGORY=""
 FFC_REVISION=$(git_revision "$PROJECT_DIR")
 FFC_SOURCE_SHA256=$(ffc_source_sha256 "$PROJECT_DIR")
 FFC_BINARY_SHA256=$(sha256sum "$FFC_BIN" | cut -d ' ' -f 1)
+EMPTY_SHA256=$(printf '' | sha256sum | cut -d ' ' -f 1)
+TARGET_TRIPLE=$(gfortran -dumpmachine 2>/dev/null || printf unknown)
+ENVIRONMENT_SHA256=$(declared_environment_sha256)
+HARNESS_SHA256=$(digest_paths \
+    "$SCRIPT_DIR/conformance_gauntlet.sh" \
+    "$SCRIPT_DIR/lib_conformance.sh" \
+    "$SCRIPT_DIR/lib_expected_manifest.sh" \
+    "$SCRIPT_DIR/lib_conformance_observation.sh" \
+    "$SCRIPT_DIR/conformance_observation.py")
+RUNTIME_ABI_SHA256=$(digest_paths \
+    "$PROJECT_DIR/docs/RUNTIME_ABI.md" "$PROJECT_DIR/runtime" \
+    "$PROJECT_DIR/src/ffc_runtime_source.f90" \
+    "$PROJECT_DIR/src/ffc_runtime_link.f90" \
+    "$PROJECT_DIR/src/liric_session_runtime_bindings.f90")
+REFERENCE_COMPILER_SHA256=$(sha256_file_or_empty "$REFERENCE_COMPILER_PATH")
+TOOLCHAIN_SHA256=$({
+    printf 'ffc=%s\nreference=%s\nversion=%s\ntarget=%s\n' \
+        "$FFC_BINARY_SHA256" "$REFERENCE_COMPILER_SHA256" \
+        "$REFERENCE_COMPILER" "$TARGET_TRIPLE"
+} | sha256sum | cut -d ' ' -f 1)
+GLOBAL_COMPILER_FLAGS_SHA256=$(printf '%s\n' \
+    'ffc:default;reference:-w -J @private-module-dir' | \
+    sha256sum | cut -d ' ' -f 1)
 FORTFRONT_REVISION=$(git_revision "${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}")
 LIRIC_REVISION=$(git_revision "${FFC_LIRIC_DIR:-$CORPUS_PARENT/liric}")
 CORPUS_REVISION=$(git_revision "$SUITE_ROOT")
@@ -506,12 +737,12 @@ CORPUS_FILES_SHA256=$(printf '' | sha256sum | cut -d ' ' -f 1)
 if [ -f "$SKIP_MANIFEST" ]; then
     SKIP_MANIFEST_SHA256=$(sha256sum "$SKIP_MANIFEST" | cut -d ' ' -f 1)
 else
-    SKIP_MANIFEST_SHA256=$(printf '' | sha256sum | cut -d ' ' -f 1)
+    SKIP_MANIFEST_SHA256=$EMPTY_SHA256
 fi
 if [ -f "$NOREF_MANIFEST" ]; then
     NOREF_MANIFEST_SHA256=$(sha256sum "$NOREF_MANIFEST" | cut -d ' ' -f 1)
 else
-    NOREF_MANIFEST_SHA256=$(printf '' | sha256sum | cut -d ' ' -f 1)
+    NOREF_MANIFEST_SHA256=$EMPTY_SHA256
 fi
 # ffc #642: identical commits built in two worktrees have been observed to
 # disagree on corpus results. Every report names the checkout that produced it,
@@ -569,7 +800,7 @@ write_summary() {
             "$TOTAL_COUNT" "$SAMPLE_POPULATION" "$SAMPLE_SEED" "$margin")
     fi
     flaky_json="${flaky_json}${sample_json}"
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":1,"full_run":%s,"provenance_verified":%s,"ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s","worktree":"%s","report_kind":"observation","observation_schema_version":1,"reference_compiler":"%s","reference_cache_enabled":%s,"reference_cache_hits":%d,"timeout_seconds":%d,"skip_manifest_sha256":"%s","noref_manifest_sha256":"%s"%s}\n' \
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":2,"full_run":%s,"provenance_verified":%s,"ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s","worktree":"%s","report_kind":"observation","observation_schema_version":2,"reference_compiler":"%s","reference_cache_enabled":%s,"reference_cache_hits":%d,"timeout_seconds":%d,"skip_manifest_sha256":"%s","noref_manifest_sha256":"%s","target_triple":"%s","environment_sha256":"%s","runtime_abi_sha256":"%s","harness_sha256":"%s","toolchain_sha256":"%s","compiler_flags_sha256":"%s","coverage_mode":"none"%s}\n' \
         "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
         "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" \
         "$FULL_RUN" "$PROVENANCE_VERIFIED" "$FFC_REVISION" \
@@ -580,7 +811,10 @@ write_summary() {
         "$(json_escape "$REFERENCE_COMPILER")" \
         "$([ -n "$REF_CACHE_DIR" ] && printf true || printf false)" \
         "$REF_CACHE_HITS" "$TIMEOUT" "$SKIP_MANIFEST_SHA256" \
-        "$NOREF_MANIFEST_SHA256" "$flaky_json" >> "$OBSERVATIONS"
+        "$NOREF_MANIFEST_SHA256" "$(json_escape "$TARGET_TRIPLE")" \
+        "$ENVIRONMENT_SHA256" "$RUNTIME_ABI_SHA256" "$HARNESS_SHA256" \
+        "$TOOLCHAIN_SHA256" "$GLOBAL_COMPILER_FLAGS_SHA256" \
+        "$flaky_json" >> "$OBSERVATIONS"
 }
 
 publish_observation() {
@@ -844,11 +1078,14 @@ while IFS= read -r full_path <&3; do
     basename_file=$(basename "$full_path")
     # Suite-relative path is the basename for single-depth search
     rel_path="$basename_file"
+    ffc_out=""
+    ref_out=""
+    initialize_case_provenance "$full_path"
 
     if check_xfail "$SKIP_LOOKUP" "$rel_path"; then
         SKIP_COUNT=$((SKIP_COUNT + 1))
-        printf '{"suite":"%s","file":"%s","status":"SKIP","note":"listed in skip manifest"}\n' \
-            "$SUITE" "$(json_escape "$rel_path")" >> "$OBSERVATIONS"
+        write_result_record "$rel_path" "SKIP" -1 -1 \
+            "listed in skip manifest" ""
         continue
     fi
 
@@ -866,9 +1103,7 @@ while IFS= read -r full_path <&3; do
             note="directive requires skip manifest entry: $skip_reason"
             FAIL_COUNT=$((FAIL_COUNT + 1))
             HAS_FAIL=1
-            printf '{"suite":"%s","file":"%s","status":"%s","note":"%s"}\n' \
-                "$SUITE" "$(json_escape "$rel_path")" "$status" \
-                "$(json_escape "$note")" >> "$OBSERVATIONS"
+            write_result_record "$rel_path" "$status" -1 -1 "$note" ""
             echo "  FAIL: $rel_path (unlisted skip: $skip_reason)"
             continue
         fi
@@ -895,6 +1130,8 @@ while IFS= read -r full_path <&3; do
             WARNING_UNCHECKED_COUNT=$((WARNING_UNCHECKED_COUNT + 1))
         fi
         if [ "$dg_kind" = "compile" ]; then
+            CASE_FFC_FLAGS="-c"
+            CASE_REF_FLAGS="not-run"
             if compile_object_with_ffc "$full_path" "$ffc_obj" "$FFC_BIN"; then
                 ffc_exit=0
                 if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
@@ -927,6 +1164,8 @@ while IFS= read -r full_path <&3; do
         fi
 
         if [ "$dg_kind" = "negative" ]; then
+            CASE_FFC_FLAGS="-c"
+            CASE_REF_FLAGS="not-run"
             if compile_object_with_ffc "$full_path" "$ffc_obj" "$FFC_BIN"; then
                 ffc_exit=0
             else
@@ -980,6 +1219,7 @@ while IFS= read -r full_path <&3; do
     # same source.
     stem_include_dir="${full_path%.*}"
     if [ -d "$stem_include_dir" ]; then
+        case_add_dependency_tree "$stem_include_dir"
         ffc_extra=(-I "$stem_include_dir")
         ref_extra=(-I "$stem_include_dir")
     fi
@@ -998,6 +1238,7 @@ while IFS= read -r full_path <&3; do
             prereq_idx=0
             while IFS= read -r prereq_src <&4; do
                 [ -z "$prereq_src" ] && continue
+                case_add_dependency "$prereq_src"
                 ref_extra+=("$prereq_src")
                 prereq_obj="$inc_dir/prereq_${prereq_idx}.o"
                 if compile_object_with_ffc_inc "$prereq_src" "$prereq_obj" \
@@ -1028,8 +1269,10 @@ while IFS= read -r full_path <&3; do
             extra_src="$SUITE_ROOT/$extra_name"
             if [ ! -f "$extra_src" ]; then
                 missing_extra_source="$extra_name"
+                case_add_dependency "$extra_src"
                 break
             fi
+            case_add_dependency "$extra_src"
             ref_extra+=("$extra_src")
             extra_obj="$inc_dir/extra_${extra_idx}.o"
             if compile_object_with_extra_inc "$extra_src" "$extra_obj" \
@@ -1039,6 +1282,9 @@ while IFS= read -r full_path <&3; do
             extra_idx=$((extra_idx + 1))
         done < "$extra_list"
     fi
+    CASE_FFC_FLAGS=$(canonical_flags default "${ffc_extra[@]}")
+    CASE_REF_FLAGS=$(canonical_flags '-w -J @private-module-dir' \
+        "${ref_extra[@]}")
     if [ -n "$missing_extra_source" ]; then
         status="FAIL"
         note="missing extra source $missing_extra_source"
@@ -1114,7 +1360,7 @@ while IFS= read -r full_path <&3; do
     fi
 
     # Step 3: run ffc binary
-    run_capture "$ffc_exe" "$ffc_out" "$TIMEOUT"
+    run_capture "$ffc_exe" "$ffc_out" "$TIMEOUT" ffc_run
     ffc_exit=$?
 
     # An ordinary nonzero exit (e.g. STOP 99) is a legitimate program result,
@@ -1170,14 +1416,18 @@ while IFS= read -r full_path <&3; do
     if [ -n "$REF_CACHE_DIR" ]; then
         ref_cache_key=$(reference_cache_key "$full_path" "${ref_extra[@]}")
         ref_cache_entry="$REF_CACHE_DIR/${ref_cache_key:0:2}/$ref_cache_key"
-        if [ -f "$ref_cache_entry.compile" ] && [ -f "$ref_cache_entry.exit" ]
-        then
-            if [ -f "$ref_cache_entry.out" ]; then
-                ref_compile_status=$(cat "$ref_cache_entry.compile")
-                ref_exit=$(cat "$ref_cache_entry.exit")
+        if [ -f "$ref_cache_entry.ready" ] && [ -f "$ref_cache_entry.out" ]; then
+            IFS=$'\t' read -r cache_schema ref_compile_status ref_exit \
+                cached_output_sha < "$ref_cache_entry.ready"
+            if [ "$cache_schema" = 2 ] && [ "$ref_compile_status" = 0 ] && \
+                [ "$ref_exit" = 0 ] && \
+                [ "$cached_output_sha" = \
+                    "$(sha256_file_or_empty "$ref_cache_entry.out")" ]; then
                 cp "$ref_cache_entry.out" "$ref_out"
                 ref_cached=1
                 REF_CACHE_HITS=$((REF_CACHE_HITS + 1))
+            else
+                reference_cache_discard "$ref_cache_entry"
             fi
         fi
     fi
@@ -1193,11 +1443,6 @@ while IFS= read -r full_path <&3; do
     fi
     if [ "$ref_compile_status" -ne 0 ]; then
         ref_exit=1
-    fi
-
-    if [ "$ref_cached" -eq 0 ] && [ "$ref_compile_status" -ne 0 ] && \
-        [ -n "$REF_CACHE_DIR" ]; then
-        reference_cache_store "$ref_cache_entry" 1 1 ""
     fi
 
     # Step 6: gfortran failed, but ffc already compiled and ran the file.
@@ -1232,7 +1477,7 @@ while IFS= read -r full_path <&3; do
 
     # Step 7: run gfortran reference
     if [ "$ref_cached" -eq 0 ]; then
-        run_capture "$ref_exe" "$ref_out" "$TIMEOUT"
+        run_capture "$ref_exe" "$ref_out" "$TIMEOUT" ref_run
         ref_exit=$?
         if [ -n "$REF_CACHE_DIR" ]; then
             reference_cache_store "$ref_cache_entry" 0 "$ref_exit" "$ref_out"
@@ -1270,9 +1515,11 @@ while IFS= read -r full_path <&3; do
         reference_cache_discard "$ref_cache_entry"
         ref_cached=0
         if compile_with_gfortran "$full_path" "$ref_exe" "${ref_extra[@]}"; then
-            run_capture "$ref_exe" "$ref_out" "$TIMEOUT"
+            run_capture "$ref_exe" "$ref_out" "$TIMEOUT" ref_run
             ref_exit=$?
             reference_cache_store "$ref_cache_entry" 0 "$ref_exit" "$ref_out"
+        else
+            ref_exit=1
         fi
     fi
 
