@@ -524,7 +524,7 @@ Architectural supersets guide implementation, not issue closure:
   refresh. Rebaseline the stale umbrellas #576/#609 and replace them with
   exact live signatures. The current #576 signature is the deterministic
   `issue_2064_logical_return_inferred_as_integer.lf` compile SIGSEGV recorded
-  above; its root-cause fix and positive oracle are now staged pending the
+  above; its root-cause fix and positive oracle are landed pending the
   current-head corpus gate.
 
 ## Cross-repository gates
