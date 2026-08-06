@@ -13,8 +13,8 @@ The active backend integration uses LIRIC through `iso_c_binding`.
   and call helpers.
 - `liric_session_io_bindings`: minimal `printf` shim and string
   materialisation used for `print *`.
-- `liric_session_arrays.inc`: array alloca and element-address helpers
-  bundled into `liric_session_bindings`.
+- `liric_session_memory_bindings`: scalar and array allocation, load, store,
+  pointer, and element-address helpers.
 
 New lowering code targets these modules. It does not target LLVM, MLIR,
 HLFIR, or text IR.
