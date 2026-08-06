@@ -20,6 +20,7 @@ RAW_STATUSES = {"PASS", "FAIL", "SKIP", "FLAKY"}
 CLASSIFIED_STATUSES = RAW_STATUSES | {"XFAIL", "XPASS"}
 NOREF_CATEGORIES = {
     "undefined-runtime-value",
+    "nondeterministic-runtime-value",
     "missing-external-definition",
     "compile-only",
 }
@@ -1139,6 +1140,12 @@ def canonical_behavior(case: dict[str, Any]) -> str:
     nonbehavioral = set(CASE_METRIC_FIELDS) | {
         f"{prefix}_action" for prefix in ACTION_PREFIXES
     }
+    # A manifest NOREF explicitly says that stdout is not a behavioral oracle.
+    # Exclude output/diagnostic digests from repeat identity as well; otherwise
+    # a defined RANDOM_NUMBER stream can produce a different branch shape and
+    # be misreported as FLAKY even though both required executions succeeded.
+    if case.get("noref_manifest_category") in NOREF_CATEGORIES:
+        nonbehavioral.update(DYNAMIC_DIGEST_FIELDS)
     behavior = {
         key: value
         for key, value in case.items()

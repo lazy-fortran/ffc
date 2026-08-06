@@ -366,6 +366,7 @@ function noref_reason_allowed(reason) {
     return reason == "reference-rejected" ||
         reason == "reference-runtime-failure" ||
         reason == "undefined-runtime-value" ||
+        reason == "nondeterministic-runtime-value" ||
         reason == "missing-external-definition" ||
         reason == "compile-only"
 }
@@ -534,6 +535,7 @@ function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
     if ("noref_manifest_category" in field_value) {
         noref_reason = require_string("noref_manifest_category")
         if (noref_reason != "undefined-runtime-value" &&
+                noref_reason != "nondeterministic-runtime-value" &&
                 noref_reason != "missing-external-definition" &&
                 noref_reason != "compile-only") {
             report_error("unapproved noref manifest category")

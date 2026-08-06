@@ -69,7 +69,7 @@ The current state is not a valid parity baseline:
   `--sample 900` selects one global 900-file sample, not 900 per suite.
 - The checked-in dashboard is pinned to older components and reports 10,924
   files. Its Markdown and TSV digests disagree.
-- Current manifests contain 5,528 XFAIL rows, 288 FAIL-owner rows, 11 NOREF
+- Current manifests contain 5,527 XFAIL rows, 288 FAIL-owner rows, 12 NOREF
   rows, and 2,305 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
 - There are 68 tracked production `.inc` files containing 78,571 lines. The
@@ -129,8 +129,13 @@ passing, rebased commit at a time, in this order.
 4. Stop silent wrong code and nondeterminism. #671's binding-keyed host
    storage fix and #673's fixed-intrinsic FORALL snapshot are landed with
    gfortran oracles; continue with #626, #649, then the remaining crashes in
-   #576. #628's dynamic `STATUS=` value path is also landed; retain its
-   runtime regression while `open_close` is extracted.
+   #576. #649's character MINLOC/MAXLOC path now compares complete
+   blank-padded values and preserves first-match/mask semantics; its
+   `minmaxloc_11.f90` XFAIL is removed. The RANDOM_NUMBER branch fixture is
+   explicitly `nondeterministic-runtime-value` NOREF, so it is built and
+   terminated by both processors without a coin-flip structural comparison.
+   #628's dynamic `STATUS=` value path is also landed; retain its runtime
+   regression while `open_close` is extracted.
 5. Finish binding identity and module contracts: #584 plus the procedure,
    generic, external-unit, and Lazy-specialization issues that depend on it.
 6. Converge on one descriptor/expression/lifetime model: #337, #338, #348,
