@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_reject_array_shape
-    use session_program_lowering_reject_array_shape_order
     implicit none
 contains
 

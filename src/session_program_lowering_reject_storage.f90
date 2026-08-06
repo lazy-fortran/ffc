@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_reject_storage
-    use session_program_lowering_reject_storage_order
     implicit none
 contains
     ! Storage-association restrictions on COMMON, EQUIVALENCE, SAVE, and

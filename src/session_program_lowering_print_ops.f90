@@ -1,5 +1,4 @@
 submodule(session_program_lowering_impl) session_program_lowering_print_ops
-    use session_program_lowering_print_ops_order
 contains
     module subroutine lower_print(arena, node, context, error_msg)
         type(ast_arena_t), intent(in) :: arena

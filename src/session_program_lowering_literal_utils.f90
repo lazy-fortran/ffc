@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_literal_utils
-    use session_program_lowering_literal_utils_order
 contains
 
     module procedure real_intrinsic_is_f64

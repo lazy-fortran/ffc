@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_reject_decl_conflict
-    use session_program_lowering_reject_decl_conflict_order
     implicit none
 contains
     ! Conflicting declarations and NULL(MOLD) pointer assignments (#580).

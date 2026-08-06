@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_cmp_typecheck
-    use session_program_lowering_cmp_typecheck_order
 contains
 
     ! Comparison operand type-mismatch check. A relational comparison whose two

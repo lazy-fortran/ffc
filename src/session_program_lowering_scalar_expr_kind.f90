@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_scalar_expr_kind
-    use session_program_lowering_scalar_expr_kind_order
     use session_program_lowering_scalar_kind, only: real_value_kind_of, &
         wider_real_kind, real_kind_from_kind_number
 contains

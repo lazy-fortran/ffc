@@ -30,6 +30,8 @@ explicit decision.
 ## Build and test
 
 Use `fo` for every build/test loop; call `fpm` directly only to isolate one named test or diagnose a `fo` failure.
+Use `fo` revision `32ef96d` or newer; it derives direct and nested submodule
+parent edges without `_order.f90` shims or filename conventions.
 
 The LIRIC static library must be on the linker path:
 

@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_reject_const_overflow
-    use session_program_lowering_reject_const_overflow_order
     implicit none
 contains
     ! Arithmetic overflow in a constant expression (F2018 10.1.12).

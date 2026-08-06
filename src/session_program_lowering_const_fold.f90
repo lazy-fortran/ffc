@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_const_fold
-    use session_program_lowering_const_fold_order
 contains
 
     ! ISO_C_BINDING integer-kind named constants used as compile-time integer

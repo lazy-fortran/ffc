@@ -39,6 +39,11 @@ descendant API. This keeps compiler clients independent of the internal split
 and gives GCC 14 external symbols for procedures used across submodule object
 boundaries.
 
+The source graph relies on `fo` revision `32ef96d` or newer. `fo` reads each
+`SUBMODULE` parent identifier and orders direct and nested descendants after
+their parent units; filenames do not participate in that dependency. The 18
+lowering descendants therefore require zero `_order.f90` shim modules.
+
 New lowering units are modules or submodules with explicit interfaces. Do not
 add production `include` fragments; the existing fragments are migration debt.
 

@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_enum
-    use session_program_lowering_enum_order
     implicit none
 contains
     ! ENUM / ENUMERATOR lowering (issue #1826).

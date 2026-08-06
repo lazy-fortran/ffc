@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_reject_result
-    use session_program_lowering_reject_result_order
     implicit none
 contains
     ! Function-result and ENTRY rules (#379). Four families of invalid source

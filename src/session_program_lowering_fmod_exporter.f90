@@ -1,6 +1,5 @@
 submodule(session_program_lowering_impl) session_program_lowering_fmod_exporter
     use ast_arena_source_text, only: get_source_line
-    use session_program_lowering_fmod_order
 contains
     module subroutine emit_module_fmod_artifacts(arena, context, output_path, error_msg)
         ! For each module compiled in this unit, write a sibling

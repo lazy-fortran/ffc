@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_reject_purity
-    use session_program_lowering_reject_purity_order
     implicit none
 contains
     ! PURE and ELEMENTAL attribute restrictions (#578).

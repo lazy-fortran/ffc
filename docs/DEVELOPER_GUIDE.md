@@ -16,9 +16,13 @@ decisions, and behavioural executable tests.
 The default fpm library source is `src/`. The retired MLIR/HLFIR
 experiment lives only in git history.
 
+Use `fo` revision `32ef96d` or newer so `SUBMODULE` parent identifiers become
+real build-graph edges. No filename ordering or `_order.f90` helper modules are
+part of the source contract.
+
 ```bash
-LIBRARY_PATH=/path/to/liric/build fpm build
-LIBRARY_PATH=/path/to/liric/build fpm test
+LIBRARY_PATH=/path/to/liric/build fo build
+LIBRARY_PATH=/path/to/liric/build fo test
 ```
 
 ## Development rules
@@ -30,7 +34,8 @@ LIBRARY_PATH=/path/to/liric/build fpm test
   `session_program_lowering_impl` and expose only the procedures their
   descendants require.
 - Extract growing implementation units into modules or submodules with
-  explicit interfaces. Do not add production `include` fragments.
+  explicit interfaces. Let `fo` derive submodule ancestry from the source; do
+  not add ordering shims or production `include` fragments.
 - Add focused behavioural tests under `test/`. Each file is a standalone
   `program test_*` picked up by fpm auto-discovery.
 - Treat a need for private FortFront AST layout as a FortFront API issue
@@ -66,18 +71,18 @@ issues for individual slices.
 
 ## Verification
 
-Use repo-declared fpm targets. Do not invent build commands.
+Use the repo-declared `fo` targets. Do not invoke build-tree binaries directly.
 
 ```bash
-LIBRARY_PATH=/path/to/liric/build fpm test          # full suite
-LIBRARY_PATH=/path/to/liric/build fpm test test_session_empty_program_compiler
+LIBRARY_PATH=/path/to/liric/build fo test          # full suite
+LIBRARY_PATH=/path/to/liric/build fo test test_session_empty_program_compiler
 ```
 
 For CLI checks:
 
 ```bash
 printf 'program main\nend program main\n' > /tmp/empty.f90
-LIBRARY_PATH=/path/to/liric/build fpm run ffc -- /tmp/empty.f90 -o /tmp/empty
+LIBRARY_PATH=/path/to/liric/build fo exec ffc -- /tmp/empty.f90 -o /tmp/empty
 /tmp/empty
-LIBRARY_PATH=/path/to/liric/build fpm run ffc -- /tmp/empty.f90 -c -o /tmp/empty.o
+LIBRARY_PATH=/path/to/liric/build fo exec ffc -- /tmp/empty.f90 -c -o /tmp/empty.o
 ```

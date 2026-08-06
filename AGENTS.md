@@ -31,12 +31,15 @@ explicit decision.
 
 The LIRIC static library must be on the linker path:
 
+Use `fo` revision `32ef96d` or newer; it derives direct and nested submodule
+parent edges without ordering shims or filename conventions.
+
 ```bash
 export LIBRARY_PATH=/home/ert/code/liric/build   # adjust to your liric build dir
-fpm build
-fpm test                                         # full behavioural suite
-fpm test test_session_stop_code_compiler         # one test
-fpm run ffc -- empty.f90 -o empty                # use the CLI
+fo build
+fo test                                          # full behavioural suite
+fo test test_session_stop_code_compiler          # one test
+fo exec ffc -- empty.f90 -o empty                # use the CLI
 ```
 
 If you do not have LIRIC built locally, build it first in its own repo
@@ -49,8 +52,9 @@ CI runs the same workflow on every push and pull request.
 
 - Free-form Fortran 2003+; no implicit typing; declarations at scope top.
 - Modules under 500 lines (hard cap 1000). Functions under 50 lines
-  (hard cap 100). Split into `*.inc` files (already used heavily) when
-  the lowerer grows.
+  (hard cap 100). Split growing lowerer code into modules or submodules
+  with explicit interfaces. Do not add ordering shims or production
+  `include` fragments.
 - Symbols `snake_case`; derived types end in `_t`.
 - New compiler work goes through direct LIRIC `lr_session_*` calls. Do
   not add LLVM bindings or revive MLIR/HLFIR without an explicit
@@ -63,8 +67,8 @@ program`. fpm auto-discovery picks it up. No `fpm.toml` edit needed.
 
 ## Adding a new supported construct
 
-1. Extend the matching `src/session_program_lowering_*.inc` (or add a
-   new include).
+1. Extend the matching lowering module, or extract a cohesive module or
+   submodule with an explicit interface.
 2. Add `test/test_session_<construct>_compiler.f90` that lowers a
    minimal program, runs the resulting binary, and checks stdout or
    the exit code.
@@ -77,8 +81,8 @@ program`. fpm auto-discovery picks it up. No `fpm.toml` edit needed.
 
 ## Quality gates
 
-1. `fpm build` clean.
-2. `fpm test` all green — never skip, weaken, or label tests as
+1. `fo build` clean.
+2. `fo test` all green — never skip, weaken, or label tests as
    "unrelated".
 3. CI green on the PR before merging.
 4. Update `README.md`'s supported-features list when you add a real

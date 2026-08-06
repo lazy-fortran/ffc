@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_reject_generic
-    use session_program_lowering_reject_generic_order
     implicit none
 contains
     ! Malformed and ambiguous generic interfaces (#378).

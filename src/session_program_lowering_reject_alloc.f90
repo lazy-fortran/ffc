@@ -1,5 +1,4 @@
 submodule (session_program_lowering_impl) session_program_lowering_reject_alloc
-    use session_program_lowering_reject_alloc_order
     implicit none
 contains
     ! Allocation and pointer definition-target validation (#380).
