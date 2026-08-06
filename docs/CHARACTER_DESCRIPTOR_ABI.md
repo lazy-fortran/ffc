@@ -68,3 +68,13 @@ temporaries use classes 1 and 2 and must not escape their valid lifetime.
 This contract does not change current lowering, character array layout,
 nondefault character kinds, coarray storage, or the ABI of existing compiled
 procedures.
+
+## Nested character-array element substrings
+
+For a fixed-length character array, `c(i)(lo:hi)` is a borrowed scalar view:
+the base address is the selected `c(i)` element and the descriptor length is
+`hi-lo+1`. The view is used consistently for reads, literal and overlapping
+substring assignment, and assumed-length character actual arguments. FortFront
+must preserve the nested element designator in its `array_slice_node`; ffc
+lowers the view through this descriptor contract (FortFront `aa5880ae` or
+newer).

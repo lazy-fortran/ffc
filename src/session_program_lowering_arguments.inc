@@ -1162,39 +1162,6 @@
         call set_empty(error_msg)
     end subroutine array_element_available_count
 
-    logical function actual_is_character(arena, node_index, context)
-        ! Whether an actual argument evaluates to a character value.
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        type(lowering_context_t), intent(in) :: context
-        character(len=:), allocatable :: id_name, id_err
-        integer :: symbol_index
-
-        actual_is_character = .false.
-        if (.not. node_exists(arena, node_index)) return
-        if (is_character_literal(arena, node_index)) then
-            actual_is_character = .true.
-            return
-        end if
-        if (is_char_expr_call(arena, node_index, context)) then
-            actual_is_character = .true.
-            return
-        end if
-        select type (n => arena%entries(node_index)%node)
-        type is (component_access_node)
-            actual_is_character = derived_component_access_kind(arena, n, &
-                context) == VALUE_CHARACTER
-            return
-        end select
-        if (is_identifier(arena, node_index)) then
-            call get_identifier_name(arena, node_index, id_name, id_err)
-            if (len_trim(id_err) > 0) return
-            symbol_index = resolve_symbol_at_node(context, node_index, id_name)
-            if (symbol_index > 0) actual_is_character = &
-                context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
-        end if
-    end function actual_is_character
-
     subroutine box_class_star_actual(arena, node_index, context, descriptor, &
                                       error_msg)
         ! Box a scalar actual into a stack {void* data; i64 type_id} descriptor
