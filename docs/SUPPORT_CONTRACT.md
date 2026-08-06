@@ -53,6 +53,24 @@ test_session_forall_alias_compiler. Allocatable, runtime-shaped, character,
 derived, and nonconforming-shape FORALL targets remain rejected or pending
 their descriptor-specific contracts.
 
+## Binding and module-boundary contract
+
+Host association, `ASSOCIATE`, `USE`, module, and submodule references are
+resolved by FortFront binding identity. The lowering context may retain a
+Fortran spelling for diagnostics, but it must not synthesize storage or an
+imported declaration from that spelling when the binding edge is absent. A
+public module procedure whose call ABI is not yet supported is still recorded
+in the versioned `.fmod` export set as non-callable metadata, so a separate
+consumer can validate `use, only:` against the defining module. Attempting to
+call that non-callable export remains a diagnostic; it must not silently bind
+to a different procedure or be reported as an unknown module name. The
+derived-dummy subroutine and function regressions in
+`test_session_read_fmod_compiler` cover this boundary, with gfortran accepting
+the function consumer as the independent positive oracle. Imported derived
+types, nested `ASSOCIATE` owners, and host-polymorphic selectors remain
+unsupported until their public FortFront binding facts and matching ffc
+behavioral tests land (see #584 and FortFront #2974/#2975).
+
 ## Supported now
 
 | Area | Supported contract |

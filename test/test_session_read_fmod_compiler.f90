@@ -19,6 +19,8 @@ program test_session_read_fmod_compiler
     if (.not. test_use_module_variable_from_fmod()) all_passed = .false.
     if (.not. test_fmod_preserves_unsupported_public_procedure()) &
         all_passed = .false.
+    if (.not. test_fmod_preserves_unsupported_public_function()) &
+        all_passed = .false.
     if (.not. test_fmod_optional_dummy_separate_compilation()) all_passed = .false.
     if (.not. test_fmod_value_dummy_separate_compilation()) all_passed = .false.
     if (.not. test_fmod_intent_out_rejects_literal()) all_passed = .false.
@@ -291,6 +293,58 @@ contains
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_preserves_unsupported_public_procedure
+
+    logical function test_fmod_preserves_unsupported_public_function() result(ok)
+        ! A public function remains a valid USE ONLY export even when one of
+        ! its dummies has a derived type that the direct backend cannot pass.
+        ! The defining and consuming units are separate invocations, so this
+        ! catches the function-only variant of #584's module-boundary bug.
+        character(len=*), parameter :: dir = '/var/tmp/ert/ffc_fmod584_function'
+        character(len=*), parameter :: log_path = dir//'/log'
+        integer :: status, exit_stat, cmd_stat
+
+        ok = .false.
+        status = run_separate_compilation(dir, &
+            'module fmod584_function'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: token'//new_line('a')// &
+            '    integer :: value'//new_line('a')// &
+            '  end type token'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function inspect(value) result(result_value)'// &
+            new_line('a')// &
+            '    type(token), intent(in) :: value'//new_line('a')// &
+            '    result_value = value%value'//new_line('a')// &
+            '  end function inspect'//new_line('a')// &
+            'end module fmod584_function', &
+            'program main'//new_line('a')// &
+            '  use fmod584_function, only: inspect'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main', log_path)
+        if (status /= 100) then
+            print *, 'FAIL: unsupported public function export, status ', status
+            call execute_command_line('cat '//log_path)
+            call execute_command_line('rm -rf '//dir)
+            return
+        end if
+
+        ! gfortran is the independent accepted-side oracle: the same valid
+        ! USE ONLY program must compile and run even though it never calls the
+        ! unsupported ABI. This keeps the ffc check from merely matching its
+        ! own export metadata.
+        call execute_command_line( &
+            "sh -c 'cd "//dir//" && gfortran m.f90 p.f90 -o reference && "// &
+            './reference'//"'", exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. exit_stat /= 0) then
+            print *, 'FAIL: gfortran accepted-side oracle failed, status ', &
+                exit_stat
+            call execute_command_line('cat '//log_path)
+            call execute_command_line('rm -rf '//dir)
+            return
+        end if
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_preserves_unsupported_public_function
 
     subroutine write_rename_matrix_fmod(dir, error_msg)
         ! A module exporting two distinct integer constants, so a rename

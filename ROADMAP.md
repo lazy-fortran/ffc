@@ -170,6 +170,47 @@ passing, rebased commit at a time, in this order.
 8. Burn down the remaining classified feature clusters, then run exact union,
    platform, sanitizer, ABI, and performance release gates.
 
+### #584 binding-identity audit (2026-08-07)
+
+The current main slice has a single FortFront binding-triple lookup for host
+storage (`declaration_node_index`, `declaration_entity_index`, and
+`scope_node_index`) and a typed `.fmod` export record for a public procedure
+whose direct-session ABI is not yet callable. The existing derived-dummy
+subroutine regression covers the latter boundary. This audit adds the
+function-shaped counterpart in `test_session_read_fmod_compiler`: a separate
+module and `USE ONLY` consumer must compile and run, and the same source must
+also compile and run with gfortran as the accepted-side oracle. The test is
+green on main with `fo test test_session_read_fmod_compiler` (437/437 build
+units; 1/1 test) when the LIRIC library directory is supplied through
+`LIBRARY_PATH`. No production `.inc` path or text-name fallback was added.
+
+This is a boundary regression, not closure of #584. The remaining corpus
+failures require FortFront facts that ffc cannot reconstruct safely:
+
+- FortFront #2974 must emit one binding/declaration entity for every name in a
+  compound declaration after a non-constant array specification
+  (`legacy_array_sections_03.f90`). ffc must not infer the missing scalar from
+  its use site.
+- FortFront #2975 must retain the owner binding through nested `ASSOCIATE`
+  scopes (`gpu_metal_145.f90`). ffc's host-storage pre-pass must consume that
+  identity and reject an absent edge rather than re-register by spelling.
+- Host-associated polymorphic `CLASS(t), ALLOCATABLE` selectors in
+  `class_is_1_ok.f90` and `type_is_1_ok.f90` need a public FortFront binding and
+  dynamic-type fact for the contained procedure. The direct one-level
+  `CLASS IS`/`TYPE IS` smoke is green, but it is not evidence for the missing
+  nested/corpus shapes.
+- `associate_18.f90` needs the imported-derived-type procedure and its
+  versioned `.fmod` identity to survive a sibling-module boundary. Until that
+  contract is available, keep the corpus row classified as a real rejection,
+  not XFAIL/NOREF, and do not add a spelling-based exporter fallback.
+
+The next implementation split is therefore FortFront facts first (#2974,
+#2975 and the polymorphic host binding), then one ffc `.fmod`/consumer oracle
+for the imported-derived function. A full #584 close requires all four
+positive corpus cases plus an invalid/ambiguous binding negative control and
+the valid-corpus rejection gate; the new function regression is only the
+cheapest executable guard against regression at the module export boundary.
+
 ## Target architecture
 
 Breaking internal changes are expected. Compatibility is kept only at a
