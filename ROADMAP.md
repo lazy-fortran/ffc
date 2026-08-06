@@ -120,9 +120,11 @@ passing, rebased commit at a time, in this order.
    epoch, a declared action mode, and separate ffc/reference compile/run action,
    exit, timeout, and signal evidence. Its supervisor distinguishes actual
    timeouts/signals from deliberate exits 124/137, and strict validators reject
-   mixed epochs or inconsistent evidence. General INCLUDE closure snapshotting
-   without TOCTOU races and instrumented coverage remain; schema-2 records
-   `coverage_mode=none` with an empty digest until that collector lands.
+   mixed epochs or inconsistent evidence. General Fortran INCLUDE closure
+   snapshotting now hashes canonical suite-relative names and the same copied
+   bytes passed to both compilers, including nested INCLUDE files. Instrumented
+   coverage remains; schema-2 records `coverage_mode=none` with an empty digest
+   until that collector lands.
    SKIP/NOREF remain operational dispositions and are not silently PASS.
 4. Stop silent wrong code and nondeterminism. #671 now has a gfortran-oracle
    regression for exactly-once contained-call side effects and binding-keyed
