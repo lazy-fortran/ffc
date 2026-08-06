@@ -789,6 +789,15 @@ module session_program_lowering_types
         integer, allocatable :: array_expression_cache_nodes(:)
         integer, allocatable :: array_expression_cache_symbols(:)
         integer :: array_expression_cache_count = 0
+        ! FORALL assignment snapshot (#673). A FORALL RHS observes the target
+        ! array as it existed before the construct, while stores update the
+        ! original array. The active flag is scoped to RHS lowering; the
+        ! snapshot address is stack storage owned by the current procedure.
+        logical :: forall_snapshot_reads = .false.
+        logical :: forall_snapshot_writes = .false.
+        integer :: forall_snapshot_symbol = 0
+        type(lr_operand_desc_t) :: forall_snapshot_address
+        integer :: forall_body_statement_index = 0
         logical :: current_block_terminated = .false.
         integer(c_int32_t) :: current_loop_exit_block = 0_c_int32_t
         integer(c_int32_t) :: current_loop_latch_block = 0_c_int32_t
