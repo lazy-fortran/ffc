@@ -211,7 +211,8 @@ named module with an explicit API. It does not remain textual inclusion.
 `alloc_array_result` (171), `scalar_allocatable` (290), `vector_subscript`
 (349), `complex_arrays` (516), `assumed_shape_descriptor` (616),
 `assumed_shape_extent` (642), `char_arrays` (800), `runtime_alloc` (904),
-`allocatable` (2,925), `array_elements` (4,494), and `arrays` (6,771).
+`pointer` (1,707), `allocatable` (2,925), `array_elements` (4,494), and
+`arrays` (6,771).
 
 Sequence by contract. First, #337 establishes section views. Next come #338
 pointer arrays, #348 character descriptors, and #643 derived allocatable
