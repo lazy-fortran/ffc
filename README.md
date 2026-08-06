@@ -419,9 +419,10 @@ test suite.
 Compile a minimal program:
 
 ```bash
-printf 'program main\nend program main\n' > /tmp/empty.f90
-LIBRARY_PATH=../liric/build fpm run ffc -- /tmp/empty.f90 -o /tmp/empty
-/tmp/empty
+export TMPDIR=/mnt/storage/lazy-fortran-artifacts-20260806
+printf 'program main\nend program main\n' > "$TMPDIR/empty.f90"
+LIBRARY_PATH=../liric/build fpm run ffc -- "$TMPDIR/empty.f90" -o "$TMPDIR/empty"
+"$TMPDIR/empty"
 echo $?
 ```
 
