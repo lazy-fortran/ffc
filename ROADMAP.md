@@ -44,6 +44,9 @@ The implementation baselines for this gate are `ffc` `d24b8b4`, FortFront
 green: ffc and fo still lack a completed current-head suite, while FortFront's
 latest completed run failed. The ffc focused observation gate is green locally;
 the checked-in parity snapshot remains stale and is not a release baseline.
+The final local `fo` gate at `10b2af1` built 435/435 units and ran 350 tests;
+the observation smoke passed and the run retains 26 named pre-existing
+compiler/dashboard failures. That exit is not a clean release gate.
 The last checked ffc parent was `61cbceb` (CI run 30807386910, red for the
 GCC14 submodule-link and formatting gates); the latest checked FortFront
 implementation was `ac02b4d0` (run 31127135731, Windows/aggregate failed and
