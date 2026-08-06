@@ -2539,6 +2539,219 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine emit_alloc_desc_clear
     end interface
+    ! OPEN/CLOSE and file-unit WRITE lowering lives in a descendant so the
+    ! compiler's I/O service has an explicit, independently buildable seam.
+    public :: parse_open_spec, spec_lower, lower_open, open_status_operand
+    public :: open_file_operands, unit_string_operand, allocate_newunit
+    public :: mark_unit_symbol, set_unit_form, store_io_status
+    public :: store_iostat_value, store_iomsg_text, runtime_iostat_operand
+    public :: lower_close, unit_number_operand, unit_spec_text
+    public :: load_unit_file_ptr, is_file_unit_write, unit_is_unformatted
+    public :: lower_write_file, lower_file_write_unformatted
+    public :: lower_file_write_unformatted_item, logical_write_kind_bytes
+    public :: store_write_iostat_success, file_write_value_kind
+    public :: lower_file_write_item, lower_file_write_newline
+    public :: lower_file_write_formatted, fortran_fmt_to_c, read_fmt_int
+
+    interface
+        module subroutine parse_open_spec(spec, unit_str, newunit_var, file_path, &
+                                          file_quoted, status_str, status_quoted, &
+                                          form_str, access_str, sign_str, &
+                                          iostat_var, iomsg_var, error_msg)
+            character(len=*), intent(in) :: spec
+            character(len=:), allocatable, intent(out) :: unit_str
+            character(len=:), allocatable, intent(out) :: newunit_var
+            character(len=:), allocatable, intent(out) :: file_path
+            logical, intent(out) :: file_quoted
+            character(len=:), allocatable, intent(out) :: status_str
+            logical, intent(out) :: status_quoted
+            character(len=:), allocatable, intent(out) :: form_str
+            character(len=:), allocatable, intent(out) :: access_str
+            character(len=:), allocatable, intent(out) :: sign_str
+            character(len=:), allocatable, intent(out) :: iostat_var
+            character(len=:), allocatable, intent(out) :: iomsg_var
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine parse_open_spec
+        module function spec_lower(s) result(t)
+            character(len=*), intent(in) :: s
+            character(len=len(s)) :: t
+        end function spec_lower
+        module subroutine lower_open(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(open_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_open
+        module subroutine open_status_operand(context, status_text, status_quoted, &
+                                             status_op, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: status_text
+            logical, intent(in) :: status_quoted
+            type(lr_operand_desc_t), intent(out) :: status_op
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine open_status_operand
+        module subroutine open_file_operands(context, fpath, file_quoted, data_op, &
+                                             len_op, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: fpath
+            logical, intent(in) :: file_quoted
+            type(lr_operand_desc_t), intent(out) :: data_op
+            type(lr_operand_desc_t), intent(out) :: len_op
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine open_file_operands
+        module subroutine unit_string_operand(context, tag, text, ptr_op, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: tag
+            character(len=*), intent(in) :: text
+            type(lr_operand_desc_t), intent(out) :: ptr_op
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine unit_string_operand
+        module subroutine allocate_newunit(context, nuvar, unit_op, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: nuvar
+            type(lr_operand_desc_t), intent(out) :: unit_op
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine allocate_newunit
+        module subroutine mark_unit_symbol(context, pseudo_name, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: pseudo_name
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine mark_unit_symbol
+        module subroutine set_unit_form(context, name, unformatted, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            logical, intent(in) :: unformatted
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine set_unit_form
+        module subroutine store_io_status(context, iostat_name, iomsg_name, status_op, &
+                                          error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: iostat_name
+            character(len=*), intent(in) :: iomsg_name
+            type(lr_operand_desc_t), intent(in) :: status_op
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine store_io_status
+        module subroutine store_iostat_value(context, name, status_op, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            type(lr_operand_desc_t), intent(in) :: status_op
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine store_iostat_value
+        module subroutine store_iomsg_text(context, name, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine store_iomsg_text
+        module function runtime_iostat_operand(context, error_msg) result(status_op)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+            type(lr_operand_desc_t) :: status_op
+        end function runtime_iostat_operand
+        module subroutine lower_close(node, context, error_msg)
+            type(close_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_close
+        module subroutine unit_number_operand(unit_spec, context, unit_op, error_msg)
+            character(len=*), intent(in) :: unit_spec
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: unit_op
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine unit_number_operand
+        module function unit_spec_text(unit_spec) result(plain)
+            character(len=*), intent(in) :: unit_spec
+            character(len=:), allocatable :: plain
+        end function unit_spec_text
+        module subroutine load_unit_file_ptr(unit_spec, context, fp, error_msg)
+            character(len=*), intent(in) :: unit_spec
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: fp
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine load_unit_file_ptr
+        module function is_file_unit_write(node, context) result(result_value)
+            type(write_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            logical :: result_value
+        end function is_file_unit_write
+        module function unit_is_unformatted(node, context) result(result_value)
+            type(write_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            logical :: result_value
+        end function unit_is_unformatted
+        module subroutine lower_write_file(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(write_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_write_file
+        module subroutine lower_file_write_unformatted(arena, node, fp, context, &
+                                                       error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(write_statement_node), intent(in) :: node
+            type(lr_operand_desc_t), intent(in) :: fp
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_file_write_unformatted
+        module subroutine lower_file_write_unformatted_item(arena, node_index, fp, &
+                                                            context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lr_operand_desc_t), intent(in) :: fp
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_file_write_unformatted_item
+        module function logical_write_kind_bytes(arena, node_index, context) result(bytes)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            integer :: bytes
+        end function logical_write_kind_bytes
+        module subroutine store_write_iostat_success(node, context, error_msg)
+            type(write_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine store_write_iostat_success
+        module function file_write_value_kind(arena, node_index, context) &
+            result(result_value)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            integer :: result_value
+        end function file_write_value_kind
+        module subroutine lower_file_write_item(arena, node_index, fp, context, &
+                                                error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lr_operand_desc_t), intent(in) :: fp
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_file_write_item
+        module subroutine lower_file_write_newline(fp, context, error_msg)
+            type(lr_operand_desc_t), intent(in) :: fp
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_file_write_newline
+        module subroutine lower_file_write_formatted(arena, node, fp, context, &
+                                                      error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(write_statement_node), intent(in) :: node
+            type(lr_operand_desc_t), intent(in) :: fp
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_file_write_formatted
+        module function fortran_fmt_to_c(fort_fmt, c_fmt, error_msg) &
+            result(result_value)
+            character(len=*), intent(in) :: fort_fmt
+            character(len=:), allocatable, intent(out) :: c_fmt
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical :: result_value
+        end function fortran_fmt_to_c
+        module subroutine read_fmt_int(s, pos, val)
+            character(len=*), intent(in) :: s
+            integer, intent(inout) :: pos
+            integer, intent(out) :: val
+        end subroutine read_fmt_int
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -4186,7 +4399,6 @@ contains
         call set_empty(error_msg)
     end subroutine emit_error_stop_banner
     include 'session_program_lowering_write_ops.inc'
-    include 'session_program_lowering_open_close.inc'
     include 'session_program_lowering_io_typecheck.inc'
     include 'session_program_lowering_inquire.inc'
     include 'session_program_lowering_read_ops.inc'

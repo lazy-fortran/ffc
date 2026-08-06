@@ -126,6 +126,11 @@ passing, rebased commit at a time, in this order.
    coverage remains; schema-2 records `coverage_mode=none` with an empty digest
    until that collector lands.
    SKIP/NOREF remain operational dispositions and are not silently PASS.
+   The 1,094-line OPEN/CLOSE/file-unit WRITE lowering slice is now a typed
+   `session_program_lowering_open_close.f90` descendant with 30 explicit
+   module-procedure interfaces; the textual include is deleted. Its existing
+   dynamic `STATUS=` and OPEN/WRITE/CLOSE compiler oracles remain the behavioral
+   gate while the remaining I/O slices are migrated.
 4. Stop silent wrong code and nondeterminism. #671's binding-keyed host
    storage fix and #673's fixed-intrinsic FORALL snapshot are landed with
    gfortran oracles; continue with #626, #649, then the remaining crashes in
@@ -223,6 +228,14 @@ nine explicit interfaces. Its paired accepted/rejected oracle covers variables,
 named constants, fixed and assumed shapes, implied-do indices, overflow, I/O
 `ASYNCHRONOUS=`, and a user-function reference resolved through the shared
 rejection engine. The textual include and host include site are gone.
+
+The 1,094-line `open_close` service is now
+`session_program_lowering_open_close.f90`: a typed descendant with explicit
+interfaces for OPEN/STATUS, CLOSE, unit resolution, IOSTAT/IOMSG, and file-unit
+WRITE lowering. The textual include and host include site are gone. The
+existing dynamic-STATUS regression, FILE-variable path, positional-unit path,
+and OPEN/WRITE/CLOSE round-trip all remain green after the move; no behavior
+was accepted from a state-only check.
 
 Extract the remaining leaves in this order:
 

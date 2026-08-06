@@ -1,32 +1,9 @@
-    ! OPEN / CLOSE / file-unit WRITE lowering (#247 slice B5c).
-    !
-    ! Each variable that receives a unit number via OPEN gets an alloca'd ptr
-    ! slot in the lowering context (symbol_t%file_ptr_address). The fopen
-    ! result is stored there; WRITE/CLOSE load it back. The Fortran unit number
-    ! stored in the integer variable is not used at runtime.
-
-    ! --- spec-text helpers ---------------------------------------------------
-
-    subroutine parse_open_spec(spec, unit_str, newunit_var, file_path, &
-                                file_quoted, status_str, status_quoted, &
-                                form_str, access_str, &
-                                sign_str, &
-                                iostat_var, iomsg_var, error_msg)
+submodule (session_program_lowering_impl) session_program_lowering_open_close
+    implicit none
+contains
+    module procedure parse_open_spec
         ! Extract keyword values from an OPEN specifier-list text.
         ! spec is the raw text inside the OPEN(...) parentheses.
-        character(len=*), intent(in) :: spec
-        character(len=:), allocatable, intent(out) :: unit_str
-        character(len=:), allocatable, intent(out) :: newunit_var
-        character(len=:), allocatable, intent(out) :: file_path
-        logical, intent(out) :: file_quoted
-        character(len=:), allocatable, intent(out) :: status_str
-        logical, intent(out) :: status_quoted
-        character(len=:), allocatable, intent(out) :: form_str
-        character(len=:), allocatable, intent(out) :: access_str
-        character(len=:), allocatable, intent(out) :: sign_str
-        character(len=:), allocatable, intent(out) :: iostat_var
-        character(len=:), allocatable, intent(out) :: iomsg_var
-        character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: text, kw, val
         integer :: p, eq_pos, cp, qend, arg_end
         logical :: first_arg, val_quoted
@@ -125,11 +102,8 @@
                 iomsg_var = trim(val)
             end select
         end do
-    end subroutine parse_open_spec
-
-    function spec_lower(s) result(t)
-        character(len=*), intent(in) :: s
-        character(len=len(s)) :: t
+    end procedure parse_open_spec
+    module procedure spec_lower
         integer :: i, c
         do i = 1, len(s)
             c = ichar(s(i:i))
@@ -139,21 +113,14 @@
                 t(i:i) = s(i:i)
             end if
         end do
-    end function spec_lower
-
-    ! --- OPEN ----------------------------------------------------------------
-
-    subroutine lower_open(arena, node, context, error_msg)
+    end procedure spec_lower
+    module procedure lower_open
         ! Connect a unit through the runtime (#396). The compiler decides
         ! which unit number and which STATUS= apply; the runtime owns the
         ! connection itself, so a unit opened here stays connected for the
         ! life of the process rather than for the life of a lowered function.
         use liric_session_memory_bindings, only: emit_i32_alloca, emit_i32_store
         use, intrinsic :: iso_c_binding, only: c_int64_t
-        type(ast_arena_t), intent(in) :: arena
-        type(open_statement_node), intent(in) :: node
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: ustr, nuvar, fpath, sstr, formstr, accessstr
         character(len=:), allocatable :: signstr
         character(len=:), allocatable :: iostat_var, iomsg_var
@@ -253,18 +220,11 @@
                              error_msg)
         if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
-    end subroutine lower_open
-
-    subroutine open_status_operand(context, status_text, status_quoted, &
-                                   status_op, error_msg)
+    end procedure lower_open
+    module procedure open_status_operand
         ! STATUS= may be a character expression. Literal values are emitted as
         ! globals; a variable must pass its current character buffer so the
         ! runtime sees its value rather than the variable's spelling (#628).
-        type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: status_text
-        logical, intent(in) :: status_quoted
-        type(lr_operand_desc_t), intent(out) :: status_op
-        character(len=:), allocatable, intent(out) :: error_msg
         integer :: sym
         type(lr_operand_desc_t) :: unused_length
 
@@ -286,20 +246,12 @@
         end if
         call char_length_operands(context, sym, status_op, unused_length, &
                                    error_msg)
-    end subroutine open_status_operand
-
-    subroutine open_file_operands(context, fpath, file_quoted, data_op, len_op, &
-                                  error_msg)
+    end procedure open_status_operand
+    module procedure open_file_operands
         ! FILE= yields a data pointer and a byte count. A quoted literal
         ! contributes its own text; anything else names a character variable,
         ! whose declared width is passed so the runtime can trim the padding.
         use, intrinsic :: iso_c_binding, only: c_int64_t
-        type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: fpath
-        logical, intent(in) :: file_quoted
-        type(lr_operand_desc_t), intent(out) :: data_op
-        type(lr_operand_desc_t), intent(out) :: len_op
-        character(len=:), allocatable, intent(out) :: error_msg
         integer :: sym
 
         call set_empty(error_msg)
@@ -322,15 +274,9 @@
             return
         end if
         call char_length_operands(context, sym, data_op, len_op, error_msg)
-    end subroutine open_file_operands
-
-    subroutine unit_string_operand(context, tag, text, ptr_op, error_msg)
+    end procedure open_file_operands
+    module procedure unit_string_operand
         ! Materialise a NUL-terminated literal and yield a pointer to it.
-        type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: tag
-        character(len=*), intent(in) :: text
-        type(lr_operand_desc_t), intent(out) :: ptr_op
-        character(len=:), allocatable, intent(out) :: error_msg
         character(len=64) :: gname
         integer(c_int32_t) :: gid
 
@@ -341,16 +287,11 @@
                                          trim(text), gid, error_msg)
         if (len_trim(error_msg) > 0) return
         ptr_op = printf_format_ptr(context%session, gid)
-    end subroutine unit_string_operand
-
-    subroutine allocate_newunit(context, nuvar, unit_op, error_msg)
+    end procedure unit_string_operand
+    module procedure allocate_newunit
         ! OPEN(newunit=u): the runtime picks the unit number, so two scopes
         ! that both use NEWUNIT= can never be handed the same unit.
         use liric_session_memory_bindings, only: emit_i32_alloca, emit_i32_store
-        type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: nuvar
-        type(lr_operand_desc_t), intent(out) :: unit_op
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: noargs(:)
         integer :: sym
 
@@ -374,14 +315,10 @@
                                   context%symbols(sym)%address, error_msg)) return
         context%symbols(sym)%value = unit_op
         context%symbols(sym)%is_file_unit = .true.
-    end subroutine allocate_newunit
-
-    subroutine mark_unit_symbol(context, pseudo_name, error_msg)
+    end procedure allocate_newunit
+    module procedure mark_unit_symbol
         ! Record that a numeric unit is in use, so statement classification
         ! and INQUIRE(opened=) can tell a file unit from a plain integer.
-        type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: pseudo_name
-        character(len=:), allocatable, intent(out) :: error_msg
         integer :: sym
 
         call set_empty(error_msg)
@@ -392,13 +329,8 @@
             sym = find_symbol_compat(context, pseudo_name)
         end if
         if (sym > 0) context%symbols(sym)%is_file_unit = .true.
-    end subroutine mark_unit_symbol
-
-    subroutine set_unit_form(context, name, unformatted, error_msg)
-        type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: name
-        logical, intent(in) :: unformatted
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure mark_unit_symbol
+    module procedure set_unit_form
         integer :: sym
 
         call set_empty(error_msg)
@@ -408,17 +340,8 @@
             return
         end if
         context%symbols(sym)%is_unformatted = unformatted
-    end subroutine set_unit_form
-
-
-
-
-
-
-    ! --- IOSTAT= and IOMSG= (#427) -------------------------------------------
-
-    subroutine store_io_status(context, iostat_name, iomsg_name, status_op, &
-                               error_msg)
+    end procedure set_unit_form
+    module procedure store_io_status
         ! Report one I/O statement's outcome. status_op is the value the
         ! runtime returned for the operation; when it is absent the caller
         ! wants the runtime's record of the last operation instead, which is
@@ -427,11 +350,6 @@
         ! Both specifiers are optional and independent, and each is left
         ! alone when its specifier is absent.
         use, intrinsic :: iso_c_binding, only: c_int64_t
-        type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: iostat_name
-        character(len=*), intent(in) :: iomsg_name
-        type(lr_operand_desc_t), intent(in) :: status_op
-        character(len=:), allocatable, intent(out) :: error_msg
 
         call set_empty(error_msg)
         if (len_trim(iostat_name) > 0) then
@@ -442,13 +360,8 @@
             call store_iomsg_text(context, iomsg_name, error_msg)
             if (len_trim(error_msg) > 0) return
         end if
-    end subroutine store_io_status
-
-    subroutine store_iostat_value(context, name, status_op, error_msg)
-        type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: name
-        type(lr_operand_desc_t), intent(in) :: status_op
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure store_io_status
+    module procedure store_iostat_value
         integer :: sym
 
         call set_empty(error_msg)
@@ -462,9 +375,8 @@
             return
         end if
         call assign_i32_to_symbol(context, sym, status_op, error_msg)
-    end subroutine store_iostat_value
-
-    subroutine store_iomsg_text(context, name, error_msg)
+    end procedure store_iostat_value
+    module procedure store_iomsg_text
         ! _ffc_iomsg(buffer, len) fills a fresh buffer of the variable's
         ! declared length with the message for the recorded status, truncated
         ! or blank padded to that length by Fortran character assignment
@@ -472,9 +384,6 @@
         ! character assignment rebinds it.
         use liric_session_memory_bindings, only: emit_malloc
         use, intrinsic :: iso_c_binding, only: c_int64_t
-        type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: name
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: buffer, args(2), unused
         integer :: sym, length
 
@@ -507,32 +416,22 @@
                                  error_msg)) return
         context%symbols(sym)%value = buffer
         context%symbols(sym)%has_character_value = .true.
-    end subroutine store_iomsg_text
-
-    function runtime_iostat_operand(context, error_msg) result(status_op)
+    end procedure store_iomsg_text
+    module procedure runtime_iostat_operand
         ! The runtime's record of the last I/O operation, for statements that
         ! do not have a single call whose return value is the status.
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: status_op
         type(lr_operand_desc_t), allocatable :: noargs(:)
 
         allocate (noargs(0))
         if (.not. emit_i32_call(context%session, '_ffc_iostat', noargs, &
                                 status_op, error_msg)) return
         call set_empty(error_msg)
-    end function runtime_iostat_operand
-
-    ! --- CLOSE ---------------------------------------------------------------
-
-    subroutine lower_close(node, context, error_msg)
+    end procedure runtime_iostat_operand
+    module procedure lower_close
         ! CLOSE hands the unit number to the runtime, which owns the
         ! connection. Closing a unit that is not connected is not an error in
         ! Fortran, and the runtime reports success for it, so the guard the
         ! compiler used to emit around fclose is gone (#396).
-        type(close_statement_node), intent(in) :: node
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: args(1), unused
 
         call set_empty(error_msg)
@@ -546,9 +445,8 @@
         if (.not. emit_i32_call(context%session, '_ffc_unit_close', args, &
                                 unused, error_msg)) return
         call set_empty(error_msg)
-    end subroutine lower_close
-
-    subroutine unit_number_operand(unit_spec, context, unit_op, error_msg)
+    end procedure lower_close
+    module procedure unit_number_operand
         ! Resolve unit_spec (raw OPEN/CLOSE/REWIND specifier text, e.g. "u",
         ! "10", "unit=u", "(u)") to an i32 operand holding the unit number.
         !
@@ -557,10 +455,6 @@
         ! computed at run time reaches the right connection (#396).
         use liric_session_memory_bindings, only: emit_i32_load
         use, intrinsic :: iso_c_binding, only: c_int64_t
-        character(len=*), intent(in) :: unit_spec
-        type(lowering_context_t), intent(inout) :: context
-        type(lr_operand_desc_t), intent(out) :: unit_op
-        character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: plain
         integer :: unit_number, sym, ios
 
@@ -589,14 +483,11 @@
             unit_op = context%symbols(sym)%value
         end if
         call set_empty(error_msg)
-    end subroutine unit_number_operand
-
-    function unit_spec_text(unit_spec) result(plain)
+    end procedure unit_number_operand
+    module procedure unit_spec_text
         ! Strip the surrounding parentheses REWIND/BACKSPACE keep, take the
         ! first argument (CLOSE/REWIND carry trailing keywords such as
         ! status="delete"), and drop a leading unit= keyword.
-        character(len=*), intent(in) :: unit_spec
-        character(len=:), allocatable :: plain
         character(len=:), allocatable :: head
         integer :: cpos, eq_pos
 
@@ -615,16 +506,11 @@
         eq_pos = index(head, '=')
         if (eq_pos > 0) head = adjustl(head(eq_pos + 1:))
         plain = trim(head)
-    end function unit_spec_text
-
-    subroutine load_unit_file_ptr(unit_spec, context, fp, error_msg)
+    end procedure unit_spec_text
+    module procedure load_unit_file_ptr
         ! The stream behind a unit, from the runtime. An unopened numeric unit
         ! is connected to fort.<N> there, on first use, so implicit
         ! preconnection no longer needs its own emitted fopen (#396).
-        character(len=*), intent(in) :: unit_spec
-        type(lowering_context_t), intent(inout) :: context
-        type(lr_operand_desc_t), intent(out) :: fp
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: args(1)
 
         call unit_number_operand(unit_spec, context, args(1), error_msg)
@@ -632,37 +518,28 @@
         if (.not. emit_ptr_call(context%session, '_ffc_unit_file', args, fp, &
                                 error_msg)) return
         call set_empty(error_msg)
-    end subroutine load_unit_file_ptr
-
-
-    ! --- file-unit WRITE -----------------------------------------------------
-
-    logical function is_file_unit_write(node, context)
-        type(write_statement_node), intent(in) :: node
-        type(lowering_context_t), intent(inout) :: context
+    end procedure load_unit_file_ptr
+    module procedure is_file_unit_write
         integer :: sym, ios, unit_number
 
-        is_file_unit_write = .false.
+        result_value = .false.
         if (.not. allocated(node%unit_spec)) return
         if (trim(node%unit_spec) == '*' .or. &
             trim(node%unit_spec) == '6') return
         read (node%unit_spec, *, iostat=ios) unit_number
         if (ios == 0) then
-            is_file_unit_write = .true.
+            result_value = .true.
             return
         end if
         sym = find_symbol_compat(context, trim(node%unit_spec))
         if (sym <= 0) return
-        is_file_unit_write = context%symbols(sym)%is_file_unit .or. &
+        result_value = context%symbols(sym)%is_file_unit .or. &
                              context%symbols(sym)%has_unit_const
-    end function is_file_unit_write
-
-    logical function unit_is_unformatted(node, context)
-        type(write_statement_node), intent(in) :: node
-        type(lowering_context_t), intent(inout) :: context
+    end procedure is_file_unit_write
+    module procedure unit_is_unformatted
         integer :: sym, unit_number, ios
 
-        unit_is_unformatted = .false.
+        result_value = .false.
         if (.not. allocated(node%unit_spec)) return
         read (node%unit_spec, *, iostat=ios) unit_number
         if (ios == 0) then
@@ -670,14 +547,9 @@
         else
             sym = find_symbol_compat(context, trim(node%unit_spec))
         end if
-        if (sym > 0) unit_is_unformatted = context%symbols(sym)%is_unformatted
-    end function unit_is_unformatted
-
-    subroutine lower_write_file(arena, node, context, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(write_statement_node), intent(in) :: node
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
+        if (sym > 0) result_value = context%symbols(sym)%is_unformatted
+    end procedure unit_is_unformatted
+    module procedure lower_write_file
         type(lr_operand_desc_t) :: fp
         logical :: list_dir, unformatted
         integer :: i
@@ -714,14 +586,8 @@
         end if
         if (len_trim(error_msg) > 0) return
         call store_write_iostat_success(node, context, error_msg)
-    end subroutine lower_write_file
-
-    subroutine lower_file_write_unformatted(arena, node, fp, context, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(write_statement_node), intent(in) :: node
-        type(lr_operand_desc_t), intent(in) :: fp
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure lower_write_file
+    module procedure lower_file_write_unformatted
         integer :: i
 
         call set_empty(error_msg)
@@ -731,15 +597,8 @@
                                                     fp, context, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine lower_file_write_unformatted
-
-    subroutine lower_file_write_unformatted_item(arena, node_index, fp, context, &
-                                                 error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        type(lr_operand_desc_t), intent(in) :: fp
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure lower_file_write_unformatted
+    module procedure lower_file_write_unformatted_item
         type(lr_operand_desc_t) :: value, status, args(2)
         type(lr_operand_desc_t) :: narrow_value
         integer :: vk
@@ -811,12 +670,8 @@
             if (.not. emit_i32_call(context%session, &
                     '_ffc_write_unformatted_i64', args, status, error_msg)) return
         end select
-    end subroutine lower_file_write_unformatted_item
-
-    integer function logical_write_kind_bytes(arena, node_index, context) result(bytes)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        type(lowering_context_t), intent(in) :: context
+    end procedure lower_file_write_unformatted_item
+    module procedure logical_write_kind_bytes
         character(len=:), allocatable :: name, name_error
         integer :: symbol_index
 
@@ -829,16 +684,12 @@
         if (context%symbols(symbol_index)%logical_kind_bytes > 0) then
             bytes = context%symbols(symbol_index)%logical_kind_bytes
         end if
-    end function logical_write_kind_bytes
-
-    subroutine store_write_iostat_success(node, context, error_msg)
+    end procedure logical_write_kind_bytes
+    module procedure store_write_iostat_success
         ! Report a file WRITE's outcome. The status comes from the runtime's
         ! record of the operation rather than an assumed 0, so a write to an
         ! unusable unit is visible to the program (#427). The specifier names
         ! live in the io_control_list text (iostat=<name>, iomsg=<name>).
-        type(write_statement_node), intent(in) :: node
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: iostat_name, iomsg_name
         type(lr_operand_desc_t) :: status_op
 
@@ -851,28 +702,18 @@
         if (len_trim(error_msg) > 0) return
         call store_io_status(context, iostat_name, iomsg_name, status_op, &
                              error_msg)
-    end subroutine store_write_iostat_success
-
-    integer function file_write_value_kind(arena, node_index, context)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        type(lowering_context_t), intent(inout) :: context
+    end procedure store_write_iostat_success
+    module procedure file_write_value_kind
 
         if (is_character_operand(arena, node_index, context)) then
-            file_write_value_kind = VALUE_CHARACTER
+        result_value = VALUE_CHARACTER
             return
         end if
-        file_write_value_kind = expression_value_kind(arena, node_index, context, &
+        result_value = expression_value_kind(arena, node_index, context, &
                                                        VALUE_I32)
-    end function file_write_value_kind
-
-    subroutine lower_file_write_item(arena, node_index, fp, context, error_msg)
+    end procedure file_write_value_kind
+    module procedure lower_file_write_item
         use, intrinsic :: iso_c_binding, only: c_int64_t
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_index
-        type(lr_operand_desc_t), intent(in) :: fp
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: val, fmtop
         type(lr_operand_desc_t), allocatable :: fa(:)
         integer(c_int32_t) :: fgid
@@ -924,12 +765,8 @@
         fa(3) = val
         if (.not. emit_fprintf(context%session, fa, error_msg)) return
         call set_empty(error_msg)
-    end subroutine lower_file_write_item
-
-    subroutine lower_file_write_newline(fp, context, error_msg)
-        type(lr_operand_desc_t), intent(in) :: fp
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure lower_file_write_item
+    module procedure lower_file_write_newline
         type(lr_operand_desc_t) :: fmtop, fa(2)
         integer(c_int32_t) :: fgid
         character(len=64) :: fgn
@@ -945,15 +782,9 @@
         fa(2) = fmtop
         if (.not. emit_fprintf(context%session, fa, error_msg)) return
         call set_empty(error_msg)
-    end subroutine lower_file_write_newline
-
-    subroutine lower_file_write_formatted(arena, node, fp, context, error_msg)
+    end procedure lower_file_write_newline
+    module procedure lower_file_write_formatted
         use, intrinsic :: iso_c_binding, only: c_int64_t
-        type(ast_arena_t), intent(in) :: arena
-        type(write_statement_node), intent(in) :: node
-        type(lr_operand_desc_t), intent(in) :: fp
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: fmt_body, c_fmt
         type(lr_operand_desc_t) :: fmtop, char_len
         type(lr_operand_desc_t), allocatable :: fa(:)
@@ -1009,17 +840,13 @@
         end do
         if (.not. emit_fprintf(context%session, fa, error_msg)) return
         call set_empty(error_msg)
-    end subroutine lower_file_write_formatted
-
-    logical function fortran_fmt_to_c(fort_fmt, c_fmt, error_msg)
-        character(len=*), intent(in) :: fort_fmt
-        character(len=:), allocatable, intent(out) :: c_fmt
-        character(len=:), allocatable, intent(out) :: error_msg
+    end procedure lower_file_write_formatted
+    module procedure fortran_fmt_to_c
         integer :: i, w, d
         character :: ch
         character(len=32) :: buf
 
-        fortran_fmt_to_c = .false.
+        result_value = .false.
         c_fmt = ''
         call set_empty(error_msg)
         i = 1
@@ -1075,13 +902,9 @@
                 i = i + 1
             end select
         end do
-        fortran_fmt_to_c = .true.
-    end function fortran_fmt_to_c
-
-    subroutine read_fmt_int(s, pos, val)
-        character(len=*), intent(in) :: s
-        integer, intent(inout) :: pos
-        integer, intent(out) :: val
+        result_value = .true.
+    end procedure fortran_fmt_to_c
+    module procedure read_fmt_int
         val = 0
         do while (pos <= len(s))
             if (s(pos:pos) >= '0' .and. s(pos:pos) <= '9') then
@@ -1091,4 +914,5 @@
                 exit
             end if
         end do
-    end subroutine read_fmt_int
+    end procedure read_fmt_int
+end submodule session_program_lowering_open_close

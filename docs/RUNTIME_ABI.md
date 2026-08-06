@@ -14,6 +14,12 @@ descriptor convention. The remaining legacy paths are migration work, not
 additional supported ABIs; each must be removed with an ownership/lifetime
 oracle when its issue closes.
 
+OPEN/CLOSE and file-unit WRITE lowering is implemented in the descendant
+`src/session_program_lowering_open_close.f90` with explicit interfaces in
+`session_program_lowering_impl`; the old textual include is not part of the
+compiler architecture. This move preserves the runtime ABI below, including
+the current `STATUS=` character-value contract and unit-number resolution.
+
 ## Stability Rule
 
 Only the representations listed in this document are supported. Other values,
