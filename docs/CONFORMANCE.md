@@ -487,6 +487,41 @@ reports under `$TMPDIR`. Passing files need no manifest entry. A new
 FortFront example fails the ffc test until ffc supports it or its
 basename is added to the matching xfail manifest.
 
+### Rejection gate (#663)
+
+Compile-only parity does not by itself protect the accepted side of the
+language boundary: a new semantic rejection can make a valid corpus file
+disappear while all positive runtime rows still pass. Run the dedicated gate
+before merging a change that adds or changes a rejection rule:
+
+```bash
+fo build
+make check-rejection-gate
+```
+
+`scripts/corpus_rejection_gate.sh` runs `ffc -c` once per source in the pinned
+FortFront examples corpus and writes `ACCEPTED<TAB>path` or
+`REJECTED<TAB>path`. It records all compiler stderr, including timeout and
+signal diagnostics, in `build/corpus_rejection_current.tsv.stderr.log`.
+The committed `test/fixtures/corpus_rejection_baseline.tsv` is an
+expectation-neutral current-main snapshot. With `--baseline`, any file that
+was `ACCEPTED` in that snapshot and is `REJECTED` now fails the command; an
+explicit, reviewed `--allow` path is required for an intended invalid fixture.
+
+For every newly rejected baseline row the gate also runs the independent
+`gfortran -fsyntax-only` validity oracle and writes `*.validity.tsv` with
+`VALID`, `INVALID`, `TIMEOUT`, or `ERROR`. That result is triage evidence only:
+it never converts a rejection into a pass or suppresses the baseline failure.
+The checked-in baseline was generated from ffc `bb30c20` and FortFront
+`ee5caf7b` (833 files: 626 accepted and 207 rejected); its stable labels are
+`fortfront/examples/...`, so the same baseline can be replayed from either a
+normal sibling checkout or an isolated `/mnt/storage` worktree.
+Use `--corpus` repeatedly to add LFortran or `gfortran.dg` roots, and state
+the report and validity artifacts in the PR. The shell oracle
+`test/test_corpus_rejection_gate.sh` exercises baseline comparison, retained
+diagnostics, independent validity classification, and allowlist enforcement
+without depending on a repository-state check.
+
 The maintained fpm test rejects both FAIL and XPASS records. An XPASS is a
 stale manifest entry and must be promoted before merging.
 
