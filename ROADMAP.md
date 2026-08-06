@@ -148,6 +148,17 @@ passing, rebased commit at a time, in this order.
    terminated by both processors without a coin-flip structural comparison.
    #628's dynamic `STATUS=` value path is also landed; retain its runtime
    regression while the remaining I/O families are extracted.
+   The accepted-side rejection gate for #663 is now a committed, runnable
+   `scripts/corpus_rejection_gate.sh` plus `make check-rejection-gate` and an
+   expectation-neutral FortFront baseline. It records one compile disposition
+   and all per-file diagnostics, compares only baseline `ACCEPTED` to current
+   `REJECTED` transitions, and runs `gfortran -fsyntax-only` on each transition
+   as independent validity triage. A syntax-oracle result never suppresses the
+   gate: intended new rejections require a reviewed `--allow` entry and a
+   nearby accepted oracle. Keep this gate ahead of every rejection-rule change
+   and refresh its baseline only in a locked provenance epoch. The committed
+   baseline is the 833-file FortFront `ee5caf7b` snapshot (626 accepted, 207
+   rejected) measured with ffc `bb30c20`.
    A bounded live audit of #576 at ffc `8ffc35e` (2026-08-07) split all 563
    live `fortfront-f90` files and all 265 `fortfront-lf` files into parallel
    chunks (including a three-file tail check after the initial eight chunks).
