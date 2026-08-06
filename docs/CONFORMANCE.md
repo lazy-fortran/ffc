@@ -484,6 +484,30 @@ Current xfail manifests:
 - `test/conformance/xfail_fortfront_f90.txt`
 - `test/conformance/xfail_fortfront_lf.txt`
 
+### Live crash triage
+
+The corpus gate keeps compiler crashes visible as `FAIL`; they must not be
+promoted to either xfail or NOREF. On 2026-08-07, a bounded audit at ffc
+`8ffc35e` covered all 563 live `fortfront-f90` and all 265 `fortfront-lf` files
+in parallel chunks. (The checked-in gate totals of 517 and 264 are stale and
+must be refreshed from the corpus snapshot.) No emitted-program runtime
+segfault was observed. The one stable crash signature was:
+
+```
+suite=fortfront-lf
+file=issue_2064_logical_return_inferred_as_integer.lf
+phase=compile
+ffc_compile_exit=139
+ffc_compile_signal=11
+ffc_compile_termination=signal
+crash_signature_sha256=700fd752c286a890d5624ba5d84428c958db1dd69c1dc320183db64be349182a
+```
+
+Three independent single-file runs reproduced the signature. The source is
+not in an xfail/NOREF manifest. Reduce and fix the logical-result inference
+path, then add a behavioral oracle that compiles and runs the expected logical
+results before promoting any corpus row.
+
 ### NOREF manifests
 
 `test/conformance/noref_<suite>.txt` classifies the cases that cannot have a
