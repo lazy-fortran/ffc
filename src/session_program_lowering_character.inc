@@ -1421,11 +1421,29 @@
         type(lr_operand_desc_t), intent(out) :: length
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: element_index
+        type(lr_operand_desc_t) :: descriptor, array_data, slot_addr
 
         element_index = i32_immediate(context%session, &
                                       int(linear_index, c_int64_t))
-        call character_array_element_address(context, symbol_index, element_index, &
-                                             data_ptr, error_msg)
+        if (context%symbols(symbol_index)%is_allocatable) then
+            ! Allocatable character arrays store one data pointer per element
+            ! in their descriptor payload.  Resolve that pointer before the
+            ! locate scan compares the element's bytes.
+            descriptor = context%symbols(symbol_index)% &
+                allocatable_descriptor_address
+            if (.not. emit_ptr_load(context%session, descriptor, array_data, &
+                    error_msg)) return
+            if (.not. emit_ptr_offset(context%session, array_data, &
+                    int(linear_index, c_int64_t) * &
+                    allocatable_elem_size(VALUE_CHARACTER), slot_addr, &
+                    error_msg)) return
+            if (.not. emit_ptr_load(context%session, slot_addr, data_ptr, &
+                    error_msg)) return
+        else
+            call character_array_element_address(context, symbol_index, &
+                                                 element_index, data_ptr, &
+                                                 error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
         length = i32_immediate(context%session, &
                                int(context%symbols(symbol_index)%character_length, &

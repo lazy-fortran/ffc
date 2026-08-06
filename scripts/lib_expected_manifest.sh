@@ -106,7 +106,7 @@ validate_expected_manifest() {
 validate_noref_category() {
     local source="$1" line_number="$2" category="$3"
     case "$category" in
-        undefined-runtime-value|missing-external-definition|compile-only) ;;
+        undefined-runtime-value|nondeterministic-runtime-value|missing-external-definition|compile-only) ;;
         *) manifest_error "$source" "$line_number" \
             "unapproved noref category: $category" ;;
     esac

@@ -615,6 +615,7 @@ case_diagnostic_signature() {
     { cat "$FFC_COMPILER_DIAGNOSTIC_FILE" "$REF_COMPILER_DIAGNOSTIC_FILE"; } |
         sed -E -e "s#${TMPDIR_WORK}#@case#g" \
             -e 's#(/[^ /:]*)?/ffc_gfmod_[[:alnum:]]+#@ref-module#g' \
+            -e 's#/tmp/liric_exe_obj_[[:alnum:]]+#@link-object#g' \
             -e 's/0x[0-9A-Fa-f]+/<addr>/g; s/\r$//' |
         sha256sum | cut -d ' ' -f 1
 }
@@ -1197,7 +1198,8 @@ while IFS= read -r full_path <&3; do
 
     noref_kind=$(noref_category "$rel_path") || noref_kind=""
     NOREF_MANIFEST_CATEGORY="$noref_kind"
-    if [ -n "$noref_kind" ] && [ "$noref_kind" != "undefined-runtime-value" ]; then
+    if [ -n "$noref_kind" ] && [ "$noref_kind" != "undefined-runtime-value" ] && \
+        [ "$noref_kind" != "nondeterministic-runtime-value" ]; then
         classify_nonrunnable_noref "$rel_path" "$full_path" "$noref_kind"
         continue
     fi
@@ -1602,12 +1604,12 @@ while IFS= read -r full_path <&3; do
     if [ "$ref_exit" -ne 0 ]; then
         if [ -n "$noref_kind" ]; then
             status="FAIL"
-            note="undefined-runtime-value reference failed to compile"
+            note="$noref_kind reference failed to compile"
             FAIL_COUNT=$((FAIL_COUNT + 1))
             HAS_FAIL=1
             write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
                 "$note" "$warning_expectation"
-            echo "  FAIL: $rel_path (undefined-runtime-value reference failed)"
+            echo "  FAIL: $rel_path ($noref_kind reference failed)"
             continue
         fi
         NOREF_COUNT=$((NOREF_COUNT + 1))
@@ -1690,22 +1692,22 @@ while IFS= read -r full_path <&3; do
     if [ -n "$noref_kind" ]; then
         if [ "$ffc_exit" -eq 0 ] && [ "$ref_exit" -eq 0 ]; then
             status="PASS"
-            note="no behavioral oracle (undefined-runtime-value)"
+            note="no behavioral oracle ($noref_kind)"
             PASS_COUNT=$((PASS_COUNT + 1))
             NOREF_COUNT=$((NOREF_COUNT + 1))
             IS_NOREF_RECORD=1
-            NOREF_RECORD_REASON="undefined-runtime-value"
+            NOREF_RECORD_REASON="$noref_kind"
             write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
                 "$note" "$warning_expectation"
             continue
         fi
         status="FAIL"
-        note="undefined-runtime-value execution did not terminate normally"
+        note="$noref_kind execution did not terminate normally"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         HAS_FAIL=1
         write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
             "$note" "$warning_expectation"
-        echo "  FAIL: $rel_path (undefined-runtime-value execution failed)"
+        echo "  FAIL: $rel_path ($noref_kind execution failed)"
         continue
     fi
 

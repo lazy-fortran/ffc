@@ -670,7 +670,13 @@
             error_msg = trim(which)//' requires a non-empty array'
             return
         end if
-        call emit_locate_scan(context, want_max, sym, mask_sym, value, error_msg)
+        if (context%symbols(sym)%value_kind == VALUE_CHARACTER) then
+            call emit_character_locate_scan(context, want_max, sym, mask_sym, &
+                                            value, error_msg)
+        else
+            call emit_locate_scan(context, want_max, sym, mask_sym, value, &
+                                  error_msg)
+        end if
     end subroutine lower_array_locate_intrinsic
 
     ! Resolve the array argument and an optional logical-array mask. A scalar
@@ -795,6 +801,132 @@
         value = best_idx
         call set_empty(error_msg)
     end subroutine emit_locate_scan
+
+    ! Character MINLOC/MAXLOC uses Fortran's blank-padded lexical ordering,
+    ! rather than interpreting the first four bytes of each element as an
+    ! integer.  Keep the same first-match and mask semantics as the numeric
+    ! scan while comparing the complete fixed-width character values.
+    subroutine emit_character_locate_scan(context, want_max, sym, mask_sym, &
+                                          value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: want_max
+        integer, intent(in) :: sym, mask_sym
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: array_size, i
+        type(lr_operand_desc_t) :: best_data, best_len, cand_data, cand_len
+        type(lr_operand_desc_t) :: best_idx, cand_idx, better, mask_elem, masked
+        type(lr_operand_desc_t) :: masked_take, take
+        type(lr_operand_desc_t) :: best_data_addr, best_idx_addr
+        integer(c_int32_t) :: update_block, keep_block, merge_block
+
+        array_size = context%symbols(sym)%array_size
+        call character_array_symbol_element_operands(context, sym, 0, best_data, &
+                                                     best_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_alloca(context%session, best_data_addr, error_msg)) &
+            return
+        if (.not. emit_i32_alloca(context%session, best_idx_addr, error_msg)) &
+            return
+        if (.not. emit_ptr_store(context%session, best_data, best_data_addr, &
+                error_msg)) return
+        if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), best_idx_addr, &
+                error_msg)) return
+
+        do i = 0, array_size - 1
+            call character_array_symbol_element_operands(context, sym, i, &
+                                                         cand_data, cand_len, &
+                                                         error_msg)
+            if (len_trim(error_msg) > 0) return
+            cand_idx = i32_immediate(context%session, int(i + 1, c_int64_t))
+            if (.not. emit_ptr_load(context%session, best_data_addr, best_data, &
+                    error_msg)) return
+            if (.not. emit_i32_load(context%session, best_idx_addr, best_idx, &
+                    error_msg)) return
+
+            call locate_is_better_char(context, want_max, cand_data, cand_len, &
+                                       best_data, best_len, best_idx, better, &
+                                       error_msg)
+            if (len_trim(error_msg) > 0) return
+            take = better
+            if (mask_sym > 0) then
+                call load_array_linear_element(context, mask_sym, &
+                                               int(i, c_int64_t), mask_elem, &
+                                               error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, &
+                        mask_elem, i32_immediate(context%session, 0_c_int64_t), &
+                        masked, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, take, &
+                                          masked, masked_take, error_msg)) return
+                take = masked_take
+            end if
+
+            update_block = create_liric_block(context%session)
+            keep_block = create_liric_block(context%session)
+            merge_block = create_liric_block(context%session)
+            if (.not. emit_liric_condbr(context%session, take, update_block, &
+                                        keep_block, error_msg)) return
+            if (.not. set_liric_block(context%session, update_block, error_msg)) &
+                return
+            context%current_block_id = update_block
+            if (.not. emit_ptr_store(context%session, cand_data, best_data_addr, &
+                    error_msg)) return
+            if (.not. emit_i32_store(context%session, cand_idx, best_idx_addr, &
+                    error_msg)) return
+            if (.not. emit_liric_br(context%session, merge_block, error_msg)) &
+                return
+            if (.not. set_liric_block(context%session, keep_block, error_msg)) &
+                return
+            context%current_block_id = keep_block
+            if (.not. emit_liric_br(context%session, merge_block, error_msg)) &
+                return
+            if (.not. set_liric_block(context%session, merge_block, error_msg)) &
+                return
+            context%current_block_id = merge_block
+            context%current_block_terminated = .false.
+        end do
+
+        if (.not. emit_i32_load(context%session, best_idx_addr, value, error_msg)) &
+            return
+        call set_empty(error_msg)
+    end subroutine emit_character_locate_scan
+
+    ! Return whether a character candidate is a new MINLOC/MAXLOC winner.
+    ! best_idx==0 forces the first eligible element even when its bytes are
+    ! equal to the placeholder element used to initialize best_data.
+    subroutine locate_is_better_char(context, want_max, cand_data, cand_len, &
+                                     best_data, best_len, best_idx, better, &
+                                     error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: want_max
+        type(lr_operand_desc_t), intent(in) :: cand_data, cand_len
+        type(lr_operand_desc_t), intent(in) :: best_data, best_len, best_idx
+        type(lr_operand_desc_t), intent(out) :: better
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: cmp, unset, combined
+        integer(c_int) :: predicate
+
+        call char_compare(context, cand_data, cand_len, best_data, best_len, &
+                          cmp, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (want_max) then
+            predicate = LR_CMP_SGT
+        else
+            predicate = LR_CMP_SLT
+        end if
+        if (.not. emit_liric_i32_icmp(context%session, predicate, cmp, &
+                i32_immediate(context%session, 0_c_int64_t), better, &
+                error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, best_idx, &
+                i32_immediate(context%session, 0_c_int64_t), unset, error_msg)) &
+            return
+        if (.not. emit_i32_binary(context%session, LR_OP_OR, better, unset, &
+                                  combined, error_msg)) return
+        better = combined
+        call set_empty(error_msg)
+    end subroutine locate_is_better_char
 
     ! better = (best_idx == 0) .or. (want_max ? cand > best_val : cand < best_val)
     subroutine locate_is_better(context, want_max, vk, cand, best_val, best_idx, &

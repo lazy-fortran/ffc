@@ -321,7 +321,7 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 |---|---:|
 | `test/conformance/xfail_fortfront_f90.txt` | 90 |
 | `test/conformance/xfail_fortfront_lf.txt` | 51 |
-| `test/conformance/noref_fortfront_f90.txt` | 5 |
+| `test/conformance/noref_fortfront_f90.txt` | 6 |
 | `test/conformance/noref_lfortran.txt` | 6 |
 | `test/conformance/xfail_lfortran.txt` | 3213 |
 | `test/conformance/xfail_gfortran_dg.txt` | 2174 |
@@ -335,7 +335,7 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 | `test/conformance/scopes_gfortran_dg.txt` | 219 |
 | `test/conformance/owner_subsystems.txt` | 135 |
 
-The aggregate manifest inventory is `XFAIL=5528`, `FAIL=288`, `NOREF=11`, and
+The aggregate manifest inventory is `XFAIL=5527`, `FAIL=288`, `NOREF=12`, and
 `SKIP=2305`. `FAIL` counts FAIL-owner rows. These are inventory facts, not fresh
 compiler outcomes.
 
@@ -502,8 +502,9 @@ empty reason, a duplicate path, or a category outside this list:
 | `undefined-runtime-value` | printed values depend on undefined data | both compilers build and exit zero; stdout is ignored |
 | `missing-external-definition` | a referenced definition lives outside this suite invocation | the reference must fail to build a complete executable |
 | `compile-only` | the source is not a runnable program unit | `ffc -c` must succeed and the reference must not link |
+| `nondeterministic-runtime-value` | defined runtime randomness can choose different control-flow/output branches in independent processor streams | both compilers must build and exit zero; stdout is intentionally not compared |
 
-For the two non-runnable categories the runner first tries to build the file
+For the `missing-external-definition` and `compile-only` categories the runner first tries to build the file
 with `gfortran -w`. If that produces a runnable executable, the case is a
 stable valid executable, the category does not apply, and the record is a
 `FAIL` — a valid program can never be hidden behind NOREF. NOREF entries must
