@@ -39,8 +39,11 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current heads are `ffc` `f4256e9`, FortFront `39b5bb24`, fo `c4102dd`,
-and LIRIC `14ca403`. These heads have no completed remote check suite yet.
+The implementation baselines for this gate are `ffc` `5f13422`, FortFront
+`ac02b4d0`, fo `32ef96d`, and LIRIC `3facb898`; the current roadmap tips are
+`64cc806`, `39b5bb24`, `c4102dd`, and `14ca403` respectively. The code
+baselines have no completed remote check suite yet; the latter commits are
+documentation-only updates.
 The last checked ffc parent was `61cbceb` (CI run 30807386910, red for the
 GCC14 submodule-link and formatting gates); the last checked FortFront parent
 was `e84ac97b` (run 31110432510, Ubuntu green but Windows/aggregate red); and
@@ -63,7 +66,7 @@ The current state is not a valid parity baseline:
 - Current manifests contain 5,528 XFAIL rows, 288 FAIL-owner rows, 11 NOREF
   rows, and 2,303 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
-- There are 71 tracked production `.inc` files containing 79,392 lines. The
+- There are 70 tracked production `.inc` files containing 79,155 lines. The
   5,073-line host module has 44 direct include sites. Another 323 calls use
   `find_symbol_compat`, compared with 13 binding-keyed lookup calls.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
@@ -131,7 +134,7 @@ published repository boundary and only for a bounded migration window.
   not depend on private host association.
 - The module DAG is real source metadata. fo `32ef96d` now records both
   ancestor and immediate-parent edges with a child-first compile/run oracle;
-  the 18 `_order.f90` build shims are now deletion work, not dependency work.
+  the 18 `_order.f90` build shims were removed by ffc `763ba0c`.
 - Production `.inc` reaches zero. A monotonic check prevents additions, but it
   is only an architecture check. Every migration also needs a behavioral
   oracle.
@@ -154,12 +157,13 @@ Every production include is assigned exactly once below. Within a wave, land
 the listed units as small independently green commits unless the note says a
 pair is one semantic unit. Each extraction deletes the include in that commit.
 
-### Wave 0: green build and dead code
+### Wave 0: green build and dead code (landed)
 
-- Delete orphan `liric_session_arrays.inc` (237 lines); its live routines are
-  already in `liric_session_memory_bindings.f90`.
-- Remove the 18 `_order.f90` shims now that fo's behavioral build-order test
-  passes, then verify the ffc descendant closure on a clean build.
+- Orphan `liric_session_arrays.inc` (237 lines) was deleted by ffc `5f13422`;
+  its live routines are in `liric_session_memory_bindings.f90`.
+- The 18 `_order.f90` shims were removed by ffc `763ba0c` after fo's
+  behavioral build-order test passed. Verify the descendant closure in every
+  subsequent clean gate; do not recreate either path.
 
 ### Wave 1: typed service seams
 
