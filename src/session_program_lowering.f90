@@ -408,6 +408,13 @@ module session_program_lowering_impl
     public :: reduction_expression_is_abs_call, resolve_symbol_at_node
     public :: same_name, split_csv, transfer_operand_kind
     public :: type_name_value_kind, use_only_wants, value_kind_number
+    public :: alloc_desc_dim_offset, emit_alloc_desc_header
+    public :: emit_alloc_desc_flags, emit_alloc_desc_set_dim
+    public :: emit_alloc_desc_load_lower, emit_alloc_desc_load_extent
+    public :: emit_alloc_desc_load_upper, emit_alloc_desc_allocate_shape
+    public :: emit_alloc_desc_clear
+    public :: allocatable_elem_size, assumed_shape_element_type
+    public :: store_descriptor_i32
 
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from
@@ -2391,6 +2398,82 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine bind_enum_constant
     end interface
+    interface
+        module function alloc_desc_dim_offset(dim, field) result(offset)
+            integer, intent(in) :: dim
+            integer(c_int64_t), intent(in) :: field
+            integer(c_int64_t) :: offset
+        end function alloc_desc_dim_offset
+        module subroutine emit_alloc_desc_header(context, descriptor, value_kind, &
+                                                 rank, error_msg, element_bytes)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: descriptor
+            integer, intent(in) :: value_kind
+            integer, intent(in) :: rank
+            character(len=:), allocatable, intent(out) :: error_msg
+            integer(c_int64_t), intent(in), optional :: element_bytes
+        end subroutine emit_alloc_desc_header
+        module subroutine emit_alloc_desc_flags(context, descriptor, &
+                                                allocated_state, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: descriptor
+            logical, intent(in) :: allocated_state
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_alloc_desc_flags
+        module subroutine emit_alloc_desc_set_dim(context, descriptor, dim, &
+                                                  lower_i64, extent_i64, &
+                                                  stride_i64, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: descriptor
+            integer, intent(in) :: dim
+            type(lr_operand_desc_t), intent(in) :: lower_i64
+            type(lr_operand_desc_t), intent(in) :: extent_i64
+            type(lr_operand_desc_t), intent(in) :: stride_i64
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_alloc_desc_set_dim
+        module subroutine emit_alloc_desc_load_lower(context, descriptor, dim, &
+                                                     lower_i64, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: descriptor
+            integer, intent(in) :: dim
+            type(lr_operand_desc_t), intent(out) :: lower_i64
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_alloc_desc_load_lower
+        module subroutine emit_alloc_desc_load_extent(context, descriptor, dim, &
+                                                      extent_i64, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: descriptor
+            integer, intent(in) :: dim
+            type(lr_operand_desc_t), intent(out) :: extent_i64
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_alloc_desc_load_extent
+        module subroutine emit_alloc_desc_load_upper(context, descriptor, dim, &
+                                                     upper_i64, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: descriptor
+            integer, intent(in) :: dim
+            type(lr_operand_desc_t), intent(out) :: upper_i64
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_alloc_desc_load_upper
+        module subroutine emit_alloc_desc_allocate_shape(context, descriptor, &
+                                                         value_kind, rank, &
+                                                         extents_i64, error_msg, &
+                                                         lowers_i64, element_bytes)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: descriptor
+            integer, intent(in) :: value_kind
+            integer, intent(in) :: rank
+            type(lr_operand_desc_t), intent(in) :: extents_i64(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+            type(lr_operand_desc_t), intent(in), optional :: lowers_i64(:)
+            integer(c_int64_t), intent(in), optional :: element_bytes
+        end subroutine emit_alloc_desc_allocate_shape
+        module subroutine emit_alloc_desc_clear(context, descriptor, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: descriptor
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_alloc_desc_clear
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -3840,7 +3923,6 @@ contains
     include 'session_program_lowering_arguments.inc'
     include 'session_program_lowering_assumed_shape_extent.inc'
     include 'session_program_lowering_assumed_shape_descriptor.inc'
-    include 'session_program_lowering_alloc_descriptor.inc'
     include 'session_program_lowering_character.inc'
     include 'session_program_lowering_deferred_char.inc'
     subroutine lower_function_return(node, context, error_msg)

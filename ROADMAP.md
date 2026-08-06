@@ -70,8 +70,8 @@ The current state is not a valid parity baseline:
 - Current manifests contain 5,528 XFAIL rows, 288 FAIL-owner rows, 11 NOREF
   rows, and 2,305 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
-- There are 70 tracked production `.inc` files containing 79,155 lines. The
-  5,073-line host module has 44 direct include sites. Another 322 invocation
+- There are 69 tracked production `.inc` files containing 78,933 lines. The
+  5,155-line host module has 43 direct include sites. Another 322 invocation
   sites use `find_symbol_compat`, compared with 12 binding-keyed lookup sites.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
   and [#677](https://github.com/lazy-fortran/ffc/pull/677), conflict with main
@@ -189,10 +189,16 @@ that made the current submodule extraction fail.
 
 ### Wave 2: leaves and expression engines
 
-Extract in this order:
+The 222-line `alloc_descriptor` leaf is now
+`session_program_lowering_alloc_descriptor.f90`: a real descendant unit with
+nine explicit implementation interfaces. Its textual include and host include
+site are gone; the allocatable lifecycle compiler oracle and a clean sequential
+build preserve allocation, shape, flag, stride, and deallocation behavior.
 
-`reject_const_init` (362), `alloc_descriptor` (222), `inferred` (347),
-`c_ptr` (362), `transfer` (439), `integer` (576), `complex` (1,330),
+Extract the remaining leaves in this order:
+
+`reject_const_init` (362), `inferred` (347), `c_ptr` (362), `transfer` (439),
+`integer` (576), `complex` (1,330),
 `intrinsics_extra` (1,322), `intrinsics` (2,141), `expr_lowering` (1,796),
 `logical_reduction` (1,615), and `reduction_expr` (954).
 

@@ -72,8 +72,10 @@ and 8 for `real(8)`/`integer(8)`; logical occupies a 4-byte slot, matching the
 fixed-array representation.
 
 Field access happens only through the helpers in
-`session_program_lowering_alloc_descriptor.inc`, so the byte offsets appear in
-exactly one place.
+`session_program_lowering_alloc_descriptor.f90`. The helpers are descendant
+module procedures with explicit interfaces in the lowering implementation
+module, so the byte offsets appear in exactly one implementation unit without
+textual inclusion.
 
 The base pointer stays at offset 0, so `base == 0` still marks the array
 unallocated. What changed is that each dimension records
