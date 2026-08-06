@@ -105,11 +105,14 @@ passing, rebased commit at a time, in this order.
    environment/target/flags/runtime/harness/corpus/closure. Run one full locked
    provenance census next, then regenerate the stale dashboard before
    promoting rows.
-   The next breaking execution-epoch tranche still owns separate compile/run
-   exits and timeout/signal identity, general INCLUDE closure snapshotting
-   without TOCTOU races, and instrumented coverage; schema-2 currently records
-   explicit `coverage_mode=none` with an empty digest. SKIP/NOREF remain
-   operational dispositions and are not silently counted as behavioral PASS.
+   The breaking execution-epoch tranche now gives every raw row one immutable
+   epoch, a declared action mode, and separate ffc/reference compile/run action,
+   exit, timeout, and signal evidence. Its supervisor distinguishes actual
+   timeouts/signals from deliberate exits 124/137, and strict validators reject
+   mixed epochs or inconsistent evidence. General INCLUDE closure snapshotting
+   without TOCTOU races and instrumented coverage remain; schema-2 records
+   `coverage_mode=none` with an empty digest until that collector lands.
+   SKIP/NOREF remain operational dispositions and are not silently PASS.
 4. Stop silent wrong code and nondeterminism: #671, #673, #626, #628, #649,
    then the remaining crashes in #576.
 5. Finish binding identity and module contracts: #584 plus the procedure,

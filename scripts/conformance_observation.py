@@ -42,6 +42,15 @@ PHASES = {
     "flaky",
 }
 COVERAGE_MODES = {"none", "llvm-profraw"}
+CASE_ACTIONS = {"compile-run", "compile-only", "reject", "exclude"}
+ACTION_STATES = {"executed", "cache-hit", "not-run"}
+TERMINATIONS = {"exit", "timeout", "signal", "exec-error", "not-run"}
+ACTION_PREFIXES = (
+    "ffc_compile",
+    "ffc_run",
+    "ref_compile",
+    "ref_run",
+)
 
 CASE_DIGEST_FIELDS = (
     "source_sha256",
@@ -67,6 +76,8 @@ CASE_METRIC_FIELDS = (
     "peak_rss_kb",
 )
 LOCKED_CASE_FIELDS = (
+    "epoch_sha256",
+    "action",
     "source_sha256",
     "dependency_closure_sha256",
     "ffc_flags",
@@ -88,6 +99,7 @@ DYNAMIC_DIGEST_FIELDS = (
     "coverage_sha256",
 )
 SUMMARY_CASE_LOCK_FIELDS = (
+    "epoch_sha256",
     "target_triple",
     "environment_sha256",
     "runtime_abi_sha256",
@@ -110,6 +122,12 @@ CASE_FIELDS = {
     "noref_manifest_category",
     "attempts",
     "observed",
+    "epoch_sha256",
+    "action",
+    *(f"{prefix}_action" for prefix in ACTION_PREFIXES),
+    *(f"{prefix}_exit" for prefix in ACTION_PREFIXES),
+    *(f"{prefix}_termination" for prefix in ACTION_PREFIXES),
+    *(f"{prefix}_signal" for prefix in ACTION_PREFIXES),
     *CASE_DIGEST_FIELDS,
     *CASE_TEXT_FIELDS,
     *CASE_METRIC_FIELDS,
@@ -165,6 +183,7 @@ SUMMARY_FIELDS = {
     "toolchain_sha256",
     "compiler_flags_sha256",
     "coverage_mode",
+    "epoch_sha256",
 }
 CLASSIFICATION_SUMMARY_FIELDS = SUMMARY_FIELDS | {
     "classification_mode",
@@ -205,6 +224,7 @@ IDENTITY_FIELDS = (
     "toolchain_sha256",
     "compiler_flags_sha256",
     "coverage_mode",
+    "epoch_sha256",
 )
 
 
@@ -307,6 +327,88 @@ def validate_case_provenance(
         )
 
 
+def validate_action_evidence(record: dict[str, Any], location: str) -> None:
+    validate_digest(record, "epoch_sha256", location)
+    action = validate_nonempty_text(record, "action", location)
+    if action not in CASE_ACTIONS:
+        raise ObservationError(f"{location}: invalid action: {action}")
+
+    evidence: dict[str, tuple[str, int]] = {}
+    for prefix in ACTION_PREFIXES:
+        state = validate_nonempty_text(record, f"{prefix}_action", location)
+        if state not in ACTION_STATES:
+            raise ObservationError(
+                f"{location}: invalid action state: {prefix}_action"
+            )
+        exit_status = require_exact_type(record, f"{prefix}_exit", int, location)
+        if exit_status < -1 or exit_status > 255:
+            raise ObservationError(f"{location}: invalid action exit: {prefix}")
+        termination = validate_nonempty_text(
+            record, f"{prefix}_termination", location
+        )
+        signal = nonnegative_int(record, f"{prefix}_signal", location)
+        if termination not in TERMINATIONS:
+            raise ObservationError(
+                f"{location}: invalid termination: {prefix}_termination"
+            )
+        consistent = False
+        if termination == "not-run":
+            consistent = state == "not-run" and exit_status == -1 and signal == 0
+        elif termination == "exit":
+            consistent = state != "not-run" and exit_status >= 0 and signal == 0
+        elif termination == "timeout":
+            consistent = (
+                state == "executed"
+                and exit_status == 124
+                and signal in {9, 15}
+            )
+        elif termination == "signal":
+            consistent = (
+                state == "executed"
+                and 1 <= signal <= 127
+                and exit_status == 128 + signal
+            )
+        elif termination == "exec-error":
+            consistent = (
+                state == "executed"
+                and exit_status in {126, 127}
+                and signal == 0
+            )
+        if not consistent:
+            raise ObservationError(
+                f"{location}: inconsistent termination evidence: {prefix}"
+            )
+        if state == "cache-hit":
+            if not prefix.startswith("ref_") or exit_status != 0:
+                raise ObservationError(
+                    f"{location}: invalid cache-hit evidence: {prefix}"
+                )
+        evidence[prefix] = (state, exit_status)
+
+    if evidence["ffc_run"][0] != "not-run" and evidence["ffc_compile"][1] != 0:
+        raise ObservationError(f"{location}: ffc ran without a successful compile")
+    if evidence["ref_run"][0] != "not-run" and evidence["ref_compile"][1] != 0:
+        raise ObservationError(
+            f"{location}: reference ran without a successful compile"
+        )
+    if (evidence["ref_compile"][0] == "cache-hit") != (
+        evidence["ref_run"][0] == "cache-hit"
+    ):
+        raise ObservationError(
+            f"{location}: reference cache hit does not cover compile and run"
+        )
+
+    for actor in ("ffc", "ref"):
+        run_state, run_exit = evidence[f"{actor}_run"]
+        compile_state, compile_exit = evidence[f"{actor}_compile"]
+        projected = run_exit if run_state != "not-run" else compile_exit
+        legacy = require_exact_type(record, f"{actor}_exit", int, location)
+        if legacy != projected:
+            raise ObservationError(
+                f"{location}: {actor}_exit does not project action evidence"
+            )
+
+
 def parse_jsonl(data: bytes, source: str) -> list[dict[str, Any]]:
     try:
         text = data.decode("utf-8")
@@ -347,6 +449,7 @@ def validate_case(
         )
     note = require_exact_type(record, "note", str, location)
     validate_case_provenance(record, status, location)
+    validate_action_evidence(record, location)
 
     has_ffc = "ffc_exit" in record
     has_ref = "ref_exit" in record
@@ -477,6 +580,7 @@ def validate_summary_metadata(
         "harness_sha256",
         "toolchain_sha256",
         "compiler_flags_sha256",
+        "epoch_sha256",
     ):
         validate_digest(summary, key, location)
     for key in ("worktree", "reference_compiler"):
@@ -1032,10 +1136,13 @@ def command_classification_counts(args: argparse.Namespace) -> int:
 
 def canonical_behavior(case: dict[str, Any]) -> str:
     """Return the repeat oracle, excluding non-behavioral resource metrics."""
+    nonbehavioral = set(CASE_METRIC_FIELDS) | {
+        f"{prefix}_action" for prefix in ACTION_PREFIXES
+    }
     behavior = {
         key: value
         for key, value in case.items()
-        if key not in CASE_METRIC_FIELDS
+        if key not in nonbehavioral
     }
     return json.dumps(behavior, sort_keys=True, separators=(",", ":"))
 
@@ -1118,6 +1225,12 @@ def command_merge(args: argparse.Namespace) -> int:
             }
             for key in LOCKED_CASE_FIELDS:
                 flaky_case[key] = attempt_cases[0][key]
+            for prefix in ACTION_PREFIXES:
+                for suffix in ("action", "exit", "termination", "signal"):
+                    key = f"{prefix}_{suffix}"
+                    flaky_case[key] = attempt_cases[0][key]
+            flaky_case["ffc_exit"] = attempt_cases[0]["ffc_exit"]
+            flaky_case["ref_exit"] = attempt_cases[0]["ref_exit"]
             for key in DYNAMIC_DIGEST_FIELDS:
                 if key == "coverage_sha256" and (
                     flaky_case["coverage_mode"] == "none"

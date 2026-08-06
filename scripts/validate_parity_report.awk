@@ -159,6 +159,15 @@ function row_field_allowed(key) {
         key == "warning_expectation" ||
         key == "attempts" || key == "observed" ||
         key == "observed_status" || key == "expectation" ||
+        key == "epoch_sha256" || key == "action" ||
+        key == "ffc_compile_action" || key == "ffc_compile_exit" ||
+        key == "ffc_compile_termination" || key == "ffc_compile_signal" ||
+        key == "ffc_run_action" || key == "ffc_run_exit" ||
+        key == "ffc_run_termination" || key == "ffc_run_signal" ||
+        key == "ref_compile_action" || key == "ref_compile_exit" ||
+        key == "ref_compile_termination" || key == "ref_compile_signal" ||
+        key == "ref_run_action" || key == "ref_run_exit" ||
+        key == "ref_run_termination" || key == "ref_run_signal" ||
         key == "source_sha256" || key == "dependency_closure_sha256" ||
         key == "ffc_flags" || key == "ref_flags" ||
         key == "compiler_flags_sha256" || key == "environment_sha256" ||
@@ -199,7 +208,44 @@ function summary_field_allowed(key) {
         key == "target_triple" || key == "environment_sha256" ||
         key == "runtime_abi_sha256" || key == "harness_sha256" ||
         key == "toolchain_sha256" || key == "compiler_flags_sha256" ||
-        key == "coverage_mode"
+        key == "coverage_mode" || key == "epoch_sha256"
+}
+
+function validate_action_evidence(prefix,    action, exit_status, termination,
+        signal_number, consistent) {
+    action = require_string(prefix "_action")
+    if (action != "executed" && action != "cache-hit" && action != "not-run") {
+        report_error("invalid action state: " prefix)
+    }
+    exit_status = require_integer(prefix "_exit", 0)
+    if (exit_status < -1 || exit_status > 255) {
+        report_error("invalid action exit: " prefix)
+    }
+    termination = require_string(prefix "_termination")
+    signal_number = require_integer(prefix "_signal", 1)
+    consistent = 0
+    if (termination == "not-run") {
+        consistent = action == "not-run" && exit_status == -1 && signal_number == 0
+    } else if (termination == "exit") {
+        consistent = action != "not-run" && exit_status >= 0 && signal_number == 0
+    } else if (termination == "timeout") {
+        consistent = action == "executed" && exit_status == 124 &&
+            (signal_number == 9 || signal_number == 15)
+    } else if (termination == "signal") {
+        consistent = action == "executed" && signal_number >= 1 &&
+            signal_number <= 127 && exit_status == 128 + signal_number
+    } else if (termination == "exec-error") {
+        consistent = action == "executed" &&
+            (exit_status == 126 || exit_status == 127) && signal_number == 0
+    }
+    if (!consistent) {
+        report_error("inconsistent termination evidence: " prefix)
+    }
+    if (action == "cache-hit" &&
+            (prefix !~ /^ref_/ || exit_status != 0)) {
+        report_error("invalid cache-hit evidence: " prefix)
+    }
+    return exit_status
 }
 
 function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
@@ -207,7 +253,7 @@ function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
         flaky_count, ffc_revision, source_digest, binary_digest, fortfront_revision,
         fortfront_tree, liric_revision, liric_tree, corpus_revision,
         corpus_tree, corpus_files_digest, report_schema, observation_schema,
-        target, coverage) {
+        target, coverage, epoch) {
     for (key in field_value) {
         if (!summary_field_allowed(key)) report_error("unknown SUMMARY field: " key)
     }
@@ -275,6 +321,10 @@ function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
             report_error("invalid repeat attempt count")
         }
         if (report_schema == 2) {
+            epoch = require_digest("epoch_sha256")
+            if (row_count > 0 && epoch != report_epoch) {
+                report_error("SUMMARY execution epoch mismatch")
+            }
             target = require_string("target_triple")
             if (target !~ /^[A-Za-z0-9][A-Za-z0-9._+-]*$/) {
                 report_error("invalid target triple")
@@ -322,7 +372,9 @@ function noref_reason_allowed(reason) {
 
 function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
         is_noref, noref_reason, warning, observed_status, expectation,
-        expected_status, phase, tags, coverage, target) {
+        expected_status, phase, tags, coverage, target, action,
+        ffc_compile_exit, ffc_run_exit, ref_compile_exit, ref_run_exit,
+        projected_exit, epoch, ref_compile_cached, ref_run_cached) {
     for (key in field_value) {
         if (!row_field_allowed(key)) report_error("unknown result field: " key)
     }
@@ -339,6 +391,29 @@ function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
     if (seen[file_name]++) report_error("duplicate report row: " file_name)
     if ("source_sha256" in field_value) {
         v2_row_count++
+        epoch = require_digest("epoch_sha256")
+        if (v2_row_count == 1) report_epoch = epoch
+        else if (epoch != report_epoch) report_error("mixed execution epoch")
+        action = require_string("action")
+        if (action != "compile-run" && action != "compile-only" &&
+                action != "reject" && action != "exclude") {
+            report_error("invalid case action")
+        }
+        ffc_compile_exit = validate_action_evidence("ffc_compile")
+        ffc_run_exit = validate_action_evidence("ffc_run")
+        ref_compile_exit = validate_action_evidence("ref_compile")
+        ref_run_exit = validate_action_evidence("ref_run")
+        if (ffc_run_exit != -1 && ffc_compile_exit != 0) {
+            report_error("ffc ran without a successful compile")
+        }
+        if (ref_run_exit != -1 && ref_compile_exit != 0) {
+            report_error("reference ran without a successful compile")
+        }
+        ref_compile_cached = field_value["ref_compile_action"] == "cache-hit"
+        ref_run_cached = field_value["ref_run_action"] == "cache-hit"
+        if (ref_compile_cached != ref_run_cached) {
+            report_error("partial reference cache hit")
+        }
         require_digest("source_sha256")
         require_digest("dependency_closure_sha256")
         if (require_string("ffc_flags") == "" ||
@@ -385,6 +460,16 @@ function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
     if (has_ffc) {
         require_integer("ffc_exit", 0)
         require_integer("ref_exit", 0)
+        if ("source_sha256" in field_value) {
+            projected_exit = ffc_run_exit != -1 ? ffc_run_exit : ffc_compile_exit
+            if (field_value["ffc_exit"] != projected_exit) {
+                report_error("ffc_exit does not project action evidence")
+            }
+            projected_exit = ref_run_exit != -1 ? ref_run_exit : ref_compile_exit
+            if (field_value["ref_exit"] != projected_exit) {
+                report_error("ref_exit does not project action evidence")
+            }
+        }
     } else if (status != "SKIP" && status != "FLAKY" &&
             !(status == "FAIL" && field_value["note"] ~ /directive/)) {
         report_error("result is missing exit fields")

@@ -347,7 +347,7 @@ scoreboard values.
 The observation sidecar has one raw record per selected file:
 
 ```json
-{"suite":"fortfront-f90","file":"example.f90","status":"PASS","ffc_exit":0,"ref_exit":0,"note":"output matches gfortran","source_sha256":"...","dependency_closure_sha256":"...","ffc_flags":"default","ref_flags":"-w -J @private-module-dir","compiler_flags_sha256":"...","environment_sha256":"...","target_triple":"x86_64-linux-gnu","runtime_abi_sha256":"...","harness_sha256":"...","toolchain_sha256":"...","phase":"compare","diagnostic_signature_sha256":"...","crash_signature_sha256":"...","ffc_output_sha256":"...","ref_output_sha256":"...","elapsed_ms":31,"ffc_compile_ms":12,"ffc_run_ms":2,"ref_compile_ms":15,"ref_run_ms":2,"peak_rss_kb":28400,"semantic_tags":"procedure","coverage_mode":"none","coverage_sha256":"..."}
+{"suite":"fortfront-f90","file":"example.f90","status":"PASS","ffc_exit":0,"ref_exit":0,"note":"output matches gfortran","epoch_sha256":"...","action":"compile-run","ffc_compile_action":"executed","ffc_compile_exit":0,"ffc_compile_termination":"exit","ffc_compile_signal":0,"ffc_run_action":"executed","ffc_run_exit":0,"ffc_run_termination":"exit","ffc_run_signal":0,"ref_compile_action":"executed","ref_compile_exit":0,"ref_compile_termination":"exit","ref_compile_signal":0,"ref_run_action":"executed","ref_run_exit":0,"ref_run_termination":"exit","ref_run_signal":0,"source_sha256":"...","dependency_closure_sha256":"...","ffc_flags":"default","ref_flags":"-w -J @private-module-dir","compiler_flags_sha256":"...","environment_sha256":"...","target_triple":"x86_64-linux-gnu","runtime_abi_sha256":"...","harness_sha256":"...","toolchain_sha256":"...","phase":"compare","diagnostic_signature_sha256":"...","crash_signature_sha256":"...","ffc_output_sha256":"...","ref_output_sha256":"...","elapsed_ms":31,"ffc_compile_ms":12,"ffc_run_ms":2,"ref_compile_ms":15,"ref_run_ms":2,"peak_rss_kb":28400,"semantic_tags":"procedure","coverage_mode":"none","coverage_sha256":"..."}
 ```
 
 The classified report keeps that evidence and adds the expectation decision:
@@ -366,6 +366,12 @@ Fields:
 | `ffc_exit` | int | ffc exit code (0 = built and ran) |
 | `ref_exit` | int | gfortran exit code (0 = built and ran) |
 | `note` | string | Human-readable explanation |
+| `epoch_sha256` | SHA-256 | Immutable execution descriptor shared by each row and its SUMMARY |
+| `action` | string | Case mode: `compile-run`, `compile-only`, `reject`, or `exclude` |
+| `*_compile_action`, `*_run_action` | string | `executed`, reference `cache-hit`, or `not-run` |
+| `*_compile_exit`, `*_run_exit` | int | Separate action exits; `-1` means not run |
+| `*_compile_termination`, `*_run_termination` | string | `exit`, `timeout`, `signal`, `exec-error`, or `not-run` |
+| `*_compile_signal`, `*_run_signal` | int | Exact terminating/timeout signal, otherwise zero |
 | `observed_status` | string | Immutable raw state used by a classified view; absent from the observation sidecar |
 | `expectation` | string | `xfail` or `none`; absent from the observation sidecar |
 | `warning_expectation` | string | `unchecked` for warning-only gfortran.dg files; omitted otherwise |
@@ -387,7 +393,7 @@ A final SUMMARY record closes each file. The observation summary has
 complete observation, and the SHA-256 of the expectation manifest:
 
 ```json
-{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"warning_unchecked":0,"total":21,"schema_version":2,"full_run":true,"provenance_verified":true,"ffc_revision":"...","ffc_source_sha256":"...","ffc_binary_sha256":"...","fortfront_revision":"...","fortfront_tree":"...","liric_revision":"...","liric_tree":"...","corpus_revision":"...","corpus_tree":"...","corpus_files_sha256":"...","worktree":"/home/you/ffc","report_kind":"classification","observation_schema_version":2,"reference_compiler":"GNU Fortran ...","reference_cache_enabled":false,"reference_cache_hits":0,"timeout_seconds":5,"skip_manifest_sha256":"...","noref_manifest_sha256":"...","target_triple":"x86_64-linux-gnu","environment_sha256":"...","runtime_abi_sha256":"...","harness_sha256":"...","toolchain_sha256":"...","compiler_flags_sha256":"...","coverage_mode":"none","classification_mode":"manifest","observation_sha256":"...","classification_manifest_sha256":"..."}
+{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"warning_unchecked":0,"total":21,"schema_version":2,"full_run":true,"provenance_verified":true,"epoch_sha256":"...","ffc_revision":"...","ffc_source_sha256":"...","ffc_binary_sha256":"...","fortfront_revision":"...","fortfront_tree":"...","liric_revision":"...","liric_tree":"...","corpus_revision":"...","corpus_tree":"...","corpus_files_sha256":"...","worktree":"/home/you/ffc","report_kind":"classification","observation_schema_version":2,"reference_compiler":"GNU Fortran ...","reference_cache_enabled":false,"reference_cache_hits":0,"timeout_seconds":5,"skip_manifest_sha256":"...","noref_manifest_sha256":"...","target_triple":"x86_64-linux-gnu","environment_sha256":"...","runtime_abi_sha256":"...","harness_sha256":"...","toolchain_sha256":"...","compiler_flags_sha256":"...","coverage_mode":"none","classification_mode":"manifest","observation_sha256":"...","classification_manifest_sha256":"..."}
 ```
 
 The revision and tree fields are full Git hashes. `ffc_revision` identifies the
@@ -411,6 +417,15 @@ described above. The runner still compiles and runs ffc for each selected case.
 Dashboard generation requires verified provenance and rejects
 partial reports, mismatched tree or file-list identities, a stale source
 digest, or a different selected compiler binary.
+
+The epoch digest binds the selection, corpus/compiler revisions, input and
+tool hashes, flags, target, environment, timeout, cache policy, manifests, and
+worktree. Every row must match the SUMMARY epoch. Compile and run exits are
+never overloaded: `ffc_exit` and `ref_exit` remain only as strictly validated
+projections for older consumers. The action supervisor observes the OS return
+code directly, so deliberate exits 124 or 137 remain `exit`; only an expired
+deadline is `timeout`, and only termination by a signal is `signal`. A timeout
+records SIGTERM (15), or SIGKILL (9) after escalation.
 
 ## Comparing two reports
 
@@ -636,9 +651,9 @@ FFC_COMPILE_TIMEOUT=60 scripts/conformance_gauntlet.sh --suite ... --require-pro
 
 `benchmark_5000_lines.f90` compiles in about five seconds against the ten-second
 default, so it passes when the machine is quiet and times out when it is not.
-The report records a timeout as `ffc_exit: 1` rather than `124`, which reads as a
-compile error and invites a hunt for a regression that is not there. Two suites
-regenerated under load will disagree with two regenerated idle. See #478.
+Schema 2 records it as `ffc_compile_exit: 124` and
+`ffc_compile_termination: "timeout"`, rather than collapsing it into a compile
+error. It remains a blocking measurement. See #478.
 
 Compiler-performance changes use a separate behavioral and resource oracle:
 

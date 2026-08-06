@@ -332,20 +332,29 @@ classify_nonrunnable_noref() {
     local obj="$TMPDIR_WORK/noref_${TOTAL_COUNT}.o"
     local exe="$TMPDIR_WORK/noref_ref_${TOTAL_COUNT}"
     local ffc_status=1 ref_status=1 record_note
+    CASE_ACTION="compile-only"
     CASE_FFC_FLAGS="-c"
     CASE_REF_FLAGS="-w -J @private-module-dir"
 
     if compile_with_gfortran "$source" "$exe"; then
+        set_last_action_evidence CASE_REF_COMPILE executed 0
         record_note="reference builds a runnable executable; $category not applicable"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         HAS_FAIL=1
         write_result_record "$rel" "FAIL" "$ffc_status" 0 "$record_note" ""
         echo "  FAIL: $rel (noref category not applicable: $category)"
         return
+    else
+        ref_status=$?
+        set_last_action_evidence CASE_REF_COMPILE executed "$ref_status"
     fi
 
     if compile_object_with_ffc "$source" "$obj" "$FFC_BIN"; then
         ffc_status=0
+        set_last_action_evidence CASE_FFC_COMPILE executed 0
+    else
+        ffc_status=$?
+        set_last_action_evidence CASE_FFC_COMPILE executed "$ffc_status"
     fi
     if [ "$category" = "compile-only" ] && [ "$ffc_status" -ne 0 ]; then
         record_note="compile-only noref case failed ffc -c"
@@ -397,10 +406,19 @@ write_result_record() {
     peak_rss=$(case_peak_rss)
     compiler_flags_sha=$(printf 'ffc:%s\nref:%s\n' \
         "$CASE_FFC_FLAGS" "$CASE_REF_FLAGS" | sha256sum | cut -d ' ' -f 1)
-    printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"%s%s%s,"source_sha256":"%s","dependency_closure_sha256":"%s","ffc_flags":"%s","ref_flags":"%s","compiler_flags_sha256":"%s","environment_sha256":"%s","target_triple":"%s","runtime_abi_sha256":"%s","harness_sha256":"%s","toolchain_sha256":"%s","phase":"%s","diagnostic_signature_sha256":"%s","crash_signature_sha256":"%s","ffc_output_sha256":"%s","ref_output_sha256":"%s","elapsed_ms":%d,"ffc_compile_ms":%d,"ffc_run_ms":%d,"ref_compile_ms":%d,"ref_run_ms":%d,"peak_rss_kb":%d,"semantic_tags":"%s","coverage_mode":"none","coverage_sha256":"%s"}\n' \
+    printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"%s%s%s,"epoch_sha256":"%s","action":"%s","ffc_compile_action":"%s","ffc_compile_exit":%d,"ffc_compile_termination":"%s","ffc_compile_signal":%d,"ffc_run_action":"%s","ffc_run_exit":%d,"ffc_run_termination":"%s","ffc_run_signal":%d,"ref_compile_action":"%s","ref_compile_exit":%d,"ref_compile_termination":"%s","ref_compile_signal":%d,"ref_run_action":"%s","ref_run_exit":%d,"ref_run_termination":"%s","ref_run_signal":%d,"source_sha256":"%s","dependency_closure_sha256":"%s","ffc_flags":"%s","ref_flags":"%s","compiler_flags_sha256":"%s","environment_sha256":"%s","target_triple":"%s","runtime_abi_sha256":"%s","harness_sha256":"%s","toolchain_sha256":"%s","phase":"%s","diagnostic_signature_sha256":"%s","crash_signature_sha256":"%s","ffc_output_sha256":"%s","ref_output_sha256":"%s","elapsed_ms":%d,"ffc_compile_ms":%d,"ffc_run_ms":%d,"ref_compile_ms":%d,"ref_run_ms":%d,"peak_rss_kb":%d,"semantic_tags":"%s","coverage_mode":"none","coverage_sha256":"%s"}\n' \
         "$SUITE" "$(json_escape "$file")" "$result_status" "$compiler_exit" \
         "$reference_exit" "$(json_escape "$result_note")" "$warning_json" \
-        "$noref_json" "$noref_manifest_json" "$CASE_SOURCE_SHA256" \
+        "$noref_json" "$noref_manifest_json" "$EPOCH_SHA256" "$CASE_ACTION" \
+        "$CASE_FFC_COMPILE_ACTION" "$CASE_FFC_COMPILE_EXIT" \
+        "$CASE_FFC_COMPILE_TERMINATION" "$CASE_FFC_COMPILE_SIGNAL" \
+        "$CASE_FFC_RUN_ACTION" "$CASE_FFC_RUN_EXIT" \
+        "$CASE_FFC_RUN_TERMINATION" "$CASE_FFC_RUN_SIGNAL" \
+        "$CASE_REF_COMPILE_ACTION" "$CASE_REF_COMPILE_EXIT" \
+        "$CASE_REF_COMPILE_TERMINATION" "$CASE_REF_COMPILE_SIGNAL" \
+        "$CASE_REF_RUN_ACTION" "$CASE_REF_RUN_EXIT" \
+        "$CASE_REF_RUN_TERMINATION" "$CASE_REF_RUN_SIGNAL" \
+        "$CASE_SOURCE_SHA256" \
         "$(case_dependency_closure_sha256)" "$(json_escape "$CASE_FFC_FLAGS")" \
         "$(json_escape "$CASE_REF_FLAGS")" "$compiler_flags_sha" \
         "$ENVIRONMENT_SHA256" "$(json_escape "$TARGET_TRIPLE")" \
@@ -502,12 +520,68 @@ initialize_case_provenance() {
     CASE_SOURCE_SHA256=$(sha256_file_or_empty "$source")
     CASE_SEMANTIC_TAGS=$(semantic_tags_for_source "$source")
     CASE_FFC_FLAGS="default"
+    CASE_ACTION="compile-run"
+    CASE_FFC_COMPILE_ACTION="not-run"
+    CASE_FFC_COMPILE_EXIT=-1
+    CASE_FFC_COMPILE_TERMINATION="not-run"
+    CASE_FFC_COMPILE_SIGNAL=0
+    CASE_FFC_RUN_ACTION="not-run"
+    CASE_FFC_RUN_EXIT=-1
+    CASE_FFC_RUN_TERMINATION="not-run"
+    CASE_FFC_RUN_SIGNAL=0
+    CASE_REF_COMPILE_ACTION="not-run"
+    CASE_REF_COMPILE_EXIT=-1
+    CASE_REF_COMPILE_TERMINATION="not-run"
+    CASE_REF_COMPILE_SIGNAL=0
+    CASE_REF_RUN_ACTION="not-run"
+    CASE_REF_RUN_EXIT=-1
+    CASE_REF_RUN_TERMINATION="not-run"
+    CASE_REF_RUN_SIGNAL=0
     if is_lazy_suite; then
         CASE_REF_FLAGS="not-applicable"
     else
         CASE_REF_FLAGS="-w -J @private-module-dir"
     fi
     case_add_dependency "$source"
+}
+
+action_termination() {
+    local exit_status="$1"
+    if [ "$exit_status" -eq -1 ]; then printf 'not-run\n'
+    elif [ "$exit_status" -eq 124 ]; then printf 'timeout\n'
+    elif [ "$exit_status" -eq 126 ] || [ "$exit_status" -eq 127 ]; then
+        printf 'exec-error\n'
+    elif [ "$exit_status" -ge 129 ]; then printf 'signal\n'
+    else printf 'exit\n'; fi
+}
+
+action_signal() {
+    local exit_status="$1"
+    if [ "$exit_status" -eq 124 ]; then
+        printf '15\n'
+    elif [ "$exit_status" -ge 129 ]; then
+        printf '%d\n' "$((exit_status - 128))"
+    else
+        printf '0\n'
+    fi
+}
+
+set_inferred_action_evidence() {
+    local prefix="$1" state="$2" exit_status="$3"
+    printf -v "${prefix}_ACTION" '%s' "$state"
+    printf -v "${prefix}_EXIT" '%d' "$exit_status"
+    printf -v "${prefix}_TERMINATION" '%s' \
+        "$(action_termination "$exit_status")"
+    printf -v "${prefix}_SIGNAL" '%d' "$(action_signal "$exit_status")"
+}
+
+set_last_action_evidence() {
+    local prefix="$1" state="$2" exit_status="$3"
+    printf -v "${prefix}_ACTION" '%s' "$state"
+    printf -v "${prefix}_EXIT" '%d' "$exit_status"
+    printf -v "${prefix}_TERMINATION" '%s' \
+        "$CONFORMANCE_ACTION_TERMINATION"
+    printf -v "${prefix}_SIGNAL" '%d' "$CONFORMANCE_ACTION_SIGNAL"
 }
 
 canonical_flags() {
@@ -712,6 +786,7 @@ HARNESS_SHA256=$(digest_paths \
     "$SCRIPT_DIR/lib_conformance.sh" \
     "$SCRIPT_DIR/lib_expected_manifest.sh" \
     "$SCRIPT_DIR/lib_conformance_observation.sh" \
+    "$SCRIPT_DIR/conformance_action.py" \
     "$SCRIPT_DIR/conformance_observation.py")
 RUNTIME_ABI_SHA256=$(digest_paths \
     "$PROJECT_DIR/docs/RUNTIME_ABI.md" "$PROJECT_DIR/runtime" \
@@ -752,6 +827,31 @@ WORKTREE_ID=$(python3 -c \
     fail "cannot resolve ffc worktree path"
 PROVENANCE_VERIFIED=false
 FULL_RUN=true
+
+compute_epoch_sha256() {
+    local selection_sha256="${1:-$EMPTY_SHA256}"
+    {
+        printf 'epoch_schema:2\n'
+        printf 'suite:%s\nselection:%s\ncorpus:%s:%s:%s\n' "$SUITE" \
+            "$selection_sha256" "$CORPUS_REVISION" "$CORPUS_TREE" \
+            "$CORPUS_FILES_SHA256"
+        printf 'ffc:%s:%s:%s\n' "$FFC_REVISION" "$FFC_SOURCE_SHA256" \
+            "$FFC_BINARY_SHA256"
+        printf 'fortfront:%s:%s\nliric:%s:%s\n' "$FORTFRONT_REVISION" \
+            "$FORTFRONT_TREE" "$LIRIC_REVISION" "$LIRIC_TREE"
+        printf 'target:%s\nenvironment:%s\nruntime:%s\nharness:%s\ntoolchain:%s\n' \
+            "$TARGET_TRIPLE" "$ENVIRONMENT_SHA256" "$RUNTIME_ABI_SHA256" \
+            "$HARNESS_SHA256" "$TOOLCHAIN_SHA256"
+        printf 'flags:%s\ntimeout:%s\nskip:%s\nnoref:%s\n' \
+            "$GLOBAL_COMPILER_FLAGS_SHA256" "$TIMEOUT" \
+            "$SKIP_MANIFEST_SHA256" "$NOREF_MANIFEST_SHA256"
+        printf 'cache:%s\nfull_run:%s\nworktree:%s\n' \
+            "$([ -n "$REF_CACHE_DIR" ] && printf enabled || printf disabled)" \
+            "$FULL_RUN" "$WORKTREE_ID"
+    } | sha256sum | cut -d ' ' -f 1
+}
+
+EPOCH_SHA256=$(compute_epoch_sha256 "$EMPTY_SHA256")
 if [ "${#SELECTOR_KINDS[@]}" -gt 0 ] || [ "${MAX_FILES:-0}" -gt 0 ] 2>/dev/null; then
     FULL_RUN=false
 fi
@@ -800,10 +900,10 @@ write_summary() {
             "$TOTAL_COUNT" "$SAMPLE_POPULATION" "$SAMPLE_SEED" "$margin")
     fi
     flaky_json="${flaky_json}${sample_json}"
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":2,"full_run":%s,"provenance_verified":%s,"ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s","worktree":"%s","report_kind":"observation","observation_schema_version":2,"reference_compiler":"%s","reference_cache_enabled":%s,"reference_cache_hits":%d,"timeout_seconds":%d,"skip_manifest_sha256":"%s","noref_manifest_sha256":"%s","target_triple":"%s","environment_sha256":"%s","runtime_abi_sha256":"%s","harness_sha256":"%s","toolchain_sha256":"%s","compiler_flags_sha256":"%s","coverage_mode":"none"%s}\n' \
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":2,"full_run":%s,"provenance_verified":%s,"epoch_sha256":"%s","ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s","worktree":"%s","report_kind":"observation","observation_schema_version":2,"reference_compiler":"%s","reference_cache_enabled":%s,"reference_cache_hits":%d,"timeout_seconds":%d,"skip_manifest_sha256":"%s","noref_manifest_sha256":"%s","target_triple":"%s","environment_sha256":"%s","runtime_abi_sha256":"%s","harness_sha256":"%s","toolchain_sha256":"%s","compiler_flags_sha256":"%s","coverage_mode":"none"%s}\n' \
         "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
         "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" \
-        "$FULL_RUN" "$PROVENANCE_VERIFIED" "$FFC_REVISION" \
+        "$FULL_RUN" "$PROVENANCE_VERIFIED" "$EPOCH_SHA256" "$FFC_REVISION" \
         "$FFC_SOURCE_SHA256" "$FFC_BINARY_SHA256" "$FORTFRONT_REVISION" \
         "$FORTFRONT_TREE" "$LIRIC_REVISION" "$LIRIC_TREE" \
         "$CORPUS_REVISION" "$CORPUS_TREE" "$CORPUS_FILES_SHA256" \
@@ -1043,6 +1143,9 @@ if [ -n "$SAMPLE_SIZE" ]; then
 fi
 
 FILE_COUNT=$(wc -l < "$FILE_LIST")
+SELECTION_SHA256=$(sed "s#^$SUITE_ROOT/##" "$FILE_LIST" | \
+    sha256sum | cut -d ' ' -f 1)
+EPOCH_SHA256=$(compute_epoch_sha256 "$SELECTION_SHA256")
 if [ "$FILE_COUNT" -eq 0 ]; then
     echo "SKIP: no files found in $SUITE_ROOT for $SUITE"
     write_summary
@@ -1083,6 +1186,7 @@ while IFS= read -r full_path <&3; do
     initialize_case_provenance "$full_path"
 
     if check_xfail "$SKIP_LOOKUP" "$rel_path"; then
+        CASE_ACTION="exclude"
         SKIP_COUNT=$((SKIP_COUNT + 1))
         write_result_record "$rel_path" "SKIP" -1 -1 \
             "listed in skip manifest" ""
@@ -1099,6 +1203,7 @@ while IFS= read -r full_path <&3; do
     if [ "$SUITE" = "gfortran-dg" ]; then
         skip_reason=$(dg_skip_reason "$full_path") || skip_reason=""
         if [ -n "$skip_reason" ]; then
+            CASE_ACTION="exclude"
             status="FAIL"
             note="directive requires skip manifest entry: $skip_reason"
             FAIL_COUNT=$((FAIL_COUNT + 1))
@@ -1130,10 +1235,12 @@ while IFS= read -r full_path <&3; do
             WARNING_UNCHECKED_COUNT=$((WARNING_UNCHECKED_COUNT + 1))
         fi
         if [ "$dg_kind" = "compile" ]; then
+            CASE_ACTION="compile-only"
             CASE_FFC_FLAGS="-c"
             CASE_REF_FLAGS="not-run"
             if compile_object_with_ffc "$full_path" "$ffc_obj" "$FFC_BIN"; then
                 ffc_exit=0
+                set_last_action_evidence CASE_FFC_COMPILE executed 0
                 if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
                     status="XPASS"
                     note="listed in xfail manifest but ffc -c succeeded"
@@ -1145,7 +1252,9 @@ while IFS= read -r full_path <&3; do
                     PASS_COUNT=$((PASS_COUNT + 1))
                 fi
             else
-                ffc_exit=1
+                ffc_exit=$?
+                set_last_action_evidence CASE_FFC_COMPILE executed \
+                    "$ffc_exit"
                 if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
                     status="XFAIL"
                     note="listed in xfail manifest"
@@ -1164,12 +1273,16 @@ while IFS= read -r full_path <&3; do
         fi
 
         if [ "$dg_kind" = "negative" ]; then
+            CASE_ACTION="reject"
             CASE_FFC_FLAGS="-c"
             CASE_REF_FLAGS="not-run"
             if compile_object_with_ffc "$full_path" "$ffc_obj" "$FFC_BIN"; then
                 ffc_exit=0
+                set_last_action_evidence CASE_FFC_COMPILE executed 0
             else
-                ffc_exit=1
+                ffc_exit=$?
+                set_last_action_evidence CASE_FFC_COMPILE executed \
+                    "$ffc_exit"
             fi
             if [ "$ffc_exit" -ne 0 ]; then
                 if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
@@ -1299,13 +1412,16 @@ while IFS= read -r full_path <&3; do
     # Step 1: compile with ffc
     if compile_with_ffc "$full_path" "$ffc_exe" "$FFC_BIN" "${ffc_extra[@]}"; then
         ffc_exit=0
+        set_last_action_evidence CASE_FFC_COMPILE executed 0
     else
-        ffc_exit=1
+        ffc_exit=$?
+        set_last_action_evidence CASE_FFC_COMPILE executed "$ffc_exit"
     fi
 
     # A lazy-mode rejection fixture is judged on the compiler exit alone: it
     # has no runnable form and no reference to compare against.
     if is_lazy_suite && lazy_negative_test "$rel_path"; then
+        CASE_ACTION="reject"
         if [ "$ffc_exit" -ne 0 ]; then
             status="PASS"
             note="invalid source rejected as expected"
@@ -1335,18 +1451,24 @@ while IFS= read -r full_path <&3; do
             # Reference rejection does not turn ffc rejection into a pass.
             # There is no behavioral oracle, but feature completeness still
             # requires ffc to compile every selected, non-skipped source.
-            if ! is_lazy_suite && \
-                ! compile_with_gfortran "$full_path" "$ref_exe" \
-                    "${ref_extra[@]}"; then
-                ref_exit=1
-                status="FAIL"
-                note="ffc compilation failed; gfortran also rejects"
-                FAIL_COUNT=$((FAIL_COUNT + 1))
-                HAS_FAIL=1
-                write_result_record "$rel_path" "$status" "$ffc_exit" \
-                    "$ref_exit" "$note" "$warning_expectation"
-                echo "  FAIL: $rel_path (ffc and gfortran rejected)"
-                continue
+            if ! is_lazy_suite; then
+                if compile_with_gfortran "$full_path" "$ref_exe" \
+                        "${ref_extra[@]}"; then
+                    ref_exit=0
+                    set_last_action_evidence CASE_REF_COMPILE executed 0
+                else
+                    ref_exit=$?
+                    set_last_action_evidence CASE_REF_COMPILE executed \
+                        "$ref_exit"
+                    status="FAIL"
+                    note="ffc compilation failed; gfortran also rejects"
+                    FAIL_COUNT=$((FAIL_COUNT + 1))
+                    HAS_FAIL=1
+                    write_result_record "$rel_path" "$status" "$ffc_exit" \
+                        "$ref_exit" "$note" "$warning_expectation"
+                    echo "  FAIL: $rel_path (ffc and gfortran rejected)"
+                    continue
+                fi
             fi
             status="FAIL"
             note="ffc compilation failed"
@@ -1362,6 +1484,10 @@ while IFS= read -r full_path <&3; do
     # Step 3: run ffc binary
     run_capture "$ffc_exe" "$ffc_out" "$TIMEOUT" ffc_run
     ffc_exit=$?
+    CASE_FFC_RUN_ACTION="executed"
+    CASE_FFC_RUN_EXIT=$ffc_exit
+    CASE_FFC_RUN_TERMINATION=$RUN_CAPTURE_TERMINATION
+    CASE_FFC_RUN_SIGNAL=$RUN_CAPTURE_SIGNAL
 
     # An ordinary nonzero exit (e.g. STOP 99) is a legitimate program result,
     # not a failure: defer judgement to the gfortran comparison in step 8.
@@ -1425,6 +1551,8 @@ while IFS= read -r full_path <&3; do
                     "$(sha256_file_or_empty "$ref_cache_entry.out")" ]; then
                 cp "$ref_cache_entry.out" "$ref_out"
                 ref_cached=1
+                set_inferred_action_evidence CASE_REF_COMPILE cache-hit 0
+                set_inferred_action_evidence CASE_REF_RUN cache-hit 0
                 REF_CACHE_HITS=$((REF_CACHE_HITS + 1))
             else
                 reference_cache_discard "$ref_cache_entry"
@@ -1436,13 +1564,16 @@ while IFS= read -r full_path <&3; do
         if compile_with_gfortran "$full_path" "$ref_exe" "${ref_extra[@]}"; then
             ref_compile_status=0
             ref_exit=0
+            set_last_action_evidence CASE_REF_COMPILE executed 0
         else
-            ref_compile_status=1
-            ref_exit=1
+            ref_compile_status=$?
+            ref_exit=$ref_compile_status
+            set_last_action_evidence CASE_REF_COMPILE executed \
+                "$ref_compile_status"
         fi
     fi
     if [ "$ref_compile_status" -ne 0 ]; then
-        ref_exit=1
+        ref_exit=$ref_compile_status
     fi
 
     # Step 6: gfortran failed, but ffc already compiled and ran the file.
@@ -1479,6 +1610,10 @@ while IFS= read -r full_path <&3; do
     if [ "$ref_cached" -eq 0 ]; then
         run_capture "$ref_exe" "$ref_out" "$TIMEOUT" ref_run
         ref_exit=$?
+        CASE_REF_RUN_ACTION="executed"
+        CASE_REF_RUN_EXIT=$ref_exit
+        CASE_REF_RUN_TERMINATION=$RUN_CAPTURE_TERMINATION
+        CASE_REF_RUN_SIGNAL=$RUN_CAPTURE_SIGNAL
         if [ -n "$REF_CACHE_DIR" ]; then
             reference_cache_store "$ref_cache_entry" 0 "$ref_exit" "$ref_out"
         fi
@@ -1515,11 +1650,18 @@ while IFS= read -r full_path <&3; do
         reference_cache_discard "$ref_cache_entry"
         ref_cached=0
         if compile_with_gfortran "$full_path" "$ref_exe" "${ref_extra[@]}"; then
+            set_last_action_evidence CASE_REF_COMPILE executed 0
             run_capture "$ref_exe" "$ref_out" "$TIMEOUT" ref_run
             ref_exit=$?
+            CASE_REF_RUN_ACTION="executed"
+            CASE_REF_RUN_EXIT=$ref_exit
+            CASE_REF_RUN_TERMINATION=$RUN_CAPTURE_TERMINATION
+            CASE_REF_RUN_SIGNAL=$RUN_CAPTURE_SIGNAL
             reference_cache_store "$ref_cache_entry" 0 "$ref_exit" "$ref_out"
         else
-            ref_exit=1
+            ref_exit=$?
+            set_last_action_evidence CASE_REF_COMPILE executed "$ref_exit"
+            set_inferred_action_evidence CASE_REF_RUN not-run -1
         fi
     fi
 

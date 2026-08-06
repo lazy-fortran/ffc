@@ -16,6 +16,8 @@
 
 set -uo pipefail
 
+CONFORMANCE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 ffc_source_sha256() {
     local root="$1"
     (
@@ -185,19 +187,47 @@ find_ffc() {
 conformance_run_measured() {
     local label="$1" diagnostic_file="$2"
     local metrics_file="${CONFORMANCE_METRICS_FILE:-}" metric_tmp status
+    local action_timeout metadata runner
     shift 2
     [ -n "$diagnostic_file" ] || diagnostic_file=/dev/null
+    CONFORMANCE_ACTION_TERMINATION="exec-error"
+    CONFORMANCE_ACTION_SIGNAL=0
+    runner="$CONFORMANCE_LIB_DIR/conformance_action.py"
+    if [ "${1:-}" = timeout ] && [ "$#" -ge 3 ]; then
+        action_timeout="$2"
+        shift 2
+    else
+        action_timeout=86400
+    fi
+    metadata=$(mktemp "${TMPDIR:-/tmp}/ffc-action-XXXXXX") || return 126
     if [ -n "$metrics_file" ] && [ -x /usr/bin/time ]; then
         metric_tmp="${metrics_file}.${BASHPID}.${RANDOM}.tmp"
-        /usr/bin/time -f "$label\t%e\t%M" -o "$metric_tmp" \
-            "$@" 2>> "$diagnostic_file"
-        status=$?
+        if /usr/bin/time -f "$label\t%e\t%M" -o "$metric_tmp" \
+                python3 "$runner" --cwd "$PWD" --timeout "$action_timeout" \
+                --output "$diagnostic_file" --metadata "$metadata" \
+                --append -- "$@"; then
+            status=0
+        else
+            status=$?
+        fi
         awk -F '\t' -v label="$label" \
             '$1 == label && NF == 3 { print }' "$metric_tmp" >> "$metrics_file"
         rm -f "$metric_tmp"
-        return "$status"
+    else
+        if python3 "$runner" --cwd "$PWD" --timeout "$action_timeout" \
+                --output "$diagnostic_file" --metadata "$metadata" \
+                --append -- "$@"; then
+            status=0
+        else
+            status=$?
+        fi
     fi
-    "$@" 2>> "$diagnostic_file"
+    if [ -s "$metadata" ]; then
+        IFS=$'\t' read -r status CONFORMANCE_ACTION_TERMINATION \
+            CONFORMANCE_ACTION_SIGNAL < "$metadata"
+    fi
+    rm -f "$metadata"
+    return "$status"
 }
 
 # compile_with_ffc <source> <exe> <ffc_path> [extra_args...]
@@ -454,38 +484,36 @@ compile_with_gfortran() {
 run_capture() {
     local exe="$1" out_file="$2" timeout="$3"
     local metric_label="${4:-run}" metrics_file="${CONFORMANCE_METRICS_FILE:-}"
-    local sandbox status metric_tmp
+    local sandbox status metric_tmp metadata runner
+    RUN_CAPTURE_TERMINATION="exec-error"
+    RUN_CAPTURE_SIGNAL=0
+    runner="$CONFORMANCE_LIB_DIR/conformance_action.py"
     # Run from a scratch directory, not the caller's cwd. A corpus program that
     # opens a file by bare name (lfortran integration_tests/file_08.f90 writes
     # 'file_08.txt') otherwise litters whatever directory drove the gauntlet,
     # which is the ffc repository root.
-    sandbox=$(mktemp -d "${TMPDIR:-/tmp}/ffc-run-XXXXXX") || {
-        if [ -n "$metrics_file" ] && [ -x /usr/bin/time ]; then
-            metric_tmp="${metrics_file}.${BASHPID}.${RANDOM}.tmp"
-            /usr/bin/time -f "$metric_label\t%e\t%M" -o "$metric_tmp" \
-                timeout "$timeout" "$exe" > "$out_file" 2>&1 < /dev/null
-            status=$?
-            awk -F '\t' -v label="$metric_label" \
-                '$1 == label && NF == 3 { print }' "$metric_tmp" >> "$metrics_file"
-            rm -f "$metric_tmp"
-            return "$status"
-        fi
-        timeout "$timeout" "$exe" > "$out_file" 2>&1 < /dev/null
-        return $?
-    }
+    sandbox=$(mktemp -d "${TMPDIR:-/tmp}/ffc-run-XXXXXX") || return 126
+    metadata="$sandbox/action.tsv"
     if [ -n "$metrics_file" ] && [ -x /usr/bin/time ]; then
         metric_tmp="${metrics_file}.${BASHPID}.${RANDOM}.tmp"
-        ( cd "$sandbox" && /usr/bin/time -f "$metric_label\t%e\t%M" \
-            -o "$metric_tmp" timeout "$timeout" "$exe" ) \
-            > "$out_file" 2>&1 < /dev/null
+        /usr/bin/time -f "$metric_label\t%e\t%M" -o "$metric_tmp" \
+            python3 "$runner" --cwd "$sandbox" --timeout "$timeout" \
+            --output "$out_file" --metadata "$metadata" -- "$exe"
         status=$?
         awk -F '\t' -v label="$metric_label" \
             '$1 == label && NF == 3 { print }' "$metric_tmp" >> "$metrics_file"
         rm -f "$metric_tmp"
     else
-        ( cd "$sandbox" && timeout "$timeout" "$exe" ) \
-            > "$out_file" 2>&1 < /dev/null
+        python3 "$runner" --cwd "$sandbox" --timeout "$timeout" \
+            --output "$out_file" --metadata "$metadata" -- "$exe"
         status=$?
+    fi
+    if [ -s "$metadata" ]; then
+        IFS=$'\t' read -r status RUN_CAPTURE_TERMINATION \
+            RUN_CAPTURE_SIGNAL < "$metadata"
+    else
+        RUN_CAPTURE_TERMINATION="exec-error"
+        RUN_CAPTURE_SIGNAL=0
     fi
     rm -rf "$sandbox"
     return $status
