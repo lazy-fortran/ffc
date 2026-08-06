@@ -126,10 +126,11 @@ passing, rebased commit at a time, in this order.
    coverage remains; schema-2 records `coverage_mode=none` with an empty digest
    until that collector lands.
    SKIP/NOREF remain operational dispositions and are not silently PASS.
-4. Stop silent wrong code and nondeterminism. #671 now has a gfortran-oracle
-   regression for exactly-once contained-call side effects and binding-keyed
-   host storage; continue with #673, #626, #628, #649, then the remaining
-   crashes in #576.
+4. Stop silent wrong code and nondeterminism. #671's binding-keyed host
+   storage fix and #673's fixed-intrinsic FORALL snapshot are landed with
+   gfortran oracles; continue with #626, #649, then the remaining crashes in
+   #576. #628's dynamic `STATUS=` value path is also landed; retain its
+   runtime regression while `open_close` is extracted.
 5. Finish binding identity and module contracts: #584 plus the procedure,
    generic, external-unit, and Lazy-specialization issues that depend on it.
 6. Converge on one descriptor/expression/lifetime model: #337, #338, #348,
@@ -282,11 +283,12 @@ higher array expressions. Do not retain competing descriptor representations.
 `read_al` (404), `read_ops` (736), `open_close` (1,057), `io_typecheck`
 (1,066), `print_expr` (988), and `namelist` (1,619).
 
-Fix #628 before freezing `open_close`. The dynamic `STATUS=` operand now keeps
-its character buffer through lowering (including `NEWUNIT=`), and the runtime
-compares the value case-insensitively while trimming fixed-length padding;
+The #628 dynamic `STATUS=` operand now keeps its character buffer through
+lowering (including `NEWUNIT=`), and the runtime compares the value
+case-insensitively while trimming fixed-length padding;
 `test_session_open_status_variable_compiler` is the independent regression
-oracle. Internal write and its compound child
+oracle. Keep that contract while freezing `open_close`. Internal write and its
+compound child
 become one module or two explicit modules. All I/O expressions reuse the
 typed expression/call engine so side effects occur exactly once.
 
@@ -460,8 +462,9 @@ Architectural supersets guide implementation, not issue closure:
   procedure and module cluster. Closed #327/#330/#332/#457 were foundations,
   not completion.
 - The descriptor/expression/lifetime model covers #337/#338/#339/#345/#399/
-  #419/#422/#435/#458/#459/#465/#643. #673 is the remaining wrong-code slice
-  of #345.
+  #419/#422/#435/#458/#459/#465/#643. #673's fixed-intrinsic snapshot slice is
+  landed; allocatable, character, derived, and nonconforming-shape FORALL
+  targets remain explicitly pending.
 - FortFront #2980/#2994 establish Lazy specialization identity before ffc #437
   emits it and #433 serializes it.
 - #478/#531 share measurement and timeout work. #532/#540 share one provenance
