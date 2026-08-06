@@ -39,7 +39,8 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The implementation baselines for this gate are `ffc` `21adf72`, FortFront
+The implementation baselines for this gate are `ffc` `935fd5d` (schema-v2
+provenance plus the allocatable-descriptor submodule), FortFront
 `ac02b4d0`, fo `32ef96d`, and LIRIC `3facb898`. The code baselines are not
 green: ffc and fo still lack a completed current-head suite, while FortFront's
 latest completed run failed. The ffc focused observation gate is green locally;
@@ -93,7 +94,9 @@ passing, rebased commit at a time, in this order.
 2. #531's shared immutable-arena context, benchmark provenance, orphan-include
    deletion, and behavior/resource oracle are landed through `ffc` `5f13422`;
    make the measured benchmark regression gate blocking before the census.
-3. The observation/classification repair is landed in `ffc` `21adf72`: one
+3. The observation/classification repair is landed in `ffc` `21adf72`, and
+   the allocatable descriptor include is now a typed descendant submodule in
+   `ffc` `935fd5d`: one
    immutable schema-2 result per case with source/closure, compiler flags,
    environment/target/runtime/harness/toolchain digests, diagnostics/output
    hashes, timing/RSS, semantic tags, coverage mode, strict offline views,
