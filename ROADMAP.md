@@ -103,8 +103,10 @@ passing, rebased commit at a time, in this order.
    `763ba0c`) and orphan include deletion (`5f13422`) are landed. Make the
    fo/format gates blocking.
 2. #531's shared immutable-arena context, benchmark provenance, orphan-include
-   deletion, and behavior/resource oracle are landed through `ffc` `5f13422`;
-   make the measured benchmark regression gate blocking before the census.
+   deletion, and behavior/resource oracle are landed through `ffc` `5f13422`.
+   The benchmark now has a blocking 10% median wall-time and peak-RSS gate,
+   immutable worktree provenance, and a focused positive/negative test;
+   record one idle-host baseline/candidate report before closing the issue.
 3. The observation/classification repair is landed in `ffc` `21adf72`, and
    the allocatable descriptor include is now a typed descendant submodule in
    `ffc` `935fd5d`: one

@@ -4,6 +4,8 @@ set -euo pipefail
 usage() {
     echo "usage: $0 --baseline-dir DIR --candidate-dir DIR --source FILE" >&2
     echo "          [--repeats ODD_NUMBER] [--report FILE]" >&2
+    echo "          [--max-wall-regression-pct PERCENT]" >&2
+    echo "          [--max-rss-regression-pct PERCENT]" >&2
 }
 
 baseline_dir=
@@ -11,6 +13,8 @@ candidate_dir=
 source_file=
 repeats=3
 report_file=
+max_wall_regression_pct=${FFC_BENCH_MAX_WALL_REGRESSION_PCT:-10}
+max_rss_regression_pct=${FFC_BENCH_MAX_RSS_REGRESSION_PCT:-10}
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -34,6 +38,14 @@ while [[ $# -gt 0 ]]; do
             report_file=$2
             shift 2
             ;;
+        --max-wall-regression-pct)
+            max_wall_regression_pct=$2
+            shift 2
+            ;;
+        --max-rss-regression-pct)
+            max_rss_regression_pct=$2
+            shift 2
+            ;;
         -h|--help)
             usage
             exit 0
@@ -53,6 +65,12 @@ if [[ ! $repeats =~ ^[0-9]+$ ]] || ((repeats < 3 || repeats % 2 == 0)); then
     echo "--repeats must be an odd integer of at least 3" >&2
     exit 2
 fi
+for threshold in "$max_wall_regression_pct" "$max_rss_regression_pct"; do
+    if [[ ! $threshold =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        echo "regression thresholds must be non-negative numbers" >&2
+        exit 2
+    fi
+done
 for directory in "$baseline_dir" "$candidate_dir"; do
     if [[ ! -f $directory/fpm.toml ]]; then
         echo "not an ffc worktree: $directory" >&2
@@ -92,7 +110,9 @@ if [[ -n $(git -C "$fortfront_dir" status --porcelain) ]]; then
     echo "FortFront dependency worktree must be clean: $fortfront_dir" >&2
     exit 2
 fi
-tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/ffc-large-unit.XXXXXX")
+scratch_root=${FFC_BENCH_TMPDIR:-${TMPDIR:-/var/tmp/ert}}
+mkdir -p "$scratch_root"
+tmp_dir=$(mktemp -d "$scratch_root/ffc-large-unit.XXXXXX")
 trap 'rm -rf -- "$tmp_dir"' EXIT
 raw_file=$tmp_dir/raw.tsv
 generated_source=$tmp_dir/benchmark_5000_lines_behavior.f90
@@ -208,6 +228,27 @@ speedup=$(awk -v before="$baseline_time" -v after="$candidate_time" \
     'BEGIN { if (after == 0) print "inf"; else printf "%.2f", before / after }')
 rss_change=$(awk -v before="$baseline_rss" -v after="$candidate_rss" \
     'BEGIN { if (before == 0) print "nan"; else printf "%.1f", 100 * (after - before) / before }')
+wall_regression=$(awk -v before="$baseline_time" -v after="$candidate_time" \
+    'BEGIN { if (before == 0) print "inf"; else printf "%.1f", 100 * (after - before) / before }')
+
+gate_failed=0
+if ! awk -v before="$baseline_time" -v after="$candidate_time" \
+    -v limit="$max_wall_regression_pct" \
+    'BEGIN { exit !(before > 0 && after <= before * (1 + limit / 100)) }'; then
+    echo "wall-time regression ${wall_regression}% exceeds ${max_wall_regression_pct}%" >&2
+    gate_failed=1
+fi
+if ! awk -v before="$baseline_rss" -v after="$candidate_rss" \
+    -v limit="$max_rss_regression_pct" \
+    'BEGIN { exit !(before > 0 && after <= before * (1 + limit / 100)) }'; then
+    echo "peak-RSS regression ${rss_change}% exceeds ${max_rss_regression_pct}%" >&2
+    gate_failed=1
+fi
+if ((gate_failed)); then
+    gate_status=FAIL
+else
+    gate_status=PASS
+fi
 
 gfortran_path=$(realpath "$(command -v gfortran)")
 gfortran_version=$(gfortran -dumpfullversion -dumpversion)
@@ -251,13 +292,14 @@ write_report() {
     echo "- Generated source: $generated_lines lines, $function_count procedures, 3 called sentinels, sha256 \`$source_sha\`"
     echo "- Protocol: one warm-up per compiler, $repeats alternating measured runs, isel backend"
     echo "- Oracle: every generated executable's stdout matched gfortran byte-for-byte"
+    echo "- Regression gates: wall <= ${max_wall_regression_pct}%, peak RSS <= ${max_rss_regression_pct}% (status: $gate_status)"
     echo
     echo "| compiler | median compile wall (s) | median peak RSS (KiB) |"
     echo "|---|---:|---:|"
     echo "| baseline | $baseline_time | $baseline_rss |"
     echo "| candidate | $candidate_time | $candidate_rss |"
     echo
-    echo "Candidate compile speedup: ${speedup}x. Peak RSS change: ${rss_change}%."
+    echo "Candidate compile speedup: ${speedup}x. Wall-time change: ${wall_regression}%. Peak RSS change: ${rss_change}%."
     echo
     echo "## Raw measurements"
     echo
@@ -271,4 +313,8 @@ if [[ -n $report_file ]]; then
     echo "wrote $report_file"
 else
     write_report
+fi
+
+if ((gate_failed)); then
+    exit 1
 fi
