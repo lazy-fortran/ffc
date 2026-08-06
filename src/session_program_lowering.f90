@@ -2752,6 +2752,34 @@ module session_program_lowering_impl
             integer, intent(out) :: val
         end subroutine read_fmt_int
     end interface
+    ! Character-array element substring resolution lives in a typed descendant
+    ! so the expression/descriptor contract is explicit instead of being
+    ! hidden in the textual character-family include.
+    interface
+        module function is_character_substring(arena, node_index, context) &
+                result(is_substring)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_substring
+        end function is_character_substring
+        module subroutine substring_operands(arena, node_index, context, &
+                                              data_ptr, length, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: data_ptr
+            type(lr_operand_desc_t), intent(out) :: length
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine substring_operands
+        module function actual_is_character(arena, node_index, context) &
+                result(is_character)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_character
+        end function actual_is_character
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
