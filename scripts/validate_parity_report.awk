@@ -155,8 +155,10 @@ function row_field_allowed(key) {
     return key == "suite" || key == "file" || key == "status" ||
         key == "ffc_exit" || key == "ref_exit" || key == "note" ||
         key == "noref" || key == "noref_reason" ||
+        key == "noref_manifest_category" ||
         key == "warning_expectation" ||
-        key == "attempts" || key == "observed"
+        key == "attempts" || key == "observed" ||
+        key == "observed_status" || key == "expectation"
 }
 
 function summary_field_allowed(key) {
@@ -174,7 +176,14 @@ function summary_field_allowed(key) {
         key == "fortfront_tree" || key == "liric_revision" ||
         key == "liric_tree" || key == "corpus_revision" ||
         key == "corpus_tree" || key == "corpus_files_sha256" ||
-        key == "worktree"
+        key == "worktree" || key == "report_kind" ||
+        key == "observation_schema_version" ||
+        key == "reference_compiler" ||
+        key == "reference_cache_enabled" ||
+        key == "reference_cache_hits" || key == "timeout_seconds" ||
+        key == "skip_manifest_sha256" || key == "noref_manifest_sha256" ||
+        key == "classification_mode" || key == "observation_sha256" ||
+        key == "classification_manifest_sha256" || key == "attempt_count"
 }
 
 function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
@@ -221,6 +230,34 @@ function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
     corpus_files_digest = require_digest("corpus_files_sha256")
     # ffc #642: a report must name the worktree that produced it.
     require_string("worktree")
+    if ("report_kind" in field_value) {
+        if (require_string("report_kind") != "classification") {
+            report_error("dashboard input is not a classification view")
+        }
+        if (require_integer("observation_schema_version", 1) != 1) {
+            report_error("unknown observation schema version")
+        }
+        require_string("reference_compiler")
+        require_boolean("reference_cache_enabled")
+        require_integer("reference_cache_hits", 1)
+        require_integer("timeout_seconds", 1)
+        require_digest("skip_manifest_sha256")
+        require_digest("noref_manifest_sha256")
+        if (require_string("classification_mode") != "manifest") {
+            report_error("xfail-disabled view is not a dashboard input")
+        }
+        require_digest("observation_sha256")
+        require_digest("classification_manifest_sha256")
+        if (classified_row_count != row_count) {
+            report_error("classification row lacks observation fields")
+        }
+        if ("attempt_count" in field_value &&
+                require_integer("attempt_count", 1) < 2) {
+            report_error("invalid repeat attempt count")
+        }
+    } else if (classified_row_count != 0) {
+        report_error("classification fields without classification SUMMARY")
+    }
     if (row_count != total_count) report_error("SUMMARY total mismatch")
     if (counts["PASS"] != pass_count || counts["XFAIL"] != xfail_count ||
             counts["XPASS"] != xpass_count || counts["FAIL"] != fail_count ||
@@ -240,13 +277,15 @@ function validate_summary(    key, suite, pass_count, xfail_count, xpass_count,
 
 function noref_reason_allowed(reason) {
     return reason == "reference-rejected" ||
+        reason == "reference-runtime-failure" ||
         reason == "undefined-runtime-value" ||
         reason == "missing-external-definition" ||
         reason == "compile-only"
 }
 
 function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
-        is_noref, noref_reason, warning) {
+        is_noref, noref_reason, warning, observed_status, expectation,
+        expected_status) {
     for (key in field_value) {
         if (!row_field_allowed(key)) report_error("unknown result field: " key)
     }
@@ -281,6 +320,29 @@ function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
     } else if ("attempts" in field_value || "observed" in field_value) {
         report_error("attempt fields outside a FLAKY row")
     }
+    if (("observed_status" in field_value) != ("expectation" in field_value)) {
+        report_error("incomplete observation classification fields")
+    }
+    if ("observed_status" in field_value) {
+        classified_row_count++
+        observed_status = require_string("observed_status")
+        expectation = require_string("expectation")
+        if (observed_status != "PASS" && observed_status != "FAIL" &&
+                observed_status != "SKIP" && observed_status != "FLAKY") {
+            report_error("invalid observed status: " observed_status)
+        }
+        if (expectation != "none" && expectation != "xfail") {
+            report_error("invalid expectation: " expectation)
+        }
+        expected_status = observed_status
+        if (expectation == "xfail" && observed_status == "PASS")
+            expected_status = "XPASS"
+        else if (expectation == "xfail" && observed_status == "FAIL")
+            expected_status = "XFAIL"
+        if (status != expected_status) {
+            report_error("classified status does not match observation")
+        }
+    }
     is_noref = 0
     if ("noref" in field_value) {
         is_noref = require_boolean("noref")
@@ -297,8 +359,24 @@ function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
                 field_value["ref_exit"] == 0) {
             report_error("NOREF row has incompatible exit fields")
         }
+        if (noref_reason == "reference-runtime-failure" &&
+                (field_value["ffc_exit"] != 0 ||
+                 field_value["ref_exit"] == 0)) {
+            report_error("NOREF row has incompatible runtime exit fields")
+        }
     } else if ("noref_reason" in field_value) {
         report_error("noref_reason without noref")
+    }
+    if ("noref_manifest_category" in field_value) {
+        noref_reason = require_string("noref_manifest_category")
+        if (noref_reason != "undefined-runtime-value" &&
+                noref_reason != "missing-external-definition" &&
+                noref_reason != "compile-only") {
+            report_error("unapproved noref manifest category")
+        }
+        if (expectation == "xfail") {
+            report_error("files cannot be both xfail and noref")
+        }
     }
     warning = 0
     if ("warning_expectation" in field_value) {
@@ -320,6 +398,7 @@ function validate_row(    key, suite, status, file_name, has_ffc, has_ref,
 BEGIN {
     summary_seen = 0
     row_count = 0
+    classified_row_count = 0
 }
 
 {

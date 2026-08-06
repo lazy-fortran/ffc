@@ -1,3 +1,5 @@
+ast_coverage_module_interface.f90 # scope=harness; reason=depends on absent othermod and file.inc fixtures
+ast_coverage_program_with_procedures.f90 # scope=harness; reason=parser fixture omits required CONTAINS statement
 issue_2285_openmp_directives.f90 # scope=OpenMP; reason=dashboard scope registry
 issue_2286_openacc_internal.f90 # scope=OpenACC; reason=dashboard scope registry
 issue_2449_openacc_clauses.f90 # scope=OpenACC; reason=dashboard scope registry

@@ -482,7 +482,8 @@ contains
         call write_noref_manifest('ast_coverage_control_flow.f90 # '// &
             'noref=undefined-runtime-value; reason=overlap probe')
         if (.not. run_failure('FFC_NOREF_MANIFEST='// &
-            UNDEFINED_MANIFEST//' bash '//SCRIPT//' --suite fortfront-f90', &
+            UNDEFINED_MANIFEST//' bash '//SCRIPT//' --suite fortfront-f90'// &
+            ' --file ast_coverage_control_flow.f90', &
             'both xfail and noref')) passed = .false.
         call write_noref_manifest('20231103-1.f90 # '// &
             'noref=undefined-runtime-value; reason=overlap probe')

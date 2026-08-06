@@ -15,6 +15,8 @@
 #   --ffc PATH          path to ffc binary (auto-discovered if omitted)
 #   --report PATH       JSONL report path
 #                       (default: ${TMPDIR:-/tmp}/ffc_gauntlet_<suite>.jsonl)
+#   --observations PATH immutable expectation-neutral JSONL observations
+#                       (default: <report stem>.observations.jsonl)
 #   --file PATH         select one suite-relative file (repeatable)
 #   --files-from PATH   read suite-relative files from PATH (repeatable)
 #   --max-files N       only test the first N files (for smoke runs)
@@ -48,6 +50,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib_conformance.sh"
 source "$SCRIPT_DIR/lib_expected_manifest.sh"
+source "$SCRIPT_DIR/lib_conformance_observation.sh"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 PRIMARY_REPO_ROOT="$(resolve_primary_checkout_root "$PROJECT_DIR")"
 CORPUS_PARENT="$(dirname "$PRIMARY_REPO_ROOT")"
@@ -56,6 +59,7 @@ CORPUS_PARENT="$(dirname "$PRIMARY_REPO_ROOT")"
 SUITES="fortfront-f90 fortfront-lf lfortran gfortran-dg"
 FFC_BIN=""
 REPORT=""
+OBSERVATIONS=""
 MAX_FILES=""
 TIMEOUT=5
 REPEAT=1
@@ -88,6 +92,9 @@ while [ $# -gt 0 ]; do
             FFC_BIN="$2"; shift 2 ;;
         --report)
             REPORT="$2"; shift 2 ;;
+        --observations)
+            [ $# -ge 2 ] || fail "--observations requires a path"
+            OBSERVATIONS="$2"; shift 2 ;;
         --file)
             if [ $# -lt 2 ]; then fail "--file requires a path"; fi
             SELECTOR_KINDS+=("file")
@@ -155,9 +162,26 @@ esac
 if [ -z "$REPORT" ]; then
     REPORT="${TMPDIR:-/tmp}/ffc_gauntlet_${SUITE}.jsonl"
 fi
+if [ -z "$OBSERVATIONS" ]; then
+    case "$REPORT" in
+        *.jsonl) OBSERVATIONS="${REPORT%.jsonl}.observations.jsonl" ;;
+        *) OBSERVATIONS="${REPORT}.observations.jsonl" ;;
+    esac
+fi
+REPORT_CANONICAL=$(python3 -c \
+    'import os, sys; print(os.path.realpath(sys.argv[1]))' "$REPORT") || \
+    fail "cannot resolve --report path"
+OBSERVATIONS_CANONICAL=$(python3 -c \
+    'import os, sys; print(os.path.realpath(sys.argv[1]))' "$OBSERVATIONS") || \
+    fail "cannot resolve --observations path"
+if [ "$REPORT_CANONICAL" = "$OBSERVATIONS_CANONICAL" ]; then
+    fail "--report and --observations must name different files"
+fi
 
-# Ensure report directory exists
-mkdir -p "$(dirname "$REPORT")"
+# Ensure output directories exist.
+mkdir -p "$(dirname "$REPORT")" || fail "cannot create report directory"
+mkdir -p "$(dirname "$OBSERVATIONS")" || \
+    fail "cannot create observation directory"
 
 # Resolve suite root
 resolve_suite_root() {
@@ -343,6 +367,7 @@ classify_nonrunnable_noref() {
 write_result_record() {
     local file="$1" result_status="$2" compiler_exit="$3" reference_exit="$4"
     local result_note="$5" warning_expectation="$6" warning_json="" noref_json=""
+    local noref_manifest_json=""
     if [ -n "$warning_expectation" ]; then
         warning_json=',"warning_expectation":"unchecked"'
     fi
@@ -350,10 +375,14 @@ write_result_record() {
         noref_json=$(printf ',"noref":true,"noref_reason":"%s"' \
             "$(json_escape "$NOREF_RECORD_REASON")")
     fi
-    printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"%s%s}\n' \
+    if [ -n "$NOREF_MANIFEST_CATEGORY" ]; then
+        noref_manifest_json=$(printf ',"noref_manifest_category":"%s"' \
+            "$(json_escape "$NOREF_MANIFEST_CATEGORY")")
+    fi
+    printf '{"suite":"%s","file":"%s","status":"%s","ffc_exit":%d,"ref_exit":%d,"note":"%s"%s%s%s}\n' \
         "$SUITE" "$(json_escape "$file")" "$result_status" "$compiler_exit" \
         "$reference_exit" "$(json_escape "$result_note")" "$warning_json" \
-        "$noref_json" >> "$REPORT"
+        "$noref_json" "$noref_manifest_json" >> "$OBSERVATIONS"
 }
 
 # Reference-output cache. About half the gauntlet's work is running gfortran to
@@ -409,10 +438,11 @@ git_revision() {
 
 # Setup
 export FFC_COMPILE_TIMEOUT="$TIMEOUT"
+REFERENCE_COMPILER=$(gfortran --version 2>/dev/null | head -1)
+[ -n "$REFERENCE_COMPILER" ] || REFERENCE_COMPILER="unknown"
 if [ -n "$REF_CACHE_DIR" ]; then
     mkdir -p "$REF_CACHE_DIR" || fail "cannot create cache dir: $REF_CACHE_DIR"
-    REF_CACHE_COMPILER=$(gfortran --version 2>/dev/null | head -1)
-    [ -n "$REF_CACHE_COMPILER" ] || REF_CACHE_COMPILER="unknown"
+    REF_CACHE_COMPILER="$REFERENCE_COMPILER"
 fi
 SUITE_ROOT=$(resolve_suite_root)
 XFAIL_MANIFEST=$(resolve_xfail_manifest)
@@ -420,19 +450,30 @@ SKIP_MANIFEST=$(resolve_skip_manifest)
 NOREF_MANIFEST=$(resolve_noref_manifest)
 EXT=$(file_extension)
 TMPDIR_WORK=$(mktemp -d "${TMPDIR:-/tmp}/ffc_gauntlet_XXXXXX")
-trap 'rm -rf "$TMPDIR_WORK"' EXIT
+OBSERVATION_DESTINATION="$OBSERVATIONS"
+OBSERVATION_STAGING=""
+cleanup_gauntlet() {
+    if [ -n "${OBSERVATION_STAGING:-}" ]; then
+        rm -f -- "$OBSERVATION_STAGING"
+    fi
+    rm -rf "$TMPDIR_WORK"
+}
+trap cleanup_gauntlet EXIT
+OBSERVATION_STAGING=$(mktemp \
+    "$(dirname "$OBSERVATION_DESTINATION")/.ffc_observation_XXXXXX") || \
+    fail "cannot stage observation next to $OBSERVATION_DESTINATION"
+OBSERVATIONS="$OBSERVATION_STAGING"
 XFAIL_LOOKUP="$TMPDIR_WORK/xfail_lookup.txt"
 SKIP_LOOKUP="$TMPDIR_WORK/skip_lookup.txt"
 NOREF_LOOKUP="$TMPDIR_WORK/noref_lookup.tsv"
 NOREF_PATHS="$TMPDIR_WORK/noref_paths.txt"
-validate_expected_manifest "$XFAIL_MANIFEST" "$XFAIL_LOOKUP" || exit 1
+# Observation is expectation-blind. The XFAIL manifest is not opened until all
+# selected cases have produced raw outcomes; an empty lookup keeps every
+# compile, execution, reference, and oracle branch independent of expectations.
+: > "$XFAIL_LOOKUP"
 validate_expected_manifest "$SKIP_MANIFEST" "$SKIP_LOOKUP" || exit 1
 validate_noref_manifest "$NOREF_MANIFEST" "$NOREF_LOOKUP" || exit 1
 cut -f 1 "$NOREF_LOOKUP" > "$NOREF_PATHS"
-manifest_overlap=$(grep -Fxf "$XFAIL_LOOKUP" "$NOREF_PATHS" || true)
-if [ -n "$manifest_overlap" ]; then
-    fail "files cannot be both xfail and noref: $manifest_overlap"
-fi
 manifest_overlap=$(grep -Fxf "$SKIP_LOOKUP" "$NOREF_PATHS" || true)
 if [ -n "$manifest_overlap" ]; then
     fail "files cannot be both skip and noref: $manifest_overlap"
@@ -450,6 +491,7 @@ FLAKY_COUNT=0
 TOTAL_COUNT=0
 IS_NOREF_RECORD=0
 NOREF_RECORD_REASON=""
+NOREF_MANIFEST_CATEGORY=""
 
 FFC_REVISION=$(git_revision "$PROJECT_DIR")
 FFC_SOURCE_SHA256=$(ffc_source_sha256 "$PROJECT_DIR")
@@ -461,10 +503,22 @@ FORTFRONT_TREE=$(git_tree_revision "${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfron
 LIRIC_TREE=$(git_tree_revision "${FFC_LIRIC_DIR:-$CORPUS_PARENT/liric}" || printf '%040d\n' 0)
 CORPUS_TREE=$(git_tree_revision "$SUITE_ROOT" || printf '%040d\n' 0)
 CORPUS_FILES_SHA256=$(printf '' | sha256sum | cut -d ' ' -f 1)
+if [ -f "$SKIP_MANIFEST" ]; then
+    SKIP_MANIFEST_SHA256=$(sha256sum "$SKIP_MANIFEST" | cut -d ' ' -f 1)
+else
+    SKIP_MANIFEST_SHA256=$(printf '' | sha256sum | cut -d ' ' -f 1)
+fi
+if [ -f "$NOREF_MANIFEST" ]; then
+    NOREF_MANIFEST_SHA256=$(sha256sum "$NOREF_MANIFEST" | cut -d ' ' -f 1)
+else
+    NOREF_MANIFEST_SHA256=$(printf '' | sha256sum | cut -d ' ' -f 1)
+fi
 # ffc #642: identical commits built in two worktrees have been observed to
 # disagree on corpus results. Every report names the checkout that produced it,
 # so a cross-worktree comparison is visibly invalid instead of silently wrong.
-WORKTREE_ID=$(readlink -f "$PROJECT_DIR")
+WORKTREE_ID=$(python3 -c \
+    'import os, sys; print(os.path.realpath(sys.argv[1]))' "$PROJECT_DIR") || \
+    fail "cannot resolve ffc worktree path"
 PROVENANCE_VERIFIED=false
 FULL_RUN=true
 if [ "${#SELECTOR_KINDS[@]}" -gt 0 ] || [ "${MAX_FILES:-0}" -gt 0 ] 2>/dev/null; then
@@ -515,14 +569,51 @@ write_summary() {
             "$TOTAL_COUNT" "$SAMPLE_POPULATION" "$SAMPLE_SEED" "$margin")
     fi
     flaky_json="${flaky_json}${sample_json}"
-    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":1,"full_run":%s,"provenance_verified":%s,"ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s","worktree":"%s"%s}\n' \
+    printf '{"suite":"%s","status":"SUMMARY","pass":%d,"xfail":%d,"xpass":%d,"fail":%d,"noref":%d,"skip":%d,"warning_unchecked":%d,"total":%d,"schema_version":1,"full_run":%s,"provenance_verified":%s,"ffc_revision":"%s","ffc_source_sha256":"%s","ffc_binary_sha256":"%s","fortfront_revision":"%s","fortfront_tree":"%s","liric_revision":"%s","liric_tree":"%s","corpus_revision":"%s","corpus_tree":"%s","corpus_files_sha256":"%s","worktree":"%s","report_kind":"observation","observation_schema_version":1,"reference_compiler":"%s","reference_cache_enabled":%s,"reference_cache_hits":%d,"timeout_seconds":%d,"skip_manifest_sha256":"%s","noref_manifest_sha256":"%s"%s}\n' \
         "$SUITE" "$PASS_COUNT" "$XFAIL_COUNT" "$XPASS_COUNT" "$FAIL_COUNT" \
         "$NOREF_COUNT" "$SKIP_COUNT" "$WARNING_UNCHECKED_COUNT" "$TOTAL_COUNT" \
         "$FULL_RUN" "$PROVENANCE_VERIFIED" "$FFC_REVISION" \
         "$FFC_SOURCE_SHA256" "$FFC_BINARY_SHA256" "$FORTFRONT_REVISION" \
         "$FORTFRONT_TREE" "$LIRIC_REVISION" "$LIRIC_TREE" \
         "$CORPUS_REVISION" "$CORPUS_TREE" "$CORPUS_FILES_SHA256" \
-        "$WORKTREE_ID" "$flaky_json" >> "$REPORT"
+        "$(json_escape "$WORKTREE_ID")" \
+        "$(json_escape "$REFERENCE_COMPILER")" \
+        "$([ -n "$REF_CACHE_DIR" ] && printf true || printf false)" \
+        "$REF_CACHE_HITS" "$TIMEOUT" "$SKIP_MANIFEST_SHA256" \
+        "$NOREF_MANIFEST_SHA256" "$flaky_json" >> "$OBSERVATIONS"
+}
+
+publish_observation() {
+    if ! conformance_observation_publish "$OBSERVATIONS" \
+            "$OBSERVATION_DESTINATION" "$SUITE"; then
+        printf 'ERROR: refusing to publish incomplete observation: %s\n' \
+            "$OBSERVATIONS" >&2
+        return 1
+    fi
+    rm -f -- "$OBSERVATIONS"
+    OBSERVATION_STAGING=""
+    OBSERVATIONS="$OBSERVATION_DESTINATION"
+}
+
+# Materialize the default expectation view only after observation is complete.
+# A nonzero result can mean either classified FAIL/FLAKY records or a malformed
+# expectation manifest; in both cases the raw observation remains available.
+classify_observation_report() {
+    local classification_status=0 counters
+
+    conformance_observation_classify "$OBSERVATIONS" "$REPORT" "$SUITE" \
+        "$XFAIL_MANIFEST" manifest || classification_status=$?
+    if [ "$classification_status" -gt 1 ]; then
+        printf 'ERROR: classification failed; observations preserved at %s\n' \
+            "$OBSERVATIONS" >&2
+        return "$classification_status"
+    fi
+    counters=$(conformance_observation_classification_counts \
+        "$REPORT" "$SUITE") || return 2
+    IFS=$'\t' read -r PASS_COUNT XFAIL_COUNT XPASS_COUNT FAIL_COUNT \
+        FLAKY_COUNT NOREF_COUNT SKIP_COUNT WARNING_UNCHECKED_COUNT \
+        TOTAL_COUNT SAMPLE_POPULATION <<< "$counters"
+    return "$classification_status"
 }
 
 # Repeated runs: a single run cannot distinguish a stable result from a case
@@ -531,8 +622,9 @@ write_summary() {
 # status is not identical in every attempt as FLAKY, so nothing downstream can
 # read an intermittent pass as a stable one.
 run_repeated_attempts() {
-    local attempt child_args=() attempt_reports=() skip_next=0 arg
-    local attempt_dir merged_status
+    local attempt child_args=() attempt_observations=() skip_next=0 arg
+    local child_status
+    local attempt_dir classification_status=0
 
     for arg in "${ORIGINAL_ARGS[@]}"; do
         if [ "$skip_next" -eq 1 ]; then
@@ -540,7 +632,7 @@ run_repeated_attempts() {
             continue
         fi
         case "$arg" in
-            --repeat|--report) skip_next=1 ;;
+            --repeat|--report|--observations) skip_next=1 ;;
             *) child_args+=("$arg") ;;
         esac
     done
@@ -548,48 +640,34 @@ run_repeated_attempts() {
     attempt_dir="$TMPDIR_WORK/attempts"
     mkdir -p "$attempt_dir"
     for attempt in $(seq 1 "$REPEAT"); do
+        child_status=0
         echo "=== attempt $attempt/$REPEAT ==="
-        attempt_reports+=("$attempt_dir/attempt_${attempt}.jsonl")
+        attempt_observations+=("$attempt_dir/attempt_${attempt}.observations.jsonl")
         bash "$0" "${child_args[@]}" --repeat 1 \
-            --report "$attempt_dir/attempt_${attempt}.jsonl" || true
+            --observations "$attempt_dir/attempt_${attempt}.observations.jsonl" \
+            --report "$attempt_dir/attempt_${attempt}.jsonl" || child_status=$?
+        if ! conformance_observation_validate \
+                "$attempt_dir/attempt_${attempt}.observations.jsonl" "$SUITE"; then
+            printf 'ERROR: repeat attempt %d produced no complete observation (exit %d)\n' \
+                "$attempt" "$child_status" >&2
+            return 1
+        fi
     done
 
-    : > "$REPORT"
-    awk -v suite="$SUITE" -f "$SCRIPT_DIR/merge_repeated_report.awk" \
-        "${attempt_reports[@]}" >> "$REPORT"
-
-    PASS_COUNT=$(count_merged_status PASS)
-    XFAIL_COUNT=$(count_merged_status XFAIL)
-    XPASS_COUNT=$(count_merged_status XPASS)
-    FAIL_COUNT=$(count_merged_status FAIL)
-    SKIP_COUNT=$(count_merged_status SKIP)
-    FLAKY_COUNT=$(count_merged_status FLAKY)
-    NOREF_COUNT=$(grep -c '"noref":true' "$REPORT" || true)
-    WARNING_UNCHECKED_COUNT=$(grep -c '"warning_expectation":' "$REPORT" || true)
-    TOTAL_COUNT=$(grep -c '"file":' "$REPORT" || true)
-    if [ "$SAMPLED" = true ]; then
-        # The children drew the sample; take the population they measured
-        # against so the merged summary states the same margin they do.
-        SAMPLE_POPULATION=$(grep -h -o '"sample_population":[0-9]*' \
-            "${attempt_reports[0]}" | head -1 | cut -d ':' -f 2)
-        SAMPLE_POPULATION=${SAMPLE_POPULATION:-0}
-    fi
-    write_summary
+    conformance_observation_merge "$OBSERVATIONS" "$SUITE" \
+        "${attempt_observations[@]}" || return 1
+    publish_observation || return 1
+    classify_observation_report || classification_status=$?
+    [ "$classification_status" -le 1 ] || return "$classification_status"
 
     echo ""
     echo "=== $SUITE summary (merged over $REPEAT attempts) ==="
     echo "  PASS=$PASS_COUNT  XFAIL=$XFAIL_COUNT  XPASS=$XPASS_COUNT  FAIL=$FAIL_COUNT  FLAKY=$FLAKY_COUNT  NOREF=$NOREF_COUNT  SKIP=$SKIP_COUNT  TOTAL=$TOTAL_COUNT"
     echo_sample_line
     echo "  Report: $REPORT"
+    echo "  Observations: $OBSERVATIONS"
 
-    if [ "$FAIL_COUNT" -gt 0 ] || [ "$FLAKY_COUNT" -gt 0 ]; then
-        return 1
-    fi
-    return 0
-}
-
-count_merged_status() {
-    grep -c "\"status\":\"$1\"" "$REPORT" || true
+    return "$classification_status"
 }
 
 if [ "$REPEAT" -gt 1 ]; then
@@ -597,14 +675,14 @@ if [ "$REPEAT" -gt 1 ]; then
     exit $?
 fi
 
-# Clear report
-> "$REPORT"
-
 # Check suite root exists.
 if [ ! -d "$SUITE_ROOT" ]; then
     echo "SKIP: $SUITE not found at $SUITE_ROOT"
     write_summary
-    exit 0
+    publish_observation || exit 1
+    classification_status=0
+    classify_observation_report || classification_status=$?
+    exit "$classification_status"
 fi
 
 if [ "$REQUIRE_PROVENANCE" -eq 1 ]; then
@@ -734,7 +812,10 @@ FILE_COUNT=$(wc -l < "$FILE_LIST")
 if [ "$FILE_COUNT" -eq 0 ]; then
     echo "SKIP: no files found in $SUITE_ROOT for $SUITE"
     write_summary
-    exit 0
+    publish_observation || exit 1
+    classification_status=0
+    classify_observation_report || classification_status=$?
+    exit "$classification_status"
 fi
 
 # Build a module/submodule index of the suite directory so a file that USEs a
@@ -758,6 +839,7 @@ while IFS= read -r full_path <&3; do
     TOTAL_COUNT=$((TOTAL_COUNT + 1))
     IS_NOREF_RECORD=0
     NOREF_RECORD_REASON=""
+    NOREF_MANIFEST_CATEGORY=""
 
     basename_file=$(basename "$full_path")
     # Suite-relative path is the basename for single-depth search
@@ -766,11 +848,12 @@ while IFS= read -r full_path <&3; do
     if check_xfail "$SKIP_LOOKUP" "$rel_path"; then
         SKIP_COUNT=$((SKIP_COUNT + 1))
         printf '{"suite":"%s","file":"%s","status":"SKIP","note":"listed in skip manifest"}\n' \
-            "$SUITE" "$(json_escape "$rel_path")" >> "$REPORT"
+            "$SUITE" "$(json_escape "$rel_path")" >> "$OBSERVATIONS"
         continue
     fi
 
     noref_kind=$(noref_category "$rel_path") || noref_kind=""
+    NOREF_MANIFEST_CATEGORY="$noref_kind"
     if [ -n "$noref_kind" ] && [ "$noref_kind" != "undefined-runtime-value" ]; then
         classify_nonrunnable_noref "$rel_path" "$full_path" "$noref_kind"
         continue
@@ -784,7 +867,8 @@ while IFS= read -r full_path <&3; do
             FAIL_COUNT=$((FAIL_COUNT + 1))
             HAS_FAIL=1
             printf '{"suite":"%s","file":"%s","status":"%s","note":"%s"}\n' \
-                "$SUITE" "$(json_escape "$rel_path")" "$status" "$(json_escape "$note")" >> "$REPORT"
+                "$SUITE" "$(json_escape "$rel_path")" "$status" \
+                "$(json_escape "$note")" >> "$OBSERVATIONS"
             echo "  FAIL: $rel_path (unlisted skip: $skip_reason)"
             continue
         fi
@@ -930,6 +1014,7 @@ while IFS= read -r full_path <&3; do
     # than silently treating a link failure as an implementation failure.
     extra_manifest="$PROJECT_DIR/test/conformance/extra_${SUITE}.txt"
     extra_list="$TMPDIR_WORK/extra_${TOTAL_COUNT}.txt"
+    missing_extra_source=""
     resolve_extra_sources "$rel_path" "$extra_manifest" > "$extra_list"
     if [ -s "$extra_list" ]; then
         if [ -z "${inc_dir:-}" ]; then
@@ -942,10 +1027,8 @@ while IFS= read -r full_path <&3; do
             [ -z "$extra_name" ] && continue
             extra_src="$SUITE_ROOT/$extra_name"
             if [ ! -f "$extra_src" ]; then
-                echo "  FAIL: $rel_path (missing extra source $extra_name)"
-                FAIL_COUNT=$((FAIL_COUNT + 1))
-                HAS_FAIL=1
-                continue
+                missing_extra_source="$extra_name"
+                break
             fi
             ref_extra+=("$extra_src")
             extra_obj="$inc_dir/extra_${extra_idx}.o"
@@ -955,6 +1038,16 @@ while IFS= read -r full_path <&3; do
             fi
             extra_idx=$((extra_idx + 1))
         done < "$extra_list"
+    fi
+    if [ -n "$missing_extra_source" ]; then
+        status="FAIL"
+        note="missing extra source $missing_extra_source"
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        HAS_FAIL=1
+        write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
+            "$note" "$warning_expectation"
+        echo "  FAIL: $rel_path ($note)"
+        continue
     fi
 
     # Step 1: compile with ffc
@@ -993,21 +1086,20 @@ while IFS= read -r full_path <&3; do
                 "$note" "$warning_expectation"
             continue
         else
-            # A file the gfortran reference rejects too (e.g. a corpus source
-            # that INCLUDEs a file absent from the corpus) has no oracle: both
-            # compilers agree it is not compilable, which is the same NO-REF
-            # disposition step 6 records when only gfortran rejects.
+            # Reference rejection does not turn ffc rejection into a pass.
+            # There is no behavioral oracle, but feature completeness still
+            # requires ffc to compile every selected, non-skipped source.
             if ! is_lazy_suite && \
                 ! compile_with_gfortran "$full_path" "$ref_exe" \
                     "${ref_extra[@]}"; then
                 ref_exit=1
-                NOREF_COUNT=$((NOREF_COUNT + 1))
-                IS_NOREF_RECORD=1
-                status="PASS"
-                note="gfortran rejects too; no reference (NO-REF)"
-                PASS_COUNT=$((PASS_COUNT + 1))
+                status="FAIL"
+                note="ffc compilation failed; gfortran also rejects"
+                FAIL_COUNT=$((FAIL_COUNT + 1))
+                HAS_FAIL=1
                 write_result_record "$rel_path" "$status" "$ffc_exit" \
                     "$ref_exit" "$note" "$warning_expectation"
+                echo "  FAIL: $rel_path (ffc and gfortran rejected)"
                 continue
             fi
             status="FAIL"
@@ -1267,6 +1359,10 @@ done 3< "$FILE_LIST"
 
 # Summary
 write_summary
+publish_observation || exit 1
+classification_status=0
+classify_observation_report || classification_status=$?
+[ "$classification_status" -le 1 ] || exit "$classification_status"
 
 echo ""
 echo "=== $SUITE summary ==="
@@ -1276,9 +1372,7 @@ if [ -n "$REF_CACHE_DIR" ]; then
     echo "  Reference cache: $REF_CACHE_HITS hits in $REF_CACHE_DIR"
 fi
 echo "  Report: $REPORT"
+echo "  Observations: $OBSERVATIONS"
 
-# Exit nonzero only if non-xfail FAILs occurred
-if [ "$HAS_FAIL" -ne 0 ]; then
-    exit 1
-fi
-exit 0
+# Exit nonzero if the classified view contains FAIL/XPASS/FLAKY records.
+exit "$classification_status"

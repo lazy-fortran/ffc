@@ -1,0 +1,2 @@
+ast_coverage_module_interface.f90 # scope=harness; reason=depends on absent othermod and file.inc fixtures
+ast_coverage_program_with_procedures.f90 # scope=harness; reason=parser fixture omits required CONTAINS statement

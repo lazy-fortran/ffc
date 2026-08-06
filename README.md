@@ -428,7 +428,10 @@ echo $?
 ## Conformance
 
 `docs/CONFORMANCE.md` documents the conformance gauntlet runner that
-drives external Fortran test corpora through the full `ffc` pipeline.
+drives external Fortran test corpora through the full `ffc` pipeline. Each run
+writes an expectation-neutral observation sidecar; expectation views, including an
+XFAIL-disabled view, can be regenerated from it without compiling or running
+the corpus again.
 
 Single-command gate (build + all suites, fails on FAIL or XPASS):
 ```bash

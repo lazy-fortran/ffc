@@ -5,6 +5,15 @@ The runner compiles each source to a native binary, runs it, compares
 standard Fortran output against `gfortran -w` when gfortran accepts the
 source, and writes an xfail-style report.
 
+Compilation and expectation classification are separate phases. The first
+phase writes one expectation-neutral observation for every selected case. The
+second phase maps those raw `PASS`/`FAIL` outcomes through an XFAIL manifest;
+it does not select, compile, execute, or invoke an oracle. This separation
+makes expectation-only changes cheap to inspect and prevents the manifest from
+changing the behavior being measured. SKIP and NOREF manifests remain
+operational inputs: they define which cases have runnable behavioral oracles,
+and their digests are therefore part of observation provenance.
+
 ## No-vendoring rule
 
 The runner never copies source files from external suites into this
@@ -60,6 +69,13 @@ found at <path>` and exits 0. Optional external suites may stay absent.
 
 ## Running the gauntlet
 
+Keep conformance artifacts on the storage volume used by the corpus worktrees:
+
+```bash
+export TMPDIR=/mnt/storage/lazy-fortran-artifacts-20260806
+mkdir -p "$TMPDIR"
+```
+
 ```bash
 scripts/conformance_gauntlet.sh --suite SUITE [OPTIONS]
 ```
@@ -70,7 +86,8 @@ Options:
 |---|---|
 | `--suite SUITE` | Required. One of `fortfront-f90`, `fortfront-lf`, `lfortran`, `gfortran-dg` |
 | `--ffc PATH` | Path to the `ffc` binary. Auto-discovered from `build/` or `PATH` if omitted. |
-| `--report PATH` | JSONL report path. Defaults to `/tmp/ffc_gauntlet_<suite>.jsonl`. |
+| `--report PATH` | JSONL report path. Defaults to `$TMPDIR/ffc_gauntlet_<suite>.jsonl`. |
+| `--observations PATH` | Expectation-neutral JSONL observation path. Defaults to `<report stem>.observations.jsonl`. |
 | `--file PATH` | Select one suite-relative file. Repeat to select more files. |
 | `--files-from PATH` | Read suite-relative files from a list. Repeat to read more lists. |
 | `--max-files N` | Only test the first N files. Use for smoke runs. |
@@ -93,6 +110,39 @@ scripts/conformance_gauntlet.sh --suite fortfront-f90 \
     --ffc "$(find build -name ffc -type f -executable | head -1)"
 ```
 
+### Reclassifying without another corpus run
+
+The gauntlet always leaves an observation sidecar. Its case records contain
+only observed `PASS`, `FAIL`, `SKIP`, or `FLAKY` states. The XFAIL manifest is
+not read until that file is complete. A malformed expectation manifest can
+therefore fail classification, but it cannot prevent or alter observation;
+the diagnostic names the preserved sidecar.
+
+Create another normal expectation view with a different manifest:
+
+```bash
+scripts/classify_conformance_observations.sh \
+    --suite fortfront-f90 \
+    --observations "$TMPDIR/ffc-one.observations.jsonl" \
+    --xfail-manifest "$TMPDIR/proposed-xfail.txt" \
+    --report "$TMPDIR/ffc-one-proposed.jsonl"
+```
+
+Create the all-observed view, with XFAIL handling disabled:
+
+```bash
+scripts/classify_conformance_observations.sh \
+    --suite fortfront-f90 \
+    --observations "$TMPDIR/ffc-one.observations.jsonl" \
+    --no-xfail \
+    --report "$TMPDIR/ffc-one-no-xfail.jsonl"
+```
+
+The classifier exits nonzero when the resulting view contains `FAIL`, `XPASS`,
+or `FLAKY`, just as the gauntlet does. It refuses to use the observation path
+as its output, validates that there is exactly one raw record per case, and
+writes the new view atomically. `--no-xfail` does not read an XFAIL manifest.
+
 ### Named files
 
 Run one external regression without scanning the full corpus:
@@ -100,7 +150,7 @@ Run one external regression without scanning the full corpus:
 ```bash
 scripts/conformance_gauntlet.sh --suite fortfront-f90 \
     --file ast_coverage_control_flow.f90 \
-    --report /tmp/ffc-one.jsonl
+    --report "$TMPDIR/ffc-one.jsonl"
 ```
 
 A list contains one suite-relative path per line. Leading and trailing
@@ -115,7 +165,7 @@ ast_coverage_io_statements.f90
 
 ```bash
 scripts/conformance_gauntlet.sh --suite fortfront-f90 \
-    --files-from /tmp/ffc-scope-files.txt
+    --files-from "$TMPDIR/ffc-scope-files.txt"
 ```
 
 `--file` and `--files-from` entries accumulate in command order. Duplicate,
@@ -172,9 +222,9 @@ work queue. Each cycle selects one owned in-scope XFAIL tranche, fixes the
 implementation or its independent behavioral oracle, and removes the manifest
 entry only after the named case passes with `XFAIL=0`, `XPASS=0`, and `FAIL=0`.
 Do not move to another corpus area or increase the sample count while that
-tranche is nonzero. `XFAIL`, `NOREF`, and `SKIP` are classifications, not
-behavioral passes; a clean sample with those dispositions does not claim full
-parity.
+tranche is nonzero. XFAIL is an expectation classification; NOREF and SKIP are
+operational dispositions rather than behavioral passes. A clean sample with
+any of them does not claim full parity.
 
 Compiler jobs remain sequential and bounded. A sampled command that exceeds
 the memory or timeout budget is a failed measurement and must be reduced or
@@ -193,17 +243,17 @@ verdict. Sampling and caching compound.
 A single run cannot distinguish a stable result from a case that flips
 between runs, so promoting an XPASS on one run can convert a flake into a
 manifest entry that the next run breaks (#599). `--repeat N` runs the
-selection N times as independent child runs through the same classification
-path and merges them:
+selection N times as independent child observations. The raw attempts are
+merged first and only the merged observation is classified:
 
 ```bash
 scripts/conformance_gauntlet.sh --suite lfortran --repeat 5 \
-    --files-from suspect_cases.txt --report /tmp/repeat.jsonl
+    --files-from suspect_cases.txt --report "$TMPDIR/repeat.jsonl"
 scripts/conformance_check.sh --no-build --suite lfortran --repeat 5
 ```
 
-A file whose status is identical in every attempt keeps its record. A file
-whose status differs is recorded as
+A file whose complete raw evidence is identical in every attempt keeps its
+record. A status, exit-code, NOREF, or other evidence change is recorded as
 
 ```json
 {"suite":"lfortran","file":"kwargs_01.f90","status":"FLAKY",
@@ -282,10 +332,16 @@ scoreboard values.
 
 ## JSONL output
 
-One record per attempted file:
+The observation sidecar has one raw record per selected file:
 
 ```json
 {"suite":"fortfront-f90","file":"example.f90","status":"PASS","ffc_exit":0,"ref_exit":0,"note":"output matches gfortran"}
+```
+
+The classified report keeps that evidence and adds the expectation decision:
+
+```json
+{"suite":"fortfront-f90","file":"example.f90","status":"XPASS","ffc_exit":0,"ref_exit":0,"note":"output matches gfortran","observed_status":"PASS","expectation":"xfail"}
 ```
 
 Fields:
@@ -298,14 +354,19 @@ Fields:
 | `ffc_exit` | int | ffc exit code (0 = built and ran) |
 | `ref_exit` | int | gfortran exit code (0 = built and ran) |
 | `note` | string | Human-readable explanation |
+| `observed_status` | string | Immutable raw state used by a classified view; absent from the observation sidecar |
+| `expectation` | string | `xfail` or `none`; absent from the observation sidecar |
 | `warning_expectation` | string | `unchecked` for warning-only gfortran.dg files; omitted otherwise |
 | `noref` | boolean | `true` when the case has no behavioral oracle; omitted otherwise |
-| `noref_reason` | string | Required with `noref`: an approved manifest category or `reference-rejected` |
+| `noref_reason` | string | Required with `noref`: an approved manifest category, `reference-rejected`, or `reference-runtime-failure` |
 
-A final SUMMARY record closes the file:
+A final SUMMARY record closes each file. The observation summary has
+`report_kind: "observation"`; each derived report changes that to
+`"classification"` and records `classification_mode`, the SHA-256 of the
+complete observation, and the SHA-256 of the expectation manifest:
 
 ```json
-{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"warning_unchecked":0,"total":21,"schema_version":1,"full_run":true,"provenance_verified":true,"ffc_revision":"...","ffc_source_sha256":"...","ffc_binary_sha256":"...","fortfront_revision":"...","fortfront_tree":"...","liric_revision":"...","liric_tree":"...","corpus_revision":"...","corpus_tree":"...","corpus_files_sha256":"...","worktree":"/home/you/ffc"}
+{"suite":"fortfront-f90","status":"SUMMARY","pass":15,"xfail":3,"xpass":1,"fail":2,"noref":1,"skip":0,"warning_unchecked":0,"total":21,"schema_version":1,"full_run":true,"provenance_verified":true,"ffc_revision":"...","ffc_source_sha256":"...","ffc_binary_sha256":"...","fortfront_revision":"...","fortfront_tree":"...","liric_revision":"...","liric_tree":"...","corpus_revision":"...","corpus_tree":"...","corpus_files_sha256":"...","worktree":"/home/you/ffc","report_kind":"classification","observation_schema_version":1,"reference_compiler":"GNU Fortran ...","reference_cache_enabled":false,"reference_cache_hits":0,"timeout_seconds":5,"skip_manifest_sha256":"...","noref_manifest_sha256":"...","classification_mode":"manifest","observation_sha256":"...","classification_manifest_sha256":"..."}
 ```
 
 The revision and tree fields are full Git hashes. `ffc_revision` identifies the
@@ -316,6 +377,12 @@ requires clean inputs across ffc and every dependency or corpus checkout, and
 rejects a binary older than any tracked compiler or dependency input.
 `corpus_files_sha256` hashes the exact suite-relative denominator.
 `worktree` is the absolute path of the checkout that produced the report.
+The observation also binds the reference compiler, timeout, reference-cache
+use, and the operational skip/NOREF manifest digests. A classification binds
+the byte-exact observation and XFAIL manifest. Observation files are not an
+automatic execution cache: the runner always measures anew. Reuse is confined
+to the pure classifier, so it cannot accidentally accept evidence produced by
+different compiler, corpus, oracle, or operational-policy inputs.
 `full_run` is false when a report used `--file`, `--files-from`,
 `--max-files`, or `--sample`. A sampled report additionally carries
 `sampled`, `sample_size`, `sample_population`, `sample_seed`, and
@@ -346,8 +413,9 @@ are printed), and 2 when the pair is not comparable at all — different
 | `FAIL` | Not in xfail manifest; ffc failed or mismatched | Fails the gate |
 | `SKIP` | Listed in a skip manifest because the runner does not model the case | Counted in summary |
 
-The runner exits nonzero if any `FAIL` record exists. `XFAIL` and
-`XPASS` never cause a nonzero exit.
+The runner exits nonzero if any `FAIL`, `XPASS`, or `FLAKY` record exists.
+`XFAIL` does not cause a nonzero exit. XPASS is a stale expectation and must be
+promoted before the normal manifest view can pass its gate.
 
 The `noref` summary count is the number of files with no behavioral oracle:
 files classified in `test/conformance/noref_<suite>.txt`, plus files where
@@ -367,7 +435,7 @@ whose compile or run disposition was checked without matching warning text.
 
 The fpm test `test_fortfront_corpus_conformance` runs the full
 `fortfront-f90` and `fortfront-lf` suites through the gauntlet with
-reports under `/tmp`. Passing files need no manifest entry. A new
+reports under `$TMPDIR`. Passing files need no manifest entry. A new
 FortFront example fails the ffc test until ffc supports it or its
 basename is added to the matching xfail manifest.
 
@@ -404,10 +472,12 @@ stable valid executable, the category does not apply, and the record is a
 `FAIL` — a valid program can never be hidden behind NOREF. NOREF entries must
 not also appear in an xfail or skip manifest.
 
-Every NOREF result record carries `"noref":true` and a `"noref_reason"` field
-holding either an approved manifest category or `reference-rejected` for files
-that ffc compiled and ran while `gfortran -w` rejected the source. The report
-validator rejects any other reason, and any `noref_reason` without `noref`.
+Every NOREF result record carries `"noref":true` and a `"noref_reason"` field.
+Besides approved manifest categories, `reference-rejected` records that
+`gfortran -w` rejected the source, and `reference-runtime-failure` records that
+gfortran built but did not terminate normally while the ffc program did. The
+report validator rejects any other reason, any incompatible exit statuses, and
+any `noref_reason` without `noref`.
 NOREF cases stay visible in the suite totals and in the `noref` summary count;
 they never mask a compiler crash or deterministic wrong output.
 
@@ -498,16 +568,16 @@ reports, then generate the checked-in dashboard:
 ```bash
 scripts/conformance_gauntlet.sh --suite fortfront-f90 \
     --require-provenance \
-    --report /tmp/ffc_parity_fortfront-f90.jsonl
+    --report "$TMPDIR/ffc_parity_fortfront-f90.jsonl"
 scripts/conformance_gauntlet.sh --suite fortfront-lf \
     --require-provenance \
-    --report /tmp/ffc_parity_fortfront-lf.jsonl
+    --report "$TMPDIR/ffc_parity_fortfront-lf.jsonl"
 scripts/conformance_gauntlet.sh --suite lfortran \
     --require-provenance \
-    --report /tmp/ffc_parity_lfortran.jsonl
+    --report "$TMPDIR/ffc_parity_lfortran.jsonl"
 scripts/conformance_gauntlet.sh --suite gfortran-dg \
     --require-provenance \
-    --report /tmp/ffc_parity_gfortran-dg.jsonl
+    --report "$TMPDIR/ffc_parity_gfortran-dg.jsonl"
 scripts/generate_parity_dashboard.sh
 scripts/generate_parity_dashboard.sh --check
 scripts/generate_parity_dashboard.sh \
@@ -556,7 +626,7 @@ scripts/benchmark_large_translation_unit.sh \
     --baseline-dir /path/to/baseline-ffc \
     --candidate-dir /path/to/candidate-ffc \
     --source /path/to/fortfront/examples/f90/benchmark_5000_lines.f90 \
-    --report /tmp/ffc-large-unit.md
+    --report "$TMPDIR/ffc-large-unit.md"
 ```
 
 Build both worktrees with `fo build` first. The script keeps the fixture at
@@ -613,7 +683,7 @@ The default root is `../lfortran`. To use another checkout:
 ```bash
 FFC_LFORTRAN_DIR=/path/to/lfortran \
     scripts/conformance_gauntlet.sh --suite lfortran \
-    --report /tmp/ffc_lfortran.jsonl
+    --report "$TMPDIR/ffc_lfortran.jsonl"
 ```
 
 No lfortran source is copied into this repository. The checked-in files
@@ -665,7 +735,7 @@ feature is now supported.
 
 ```bash
 # Find XPASS entries in the latest report
-grep '"status":"XPASS"' /tmp/ffc_gauntlet_fortfront_f90.jsonl
+grep '"status":"XPASS"' "$TMPDIR/ffc_gauntlet_fortfront_f90.jsonl"
 
 # Remove the promoted entry from the manifest
 sed -i '/^example\.f90$/d' test/conformance/xfail_fortfront_f90.txt
@@ -696,3 +766,7 @@ gauntlet runner:
 - `resolve_prerequisites`: order the sibling files a source must compile first
 
 Source this file from other scripts; do not execute it directly.
+
+`scripts/lib_conformance_observation.sh` validates raw observation JSONL and
+materializes classified views. `scripts/classify_conformance_observations.sh`
+is its command-line entry point; it never loads or runs `ffc`.
