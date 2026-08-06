@@ -736,7 +736,7 @@ scripts/benchmark_large_translation_unit.sh \
     --baseline-dir /path/to/baseline-ffc \
     --candidate-dir /path/to/candidate-ffc \
     --source /path/to/fortfront/examples/f90/benchmark_5000_lines.f90 \
-    --report "$TMPDIR/ffc-large-unit.md"
+    --report "${FFC_BENCH_TMPDIR:-/var/tmp/ert}/ffc-large-unit.md"
 ```
 
 Build both worktrees with `fo build` first. The script keeps the fixture at
@@ -747,7 +747,20 @@ then reports median wall time and peak RSS from alternating runs. A compiler
 that changes the program result exits before the script writes a performance
 report. The report fingerprints every tracked or untracked, nonignored file
 in both source worktrees and both `ffc` build artifacts, so a dirty candidate
-remains identifiable.
+remains identifiable. The default blocking gates reject a candidate whose
+median wall time or peak RSS is more than 10% above the baseline; override
+those predeclared limits with `--max-wall-regression-pct` and
+`--max-rss-regression-pct` (or `FFC_BENCH_MAX_*` environment variables) only
+with a recorded reason. Scratch data defaults to `/var/tmp/ert` and can be
+relocated with `FFC_BENCH_TMPDIR`.
+
+The focused behavioral/resource test uses a 5,000-line synthetic fixture and a
+gfortran-backed compiler stub to prove both sides of the contract without
+running the external corpus:
+
+```bash
+bash test/test_benchmark_large_translation_unit.sh
+```
 
 Note also that `scripts/conformance_check.sh` does **not** pass
 `--require-provenance`, so its reports cannot feed the generator; invoke the
