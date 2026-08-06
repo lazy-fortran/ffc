@@ -36,6 +36,11 @@ LIBRARY_PATH=/path/to/liric/build fo test
 - Extract growing implementation units into modules or submodules with
   explicit interfaces. Let `fo` derive submodule ancestry from the source; do
   not add ordering shims or production `include` fragments.
+- Keep constant-initialization validation in
+  `session_program_lowering_reject_const_init.f90`. It is an immutable-AST
+  descendant service with explicit interfaces; changes require both accepted
+  and rejected executable/compiler oracles in
+  `test_session_reject_const_01_compiler`.
 - Add focused behavioural tests under `test/`. Each file is a standalone
   `program test_*` picked up by fpm auto-discovery.
 - Treat a need for private FortFront AST layout as a FortFront API issue
