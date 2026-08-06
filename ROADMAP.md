@@ -39,7 +39,7 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The implementation baselines for this gate are `ffc` `d24b8b4`, FortFront
+The implementation baselines for this gate are `ffc` `21adf72`, FortFront
 `ac02b4d0`, fo `32ef96d`, and LIRIC `3facb898`. The code baselines are not
 green: ffc and fo still lack a completed current-head suite, while FortFront's
 latest completed run failed. The ffc focused observation gate is green locally;
@@ -68,7 +68,7 @@ The current state is not a valid parity baseline:
 - The checked-in dashboard is pinned to older components and reports 10,924
   files. Its Markdown and TSV digests disagree.
 - Current manifests contain 5,528 XFAIL rows, 288 FAIL-owner rows, 11 NOREF
-  rows, and 2,303 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
+  rows, and 2,305 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
 - There are 70 tracked production `.inc` files containing 79,155 lines. The
   5,073-line host module has 44 direct include sites. Another 322 invocation
@@ -93,10 +93,20 @@ passing, rebased commit at a time, in this order.
 2. #531's shared immutable-arena context, benchmark provenance, orphan-include
    deletion, and behavior/resource oracle are landed through `ffc` `5f13422`;
    make the measured benchmark regression gate blocking before the census.
-3. The observation/classification repair is landed in `ffc` `d24b8b4`: one
-   immutable result per case, strict offline views, atomic publication, exact
-   repeat merging, and FAIL/XPASS/FLAKY gates. Run one full locked provenance
-   census next, then regenerate the stale dashboard before promoting rows.
+3. The observation/classification repair is landed in `ffc` `21adf72`: one
+   immutable schema-2 result per case with source/closure, compiler flags,
+   environment/target/runtime/harness/toolchain digests, diagnostics/output
+   hashes, timing/RSS, semantic tags, coverage mode, strict offline views,
+   atomic publication, exact repeat merging, and FAIL/XPASS/FLAKY gates. The
+   reference cache is success-only, hash-validated, and hermetic across
+   environment/target/flags/runtime/harness/corpus/closure. Run one full locked
+   provenance census next, then regenerate the stale dashboard before
+   promoting rows.
+   The next breaking execution-epoch tranche still owns separate compile/run
+   exits and timeout/signal identity, general INCLUDE closure snapshotting
+   without TOCTOU races, and instrumented coverage; schema-2 currently records
+   explicit `coverage_mode=none` with an empty digest. SKIP/NOREF remain
+   operational dispositions and are not silently counted as behavioral PASS.
 4. Stop silent wrong code and nondeterminism: #671, #673, #626, #628, #649,
    then the remaining crashes in #576.
 5. Finish binding identity and module contracts: #584 plus the procedure,
