@@ -39,6 +39,13 @@ The direct session path:
 3. Lowers FortFront AST nodes into LIRIC instruction descriptors.
 4. Emits a native executable or object file through LIRIC.
 
+The frontend result retains ownership of its AST arena throughout lowering.
+`lowering_context_t%arena` is a non-owning view of that immutable input.
+Procedure contexts share the view and must not assign or deallocate its target.
+This lifetime rule is part of the lowering boundary. Copying the arena into a
+procedure context makes large translation units quadratic in the number of AST
+nodes and procedures.
+
 `session_program_lowering` is the stable two-procedure lowering facade:
 
 ```fortran

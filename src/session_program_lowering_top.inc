@@ -36,7 +36,7 @@
                                            emit_executable, error_msg, &
                                            include_paths, link_objects, backend, &
                                            opt_level, lazy_mode)
-        type(ast_arena_t), intent(in) :: arena
+        type(ast_arena_t), target, intent(in) :: arena
         integer, intent(in) :: root_index
         character(len=*), intent(in) :: output_path
         character(len=*), intent(in), optional :: include_paths(:)
@@ -78,7 +78,7 @@
         allocate(context%function_names(8))
         allocate(context%function_value_kinds(8))
         context%function_value_kinds = VALUE_I32
-        context%arena = arena
+        context%arena => arena
         if (present(lazy_mode)) context%lazy_mode = lazy_mode
         ! A module-only unit compiled to an object is linked beside the main and
         ! sibling module objects. Tag its per-unit .ffc content globals with a

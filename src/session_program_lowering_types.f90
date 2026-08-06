@@ -658,7 +658,12 @@ module session_program_lowering_types
 
     type, public :: lowering_context_t
         type(liric_session_t) :: session
-        type(ast_arena_t) :: arena
+        ! Non-owning, read-only-by-contract view of the translation unit AST.
+        ! The frontend result owns the arena and outlives every lowering
+        ! context. Child procedure contexts share this view; they must never
+        ! assign or deallocate the target. Keeping ownership outside the
+        ! context prevents an O(procedures * AST size) deep-copy cost.
+        type(ast_arena_t), pointer :: arena => null()
         integer :: root_index = 0
         ! Lazy Fortran dialect defaults are active for this compilation unit
         ! (#438). The driver sets this from the frontend input mode, so the

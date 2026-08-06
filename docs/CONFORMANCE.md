@@ -549,6 +549,25 @@ The report records a timeout as `ffc_exit: 1` rather than `124`, which reads as 
 compile error and invites a hunt for a regression that is not there. Two suites
 regenerated under load will disagree with two regenerated idle. See #478.
 
+Compiler-performance changes use a separate behavioral and resource oracle:
+
+```bash
+scripts/benchmark_large_translation_unit.sh \
+    --baseline-dir /path/to/baseline-ffc \
+    --candidate-dir /path/to/candidate-ffc \
+    --source /path/to/fortfront/examples/f90/benchmark_5000_lines.f90 \
+    --report /tmp/ffc-large-unit.md
+```
+
+Build both worktrees with `fo build` first. The script keeps the fixture at
+5,000 lines and replaces padding with calls to its first, middle, and last
+contained functions. It checks each executable's stdout byte-for-byte against
+the output of a reference executable built by the recorded gfortran binary,
+then reports median wall time and peak RSS from alternating runs. A compiler
+that changes the program result exits before the script writes a performance
+report. The report fingerprints both complete worktrees and both `ffc` build
+artifacts, including untracked files, so a dirty candidate remains identifiable.
+
 Note also that `scripts/conformance_check.sh` does **not** pass
 `--require-provenance`, so its reports cannot feed the generator; invoke the
 gauntlet directly per suite as shown above.

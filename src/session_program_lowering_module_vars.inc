@@ -1196,11 +1196,11 @@
         use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(ast_arena_t) :: arena
+        type(ast_arena_t), pointer :: arena
         integer :: m, i, var_idx, value_kind, status
 
         call set_empty(error_msg)
-        arena = context%arena
+        arena => context%arena
         do m = 1, context%module_export_count
             do i = 1, context%module_exports(m)%variable_count
                 var_idx = context%module_exports(m)%variable_indices(i)
@@ -1407,13 +1407,13 @@
         ! so a body reference surfaces the usual clean "not declared" diagnostic.
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(ast_arena_t) :: arena
+        type(ast_arena_t), pointer :: arena
         integer :: m, i, param_idx, value_kind
         logical :: enum_handled
         character(len=:), allocatable :: kind_err, decl_err
 
         call set_empty(error_msg)
-        arena = context%arena
+        arena => context%arena
         do m = 1, context%module_export_count
             do i = 1, context%module_exports(m)%parameter_count
                 param_idx = context%module_exports(m)%parameter_indices(i)

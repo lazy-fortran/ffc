@@ -2976,7 +2976,7 @@
         context%string_literal_count = parent_context%string_literal_count
         if (allocated(parent_context%unit_symbol_prefix)) &
             context%unit_symbol_prefix = parent_context%unit_symbol_prefix
-        context%arena = arena
+        context%arena => parent_context%arena
         context%root_index = parent_context%root_index
         ! The dialect is a property of the translation unit, not of one
         ! procedure: a contained procedure lowers under the same Lazy
