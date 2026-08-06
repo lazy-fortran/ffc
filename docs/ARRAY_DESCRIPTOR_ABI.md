@@ -139,6 +139,20 @@ dropping a view never frees storage.
 - A dummy argument descriptor is borrowed for the duration of the call.
   A callee never releases a descriptor it received.
 
+### Allocatable arrays of derived elements (#643)
+
+`type(t), allocatable :: a(:)` and `a(:,:)` use this same descriptor without an
+element-type-specific side record. `element_size` is the complete concrete
+derived instance size (including inline component descriptors), and each
+dimension's `stride_bytes` is derived from that size. Element component
+addressing therefore computes the descriptor-relative linear index first and
+then applies the concrete byte stride; it must not assume one four-byte slot.
+`size`, `lbound`, and `ubound` load extents and bounds from the descriptor after
+allocation, so dynamic shapes cannot fall back to declaration-time metadata.
+The descriptor owns the contiguous allocation and deallocation clears it;
+deep-copy assignment, finalization, `SOURCE=`/`MOLD=`, polymorphic extension
+sizes, and non-unit-bound element addressing remain separate conformance gates.
+
 ## View lifetime and aliasing
 
 A section view is a descriptor whose `base` points into another descriptor's

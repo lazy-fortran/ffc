@@ -312,6 +312,22 @@ pointer arrays, #348 character descriptors, and #643 derived allocatable
 arrays. #339 then deletes legacy shape metadata. #399 adds gather views and
 higher array expressions. Do not retain competing descriptor representations.
 
+#### #643 vertical slice (current)
+
+The direct-session lowerer now exercises the first complete `type(t),
+allocatable :: a(:)`/`a(:,:)` path through the canonical descriptor: declaration,
+rank-1/rank-2 `allocate`, component element stores/loads, `size`, `lbound`,
+`ubound`, `allocated`, `deallocate`, and reallocation. `SIZE` of a rank-2
+allocatable reads and multiplies both descriptor extents; bounds inquiries read
+the descriptor rather than stale compile-time symbol fields. The regression
+`test_session_derived_alloc_array_compiler` is checked against the same source
+compiled by gfortran (the independent oracle output is 3/60 for rank 1 and
+1/2/1/4/8/1212 for rank 2). No inline `{data, extent}` representation is
+added. Deep-copy assignment of allocatable derived arrays, finalization on
+scope exit, `ALLOCATE(SOURCE=)`/`MOLD=`, polymorphic dynamic element sizes, and
+non-unit-bound element addressing remain separate gates; do not mark #643
+complete until each has a positive and negative behavioral oracle.
+
 ### Wave 5: I/O
 
 `internal_write` (175), `write_ops` (189), `internal_read` (270),
