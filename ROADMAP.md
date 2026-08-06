@@ -39,11 +39,11 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The implementation baselines for this gate are `ffc` `5f13422`, FortFront
-`ac02b4d0`, fo `32ef96d`, and LIRIC `3facb898`. The roadmap edits are
-documentation-only updates layered on those baselines. The code baselines are
-not green: ffc and fo still lack a completed current-head suite, while
-FortFront's latest completed run failed.
+The implementation baselines for this gate are `ffc` `d24b8b4`, FortFront
+`ac02b4d0`, fo `32ef96d`, and LIRIC `3facb898`. The code baselines are not
+green: ffc and fo still lack a completed current-head suite, while FortFront's
+latest completed run failed. The ffc focused observation gate is green locally;
+the checked-in parity snapshot remains stale and is not a release baseline.
 The last checked ffc parent was `61cbceb` (CI run 30807386910, red for the
 GCC14 submodule-link and formatting gates); the latest checked FortFront
 implementation was `ac02b4d0` (run 31127135731, Windows/aggregate failed and
@@ -75,8 +75,8 @@ The current state is not a valid parity baseline:
   and have failed checks. Replace their still-needed work with small current
   branches. Do not merge either branch as-is.
 
-Until the harness repair and full provenance census land, publish no aggregate
-PASS percentage and promote no row from the stale dashboard.
+Until the full provenance census and dashboard regeneration land, publish no
+aggregate PASS percentage and promote no row from the stale dashboard.
 
 ## Order of work
 
@@ -90,9 +90,10 @@ passing, rebased commit at a time, in this order.
 2. #531's shared immutable-arena context, benchmark provenance, orphan-include
    deletion, and behavior/resource oracle are landed through `ffc` `5f13422`;
    make the measured benchmark regression gate blocking before the census.
-3. Repair observation and classification: record one immutable result per
-   case, classify it offline, fix timeout/phase reporting, add the rejection
-   gate, revalidate owners, and run one full provenance census.
+3. The observation/classification repair is landed in `ffc` `d24b8b4`: one
+   immutable result per case, strict offline views, atomic publication, exact
+   repeat merging, and FAIL/XPASS/FLAKY gates. Run one full locked provenance
+   census next, then regenerate the stale dashboard before promoting rows.
 4. Stop silent wrong code and nondeterminism: #671, #673, #626, #628, #649,
    then the remaining crashes in #576.
 5. Finish binding identity and module contracts: #584 plus the procedure,
