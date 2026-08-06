@@ -8,6 +8,7 @@ program test_session_reject_const_01_compiler
 
     all_passed = .true.
     if (.not. test_variable_in_initializer_rejected()) all_passed = .false.
+    if (.not. test_function_in_initializer_rejected()) all_passed = .false.
     if (.not. test_named_constant_inquiry_accepted()) all_passed = .false.
     if (.not. test_assumed_shape_inquiry_rejected()) all_passed = .false.
     if (.not. test_fixed_shape_inquiry_accepted()) all_passed = .false.
@@ -38,6 +39,25 @@ contains
             source, 'does not reduce to a constant expression', &
             '/tmp/ffc_reject_const_01_variable')
     end function test_variable_in_initializer_rejected
+
+    logical function test_function_in_initializer_rejected()
+        ! Exercise the validator's explicit-procedure lookup across descendant
+        ! implementation units. A user function is never an initialization
+        ! expression, even when its body returns a literal.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: value = seed()'//new_line('a')// &
+            '  print *, value'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function seed()'//new_line('a')// &
+            '    seed = 3'//new_line('a')// &
+            '  end function seed'//new_line('a')// &
+            'end program main'
+
+        test_function_in_initializer_rejected = expect_error_contains( &
+            source, "function reference 'seed' is not a constant expression", &
+            '/tmp/ffc_reject_const_01_function')
+    end function test_function_in_initializer_rejected
 
     logical function test_named_constant_inquiry_accepted()
         character(len=*), parameter :: source = &

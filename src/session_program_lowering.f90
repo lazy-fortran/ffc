@@ -415,6 +415,11 @@ module session_program_lowering_impl
     public :: emit_alloc_desc_clear
     public :: allocatable_elem_size, assumed_shape_element_type
     public :: store_descriptor_i32
+    public :: check_constant_initialization_exprs, check_scope_const_inits
+    public :: check_async_specifiers, bare_name_const_reason
+    public :: const_expr_reason, call_const_reason
+    public :: identifier_const_reason, shape_inquiry_reason
+    public :: arena_has_function_def_named
 
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from
@@ -2310,6 +2315,66 @@ module session_program_lowering_impl
             type(ast_arena_t), intent(in) :: arena
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine check_result_and_entry_rules
+    end interface
+    interface
+        module subroutine check_constant_initialization_exprs(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_constant_initialization_exprs
+        module subroutine check_scope_const_inits(arena, indices, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_scope_const_inits
+        module subroutine check_async_specifiers(arena, indices, specifiers, line, &
+                                                 col, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            type(io_specifier_t), intent(in) :: specifiers(:)
+            integer, intent(in) :: line, col
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_async_specifiers
+        module subroutine bare_name_const_reason(arena, indices, text, reason)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            character(len=*), intent(in) :: text
+            character(len=:), allocatable, intent(out) :: reason
+        end subroutine bare_name_const_reason
+        recursive module subroutine const_expr_reason(arena, indices, idx, &
+                                                      loop_names, reason)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            integer, intent(in) :: idx
+            character(len=*), intent(in) :: loop_names
+            character(len=:), allocatable, intent(out) :: reason
+        end subroutine const_expr_reason
+        recursive module subroutine call_const_reason(arena, indices, nd, &
+                                                      loop_names, reason)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            type(call_or_subscript_node), intent(in) :: nd
+            character(len=*), intent(in) :: loop_names
+            character(len=:), allocatable, intent(out) :: reason
+        end subroutine call_const_reason
+        module subroutine identifier_const_reason(arena, indices, name, &
+                                                  loop_names, reason)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            character(len=*), intent(in) :: name
+            character(len=*), intent(in) :: loop_names
+            character(len=:), allocatable, intent(out) :: reason
+        end subroutine identifier_const_reason
+        module subroutine shape_inquiry_reason(arena, indices, arg_index, reason)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: indices(:)
+            integer, intent(in) :: arg_index
+            character(len=:), allocatable, intent(out) :: reason
+        end subroutine shape_inquiry_reason
+        module function declaration_declares_name(decl, lname) result(declares)
+            type(declaration_node), intent(in) :: decl
+            character(len=*), intent(in) :: lname
+            logical :: declares
+        end function declaration_declares_name
     end interface
     interface
         module subroutine check_storage_association_restrictions(arena, error_msg)
@@ -5151,5 +5216,4 @@ contains
     end function lowercase_text
 
     include 'session_program_lowering_select.inc'
-    include 'session_program_lowering_reject_const_init.inc'
 end module session_program_lowering_impl

@@ -1,3 +1,6 @@
+submodule (session_program_lowering_impl) session_program_lowering_reject_const_init
+    implicit none
+contains
     ! Constant-expression validation (F2018 10.1.12).
     !
     ! A declaration initializer, and the ASYNCHRONOUS= specifier of a data
@@ -11,9 +14,7 @@
     ! The check runs from validate_program, before any lowering, so it sees the
     ! declaration list of every scope and never needs a lowering context.
 
-    subroutine check_constant_initialization_exprs(arena, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_constant_initialization_exprs
         integer :: n
 
         call set_empty(error_msg)
@@ -40,12 +41,9 @@
             end select
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine check_constant_initialization_exprs
+    end procedure check_constant_initialization_exprs
 
-    subroutine check_scope_const_inits(arena, indices, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: indices(:)
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_scope_const_inits
         character(len=:), allocatable :: reason
         character(len=64) :: location
         integer :: i
@@ -76,18 +74,12 @@
             end select
             if (len_trim(error_msg) > 0) return
         end do
-    end subroutine check_scope_const_inits
+    end procedure check_scope_const_inits
 
     ! The ASYNCHRONOUS= specifier of READ/WRITE must be an initialization
     ! expression (F2018 12.6.2.2); OPEN takes an ordinary scalar expression and
     ! is therefore left alone.
-    subroutine check_async_specifiers(arena, indices, specifiers, line, col, &
-                                      error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: indices(:)
-        type(io_specifier_t), intent(in) :: specifiers(:)
-        integer, intent(in) :: line, col
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure check_async_specifiers
         character(len=:), allocatable :: reason
         character(len=64) :: location
         integer :: i
@@ -110,15 +102,11 @@
                 return
             end if
         end do
-    end subroutine check_async_specifiers
+    end procedure check_async_specifiers
 
     ! A specifier value kept as source text: only a bare name can name a
     ! variable, so anything quoted or punctuated is left to the expression path.
-    subroutine bare_name_const_reason(arena, indices, text, reason)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: indices(:)
-        character(len=*), intent(in) :: text
-        character(len=:), allocatable, intent(out) :: reason
+    module procedure bare_name_const_reason
         character(len=:), allocatable :: name
         integer :: i
 
@@ -131,14 +119,9 @@
         end do
         if (scan(name(1:1), '0123456789_') /= 0) return
         call identifier_const_reason(arena, indices, name, '|', reason)
-    end subroutine bare_name_const_reason
+    end procedure bare_name_const_reason
 
-    recursive subroutine const_expr_reason(arena, indices, idx, loop_names, reason)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: indices(:)
-        integer, intent(in) :: idx
-        character(len=*), intent(in) :: loop_names
-        character(len=:), allocatable, intent(out) :: reason
+    module procedure const_expr_reason
         character(len=:), allocatable :: op, err, inner
         integer :: i, li, ri, ln, cl
 
@@ -211,14 +194,9 @@
         type is (call_or_subscript_node)
             call call_const_reason(arena, indices, nd, loop_names, reason)
         end select
-    end subroutine const_expr_reason
+    end procedure const_expr_reason
 
-    recursive subroutine call_const_reason(arena, indices, nd, loop_names, reason)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: indices(:)
-        type(call_or_subscript_node), intent(in) :: nd
-        character(len=*), intent(in) :: loop_names
-        character(len=:), allocatable, intent(out) :: reason
+    module procedure call_const_reason
         character(len=:), allocatable :: cname
         integer :: i, first_arg
 
@@ -261,17 +239,12 @@
                                    loop_names, reason)
             if (len_trim(reason) > 0) return
         end do
-    end subroutine call_const_reason
+    end procedure call_const_reason
 
     ! A name is constant when it is an implied-do index of the enclosing
     ! constructor, a named constant, or not declared in this scope at all (a
     ! host- or use-associated name is left to the later lowering passes).
-    subroutine identifier_const_reason(arena, indices, name, loop_names, reason)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: indices(:)
-        character(len=*), intent(in) :: name
-        character(len=*), intent(in) :: loop_names
-        character(len=:), allocatable, intent(out) :: reason
+    module procedure identifier_const_reason
         character(len=:), allocatable :: lname
         integer :: i
 
@@ -290,13 +263,9 @@
                 return
             end select
         end do
-    end subroutine identifier_const_reason
+    end procedure identifier_const_reason
 
-    subroutine shape_inquiry_reason(arena, indices, arg_index, reason)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: indices(:)
-        integer, intent(in) :: arg_index
-        character(len=:), allocatable, intent(out) :: reason
+    module procedure shape_inquiry_reason
         character(len=:), allocatable :: lname
         integer :: i, d
         logical :: assumed
@@ -337,11 +306,9 @@
                 return
             end select
         end do
-    end subroutine shape_inquiry_reason
+    end procedure shape_inquiry_reason
 
-    logical function declaration_declares_name(decl, lname) result(declares)
-        type(declaration_node), intent(in) :: decl
-        character(len=*), intent(in) :: lname
+    module procedure declaration_declares_name
         integer :: k
 
         declares = .false.
@@ -359,4 +326,5 @@
                 return
             end if
         end do
-    end function declaration_declares_name
+    end procedure declaration_declares_name
+end submodule session_program_lowering_reject_const_init
