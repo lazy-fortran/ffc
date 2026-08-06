@@ -141,8 +141,11 @@ passing, rebased commit at a time, in this order.
    terminated by both processors without a coin-flip structural comparison.
    #628's dynamic `STATUS=` value path is also landed; retain its runtime
    regression while the remaining I/O families are extracted.
-   A bounded live audit of #576 at ffc `8ffc35e` (2026-08-07) split all 517
-   `fortfront-f90` cases and all 265 `fortfront-lf` cases into parallel chunks.
+   A bounded live audit of #576 at ffc `8ffc35e` (2026-08-07) split all 563
+   live `fortfront-f90` files and all 265 `fortfront-lf` files into parallel
+   chunks (including a three-file tail check after the initial eight chunks).
+   The checked-in gate totals (517 and 264) are stale against this live file
+   set and need a corpus-truth refresh, not a manifest exemption.
    It found no emitted-program runtime segfault, but did reproduce one stable
    compiler crash: `fortfront-lf/issue_2064_logical_return_inferred_as_integer.lf`
    exits 139 from compile with signal 11 on three independent runs

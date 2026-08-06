@@ -488,9 +488,10 @@ Current xfail manifests:
 
 The corpus gate keeps compiler crashes visible as `FAIL`; they must not be
 promoted to either xfail or NOREF. On 2026-08-07, a bounded audit at ffc
-`8ffc35e` covered all 517 `fortfront-f90` and all 265 `fortfront-lf` files in
-parallel chunks. No emitted-program runtime segfault was observed. The one
-stable crash signature was:
+`8ffc35e` covered all 563 live `fortfront-f90` and all 265 `fortfront-lf` files
+in parallel chunks. (The checked-in gate totals of 517 and 264 are stale and
+must be refreshed from the corpus snapshot.) No emitted-program runtime
+segfault was observed. The one stable crash signature was:
 
 ```
 suite=fortfront-lf
