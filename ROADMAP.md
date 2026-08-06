@@ -263,7 +263,11 @@ higher array expressions. Do not retain competing descriptor representations.
 `read_al` (404), `read_ops` (736), `open_close` (1,057), `io_typecheck`
 (1,066), `print_expr` (988), and `namelist` (1,619).
 
-Fix #628 before freezing `open_close`. Internal write and its compound child
+Fix #628 before freezing `open_close`. The dynamic `STATUS=` operand now keeps
+its character buffer through lowering (including `NEWUNIT=`), and the runtime
+compares the value case-insensitively while trimming fixed-length padding;
+`test_session_open_status_variable_compiler` is the independent regression
+oracle. Internal write and its compound child
 become one module or two explicit modules. All I/O expressions reuse the
 typed expression/call engine so side effects occur exactly once.
 
