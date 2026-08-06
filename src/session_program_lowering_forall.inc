@@ -17,6 +17,7 @@
         integer :: k, sym, body_pos
 
         call set_empty(error_msg)
+        context%forall_body_statement_index = 0
         if (node%num_indices < 1) then
             call unsupported_feature_error('forall construct', &
                                            node%line, node%column, &
