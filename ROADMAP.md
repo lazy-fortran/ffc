@@ -82,6 +82,14 @@ The current state is not a valid parity baseline:
 Until the full provenance census and dashboard regeneration land, publish no
 aggregate PASS percentage and promote no row from the stale dashboard.
 
+This ordering follows the established compiler-testing practice of keeping
+compile-only, execute, and directive outcomes distinct in GCC's DejaGnu
+testsuites, and of using differential plus metamorphic oracles for compiler
+correctness (the OSDI *Gauntlet* study). The locked epoch makes those oracles
+reproducible: one immutable input/toolchain descriptor, one raw observation,
+then offline classification. Accelerator gates use the same rule and pin the
+NVHPC/CUDA compiler-driver compatibility required by NVIDIA's release notes.
+
 ## Order of work
 
 Independent worktrees may prepare changes in parallel. Main accepts one
