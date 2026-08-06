@@ -1624,6 +1624,15 @@
                         value_kind = 0
                     end select
                 end if
+            else if (declaration_index > 0) then
+                ! The declaration registry is keyed by the same FortFront
+                ! binding triple as this reference, so its declared kind is
+                ! authoritative. Use-site inference can apply the internal
+                ! function's implicit letter rule to a host name and report a
+                ! different type (#671); using that guess would give one
+                ! Fortran entity two incompatible storage representations.
+                value_kind = context%declaration_records( &
+                    declaration_index)%value_kind
             else
                 call get_type_for_node(arena, i, inferred, found)
                 if (found .and. allocated(inferred)) &
