@@ -465,29 +465,27 @@ declared_environment_sha256() {
     ' | LC_ALL=C sort | sha256sum | cut -d ' ' -f 1
 }
 
-case_add_dependency() {
-    local path="$1" label
-    [ -n "${CASE_DEPENDENCY_FILE:-}" ] || return 0
-    if [ -f "$path" ]; then
-        case "$path" in
-            "$SUITE_ROOT"/*) label="suite:${path#"$SUITE_ROOT"/}" ;;
-            "$PROJECT_DIR"/*) label="ffc:${path#"$PROJECT_DIR"/}" ;;
-            *) label="external:$(basename "$path")" ;;
-        esac
-        printf '%s\t%s\n' "$label" "$(sha256_file_or_empty "$path")" \
-            >> "$CASE_DEPENDENCY_FILE"
-    else
-        printf 'missing:%s\t%s\n' "$path" "$EMPTY_SHA256" \
-            >> "$CASE_DEPENDENCY_FILE"
-    fi
+case_add_missing_dependency() {
+    local suite_relative_path="$1"
+    printf 'missing:suite:%s\t%s\n' "$suite_relative_path" "$EMPTY_SHA256" \
+        >> "$CASE_DEPENDENCY_FILE"
 }
 
-case_add_dependency_tree() {
-    local directory="$1" path
-    [ -d "$directory" ] || return 0
-    while IFS= read -r path; do
-        case_add_dependency "$path"
-    done < <(find "$directory" -type f -print | LC_ALL=C sort)
+case_snapshot_source() {
+    local source="$1" include_dir stem_include_dir
+    local -a snapshot_args=()
+    shift
+    stem_include_dir="${source%.*}"
+    if [ -d "$stem_include_dir" ]; then
+        snapshot_args+=(--include-dir "$stem_include_dir")
+    fi
+    for include_dir in "$@"; do
+        snapshot_args+=(--include-dir "$include_dir")
+    done
+    python3 "$SCRIPT_DIR/conformance_source_snapshot.py" \
+        --suite-root "$SUITE_ROOT" --destination "$CASE_SNAPSHOT_DIR" \
+        --manifest "$CASE_DEPENDENCY_FILE" --status "$CASE_SNAPSHOT_STATUS" \
+        "${snapshot_args[@]}" "$source"
 }
 
 case_dependency_closure_sha256() {
@@ -508,17 +506,22 @@ semantic_tags_for_source() {
 initialize_case_provenance() {
     local source="$1"
     CASE_DEPENDENCY_FILE="$TMPDIR_WORK/dependencies_${TOTAL_COUNT}.tsv"
+    CASE_SNAPSHOT_DIR="$TMPDIR_WORK/source_snapshot_${TOTAL_COUNT}"
+    CASE_SNAPSHOT_STATUS="$TMPDIR_WORK/source_snapshot_${TOTAL_COUNT}.status"
     CONFORMANCE_METRICS_FILE="$TMPDIR_WORK/metrics_${TOTAL_COUNT}.tsv"
     FFC_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ffc_diagnostic_${TOTAL_COUNT}.txt"
     REF_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ref_diagnostic_${TOTAL_COUNT}.txt"
     export CONFORMANCE_METRICS_FILE FFC_COMPILER_DIAGNOSTIC_FILE
     export REF_COMPILER_DIAGNOSTIC_FILE
     : > "$CASE_DEPENDENCY_FILE"
+    : > "$CASE_SNAPSHOT_STATUS"
     : > "$CONFORMANCE_METRICS_FILE"
     : > "$FFC_COMPILER_DIAGNOSTIC_FILE"
     : > "$REF_COMPILER_DIAGNOSTIC_FILE"
-    CASE_SOURCE_SHA256=$(sha256_file_or_empty "$source")
-    CASE_SEMANTIC_TAGS=$(semantic_tags_for_source "$source")
+    CASE_SOURCE_PATH=$(case_snapshot_source "$source") || \
+        fail "cannot snapshot source closure: $source"
+    CASE_SOURCE_SHA256=$(sha256_file_or_empty "$CASE_SOURCE_PATH")
+    CASE_SEMANTIC_TAGS=$(semantic_tags_for_source "$CASE_SOURCE_PATH")
     CASE_FFC_FLAGS="default"
     CASE_ACTION="compile-run"
     CASE_FFC_COMPILE_ACTION="not-run"
@@ -542,7 +545,6 @@ initialize_case_provenance() {
     else
         CASE_REF_FLAGS="-w -J @private-module-dir"
     fi
-    case_add_dependency "$source"
 }
 
 action_termination() {
@@ -652,8 +654,6 @@ case_phase() {
 # environment, target, runtime ABI, corpus, and harness input. Any cached
 # comparison that does not match is thrown away and remeasured (see step 7b).
 reference_cache_key() {
-    local source="$1" arg
-    shift
     {
         printf 'cache_schema:2\n'
         printf 'compiler:%s\n' "$REF_CACHE_COMPILER"
@@ -672,17 +672,6 @@ reference_cache_key() {
         printf 'source:%s\n' "$CASE_SOURCE_SHA256"
         printf 'dependency_closure:%s\n' "$(case_dependency_closure_sha256)"
         printf 'stdin:/dev/null\ncwd:empty-sandbox\n'
-        for arg in "$@"; do
-            if [ -f "$arg" ]; then
-                printf 'file:%s:%s\n' "${arg#"$SUITE_ROOT"/}" \
-                    "$(sha256sum "$arg" | cut -d ' ' -f 1)"
-            elif [ -d "$arg" ]; then
-                printf 'dir:%s\n' \
-                    "$(digest_paths "$arg")"
-            else
-                printf 'arg:%s\n' "$arg"
-            fi
-        done
     } | sha256sum | cut -d ' ' -f 1
 }
 
@@ -787,6 +776,7 @@ HARNESS_SHA256=$(digest_paths \
     "$SCRIPT_DIR/lib_expected_manifest.sh" \
     "$SCRIPT_DIR/lib_conformance_observation.sh" \
     "$SCRIPT_DIR/conformance_action.py" \
+    "$SCRIPT_DIR/conformance_source_snapshot.py" \
     "$SCRIPT_DIR/conformance_observation.py")
 RUNTIME_ABI_SHA256=$(digest_paths \
     "$PROJECT_DIR/docs/RUNTIME_ABI.md" "$PROJECT_DIR/runtime" \
@@ -1184,12 +1174,24 @@ while IFS= read -r full_path <&3; do
     ffc_out=""
     ref_out=""
     initialize_case_provenance "$full_path"
+    full_path="$CASE_SOURCE_PATH"
 
     if check_xfail "$SKIP_LOOKUP" "$rel_path"; then
         CASE_ACTION="exclude"
         SKIP_COUNT=$((SKIP_COUNT + 1))
         write_result_record "$rel_path" "SKIP" -1 -1 \
             "listed in skip manifest" ""
+        continue
+    fi
+
+    if [ -s "$CASE_SNAPSHOT_STATUS" ]; then
+        CASE_ACTION="exclude"
+        status="FAIL"
+        note=$(head -n 1 "$CASE_SNAPSHOT_STATUS")
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        HAS_FAIL=1
+        write_result_record "$rel_path" "$status" -1 -1 "$note" ""
+        echo "  FAIL: $rel_path ($note)"
         continue
     fi
 
@@ -1324,6 +1326,8 @@ while IFS= read -r full_path <&3; do
     # through to its normal failure handling below.
     ffc_extra=()
     ref_extra=()
+    prereq_sources=()
+    extra_sources=()
     inc_dir=""
 
     # LFortran's integration tests keep INCLUDE material in a directory named
@@ -1332,7 +1336,6 @@ while IFS= read -r full_path <&3; do
     # same source.
     stem_include_dir="${full_path%.*}"
     if [ -d "$stem_include_dir" ]; then
-        case_add_dependency_tree "$stem_include_dir"
         ffc_extra=(-I "$stem_include_dir")
         ref_extra=(-I "$stem_include_dir")
     fi
@@ -1343,22 +1346,12 @@ while IFS= read -r full_path <&3; do
             inc_dir="$TMPDIR_WORK/inc_${TOTAL_COUNT}"
             mkdir -p "$inc_dir"
             ffc_extra+=(-I "$inc_dir")
-            # The gfortran reference ALWAYS receives the full prerequisite source
-            # list so its binary links: whether ffc can compile a prerequisite is
-            # an ffc concern, not the reference's. ffc objects are only added when
-            # the prerequisite compiles; otherwise the main ffc build fails for
-            # lack of the .fmod and is classified honestly below.
-            prereq_idx=0
             while IFS= read -r prereq_src <&4; do
                 [ -z "$prereq_src" ] && continue
-                case_add_dependency "$prereq_src"
+                prereq_src=$(case_snapshot_source "$prereq_src") || \
+                    fail "cannot snapshot prerequisite closure: $prereq_src"
+                prereq_sources+=("$prereq_src")
                 ref_extra+=("$prereq_src")
-                prereq_obj="$inc_dir/prereq_${prereq_idx}.o"
-                if compile_object_with_ffc_inc "$prereq_src" "$prereq_obj" \
-                    "$FFC_BIN" "$inc_dir"; then
-                    ffc_extra+=("$prereq_obj")
-                fi
-                prereq_idx=$((prereq_idx + 1))
             done 4< "$prereq_list"
         fi
     fi
@@ -1382,22 +1375,16 @@ while IFS= read -r full_path <&3; do
             extra_src="$SUITE_ROOT/$extra_name"
             if [ ! -f "$extra_src" ]; then
                 missing_extra_source="$extra_name"
-                case_add_dependency "$extra_src"
+                case_add_missing_dependency "$extra_name"
                 break
             fi
-            case_add_dependency "$extra_src"
+            extra_src=$(case_snapshot_source "$extra_src") || \
+                fail "cannot snapshot extra-source closure: $extra_src"
+            extra_sources+=("$extra_src")
             ref_extra+=("$extra_src")
-            extra_obj="$inc_dir/extra_${extra_idx}.o"
-            if compile_object_with_extra_inc "$extra_src" "$extra_obj" \
-                    "$FFC_BIN" "$inc_dir"; then
-                ffc_extra+=("$extra_obj")
-            fi
             extra_idx=$((extra_idx + 1))
         done < "$extra_list"
     fi
-    CASE_FFC_FLAGS=$(canonical_flags default "${ffc_extra[@]}")
-    CASE_REF_FLAGS=$(canonical_flags '-w -J @private-module-dir' \
-        "${ref_extra[@]}")
     if [ -n "$missing_extra_source" ]; then
         status="FAIL"
         note="missing extra source $missing_extra_source"
@@ -1408,6 +1395,41 @@ while IFS= read -r full_path <&3; do
         echo "  FAIL: $rel_path ($note)"
         continue
     fi
+    if [ -s "$CASE_SNAPSHOT_STATUS" ]; then
+        CASE_ACTION="exclude"
+        status="FAIL"
+        note=$(head -n 1 "$CASE_SNAPSHOT_STATUS")
+        FAIL_COUNT=$((FAIL_COUNT + 1))
+        HAS_FAIL=1
+        write_result_record "$rel_path" "$status" -1 -1 "$note" ""
+        echo "  FAIL: $rel_path ($note)"
+        continue
+    fi
+
+    # Every declared source is now immutable. Compile only after the full
+    # closure has been copied, so an earlier compiler action cannot alter bytes
+    # that a later prerequisite or extra-source snapshot would read.
+    prereq_idx=0
+    for prereq_src in "${prereq_sources[@]}"; do
+        prereq_obj="$inc_dir/prereq_${prereq_idx}.o"
+        if compile_object_with_ffc_inc "$prereq_src" "$prereq_obj" \
+                "$FFC_BIN" "$inc_dir"; then
+            ffc_extra+=("$prereq_obj")
+        fi
+        prereq_idx=$((prereq_idx + 1))
+    done
+    extra_idx=0
+    for extra_src in "${extra_sources[@]}"; do
+        extra_obj="$inc_dir/extra_${extra_idx}.o"
+        if compile_object_with_extra_inc "$extra_src" "$extra_obj" \
+                "$FFC_BIN" "$inc_dir"; then
+            ffc_extra+=("$extra_obj")
+        fi
+        extra_idx=$((extra_idx + 1))
+    done
+    CASE_FFC_FLAGS=$(canonical_flags default "${ffc_extra[@]}")
+    CASE_REF_FLAGS=$(canonical_flags '-w -J @private-module-dir' \
+        "${ref_extra[@]}")
 
     # Step 1: compile with ffc
     if compile_with_ffc "$full_path" "$ffc_exe" "$FFC_BIN" "${ffc_extra[@]}"; then

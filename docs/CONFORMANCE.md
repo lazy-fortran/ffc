@@ -231,8 +231,9 @@ the memory or timeout budget is a failed measurement and must be reduced or
 fixed before the sample is increased.
 
 `--ref-cache DIR` caches successful gfortran reference output. A cache key
-covers every input that can change that output: the main source and its sibling
-or extra-source dependency closure, the suite and corpus revision, the
+covers every input that can change that output: the main source, recursively
+resolved Fortran INCLUDE files, and sibling or extra-source dependency closure,
+the suite and corpus revision, the
 reference compiler executable hash and version, its target triple and flags
 (`-w` and the private `-J` module directory policy), the declared locale and
 runtime environment, the conformance harness scripts and policy, and the
@@ -377,7 +378,7 @@ Fields:
 | `warning_expectation` | string | `unchecked` for warning-only gfortran.dg files; omitted otherwise |
 | `noref` | boolean | `true` when the case has no behavioral oracle; omitted otherwise |
 | `noref_reason` | string | Required with `noref`: an approved manifest category, `reference-rejected`, or `reference-runtime-failure` |
-| `source_sha256`, `dependency_closure_sha256` | SHA-256 | Main source and normalized source/include closure |
+| `source_sha256`, `dependency_closure_sha256` | SHA-256 | Main source and canonical, recursively resolved source/INCLUDE closure compiled from the per-case snapshot |
 | `ffc_flags`, `ref_flags`, `compiler_flags_sha256` | string/SHA-256 | Canonical compiler arguments and their joint digest |
 | `environment_sha256`, `target_triple` | SHA-256/string | Declared compile/run environment and target |
 | `runtime_abi_sha256`, `harness_sha256`, `toolchain_sha256` | SHA-256 | Runtime contract, harness implementation, and exact compiler toolchain |
@@ -755,6 +756,23 @@ main file then builds with `-I <that dir>` plus the prerequisite object
 files. The `gfortran -w` reference compiles the same sibling sources, so
 its binary links too and the comparison is honest.
 
+Before either compiler runs, the gauntlet copies the selected source and every
+recursively resolved Fortran INCLUDE file into private per-case storage. It
+preserves their suite-relative layout, records each canonical relative name and
+SHA-256 in the dependency closure, and passes the copied source and include
+directories to both compilers. The closure hash and compiler input therefore
+describe the same bytes even if the corpus checkout changes during the case.
+Sibling module and explicit extra sources use the same snapshot rule before
+they compile. Missing INCLUDE names remain missing in the private snapshot and
+contribute a canonical missing entry to the closure, so a file created later in
+the corpus cannot change that observation.
+
+An absolute INCLUDE name or a relative INCLUDE that escapes the suite and its
+declared include roots has no portable snapshot layout. A locked run records a
+raw setup failure for that case instead of reading an untracked path after
+hashing. Such a dependency must first be placed under the corpus or a declared
+include root.
+
 A file that defines only modules and no program keeps the single-file
 handling. A self-contained file resolves to no prerequisites and builds
 exactly as before. When ffc cannot compile a prerequisite module, the
@@ -763,8 +781,8 @@ without separate compilation; the reference still receives the full
 source list. The `gfortran-dg` suite models multifile cases through its
 own `dg-additional-sources` directive and does not use this resolution.
 
-Only build artifacts live under `TMPDIR`; the no-vendoring rule holds,
-since prerequisite sources are referenced in place by path.
+Per-case source snapshots and build artifacts live under `TMPDIR`; no foreign
+source is added to the repository.
 
 ## xfail promotion workflow
 
