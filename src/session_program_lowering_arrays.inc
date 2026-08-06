@@ -3772,7 +3772,7 @@
         integer :: source_index, array_index, dim_index, kind_index
         integer :: nargs
         integer(c_int64_t) :: dim_val
-        type(lr_operand_desc_t) :: total_size
+        type(lr_operand_desc_t) :: total_size, extent1, extent2
 
         nargs = 0
         if (allocated(node%arg_indices)) nargs = size(node%arg_indices)
@@ -3814,13 +3814,28 @@
                 return
             end if
             if (context%symbols(source_index)%allocatable_static_size <= 0) then
-                if (context%symbols(source_index)%array_rank /= 1) then
-                    error_msg = 'size requires a constant allocatable extent: '// &
-                                trim(array_name)
+                if (context%symbols(source_index)%array_rank == 1) then
+                    call alloc_runtime_extent_i32(context, source_index, value, &
+                                                  error_msg)
                     return
                 end if
-                call alloc_runtime_extent_i32(context, source_index, value, &
-                                              error_msg)
+                if (context%symbols(source_index)%array_rank == 2) then
+                    ! A rank-2 allocatable has no single cached static extent;
+                    ! read both canonical descriptor extents and multiply them
+                    ! in the same column-major order used by element access.
+                    call allocatable_descriptor_extent_i32(context, source_index, &
+                                                           1, extent1, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call allocatable_descriptor_extent_i32(context, source_index, &
+                                                           2, extent2, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent1, &
+                            extent2, value, error_msg)) return
+                    call set_empty(error_msg)
+                    return
+                end if
+                error_msg = 'size requires a constant allocatable extent: '// &
+                            trim(array_name)
                 return
             end if
             value = i32_immediate(context%session, &

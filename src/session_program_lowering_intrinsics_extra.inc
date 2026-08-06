@@ -8,6 +8,7 @@
         character(len=:), allocatable :: array_name
         integer :: sym
         integer(c_int64_t) :: dim_val
+        type(lr_operand_desc_t) :: lower64
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 1) then
             error_msg = 'lbound requires at least one argument'
@@ -34,6 +35,16 @@
             error_msg = 'lbound dim out of range'
             return
         end if
+        if (context%symbols(sym)%is_allocatable) then
+            call emit_alloc_desc_load_lower(context, &
+                context%symbols(sym)%allocatable_descriptor_address, &
+                int(dim_val), lower64, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i64_to_i32(context%session, lower64, value, &
+                    error_msg)) return
+            call set_empty(error_msg)
+            return
+        end if
         value = i32_immediate(context%session, &
                     int(context%symbols(sym)%array_dim_lowers(int(dim_val)), &
                         c_int64_t))
@@ -51,6 +62,7 @@
         integer :: sym
         integer(c_int64_t) :: dim_val
         integer :: lower, size_d
+        type(lr_operand_desc_t) :: lower64, extent64, sum64, upper64
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 1) then
             error_msg = 'ubound requires at least one argument'
@@ -75,6 +87,25 @@
         end if
         if (dim_val < 1 .or. dim_val > context%symbols(sym)%array_rank) then
             error_msg = 'ubound dim out of range'
+            return
+        end if
+        if (context%symbols(sym)%is_allocatable) then
+            call emit_alloc_desc_load_lower(context, &
+                context%symbols(sym)%allocatable_descriptor_address, &
+                int(dim_val), lower64, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_alloc_desc_load_extent(context, &
+                context%symbols(sym)%allocatable_descriptor_address, &
+                int(dim_val), extent64, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i64_binary(context%session, LR_OP_ADD, lower64, &
+                    extent64, sum64, error_msg)) return
+            if (.not. emit_i64_binary(context%session, LR_OP_SUB, sum64, &
+                    i64_immediate(context%session, 1_c_int64_t), upper64, &
+                    error_msg)) return
+            if (.not. emit_liric_i64_to_i32(context%session, upper64, value, &
+                    error_msg)) return
+            call set_empty(error_msg)
             return
         end if
         ! dim_val is guarded to 1..2 in a separate test because a rank-N fixed
