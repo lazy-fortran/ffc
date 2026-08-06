@@ -156,9 +156,10 @@ passing, rebased commit at a time, in this order.
    It found no emitted-program runtime segfault, but did reproduce one stable
    compiler crash: `fortfront-lf/issue_2064_logical_return_inferred_as_integer.lf`
    exits 139 from compile with signal 11 on three independent runs
-   (`crash_signature_sha256=700fd752c286a890...`). This remains a FAIL, never an
-   XFAIL/NOREF; reduce the logical-result inference path before changing the
-   corpus gate.
+   (`crash_signature_sha256=700fd752c286a890...`). The non-short-circuit
+   external-procedure guard in `lower_logical_call` now fixes this crash, with
+   `test_session_logical_result_call_compiler` as the positive behavioral
+   oracle; retain the corpus FAIL until the current-head gate reclassifies it.
 5. Finish binding identity and module contracts: #584 plus the procedure,
    generic, external-unit, and Lazy-specialization issues that depend on it.
 6. Converge on one descriptor/expression/lifetime model: #337, #338, #348,
@@ -523,7 +524,8 @@ Architectural supersets guide implementation, not issue closure:
   refresh. Rebaseline the stale umbrellas #576/#609 and replace them with
   exact live signatures. The current #576 signature is the deterministic
   `issue_2064_logical_return_inferred_as_integer.lf` compile SIGSEGV recorded
-  above; its root-cause fix and an independent positive oracle are pending.
+  above; its root-cause fix and positive oracle are now staged pending the
+  current-head corpus gate.
 
 ## Cross-repository gates
 
