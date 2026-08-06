@@ -1,4 +1,4 @@
-submodule(session_program_lowering) session_program_lowering_print_ops
+submodule(session_program_lowering_impl) session_program_lowering_print_ops
     use session_program_lowering_print_ops_order
 contains
     module subroutine lower_print(arena, node, context, error_msg)

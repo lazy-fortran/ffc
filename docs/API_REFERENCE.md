@@ -39,12 +39,16 @@ The direct session path:
 3. Lowers FortFront AST nodes into LIRIC instruction descriptors.
 4. Emits a native executable or object file through LIRIC.
 
-`session_program_lowering` is the current lowering entry point:
+`session_program_lowering` is the stable two-procedure lowering facade:
 
 ```fortran
 use session_program_lowering, only: lower_program_to_liric_exe, &
                                     lower_program_to_liric_object
 ```
+
+The facade delegates to the private-by-default
+`session_program_lowering_impl` module. Compiler clients must not import the
+implementation module or its descendant-facing procedures.
 
 ## CLI
 

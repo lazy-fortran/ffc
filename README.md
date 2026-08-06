@@ -455,8 +455,8 @@ scripts/fetch_corpora.sh
 
 - Free-form Fortran 2003+; no implicit typing; declarations at scope top.
 - Modules under 500 lines (hard cap 1000); functions under 50 lines
-  (hard cap 100). Split into `*.inc` files (already used heavily) when
-  the lowerer grows.
+  (hard cap 100). Split growing lowerer code into modules or submodules
+  with explicit interfaces. Do not add production `include` fragments.
 - Symbols `snake_case`, derived types end in `_t`.
 - Each new supported construct lands as a code change in
   `src/session_program_lowering_*` plus a behavioural test under `test/`.

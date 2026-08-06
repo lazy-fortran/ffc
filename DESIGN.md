@@ -31,6 +31,17 @@ FortFront stays backend-neutral. It exposes:
 - CLI parsing and backend invocation;
 - behavioural executable tests for every claimed feature.
 
+`session_program_lowering` is the public lowering facade. It exports only
+`lower_program_to_liric_exe` and `lower_program_to_liric_object` from the
+private-by-default `session_program_lowering_impl` module. Extracted lowering
+units are descendants of the implementation module and use its explicit
+descendant API. This keeps compiler clients independent of the internal split
+and gives GCC 14 external symbols for procedures used across submodule object
+boundaries.
+
+New lowering units are modules or submodules with explicit interfaces. Do not
+add production `include` fragments; the existing fragments are migration debt.
+
 LIRIC owns native code generation behind its session C API. `ffc` reaches
 LIRIC through ISO C bindings only.
 

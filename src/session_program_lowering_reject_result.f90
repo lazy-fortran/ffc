@@ -1,4 +1,4 @@
-submodule (session_program_lowering) session_program_lowering_reject_result
+submodule (session_program_lowering_impl) session_program_lowering_reject_result
     use session_program_lowering_reject_result_order
     implicit none
 contains

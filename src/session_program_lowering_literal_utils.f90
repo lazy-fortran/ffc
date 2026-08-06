@@ -1,4 +1,4 @@
-submodule (session_program_lowering) session_program_lowering_literal_utils
+submodule (session_program_lowering_impl) session_program_lowering_literal_utils
     use session_program_lowering_literal_utils_order
 contains
 

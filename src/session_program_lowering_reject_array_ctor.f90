@@ -1,4 +1,4 @@
-submodule (session_program_lowering) session_program_lowering_reject_array_ctor
+submodule (session_program_lowering_impl) session_program_lowering_reject_array_ctor
     use session_program_lowering_reject_array_ctor_order
     implicit none
 contains

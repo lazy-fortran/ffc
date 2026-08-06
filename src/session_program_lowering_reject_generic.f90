@@ -1,4 +1,4 @@
-submodule (session_program_lowering) session_program_lowering_reject_generic
+submodule (session_program_lowering_impl) session_program_lowering_reject_generic
     use session_program_lowering_reject_generic_order
     implicit none
 contains

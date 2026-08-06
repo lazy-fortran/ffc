@@ -51,8 +51,8 @@ CI runs the same workflow on every push and pull request.
 
 - Free-form Fortran 2003+; no implicit typing; declarations at scope top.
 - Modules under 500 lines (hard cap 1000). Functions under 50 lines
-  (hard cap 100). Split into `*.inc` files (already used heavily) when
-  the lowerer grows.
+  (hard cap 100). Split growing lowerer code into modules or submodules
+  with explicit interfaces. Do not add production `include` fragments.
 - Symbols `snake_case`; derived types end in `_t`.
 - New compiler work goes through direct LIRIC `lr_session_*` calls. Do
   not add LLVM bindings or revive MLIR/HLFIR without an explicit
@@ -65,8 +65,8 @@ program`. fpm auto-discovery picks it up. No `fpm.toml` edit needed.
 
 ## Adding a new supported construct
 
-1. Extend the matching `src/session_program_lowering_*.inc` (or add a
-   new include).
+1. Extend the matching lowering module, or extract a cohesive module or
+   submodule with an explicit interface.
 2. Add `test/test_session_<construct>_compiler.f90` that lowers a
    minimal program, runs the resulting binary, and checks stdout or
    the exit code.

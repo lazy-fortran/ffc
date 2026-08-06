@@ -1,4 +1,4 @@
-submodule (session_program_lowering) session_program_lowering_cmp_typecheck
+submodule (session_program_lowering_impl) session_program_lowering_cmp_typecheck
     use session_program_lowering_cmp_typecheck_order
 contains
 

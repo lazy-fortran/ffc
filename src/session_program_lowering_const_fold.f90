@@ -1,4 +1,4 @@
-submodule (session_program_lowering) session_program_lowering_const_fold
+submodule (session_program_lowering_impl) session_program_lowering_const_fold
     use session_program_lowering_const_fold_order
 contains
 

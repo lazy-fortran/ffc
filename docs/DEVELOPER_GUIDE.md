@@ -25,6 +25,12 @@ LIBRARY_PATH=/path/to/liric/build fpm test
 
 - Add new executable behaviour to the direct LIRIC session path; keep the
   CLI on `session_program_lowering`.
+- Keep compiler clients on the two-procedure `session_program_lowering`
+  facade. Lowering implementation units belong under
+  `session_program_lowering_impl` and expose only the procedures their
+  descendants require.
+- Extract growing implementation units into modules or submodules with
+  explicit interfaces. Do not add production `include` fragments.
 - Add focused behavioural tests under `test/`. Each file is a standalone
   `program test_*` picked up by fpm auto-discovery.
 - Treat a need for private FortFront AST layout as a FortFront API issue

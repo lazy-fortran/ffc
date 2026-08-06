@@ -1,4 +1,4 @@
-submodule (session_program_lowering) session_program_lowering_reject_const_overflow
+submodule (session_program_lowering_impl) session_program_lowering_reject_const_overflow
     use session_program_lowering_reject_const_overflow_order
     implicit none
 contains

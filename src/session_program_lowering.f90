@@ -1,4 +1,4 @@
-module session_program_lowering
+module session_program_lowering_impl
     use, intrinsic :: iso_c_binding, only: c_associated, c_char, c_double, &
         c_float, c_int, c_int8_t, c_int32_t, c_int64_t, c_loc, c_null_ptr, c_ptr
     use session_lowering_diagnostics, only: unsupported_feature_error
@@ -368,6 +368,46 @@ module session_program_lowering
     private
     public :: lower_program_to_liric_exe
     public :: lower_program_to_liric_object
+
+    ! Procedures shared with descendant implementation units. GCC 14 gives a
+    ! private ancestor procedure local linkage even when a submodule calls it.
+    ! Keep this implementation API explicit; session_program_lowering is the
+    ! public facade and exports only the two compiler entry points above.
+    public :: alloc_array_result_call_info, array_access_value_kind
+    public :: bind_c_name, call_argument_kinds, call_argument_ranks
+    public :: callee_dummy_is_array, callee_dummy_value_kind
+    public :: char_expr_operands, collect_param_names
+    public :: component_element_access_kind, component_slot_width
+    public :: declaration_declares_name, declaration_index_for_name
+    public :: declaration_is_assumed_rank, declaration_is_assumed_shape
+    public :: declaration_named, declaration_value_kind
+    public :: derived_component_access_kind, dim_is_assumed_shape
+    public :: dim_is_assumed_size, dummy_explicit_element_count
+    public :: emit_array_literal_print_items, emit_array_section_print_items
+    public :: emit_io_implied_do_print_items, emit_whole_array_print_items
+    public :: eval_i32_constant, external_procedure_index, f64_intrinsic_id
+    public :: find_derived_type, find_module_in_arena, find_symbol_compat
+    public :: flatten_constructor_elements, fold_scoped_i32_name
+    public :: generic_call_return_kind, grow_symbols
+    public :: interface_body_procedure_name, intrinsic_real_conversion_args
+    public :: is_alloc_array_result_call, is_char_expr_call
+    public :: is_character_concat, is_character_operand
+    public :: is_character_substring, is_complex_component_extract
+    public :: is_complex_valued, is_contained_deferred_char_function
+    public :: is_contained_f32_function, is_contained_f64_function
+    public :: is_contained_function_reference
+    public :: is_declared_array_element_ref, is_equivalence_text
+    public :: kind_of_literal, lower_f32_expression, lower_f64_expression
+    public :: lower_i32_expression, lower_logical_expression
+    public :: lower_print_expression_value, lower_print_logical_value
+    public :: lowercase_text, module_procedure_mangled
+    public :: module_symbol_is_private, param_at_is_character
+    public :: param_at_value_kind, parameter_name, parse_equivalence_group
+    public :: parse_i32_constant, procedure_has_nested_contains
+    public :: reduction_arg_extent, reduction_expression_has_kind
+    public :: reduction_expression_is_abs_call, resolve_symbol_at_node
+    public :: same_name, split_csv, transfer_operand_kind
+    public :: type_name_value_kind, use_only_wants, value_kind_number
 
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from
@@ -5030,4 +5070,4 @@ contains
 
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_reject_const_init.inc'
-end module session_program_lowering
+end module session_program_lowering_impl

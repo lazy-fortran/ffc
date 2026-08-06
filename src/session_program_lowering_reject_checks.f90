@@ -1,4 +1,4 @@
-submodule (session_program_lowering) session_program_lowering_reject_checks
+submodule (session_program_lowering_impl) session_program_lowering_reject_checks
     use session_program_lowering_reject_checks_order
     implicit none
 contains

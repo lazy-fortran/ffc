@@ -1,4 +1,4 @@
-submodule (session_program_lowering) session_program_lowering_reject_decl_conflict
+submodule (session_program_lowering_impl) session_program_lowering_reject_decl_conflict
     use session_program_lowering_reject_decl_conflict_order
     implicit none
 contains
