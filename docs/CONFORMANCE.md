@@ -515,9 +515,11 @@ crash_signature_sha256=700fd752c286a890d5624ba5d84428c958db1dd69c1dc320183db64be
 ```
 
 Three independent single-file runs reproduced the signature. The source is
-not in an xfail/NOREF manifest. Reduce and fix the logical-result inference
-path, then add a behavioral oracle that compiles and runs the expected logical
-results before promoting any corpus row.
+not in an xfail/NOREF manifest. The non-short-circuit external-procedure guard
+in `lower_logical_call` now removes the crash, and
+`test_session_logical_result_call_compiler` compiles and runs the expected
+logical results. Keep the corpus row as FAIL until a current-head gate
+reclassifies it.
 
 ### NOREF manifests
 

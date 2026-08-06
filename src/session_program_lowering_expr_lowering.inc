@@ -179,6 +179,7 @@
         integer :: call_arg_count
         integer :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: call_arg_ranks(MAX_PROC_ARGS)
+        integer :: external_index
 
         if (node%is_array_access .and. &
             .not. is_contained_function_reference(node, context)) then
@@ -265,27 +266,28 @@
             end if
             return
         end if
-        if (external_procedure_index(context, call_name) > 0 .and. &
-            (context%external_procedures( &
-                external_procedure_index(context, call_name))%is_bind_c .or. &
-             .not. context%external_procedures( &
-                external_procedure_index(context, call_name))%by_reference)) then
-            if (allocated(node%arg_indices)) then
-                call prepare_bind_c_args(arena, node%arg_indices, &
-                    external_procedure_index(context, call_name), context, args, &
-                    copyback_indices, error_msg)
-            else
-                call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, &
-                    external_procedure_index(context, call_name), context, args, &
-                    copyback_indices, error_msg)
+        ! Fortran does not short-circuit `.and.`. Resolve the index first and
+        ! only inspect the external-procedure table after proving it is valid;
+        ! a contained logical function has no external-table entry (#576).
+        external_index = external_procedure_index(context, call_name)
+        if (external_index > 0) then
+            if (context%external_procedures(external_index)%is_bind_c .or. &
+                .not. context%external_procedures(external_index)%by_reference) then
+                if (allocated(node%arg_indices)) then
+                    call prepare_bind_c_args(arena, node%arg_indices, &
+                        external_index, context, args, copyback_indices, error_msg)
+                else
+                    call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, &
+                        external_index, context, args, copyback_indices, error_msg)
+                end if
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_c_f32_call(context%session, &
+                        trim(context%external_procedures(external_index)%c_name), &
+                        args, value, error_msg)) return
+                call copy_back_reference_args(context, args, copyback_indices, &
+                                              error_msg)
+                return
             end if
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_c_f32_call(context%session, &
-                    trim(context%external_procedures( &
-                    external_procedure_index(context, call_name))%c_name), args, &
-                    value, error_msg)) return
-            call copy_back_reference_args(context, args, copyback_indices, error_msg)
-            return
         end if
         if (.not. is_contained_logical_function(context, call_name)) then
             call unsupported_feature_error('scalar logical function call', &
