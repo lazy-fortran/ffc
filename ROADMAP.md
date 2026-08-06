@@ -237,7 +237,15 @@ refactoring call evaluation.
 
 The loop/control slice includes #626 and #671 fall-through/termination
 oracles. The FORALL slice fixes #673 with statement-level temporaries wherever
-simultaneous assignment requires old RHS values.
+simultaneous assignment requires old RHS values. The #673 tranche now
+snapshots each fixed-size intrinsic target through a raw stack copy before its
+index nest, routes RHS and mask reads to that snapshot, and leaves stores on
+the original target. Multi-statement bodies lower as one complete nest per
+statement, preserving statement-level ordering. The
+test_session_forall_alias_compiler oracle covers reverse/ascending aliasing
+and a two-statement body. Descriptor-backed, runtime-shaped, character,
+derived, and nonconforming-shape FORALL targets remain explicitly outside
+this tranche.
 
 ### Wave 3B: calls, procedures, and characters
 

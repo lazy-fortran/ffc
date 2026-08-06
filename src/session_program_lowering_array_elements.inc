@@ -3528,6 +3528,10 @@
         end if
         if (len_trim(error_msg) > 0) return
 
+        ! The RHS above is evaluated against the FORALL snapshot. Once its
+        ! value is materialised, resolve the target address against the
+        ! original array so the assignment updates the construct's target.
+        context%forall_snapshot_writes = .true.
         if (vk == VALUE_F32 .or. vk == VALUE_F64) then
             call lower_array_element_address_for_kind(arena, target, context, vk, &
                                                       element_address, error_msg, &
@@ -3537,6 +3541,7 @@
                                                  element_address, error_msg, &
                                                  'array assignment target')
         end if
+        context%forall_snapshot_writes = .false.
         if (len_trim(error_msg) > 0) return
 
         if (vk == VALUE_F32) then
@@ -3704,6 +3709,7 @@
         integer :: symbol_index
         integer :: vk
         type(lr_operand_desc_t) :: linear_index
+        type(lr_operand_desc_t) :: base_address
 
         if (.not. allocated(node%name)) then
             error_msg = 'array access requires an array name'
@@ -3738,11 +3744,17 @@
                 linear_index, element_address, error_msg)
             return
         end if
+        base_address = context%symbols(symbol_index)%element_address
+        if (context%forall_snapshot_reads .and. &
+                .not. context%forall_snapshot_writes .and. &
+                context%forall_snapshot_symbol == symbol_index) then
+            base_address = context%forall_snapshot_address
+        end if
 
         if (vk == VALUE_F32) then
             if (.not. emit_f32_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
-                    context%symbols(symbol_index)%element_address, &
+                    base_address, &
                     linear_index, element_address, error_msg)) then
                 error_msg = 'arr_element_gep_f32: '//error_msg
                 return
@@ -3750,7 +3762,7 @@
         else if (vk == VALUE_F64) then
             if (.not. emit_f64_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
-                    context%symbols(symbol_index)%element_address, &
+                    base_address, &
                     linear_index, element_address, error_msg)) then
                 error_msg = 'arr_element_gep_f64: '//error_msg
                 return
@@ -3758,7 +3770,7 @@
         else if (vk == VALUE_I64) then
             if (.not. emit_i64_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
-                    context%symbols(symbol_index)%element_address, &
+                    base_address, &
                     linear_index, element_address, error_msg)) then
                 error_msg = 'arr_element_gep_i64: '//error_msg
                 return
@@ -3766,7 +3778,7 @@
         else if (vk == VALUE_I8) then
             if (.not. emit_i8_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
-                    context%symbols(symbol_index)%element_address, &
+                    base_address, &
                     linear_index, element_address, error_msg)) then
                 error_msg = 'arr_element_gep_i8: '//error_msg
                 return
@@ -3774,7 +3786,7 @@
         else if (vk == VALUE_I16) then
             if (.not. emit_i16_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
-                    context%symbols(symbol_index)%element_address, &
+                    base_address, &
                     linear_index, element_address, error_msg)) then
                 error_msg = 'arr_element_gep_i16: '//error_msg
                 return
@@ -3782,7 +3794,7 @@
         else
             if (.not. emit_i32_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
-                    context%symbols(symbol_index)%element_address, &
+                    base_address, &
                     linear_index, element_address, error_msg)) then
                 error_msg = 'arr_element_gep: '//error_msg
                 return
@@ -3986,6 +3998,7 @@
         character(len=:), allocatable :: diagnostic_feature
         integer :: symbol_index
         type(lr_operand_desc_t) :: linear_index
+        type(lr_operand_desc_t) :: base_address
 
         if (.not. allocated(node%name)) then
             error_msg = 'real array access requires an array name'
@@ -4012,11 +4025,17 @@
                 linear_index, element_address, error_msg)
             return
         end if
+        base_address = context%symbols(symbol_index)%element_address
+        if (context%forall_snapshot_reads .and. &
+                .not. context%forall_snapshot_writes .and. &
+                context%forall_snapshot_symbol == symbol_index) then
+            base_address = context%forall_snapshot_address
+        end if
 
         if (vk == VALUE_F32) then
             if (.not. emit_f32_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
-                    context%symbols(symbol_index)%element_address, &
+                    base_address, &
                     linear_index, element_address, error_msg)) then
                 error_msg = 'f32_arr_gep: '//error_msg
                 return
@@ -4024,7 +4043,7 @@
         else
             if (.not. emit_f64_array_element_addr(context%session, &
                     context%symbols(symbol_index)%array_size, &
-                    context%symbols(symbol_index)%element_address, &
+                    base_address, &
                     linear_index, element_address, error_msg)) then
                 error_msg = 'f64_arr_gep: '//error_msg
                 return

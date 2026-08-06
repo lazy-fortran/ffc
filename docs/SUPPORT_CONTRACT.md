@@ -40,6 +40,19 @@ changes also require matching updates to `RUNTIME_ABI.md`,
 `ARRAY_DESCRIPTOR_ABI.md`, and the standard/FortFront contract that defines
 the input semantics.
 
+## FORALL evaluation contract
+
+For fixed-size intrinsic array-element assignments, the direct session lowerer
+copies the target's canonical element storage to stack memory before entering
+the index loop. Every RHS and mask read resolves against that snapshot, while
+the assignment address remains the original target. A block body is emitted as
+one complete index nest per statement, so later statements observe all stores
+from earlier statements. Reverse and ascending alias cases, plus a two-
+statement ordering case, are covered by
+test_session_forall_alias_compiler. Allocatable, runtime-shaped, character,
+derived, and nonconforming-shape FORALL targets remain rejected or pending
+their descriptor-specific contracts.
+
 ## Supported now
 
 | Area | Supported contract |
