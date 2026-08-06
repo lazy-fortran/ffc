@@ -565,8 +565,9 @@ contained functions. It checks each executable's stdout byte-for-byte against
 the output of a reference executable built by the recorded gfortran binary,
 then reports median wall time and peak RSS from alternating runs. A compiler
 that changes the program result exits before the script writes a performance
-report. The report fingerprints both complete worktrees and both `ffc` build
-artifacts, including untracked files, so a dirty candidate remains identifiable.
+report. The report fingerprints every tracked or untracked, nonignored file
+in both source worktrees and both `ffc` build artifacts, so a dirty candidate
+remains identifiable.
 
 Note also that `scripts/conformance_check.sh` does **not** pass
 `--require-provenance`, so its reports cannot feed the generator; invoke the

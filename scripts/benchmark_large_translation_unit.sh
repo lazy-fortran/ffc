@@ -225,7 +225,8 @@ worktree_content_sha() {
         cd "$directory"
         git ls-files --cached --others --exclude-standard -z | sort -z | \
             while IFS= read -r -d '' path; do
-                printf '%s\0%s\0' "$(git hash-object -- "$path")" "$path"
+                printf '%s\0%s\0%s\0' "$(stat -c '%a' -- "$path")" \
+                    "$(git hash-object -- "$path")" "$path"
             done
     ) | sha256sum | awk '{ print $1 }'
 }
