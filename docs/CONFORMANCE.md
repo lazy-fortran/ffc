@@ -29,6 +29,17 @@ referenced by path.
 | `lfortran` | LFortran integration tests | `.f90` | `gfortran -w` |
 | `gfortran-dg` | GCC gfortran.dg testsuite | `.f90` | `gfortran -w` |
 
+### Nested-DO tail regression
+
+`test_session_nested_do_tail_compiler` is a focused accepted-side control-flow
+oracle. It compiles the nested-loop source with both `gfortran -w` and ffc,
+then compares the complete stdout bytes and exit status. The case protects
+against FortFront construct-span regressions in contained procedures: the
+FortFront parser must be at least `f3ab76ba`, which fixed the two-word `end do`
+terminator scan that previously swallowed statements following a nested nest.
+The ffc lowerer must not recover this case with source-name or statement-order
+special cases.
+
 ## Fetching corpora
 
 `scripts/fetch_corpora.sh` checks out reviewed external corpus revisions at
