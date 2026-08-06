@@ -41,12 +41,14 @@ uncertainty.
 
 The implementation baselines for this gate are `ffc` `5f13422`, FortFront
 `ac02b4d0`, fo `32ef96d`, and LIRIC `3facb898`; the current roadmap tips are
-`64cc806`, `39b5bb24`, `c4102dd`, and `14ca403` respectively. The code
-baselines have no completed remote check suite yet; the latter commits are
+`8d92ba6`, `5676f6e4`, `220bbb8`, and `14ca403` respectively. The code
+baselines are not green: ffc and fo still lack a completed current-head suite,
+while FortFront's latest completed run failed; the latter commits are
 documentation-only updates.
 The last checked ffc parent was `61cbceb` (CI run 30807386910, red for the
 GCC14 submodule-link and formatting gates); the last checked FortFront parent
-was `e84ac97b` (run 31110432510, Ubuntu green but Windows/aggregate red); and
+was `ac02b4d0` (run 31127135731, Windows/aggregate failed and Ubuntu
+cancelled); and
 the last checked fo ancestor was `e3cff007` (run 31122586327, failed/cancelled).
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
@@ -68,7 +70,8 @@ The current state is not a valid parity baseline:
   to 105 closed issues. Those are inventory facts, not current outcomes.
 - There are 70 tracked production `.inc` files containing 79,155 lines. The
   5,073-line host module has 44 direct include sites. Another 323 calls use
-  `find_symbol_compat`, compared with 13 binding-keyed lookup calls.
+  `find_symbol_compat` (322 invocation sites), compared with 12
+  binding-keyed lookup sites.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
   and [#677](https://github.com/lazy-fortran/ffc/pull/677), conflict with main
   and have failed checks. Replace their still-needed work with small current
