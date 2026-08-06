@@ -39,8 +39,8 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current heads are `ffc` `5f13422`, FortFront `ac02b4d0`, fo `32ef96d`,
-and LIRIC `3facb898`. These heads have no completed remote check suite yet.
+The current heads are `ffc` `f4256e9`, FortFront `39b5bb24`, fo `c4102dd`,
+and LIRIC `14ca403`. These heads have no completed remote check suite yet.
 The last checked ffc parent was `61cbceb` (CI run 30807386910, red for the
 GCC14 submodule-link and formatting gates); the last checked FortFront parent
 was `e84ac97b` (run 31110432510, Ubuntu green but Windows/aggregate red); and
