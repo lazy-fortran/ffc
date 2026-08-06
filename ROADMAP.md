@@ -149,7 +149,15 @@ passing, rebased commit at a time, in this order.
    explicitly `nondeterministic-runtime-value` NOREF, so it is built and
    terminated by both processors without a coin-flip structural comparison.
    #628's dynamic `STATUS=` value path is also landed; retain its runtime
-   regression while the remaining I/O families are extracted.
+   regression while the remaining I/O families are extracted. #669 is now a
+   complete parser/lowering vertical slice: FortFront `aa5880ae` preserves
+   ordinary `c(i)` subscripts while retaining `c(i)(l:u)` as an
+   `array_slice_node`, and ffc `9f26886` lowers the nested view through the
+   typed `session_program_lowering_character.f90` descendant. Its read,
+   literal-write, overlapping self-assignment, and assumed-length actual
+   argument are compared byte-for-byte with gfortran; the touched routines
+   are removed from the character and argument includes. Keep the focused
+   oracle pinned to that FortFront revision before corpus promotion.
    The accepted-side rejection gate for #663 is now a committed, runnable
    `scripts/corpus_rejection_gate.sh` plus `make check-rejection-gate` and an
    expectation-neutral FortFront baseline. It records one compile disposition
