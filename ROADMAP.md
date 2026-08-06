@@ -141,6 +141,14 @@ passing, rebased commit at a time, in this order.
    terminated by both processors without a coin-flip structural comparison.
    #628's dynamic `STATUS=` value path is also landed; retain its runtime
    regression while the remaining I/O families are extracted.
+   A bounded live audit of #576 at ffc `8ffc35e` (2026-08-07) split all 517
+   `fortfront-f90` cases and all 265 `fortfront-lf` cases into parallel chunks.
+   It found no emitted-program runtime segfault, but did reproduce one stable
+   compiler crash: `fortfront-lf/issue_2064_logical_return_inferred_as_integer.lf`
+   exits 139 from compile with signal 11 on three independent runs
+   (`crash_signature_sha256=700fd752c286a890...`). This remains a FAIL, never an
+   XFAIL/NOREF; reduce the logical-result inference path before changing the
+   corpus gate.
 5. Finish binding identity and module contracts: #584 plus the procedure,
    generic, external-unit, and Lazy-specialization issues that depend on it.
 6. Converge on one descriptor/expression/lifetime model: #337, #338, #348,
@@ -487,7 +495,9 @@ Architectural supersets guide implementation, not issue closure:
   emits it and #433 serializes it.
 - #478/#531 share measurement and timeout work. #532/#540 share one provenance
   refresh. Rebaseline the stale umbrellas #576/#609 and replace them with
-  exact live signatures.
+  exact live signatures. The current #576 signature is the deterministic
+  `issue_2064_logical_return_inferred_as_integer.lf` compile SIGSEGV recorded
+  above; its root-cause fix and an independent positive oracle are pending.
 
 ## Cross-repository gates
 
