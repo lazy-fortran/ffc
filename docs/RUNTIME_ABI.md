@@ -687,7 +687,7 @@ The complete runtime ABI. Adding an entry point means editing
 |---|---|---|
 | `_ffc_runtime_probe` | `int _ffc_runtime_probe(void)` | Returns 42. Lets a consumer confirm end to end that the runtime it linked or loaded really resolves. |
 | `_ffc_unit_newunit` | `int _ffc_unit_newunit(void)` | Lowest free unit at or above 1000, above anything a program names explicitly. Returns -1 and sets status 5005 when none is free. |
-| `_ffc_unit_open` | `int _ffc_unit_open(int unit, const char *path, int path_len, const char *status)` | Connects `unit`. `path_len` is the byte count of the Fortran `FILE=` value, whose trailing blanks are padding and are trimmed here. `status` is the lower-cased Fortran `STATUS=` value. A null, empty, or all-blank `path`, or `status` `scratch`, connects a temporary file removed on close. |
+| `_ffc_unit_open` | `int _ffc_unit_open(int unit, const char *path, int path_len, const char *status)` | Connects `unit`. `path_len` is the byte count of the Fortran `FILE=` value, whose trailing blanks are padding and are trimmed here. `status` is the current Fortran `STATUS=` character value; comparison is case-insensitive and ignores fixed-length trailing blanks. A null, empty, or all-blank `path`, or `status` `scratch`, connects a temporary file removed on close. |
 | `_ffc_unit_is_open` | `int _ffc_unit_is_open(int unit)` | 1 when the unit is connected, 0 otherwise. Never fails. |
 | `_ffc_unit_file` | `FILE *_ffc_unit_file(int unit)` | The stream behind a unit, connecting an unopened numeric unit to `fort.<N>` on first use. NULL only when the unit is unusable. |
 | `_ffc_unit_rewind` | `int _ffc_unit_rewind(int unit)` | Repositions to the first record. |

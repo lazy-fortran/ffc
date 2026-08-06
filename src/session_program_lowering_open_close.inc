@@ -8,7 +8,8 @@
     ! --- spec-text helpers ---------------------------------------------------
 
     subroutine parse_open_spec(spec, unit_str, newunit_var, file_path, &
-                                file_quoted, status_str, form_str, access_str, &
+                                file_quoted, status_str, status_quoted, &
+                                form_str, access_str, &
                                 sign_str, &
                                 iostat_var, iomsg_var, error_msg)
         ! Extract keyword values from an OPEN specifier-list text.
@@ -19,6 +20,7 @@
         character(len=:), allocatable, intent(out) :: file_path
         logical, intent(out) :: file_quoted
         character(len=:), allocatable, intent(out) :: status_str
+        logical, intent(out) :: status_quoted
         character(len=:), allocatable, intent(out) :: form_str
         character(len=:), allocatable, intent(out) :: access_str
         character(len=:), allocatable, intent(out) :: sign_str
@@ -36,6 +38,7 @@
         file_path = ''
         file_quoted = .false.
         status_str = ''
+        status_quoted = .false.
         form_str = ''
         access_str = ''
         sign_str = ''
@@ -109,6 +112,7 @@
                 file_quoted = val_quoted
             case ('status')
                 status_str = spec_lower(trim(val))
+                status_quoted = val_quoted
             case ('form')
                 form_str = spec_lower(trim(val))
             case ('access')
@@ -155,7 +159,7 @@
         character(len=:), allocatable :: iostat_var, iomsg_var
         type(lr_operand_desc_t) :: unit_op, args(4), status_op
         integer :: sym, ios, unit_number
-        logical :: file_quoted, unformatted
+        logical :: file_quoted, status_quoted, unformatted
 
         call set_empty(error_msg)
         if (.not. allocated(node%unit_spec)) then
@@ -165,8 +169,8 @@
         end if
 
         call parse_open_spec(node%unit_spec, ustr, nuvar, fpath, file_quoted, &
-                              sstr, formstr, accessstr, signstr, iostat_var, &
-                              iomsg_var, error_msg)
+                              sstr, status_quoted, formstr, accessstr, &
+                              signstr, iostat_var, iomsg_var, error_msg)
         if (len_trim(error_msg) > 0) return
         unformatted = trim(formstr) == 'unformatted' .or. &
                       (len_trim(formstr) == 0 .and. &
@@ -176,7 +180,7 @@
         ! F2018 12.5.6.12: OPEN with NEWUNIT= must also give FILE= or
         ! STATUS='SCRATCH'; without either there is nothing to connect to.
         if (len_trim(nuvar) > 0 .and. len_trim(fpath) == 0) then
-            if (trim(sstr) /= 'scratch') then
+            if (status_quoted .and. trim(sstr) /= 'scratch') then
                 error_msg = 'NEWUNIT specifier must have FILE= or '// &
                     'STATUS=''SCRATCH'' in OPEN statement'
                 return
@@ -238,7 +242,7 @@
         call open_file_operands(context, fpath, file_quoted, args(2), args(3), &
                                 error_msg)
         if (len_trim(error_msg) > 0) return
-        call unit_string_operand(context, 'open.status.', trim(sstr), args(4), &
+        call open_status_operand(context, trim(sstr), status_quoted, args(4), &
                                  error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_i32_call(context%session, '_ffc_unit_open', args, &
@@ -250,6 +254,39 @@
         if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine lower_open
+
+    subroutine open_status_operand(context, status_text, status_quoted, &
+                                   status_op, error_msg)
+        ! STATUS= may be a character expression. Literal values are emitted as
+        ! globals; a variable must pass its current character buffer so the
+        ! runtime sees its value rather than the variable's spelling (#628).
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: status_text
+        logical, intent(in) :: status_quoted
+        type(lr_operand_desc_t), intent(out) :: status_op
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: sym
+        type(lr_operand_desc_t) :: unused_length
+
+        call set_empty(error_msg)
+        if (status_quoted .or. len_trim(status_text) == 0) then
+            call unit_string_operand(context, 'open.status.', status_text, &
+                                     status_op, error_msg)
+            return
+        end if
+        sym = find_symbol_compat(context, trim(status_text))
+        if (sym <= 0) then
+            error_msg = 'open status= variable not declared: '//trim(status_text)
+            return
+        end if
+        if (context%symbols(sym)%value_kind /= VALUE_CHARACTER) then
+            error_msg = 'open status= requires a character value: '// &
+                trim(status_text)
+            return
+        end if
+        call char_length_operands(context, sym, status_op, unused_length, &
+                                   error_msg)
+    end subroutine open_status_operand
 
     subroutine open_file_operands(context, fpath, file_quoted, data_op, len_op, &
                                   error_msg)
