@@ -133,8 +133,15 @@ passing, rebased commit at a time, in this order.
    gate while the remaining I/O slices are migrated.
 4. Stop silent wrong code and nondeterminism. #671's binding-keyed host
    storage fix and #673's fixed-intrinsic FORALL snapshot are landed with
-   gfortran oracles; continue with #626, #649, then the remaining crashes in
-   #576. #649's character MINLOC/MAXLOC path now compares complete
+   gfortran oracles; #626's nested-DO tail now has an end-to-end ffc oracle and
+   is green against FortFront `f3ab76ba` or newer. That FortFront parser fix
+   replaces the faulty per-construct span scanners with one case-insensitive
+   terminator scanner, so a two-word `end do` closes exactly once and cannot
+   absorb statements after a nested loop. Keep the ffc regression
+   `test_session_nested_do_tail_compiler` in every locked epoch; do not add an
+   ffc filename/order workaround. Close the tracker only after the dependency
+   pin and current-head CI prove the same behavior. Continue with #649, then
+   the remaining crashes in #576. #649's character MINLOC/MAXLOC path now compares complete
    blank-padded values and preserves first-match/mask semantics; its
    `minmaxloc_11.f90` XFAIL is removed. The RANDOM_NUMBER branch fixture is
    explicitly `nondeterministic-runtime-value` NOREF, so it is built and
