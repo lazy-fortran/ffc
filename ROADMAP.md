@@ -39,8 +39,8 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The implementation baselines for this gate are `ffc` `935fd5d` (schema-v2
-provenance plus the allocatable-descriptor submodule), FortFront
+The implementation baselines for this gate are `ffc` `06ebfc4` (schema-v2
+provenance, action epochs, and the allocatable-descriptor submodule), FortFront
 `9a3a7a50`, fo `32ef96d`, and LIRIC `3facb898`. The code baselines are not
 green: ffc and fo still lack a completed current-head suite, while FortFront's
 latest completed run failed. The ffc focused observation gate is green locally;
