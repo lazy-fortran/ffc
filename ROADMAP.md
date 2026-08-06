@@ -40,15 +40,14 @@ uncertainty.
 ## Audited state: do not infer a percentage
 
 The implementation baselines for this gate are `ffc` `5f13422`, FortFront
-`ac02b4d0`, fo `32ef96d`, and LIRIC `3facb898`; the current roadmap tips are
-`8d92ba6`, `5676f6e4`, `220bbb8`, and `14ca403` respectively. The code
-baselines are not green: ffc and fo still lack a completed current-head suite,
-while FortFront's latest completed run failed; the latter commits are
-documentation-only updates.
+`ac02b4d0`, fo `32ef96d`, and LIRIC `3facb898`. The roadmap edits are
+documentation-only updates layered on those baselines. The code baselines are
+not green: ffc and fo still lack a completed current-head suite, while
+FortFront's latest completed run failed.
 The last checked ffc parent was `61cbceb` (CI run 30807386910, red for the
-GCC14 submodule-link and formatting gates); the last checked FortFront parent
-was `ac02b4d0` (run 31127135731, Windows/aggregate failed and Ubuntu
-cancelled); and
+GCC14 submodule-link and formatting gates); the latest checked FortFront
+implementation was `ac02b4d0` (run 31127135731, Windows/aggregate failed and
+Ubuntu cancelled); and
 the last checked fo ancestor was `e3cff007` (run 31122586327, failed/cancelled).
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
@@ -69,9 +68,8 @@ The current state is not a valid parity baseline:
   rows, and 2,303 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
 - There are 70 tracked production `.inc` files containing 79,155 lines. The
-  5,073-line host module has 44 direct include sites. Another 323 calls use
-  `find_symbol_compat` (322 invocation sites), compared with 12
-  binding-keyed lookup sites.
+  5,073-line host module has 44 direct include sites. Another 322 invocation
+  sites use `find_symbol_compat`, compared with 12 binding-keyed lookup sites.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
   and [#677](https://github.com/lazy-fortran/ffc/pull/677), conflict with main
   and have failed checks. Replace their still-needed work with small current
@@ -91,7 +89,7 @@ passing, rebased commit at a time, in this order.
    fo/format gates blocking.
 2. #531's shared immutable-arena context, benchmark provenance, orphan-include
    deletion, and behavior/resource oracle are landed through `ffc` `5f13422`;
-   keep the measured regression gate blocking before the census.
+   make the measured benchmark regression gate blocking before the census.
 3. Repair observation and classification: record one immutable result per
    case, classify it offline, fix timeout/phase reporting, add the rejection
    gate, revalidate owners, and run one full provenance census.
