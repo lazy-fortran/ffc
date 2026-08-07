@@ -39,9 +39,10 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `cc91e32` (main
+The current implementation heads for this gate are ffc `48d68e4` (main
 runtime-synchronized baseline with typed inferred-symbol, array-shape, ISO
-C-pointer, TRANSFER, and integer lowering extraction, the GCC14
+C-pointer, TRANSFER, integer, BLOCK/DO CONCURRENT, DO WHILE, and GOTO
+lowering extraction, the GCC14
 descendant-link export fix, the integer(8) external-call guard, and the
 bare-DIMENSION host export repair), FortFront `c0a32743`
 (semantic code baseline, with separate module-procedure dummy resolution, explicit semantic
@@ -71,8 +72,9 @@ the explicit host exports. FortFront merge CI is tracked against current main
 checked ancestor is `e1751bc`; and the merged ffc extraction commits are
 inferred symbols `240b84e`, ISO C pointers `aab7ef9`, and TRANSFER `a8f788c`,
 with the integer(8) guard `7dc6059`, bare-DIMENSION export repair `f7adff5`,
-rank-1 deep-copy `b0b7775`, and typed integer lowering `cc91e32` on current
-ffc main. No aggregate PASS is claimed.
+rank-1 deep-copy `b0b7775`, typed integer lowering `cc91e32`, and structured
+control leaves through `48d68e4` on current ffc main. No aggregate PASS is
+claimed.
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
 `395e3d8131c189cd58e8c8061cdc77d1c44e3822`.
@@ -128,7 +130,7 @@ The current state is not a valid parity baseline:
   set under `/var/tmp/ert/ffc-31142048669-failed.log` for the next locked
   baseline comparison.
 - The integer(8) transfer/function crash cluster from that run is fixed on
-  current main by ffc `cc91e32` (the guard itself landed as `7dc6059`, rebased
+  current main by ffc `48d68e4` (the guard itself landed as `7dc6059`, rebased
   onto c_ptr extraction `aab7ef9`).
   `lower_i64_expression` and `lower_i64_call` previously relied on C-like
   short-circuit evaluation: a contained or module procedure with no external
@@ -183,8 +185,8 @@ The current state is not a valid parity baseline:
 - Current manifests contain 5,527 XFAIL rows, 288 FAIL-owner rows, 12 NOREF
   rows, and 2,305 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
-- There are 64 tracked production `.inc` files containing 76,199 lines. The
-  5,219-line host module has 37 direct include sites. Another 330 invocation
+- There are 61 tracked production `.inc` files containing 75,708 lines. The
+  5,219-line host module has 34 direct include sites. Another 330 invocation
   sites use `find_symbol_compat`, compared with 12 binding-keyed lookup sites.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
   and [#677](https://github.com/lazy-fortran/ffc/pull/677), conflict with main
@@ -455,7 +457,7 @@ gone. The new `test_session_inferred_module_compiler` compiles and runs the
 same accepted Lazy fragment with ffc and gfortran, comparing output; the
 existing inferred integer/logical/real and Lazy array/derived/function tests
 remain green in the focused shard. PR #689 merged as `240b84e` and is included
-in the current ffc main `cc91e32`; its latest full CI observation is run
+in the current ffc main `48d68e4`; its latest full CI observation is run
 `31142048669`.
 The oracle creates its scoped `/var/tmp/ert` workspace before emitting artifacts,
 so clean CI runners and remote probes share the same test-workspace contract.
@@ -508,8 +510,20 @@ formatter/full-suite baseline). The post-merge current-head run
 [31148890868](https://github.com/lazy-fortran/ffc/actions/runs/31148890868)
 was cancelled before `build + fpm test` completed to avoid a duplicate full
 corpus run; no aggregate PASS is claimed.
-After this extraction, the ffc source inventory is 64 tracked `.inc` files
-containing 76,199 lines; no aggregate corpus PASS is claimed.
+After this extraction, the inventory was 64 tracked `.inc` files containing
+76,199 lines; the structured-control wave below subsequently reduced it to 61
+files / 75,708 lines. No aggregate corpus PASS is claimed.
+
+The structured-control leaf wave is merged: BLOCK/DO CONCURRENT extraction
+`0663b2d` removes the 47-line include with a typed module and explicit parent
+exports; DO WHILE extraction `e36fbe3` removes its include and adds a focused
+GCC differential oracle; and GOTO extraction `92dac2e` removes its include and
+passes a byte-identical GCC differential. Clean local builds cover 445/445,
+446/446, and 447/447 units respectively. The follow-up export repair
+`48d68e4` removes a duplicate `lower_statement_list` access specification and
+restores the current-main 446/446 cold build. Their PR CI jobs were cancelled
+by merge/concurrency after local cold-link gates passed; no XFAIL or aggregate
+PASS is claimed.
 
 Extract the remaining leaves in this order:
 
@@ -523,8 +537,8 @@ while refactoring call evaluation.
 
 ### Wave 3A: structured control
 
-`block_concurrent` (47), `do_while` (157), `goto` (343), `control` (395),
-`associate` (440), `loops` (660), `select` (1,365), `where` (1,275), and
+`control` (395), `associate` (440), `loops` (660), `select` (1,365),
+`where` (1,275), and
 `forall` (159).
 
 The loop/control slice includes #626 and #671 fall-through/termination
