@@ -143,6 +143,14 @@ The current state is not a valid parity baseline:
   PASS: the last completed merge observation still records the known fo #117
   formatter mismatch and fpm/corpus failures; current-head run `31144484273`
   is still waiting for its build/fpm job.
+
+- FortFront corpus case `issue_2848_dimension_statement.f90` is now traced to
+  the ffc provider boundary: lazy-inserted declarations and bare `DIMENSION`
+  nodes were incorrectly treated as explicit, so no inferred scalar/array
+  storage was available. The focused branch fix defers the bare-array alloca
+  until the active main block and compares the emitted exit status with
+  gfortran; promote the row only after the rebased gauntlet removes its XFAIL
+  and the focused regression remains green.
 - FortFront's strict `IMPLICIT NONE` gate had a second GCC14 portability
   defect: `INTENT(OUT)` context construction did not portably apply default
   component initialization. FortFront `229f5f11` assigns the mode policy

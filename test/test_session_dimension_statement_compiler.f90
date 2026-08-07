@@ -1,5 +1,6 @@
 program test_session_dimension_statement_compiler
     use ffc_test_support, only: expect_exit_status
+    use fortfront_compiler, only: INPUT_MODE_LAZY
     implicit none
 
     print *, '=== DIMENSION statement separate from type declaration ==='
@@ -18,6 +19,15 @@ program test_session_dimension_statement_compiler
         '    if (abs(arr(3) - 4.0d0) > 1.0d-9) error stop'//new_line('a')// &
         'end program', 0, &
         '/tmp/ffc_session_dimension_statement_test')) stop 1
+
+    ! A standalone DIMENSION also supplies the only declaration. Its implicit
+    ! real array must be materialized when the executable body becomes active;
+    ! gfortran accepts this standard source and exits normally (#2848).
+    if (.not. expect_exit_status( &
+        'dimension values(5)'//new_line('a')// &
+        'values(1) = 1.0'//new_line('a')// &
+        'end', 0, '/tmp/ffc_session_dimension_statement_implicit_test', &
+        INPUT_MODE_LAZY)) stop 1
 
     print *, 'PASS: DIMENSION statement merges with typed declaration'
 end program test_session_dimension_statement_compiler
