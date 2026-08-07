@@ -1,3 +1,6 @@
+submodule (session_program_lowering_impl) session_program_lowering_select
+    implicit none
+contains
     subroutine lower_select_case(arena, node, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(select_case_node), intent(in) :: node
@@ -1363,3 +1366,5 @@
                         'and logical for class(*): '//trim(type_spec)
         end select
     end subroutine class_star_type_spec
+
+end submodule session_program_lowering_select

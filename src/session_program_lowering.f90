@@ -483,6 +483,16 @@ module session_program_lowering_impl
     public :: lower_elementwise_user_call
     public :: lower_elementwise_type_bound_user_call
     public :: is_elemental_minmax_call, lower_elementwise_minmax_call
+    public :: lower_select_case, lower_select_type, lower_select_type_default
+    public :: lower_select_rank, allocate_targets_class_star
+    public :: lower_class_star_allocate
+    public :: snapshot_symbols, restore_symbols, capture_select_result
+    public :: finish_select_merge
+    public :: select_type_capture_arm, select_type_guard_body
+    public :: select_type_selector_is_runtime_polymorphic
+    public :: select_type_selector_is_monomorphic
+    public :: lower_select_type_runtime, lower_select_type_derived
+    public :: char_equals, char_compare
     public :: materialize_scalar_associate_source, associate_selector_is_array
     public :: associate_symbol_slot, bind_associate_array_section
     public :: bind_associate_component, bind_associate_alloc_array_component
@@ -3474,6 +3484,90 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_forall_masked_body
     end interface
+    ! SELECT CASE/TYPE/RANK lowering lives in a typed descendant. Keep the
+    ! entry points and class(*) allocation helper explicit so cold submodule
+    ! builds do not depend on textual host association.
+    interface
+        module subroutine lower_select_case(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(select_case_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_select_case
+        module subroutine lower_select_type(arena, node_index, context, &
+                                            error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_select_type
+        module subroutine lower_select_type_default(arena, default_index, &
+                                                    context, terminated, &
+                                                    error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: default_index
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(out) :: terminated
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_select_type_default
+        module subroutine lower_select_rank(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(select_rank_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_select_rank
+        module function allocate_targets_class_star(arena, node, context)
+            logical :: allocate_targets_class_star
+            type(ast_arena_t), intent(in) :: arena
+            type(allocate_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+        end function allocate_targets_class_star
+        module subroutine lower_class_star_allocate(arena, node, context, &
+                                                    error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(allocate_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_class_star_allocate
+        module subroutine snapshot_symbols(context, baseline, baseline_count)
+            type(lowering_context_t), intent(in) :: context
+            type(symbol_t), allocatable, intent(out) :: baseline(:)
+            integer, intent(out) :: baseline_count
+        end subroutine snapshot_symbols
+        module subroutine restore_symbols(context, baseline, baseline_count)
+            type(lowering_context_t), intent(inout) :: context
+            type(symbol_t), intent(in) :: baseline(:)
+            integer, intent(in) :: baseline_count
+        end subroutine restore_symbols
+        module subroutine capture_select_result(context, terminated, result)
+            type(lowering_context_t), intent(in) :: context
+            logical, intent(in) :: terminated
+            type(branch_result_t), intent(out) :: result
+        end subroutine capture_select_result
+        module subroutine finish_select_merge(context, merge_block, results, &
+                                              nresults, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer(c_int32_t), intent(in) :: merge_block
+            type(branch_result_t), intent(in) :: results(:)
+            integer, intent(in) :: nresults
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine finish_select_merge
+        module subroutine select_type_capture_arm(context, baseline, &
+                                                   baseline_count, terminated, &
+                                                   result, captured)
+            type(lowering_context_t), intent(inout) :: context
+            type(symbol_t), intent(in) :: baseline(:)
+            integer, intent(in) :: baseline_count
+            logical, intent(in) :: terminated
+            type(branch_result_t), intent(out) :: result
+            logical, intent(out) :: captured
+        end subroutine select_type_capture_arm
+        module subroutine select_type_guard_body(arena, guard_index, body)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: guard_index
+            integer, allocatable, intent(out) :: body(:)
+        end subroutine select_type_guard_body
+    end interface
     interface
         module subroutine lower_associate(arena, node, node_index, context, &
                                           error_msg)
@@ -6380,5 +6474,4 @@ contains
         end do
     end function lowercase_text
 
-    include 'session_program_lowering_select.inc'
 end module session_program_lowering_impl
