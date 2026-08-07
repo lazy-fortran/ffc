@@ -457,6 +457,7 @@ module session_program_lowering_impl
     public :: lower_c_ptr_expression, lower_c_loc
     public :: c_f_pointer_shape_extents, associate_c_f_pointer_array
     public :: lower_c_associated, lower_c_f_pointer
+    public :: make_reference_argument
 
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from
