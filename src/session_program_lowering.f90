@@ -420,6 +420,15 @@ module session_program_lowering_impl
     public :: const_expr_reason, call_const_reason
     public :: identifier_const_reason, shape_inquiry_reason
     public :: arena_has_function_def_named
+    ! Helpers referenced by descendants extracted after the initial GCC-14
+    ! visibility pass above. Keep these explicit so gfortran-14 emits
+    ! externally linkable definitions instead of local symbols.
+    public :: assign_i32_to_symbol, char_length_operands, define_symbol
+    public :: expression_value_kind, file_unit_pseudo_name, identifier_name
+    public :: io_control_value, is_character_array_element
+    public :: lower_i16_expression, lower_i64_expression
+    public :: lower_i8_expression, ptr_plus_i32
+    public :: reject_constant_substring_overrun, runtime_local_array_kind_ok
 
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from
