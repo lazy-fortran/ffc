@@ -84,10 +84,17 @@
         source_index = find_symbol_compat(context, source_name)
         if (source_index <= 0) return
         if (.not. context%symbols(source_index)%is_derived) return
-        if (context%symbols(source_index)%is_array) return
         type_index = context%symbols(symbol_index)%derived_type_index
         if (type_index <= 0 .or. context%symbols(source_index)%derived_type_index &
             /= type_index) return
+
+        if (context%symbols(source_index)%is_array) then
+            if (context%symbols(source_index)%is_allocatable) then
+                call lower_derived_alloc_array_copy(arena, node, context, &
+                    symbol_index, source_index, handled, error_msg)
+            end if
+            return
+        end if
 
         slots = total_component_slots(context, type_index)
         if (slots <= 0) return
@@ -160,6 +167,154 @@
         handled = .true.
         call set_empty(error_msg)
     end subroutine lower_derived_array_whole_assignment
+
+    subroutine lower_derived_alloc_array_copy(arena, node, context, target_index, &
+                                               source_index, handled, error_msg)
+        ! Copy one rank-1 allocatable derived array into another.  The target
+        ! receives the source descriptor shape and a fresh data block; each
+        ! element is copied by value and allocatable components are re-owned by
+        ! deep_copy_derived_array_element_components.  This is deliberately a
+        ! descriptor-level path rather than a fixed-size array expression so a
+        ! runtime source extent does not become a compiler-time assumption.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: target_index, source_index
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: source_desc, target_desc
+        type(lr_operand_desc_t) :: source_data, old_target_data, target_data
+        type(lr_operand_desc_t) :: extent64, lower64, extent32
+        type(lr_operand_desc_t) :: element_bytes, index64, byte_offset
+        type(lr_operand_desc_t) :: source_element, target_element
+        type(lr_operand_desc_t) :: entry_index, header_index, next_index
+        type(lr_operand_desc_t) :: condition
+        integer(c_int32_t) :: entry_block, header_block, body_block
+        integer(c_int32_t) :: latch_block, exit_block, index_vreg
+        integer :: type_index, slots
+        logical :: has_alloc_component
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (context%symbols(target_index)%array_rank /= 1 .or. &
+            context%symbols(source_index)%array_rank /= 1) return
+        if (.not. context%symbols(target_index)%is_allocatable .or. &
+            .not. context%symbols(source_index)%is_allocatable) return
+        if (target_index == source_index) then
+            ! Intrinsic self-assignment is a no-op, including the descriptor.
+            handled = .true.
+            return
+        end if
+        type_index = context%symbols(target_index)%derived_type_index
+        if (type_index <= 0) return
+        slots = total_component_slots(context, type_index)
+        if (slots <= 0) return
+
+        source_desc = context%symbols(source_index)% &
+            allocatable_descriptor_address
+        target_desc = context%symbols(target_index)% &
+            allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, source_desc, source_data, &
+                                error_msg)) return
+        if (.not. emit_i64_load_at(context%session, source_desc, &
+                alloc_desc_dim_offset(1, int(ARRAY_DIMENSION_EXTENT_OFFSET, &
+                c_int64_t)), extent64, error_msg)) return
+        if (.not. emit_i64_load_at(context%session, source_desc, &
+                alloc_desc_dim_offset(1, int(ARRAY_DIMENSION_LOWER_OFFSET, &
+                c_int64_t)), lower64, error_msg)) return
+
+        ! Assignment to an allocated target first releases its old outer block.
+        ! A fresh zeroed block means allocatable component descriptors are null
+        ! before the per-element copy re-owns any source component storage.
+        if (.not. emit_ptr_load(context%session, target_desc, old_target_data, &
+                                error_msg)) return
+        if (.not. emit_free(context%session, old_target_data, error_msg)) return
+        element_bytes = i64_immediate(context%session, &
+            int(slots, c_int64_t) * 4_c_int64_t)
+        has_alloc_component = .false.
+        block
+            integer :: c
+            do c = 1, context%derived_types(type_index)%component_count
+                if (component_is_allocatable(context, type_index, c) .or. &
+                    component_is_alloc_array(context, type_index, c)) then
+                    has_alloc_component = .true.
+                    exit
+                end if
+            end do
+        end block
+        if (has_alloc_component) then
+            if (.not. emit_calloc(context%session, extent64, element_bytes, &
+                                  target_data, error_msg)) return
+        else
+            if (.not. emit_malloc(context%session, extent64, target_data, &
+                                  error_msg, elem_size=element_bytes)) return
+        end if
+        if (.not. emit_ptr_store(context%session, target_data, target_desc, &
+                                 error_msg)) return
+        context%symbols(target_index)%element_address = target_data
+        call emit_alloc_desc_allocate_shape(context, target_desc, VALUE_DERIVED, 1, &
+            [extent64], error_msg, lowers_i64=[lower64], &
+            element_bytes=int(slots, c_int64_t) * 4_c_int64_t)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_liric_i64_to_i32(context%session, extent64, extent32, &
+                                        error_msg)) return
+        entry_index = i32_immediate(context%session, 0_c_int64_t)
+        entry_block = context%current_block_id
+        header_block = create_liric_block(context%session)
+        body_block = create_liric_block(context%session)
+        latch_block = create_liric_block(context%session)
+        exit_block = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, header_block, error_msg)) return
+        context%current_block_id = header_block
+        context%current_block_terminated = .false.
+        index_vreg = reserve_i32_vreg(context%session)
+        if (index_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve a derived array copy index'
+            return
+        end if
+        index64 = i32_vreg(context%session, index_vreg)
+        if (.not. emit_liric_i32_phi(context%session, entry_index, entry_block, &
+                index64, latch_block, header_index, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_index, &
+                extent32, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, body_block, &
+                                    exit_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, body_block, error_msg)) return
+        context%current_block_id = body_block
+        context%current_block_terminated = .false.
+        if (.not. emit_liric_i32_to_i64(context%session, header_index, index64, &
+                                        error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, index64, &
+                element_bytes, byte_offset, error_msg)) return
+        if (.not. emit_ptr_offset_dyn(context%session, source_data, byte_offset, &
+                                      source_element, error_msg)) return
+        if (.not. emit_ptr_offset_dyn(context%session, target_data, byte_offset, &
+                                      target_element, error_msg)) return
+        if (.not. emit_memcpy(context%session, target_element, source_element, &
+                              element_bytes, error_msg)) return
+        call deep_copy_derived_array_element_components(context, target_element, &
+            source_element, type_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+        context%current_block_id = latch_block
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_index, &
+                i32_immediate(context%session, 1_c_int64_t), index_vreg, &
+                next_index, error_msg)) return
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, exit_block, error_msg)) return
+        context%current_block_id = exit_block
+        context%current_block_terminated = .false.
+        handled = .true.
+        call set_empty(error_msg)
+    end subroutine lower_derived_alloc_array_copy
 
     subroutine release_derived_array_element_components(context, element_address, &
                                                         type_index, error_msg)
