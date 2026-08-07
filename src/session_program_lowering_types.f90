@@ -315,6 +315,9 @@ module session_program_lowering_types
         ! built. dynamic_type_address is the address of that descriptor's
         ! dynamic_type field; class_descriptor_address is the descriptor base.
         logical :: is_polymorphic = .false.
+        ! A class(t), pointer declaration has unresolved runtime dispatch but
+        ! does not use the scalar class descriptor lowering above.
+        logical :: is_class_pointer = .false.
         logical :: has_dynamic_type_address = .false.
         type(lr_operand_desc_t) :: dynamic_type_address
         type(lr_operand_desc_t) :: class_descriptor_address

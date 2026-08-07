@@ -142,11 +142,23 @@
         ! A plain class(t) scalar takes the class descriptor here. A class
         ! allocatable also carries one, but it is bound at its own declaration
         ! path (#421) because its storage is deferred until ALLOCATE; a class
-        ! pointer likewise has a runtime dynamic type, even though pointer
-        ! dispatch is not lowered by the static type-bound slice.
+        ! pointer is deliberately kept out of this descriptor path.
         if (node%is_allocatable) return
+        if (node%is_pointer) return
         declaration_is_class_polymorphic = is_class_derived_type_spec(node%type_name)
     end function declaration_is_class_polymorphic
+
+    logical function declaration_is_class_pointer(node)
+        ! True only for a pointer declared as class(t). This records the
+        ! unresolved dispatch case without routing the pointer through the
+        ! scalar class descriptor lowering.
+        type(declaration_node), intent(in) :: node
+
+        declaration_is_class_pointer = .false.
+        if (.not. node%is_pointer) return
+        if (.not. allocated(node%type_name)) return
+        declaration_is_class_pointer = is_class_derived_type_spec(node%type_name)
+    end function declaration_is_class_pointer
 
     logical function is_class_derived_type_spec(type_spec)
         ! True for class(t) naming a derived type t, i.e. a polymorphic scalar

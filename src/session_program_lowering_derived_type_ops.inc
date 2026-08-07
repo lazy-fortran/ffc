@@ -1191,6 +1191,9 @@
                 if (node%is_pointer) then
                     context%symbols(index)%is_pointer = .true.
                     context%symbols(index)%is_associated = .false.
+                    if (declaration_is_class_pointer(node)) then
+                        context%symbols(index)%is_class_pointer = .true.
+                    end if
                 end if
                 call set_empty(error_msg)
                 return
@@ -1235,8 +1238,8 @@
             context%symbols(index)%is_pointer = .true.
             context%symbols(index)%is_associated = .false.
         end if
-        if (declaration_is_class_polymorphic(node)) then
-            context%symbols(index)%is_polymorphic = .true.
+        if (declaration_is_class_pointer(node)) then
+            context%symbols(index)%is_class_pointer = .true.
         end if
         if (node%is_target) context%symbols(index)%is_target = .true.
 
@@ -1845,8 +1848,7 @@
         symbol_index = find_symbol_compat(context, var_name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_derived) return
-        if (context%symbols(symbol_index)%is_polymorphic .and. &
-            context%symbols(symbol_index)%is_pointer) then
+        if (context%symbols(symbol_index)%is_class_pointer) then
             error_msg = 'unresolved dynamic dispatch for type-bound procedure "'// &
                 trim(method_name)//'" through a polymorphic pointer receiver'
             return
@@ -2254,8 +2256,7 @@
         call resolve_named_derived_instance(context, var_name, receiver_addr, &
             type_index, symbol_index, nested_receiver, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (context%symbols(symbol_index)%is_polymorphic .and. &
-            context%symbols(symbol_index)%is_pointer) then
+        if (context%symbols(symbol_index)%is_class_pointer) then
             error_msg = 'unresolved dynamic dispatch for type-bound procedure "'// &
                 trim(method_name)//'" through a polymorphic pointer receiver'
             return
