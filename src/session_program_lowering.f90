@@ -470,6 +470,11 @@ module session_program_lowering_impl
     public :: lower_kind_intrinsic, lower_i32_array_element
     public :: lower_do_loop, lower_statement_list
     public :: push_storage_scope, pop_storage_scope
+    public :: body_has_statement_labels, is_executable_body_node
+    public :: lower_labeled_program_body, lower_declaration_region_node
+    public :: promote_scalars_to_memory, build_label_table, find_label_block
+    public :: lower_labeled_executables, lower_goto, lower_computed_goto
+    public :: is_internal_procedure_entry, lower_statement
     public :: call_emit_name, copy_back_reference_args, eval_kind_of_arg
     public :: degeneric_call_name, fold_named_constant_at_node
     public :: integer_opcode
@@ -479,7 +484,7 @@ module session_program_lowering_impl
     public :: collect_carried_symbols, reserve_backedge_value
     public :: carried_backedge_operand, emit_carried_phi, emit_carried_copy
     public :: begin_loop_exit_tracking, end_loop_exit_tracking
-    public :: merge_loop_exit_values, lower_statement_list
+    public :: merge_loop_exit_values
     public :: is_contained_i32_function, is_proc_pointer_call
     public :: is_statement_function_call, is_type_bound_method_call
     public :: lower_array_locate_intrinsic, lower_array_reduction_intrinsic
@@ -3202,6 +3207,73 @@ module session_program_lowering_impl
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_do_concurrent
+        module function body_has_statement_labels(arena, body_indices)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: body_indices(:)
+            logical :: body_has_statement_labels
+        end function body_has_statement_labels
+        module function is_executable_body_node(arena, node_index)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            logical :: is_executable_body_node
+        end function is_executable_body_node
+        module subroutine lower_labeled_program_body(arena, body_indices, &
+                                                     has_nested_program, context, &
+                                                     value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: body_indices(:)
+            logical, intent(in) :: has_nested_program
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_labeled_program_body
+        module function lower_declaration_region_node(arena, node_index, &
+                                                      has_nested_program, context, &
+                                                      value, error_msg) result(ok)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            logical, intent(in) :: has_nested_program
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(inout) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical :: ok
+        end function lower_declaration_region_node
+        module subroutine promote_scalars_to_memory(context, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine promote_scalars_to_memory
+        module subroutine build_label_table(arena, exec_indices, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: exec_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine build_label_table
+        module function find_label_block(context, label, found)
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: label
+            logical, intent(out) :: found
+            integer(c_int32_t) :: find_label_block
+        end function find_label_block
+        module subroutine lower_labeled_executables(arena, exec_indices, context, &
+                                                    value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: exec_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_labeled_executables
+        module subroutine lower_goto(arena, node_index, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_goto
+        module subroutine lower_computed_goto(arena, node_index, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_computed_goto
     end interface
 contains
     include 'session_program_lowering_top.inc'
