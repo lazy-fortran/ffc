@@ -55,9 +55,9 @@ the checked-in parity snapshot remains stale and is not a release baseline.
 The final local `fo` gate at `10b2af1` built 435/435 units and ran 350 tests;
 the observation smoke passed and the run retains 26 named pre-existing
 compiler/dashboard failures. That exit is not a clean release gate.
-The current ffc merge CI is [run 31138820207](https://github.com/lazy-fortran/ffc/actions/runs/31138820207)
-(in progress at this snapshot; its independent `fo fmt --check` job has
-failed and the GCC14 build/test job is still running).
+The current ffc merge CI is [run 31139398939](https://github.com/lazy-fortran/ffc/actions/runs/31139398939)
+(completed with the build passing but the independent `fo fmt --check` and
+fpm test jobs failing; the run log is the authoritative failure inventory).
 FortFront merge CI is [run 31138641474](https://github.com/lazy-fortran/fortfront/actions/runs/31138641474)
 (in progress for current main `a1d07243`); and
 the last checked fo ancestor was `e3cff007` (run 31122586327, failed/cancelled).
@@ -86,6 +86,12 @@ The current state is not a valid parity baseline:
   mass rewrite or CI bypass is accepted before #117's independent oracle and
   a reviewed ffc formatting sweep. Keep this gate recorded as FAIL until that
   evidence exists.
+- Run 31139398939 also exposed a generated-runtime synchronization defect:
+  `runtime/ffc_runtime.c` had changed while `src/ffc_runtime_source.f90` had
+  not been regenerated. This branch regenerates the embedded source with
+  `scripts/generate_runtime_source.sh`; the existing `test_runtime_link_compiler`
+  behavioral oracle remains mandatory and checks byte identity, strict C11
+  compilation, declared symbols, and execution through the emitted runtime.
 - FortFront's strict `IMPLICIT NONE` gate had a second GCC14 portability
   defect: `INTENT(OUT)` context construction did not portably apply default
   component initialization. FortFront `229f5f11` assigns the mode policy
