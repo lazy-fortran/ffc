@@ -539,6 +539,8 @@ module session_program_lowering_impl
     public :: lower_i32_len_intrinsic, lower_i32_len_trim_intrinsic
     public :: lower_i32_proc_ptr_call, lower_iachar_intrinsic
     public :: lower_index_intrinsic, lower_lbound_intrinsic
+    public :: lower_comparison_mask_element, lower_repeat_deferred
+    public :: lower_f32_real_conversion, lower_f64_real_conversion
     public :: lower_logical_array_all_intrinsic
     public :: lower_logical_array_any_intrinsic
     public :: lower_logical_array_count_intrinsic, lower_method_call_i32
@@ -546,6 +548,8 @@ module session_program_lowering_impl
     public :: lower_scan_intrinsic, lower_statement_function_call
     public :: lower_ubound_intrinsic
     public :: lower_verify_intrinsic, overloaded_operator_slot
+    public :: is_logical_reduction_call, real_compare_predicate
+    public :: resolve_comparison_mask, try_alloc_component_mask_reduction
     public :: parse_i32_literal, prepare_reference_args
     public :: reject_monomorphized_call, set_empty
     public :: unsupported_array_subscript, unsupported_intrinsic_error
@@ -3843,6 +3847,235 @@ module session_program_lowering_impl
             integer, allocatable, intent(out) :: body(:)
         end subroutine select_type_guard_body
     end interface
+    ! Additional intrinsic lowering lives in a typed descendant.  Keep the
+    ! complete contracts here so the host implementation and cold submodule
+    ! links agree without textual include fragments.
+    interface
+        module subroutine lower_lbound_intrinsic(arena, node, context, value, &
+                                                 error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_lbound_intrinsic
+        module subroutine lower_ubound_intrinsic(arena, node, context, value, &
+                                                 error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_ubound_intrinsic
+        module subroutine resolve_comparison_mask(arena, node_index, context, &
+                                                   mask_sym, scalar_index, &
+                                                   array_on_left, source_op, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(out) :: mask_sym
+            integer, intent(out) :: scalar_index
+            logical, intent(out) :: array_on_left
+            character(len=:), allocatable, intent(out) :: source_op
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine resolve_comparison_mask
+        module subroutine lower_comparison_mask_element(context, mask_sym, &
+                                                         scalar_index, &
+                                                         array_on_left, source_op, &
+                                                         arena, linear_index, value, &
+                                                         error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: mask_sym
+            integer, intent(in) :: scalar_index
+            logical, intent(in) :: array_on_left
+            character(len=*), intent(in) :: source_op
+            type(ast_arena_t), intent(in) :: arena
+            integer(c_int64_t), intent(in) :: linear_index
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_comparison_mask_element
+        module subroutine real_compare_predicate(source_op, predicate, error_msg)
+            character(len=*), intent(in) :: source_op
+            integer(c_int), intent(out) :: predicate
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine real_compare_predicate
+        module function is_logical_reduction_call(arena, node_index, context) &
+            result(is_call)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_call
+        end function is_logical_reduction_call
+        module subroutine lower_logical_array_count_intrinsic(arena, node, &
+                                                              context, value, &
+                                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_logical_array_count_intrinsic
+        module subroutine lower_logical_array_any_intrinsic(arena, node, context, &
+                                                            value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_logical_array_any_intrinsic
+        module subroutine lower_logical_array_all_intrinsic(arena, node, context, &
+                                                            value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_logical_array_all_intrinsic
+        module subroutine try_alloc_component_mask_reduction(arena, node, context, &
+                                                             is_all, handled, value, &
+                                                             error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: is_all
+            logical, intent(out) :: handled
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine try_alloc_component_mask_reduction
+        module subroutine classify_mask_operands(arena, left_idx, right_idx, &
+                                                  context, comp_access, arr_sym, &
+                                                  comp_on_left)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: left_idx, right_idx
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(out) :: comp_access, arr_sym
+            logical, intent(out) :: comp_on_left
+        end subroutine classify_mask_operands
+        module function operand_is_alloc_component(arena, idx, context) &
+            result(is_comp)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_comp
+        end function operand_is_alloc_component
+        module function whole_array_symbol(arena, idx, context) result(sym)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            type(lowering_context_t), intent(in) :: context
+            integer :: sym
+        end function whole_array_symbol
+        module subroutine lower_array_locate_intrinsic(arena, node, context, &
+                                                        value, error_msg, want_max)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical, intent(in) :: want_max
+        end subroutine lower_array_locate_intrinsic
+        module subroutine resolve_locate_arguments(arena, node, context, which, &
+                                                   sym, mask_sym, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: which
+            integer, intent(out) :: sym, mask_sym
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine resolve_locate_arguments
+        module subroutine emit_locate_scan(context, want_max, sym, mask_sym, value, &
+                                           error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: want_max
+            integer, intent(in) :: sym, mask_sym
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_locate_scan
+        module subroutine emit_character_locate_scan(context, want_max, sym, &
+                                                     mask_sym, value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: want_max
+            integer, intent(in) :: sym, mask_sym
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_character_locate_scan
+        module subroutine locate_is_better_char(context, want_max, cand_data, &
+                                                cand_len, best_data, best_len, &
+                                                best_idx, better, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: want_max
+            type(lr_operand_desc_t), intent(in) :: cand_data, cand_len
+            type(lr_operand_desc_t), intent(in) :: best_data, best_len, best_idx
+            type(lr_operand_desc_t), intent(out) :: better
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine locate_is_better_char
+        module subroutine locate_is_better(context, want_max, vk, cand, best_val, &
+                                           best_idx, better, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: want_max
+            integer, intent(in) :: vk
+            type(lr_operand_desc_t), intent(in) :: cand, best_val, best_idx
+            type(lr_operand_desc_t), intent(out) :: better
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine locate_is_better
+        module function locate_arg_value_node(arena, arg_index) result(value_node)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: arg_index
+            integer :: value_node
+        end function locate_arg_value_node
+        module subroutine lower_scan_intrinsic(arena, node, context, value, &
+                                               error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_scan_intrinsic
+        module subroutine lower_verify_intrinsic(arena, node, context, value, &
+                                                 error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_verify_intrinsic
+        module subroutine lower_repeat_deferred(arena, node, context, out_data, &
+                                                out_length, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: out_data, out_length
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_repeat_deferred
+        module subroutine check_real_conversion_args(arena, node, context, &
+                                                     wide_kind, argument_index, &
+                                                     kind_index, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            logical, intent(out) :: wide_kind
+            integer, intent(out) :: argument_index, kind_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_real_conversion_args
+        module subroutine lower_f32_real_conversion(arena, node, libm_name, &
+                                                    context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            character(len=*), intent(in) :: libm_name
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_f32_real_conversion
+        module subroutine lower_f64_real_conversion(arena, node, libm_name, &
+                                                    context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            character(len=*), intent(in) :: libm_name
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_f64_real_conversion
+    end interface
     interface
         module subroutine lower_associate(arena, node, node_index, context, &
                                           error_msg)
@@ -5732,7 +5965,6 @@ contains
     include 'session_program_lowering_expr_lowering.inc'
     include 'session_program_lowering_complex_arrays.inc'
     include 'session_program_lowering_intrinsics.inc'
-    include 'session_program_lowering_intrinsics_extra.inc'
     include 'session_program_lowering_logical_reduction.inc'
     include 'session_program_lowering_pointer.inc'
     include 'session_program_lowering_proc_dummy.inc'
