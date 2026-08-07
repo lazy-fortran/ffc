@@ -39,10 +39,11 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `fc3ea15` (main
+The current implementation heads for this gate are ffc `338fea4` (main
 runtime-synchronized baseline with typed inferred-symbol, array-shape, ISO
 C-pointer, TRANSFER, integer, BLOCK/DO CONCURRENT, DO WHILE, GOTO, WHERE,
-and SELECT lowering extraction, plus the GCC14
+and SELECT lowering extraction, plus complex, intrinsic-extra, and reduction
+expression lowering extraction, and the GCC14
 descendant-link export fix, the integer(8) external-call guard, and the
 bare-DIMENSION host export repair), FortFront `c0a32743`
 (semantic code baseline, with separate module-procedure dummy resolution, explicit semantic
@@ -76,7 +77,9 @@ rank-1 deep-copy `b0b7775`, typed integer lowering `cc91e32`, and structured
 control leaves through `fc3ea15` on current ffc main. The WHERE extraction's
 GCC cold-link defect was repaired by exporting its ten host helpers in
 `fc3ea15`; no aggregate PASS is
-claimed.
+claimed. The current main also contains the complex extraction `76c5ae9`,
+intrinsic-extra extraction `f3beaa8`, and reduction-expression extraction
+`338fea4`; their independent gates are recorded below.
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
 `395e3d8131c189cd58e8c8061cdc77d1c44e3822`.
@@ -187,7 +190,7 @@ The current state is not a valid parity baseline:
 - Current manifests contain 5,527 XFAIL rows, 288 FAIL-owner rows, 12 NOREF
   rows, and 2,305 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
-- There are 54 tracked production `.inc` files containing 70,951 lines. The
+- There are 51 tracked production `.inc` files containing 67,182 lines. The
   5,219-line host module has 37 direct include sites. Another 330 invocation
   sites use `find_symbol_compat`, compared with 12 binding-keyed lookup sites.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
@@ -532,18 +535,29 @@ removes its 1,275-line include; masked assignment and ELSEWHERE independent
 oracles pass. The historical SELECT extraction commit `de04a46` removed its
 1,365-line include; that code is now part of current main `fc3ea15`, and its
 case, type/rank selector, runtime, and derived-selector independent oracles
-pass. These structured-control leaves are present in current ffc main
-`fc3ea15`; the current inventory is 54 files / 70,951 lines. The repair has a
+pass. These structured-control leaves were present at the pre-batch ffc main
+`fc3ea15`, where the inventory was 54 files / 70,951 lines. The repair has a
 local cold `fo clean && fo build` gate at 453/453, five focused compiler tests
 pass, and independent gfortran differentials produce exact WHERE output
 `2 3 30 40` and SELECT output `27`. PR #723's aggregate CI remains observed
 separately; its earlier WHERE link failure is not treated as a semantic PASS.
 
+The post-structured-control extraction batch is now merged on current main:
+complex lowering `76c5ae9` removes its 1,330-line include and passes a 454/454
+cold build, five existing gfortran differential tests, and the submodule
+compiler gate; intrinsic-extra lowering `f3beaa8` removes its 1,485-line
+include and passes a 455/455 cold build, its byte-for-byte gfortran
+differential, integer/character-locate/array-intrinsic focused tests, and
+formatting; reduction-expression lowering `338fea4` removes its 954-line
+include and passes a 455/455 cold build, array-expression/sum/norm2/oracle,
+runtime-link, and separate-compilation tests. Its dynamic `sum(make())`
+oracle preserves exactly-once evaluation. The current inventory is 51 files /
+67,182 lines. No aggregate corpus PASS is claimed.
+
 Extract the remaining leaves in this order:
 
-`complex` (1,330),
-`intrinsics_extra` (1,322), `intrinsics` (2,141), `expr_lowering` (1,796),
-`logical_reduction` (1,615), and `reduction_expr` (954).
+`intrinsics` (2,141), `expr_lowering` (1,796), `logical_reduction` (1,615),
+and the remaining call/descriptor/array families below.
 
 The first extraction needs paired accepted/rejected compiler tests. Expression
 work must preserve #671's gfortran-oracle exactly-once side-effect regression
@@ -795,7 +809,7 @@ moving cost into another phase.
 
 ## Active issue map
 
-The list below is generated from open GitHub issues as of 2026-08-06. Closed
+The list below is generated from open GitHub issues as of 2026-08-07. Closed
 issue numbers must not own new manifest rows.
 
 | Workstream | Open ffc issues |
