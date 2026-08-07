@@ -39,16 +39,17 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `a8f788c` (main
+The current implementation heads for this gate are ffc `cc91e32` (main
 runtime-synchronized baseline with typed inferred-symbol, array-shape, ISO
-C-pointer, and TRANSFER extraction, the GCC14 descendant-link export fix, and
-the integer(8) external-call guard plus the bare-DIMENSION host export repair),
-FortFront `9c528d6`
+C-pointer, TRANSFER, and integer lowering extraction, the GCC14
+descendant-link export fix, the integer(8) external-call guard, and the
+bare-DIMENSION host export repair), FortFront `c0a32743`
 (semantic code baseline, with separate module-procedure dummy resolution, explicit semantic
 context mode initialization for GCC14, and implicit DIMENSION dummy
 preservation, IMPLICIT NONE
 undeclared-name diagnostics, nested binding identity, continuation-comment,
-and inline-IF fixes), fo `e1751bc`,
+and inline-IF fixes; documentation handoff markers are `0a082664` and
+`d8c8769`), fo `e1751bc`,
 and LIRIC `3facb898`. The code baselines are not green: ffc and fo still lack
 a completed current-head suite, while FortFront's Ubuntu lane is green and its
 Windows lane retains the known portability failures.
@@ -64,19 +65,21 @@ TRANSFER tests passed, and the full fpm/corpus job retained the existing
 semantic/corpus failure clusters; `fo fmt --check` retained the fo #117
 baseline. No transfer-specific failure or undefined reference remained after
 the explicit host exports. FortFront merge CI is tracked against current main
-`9c528d6`; fo's current
+`c0a32743`; its documentation handoff markers are `0a082664` and
+`d8c8769`; fo's current
 checked ancestor is `e1751bc`; and the merged ffc extraction commits are
 inferred symbols `240b84e`, ISO C pointers `aab7ef9`, and TRANSFER `a8f788c`,
-with the integer(8) guard `7dc6059` and bare-DIMENSION export repair `f7adff5`
-on current ffc main. No aggregate PASS is claimed.
+with the integer(8) guard `7dc6059`, bare-DIMENSION export repair `f7adff5`,
+rank-1 deep-copy `b0b7775`, and typed integer lowering `cc91e32` on current
+ffc main. No aggregate PASS is claimed.
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
 `395e3d8131c189cd58e8c8061cdc77d1c44e3822`.
 
-The next current-head merge-train slices are #643 PR #699 (bounded rank-1
-deep-copy assignment) and Wave-2 integer PR #700 (typed integer lowering
-extraction). Their focused local gates are green, but neither is counted in
-the current head until its cold CI build/link observation completes.
+PR #699 (bounded rank-1 deep-copy assignment) merged as `b0b7775`, and PR
+#700 (typed integer lowering extraction) merged as `cc91e32`. Their focused
+local behavioral gates are recorded below; the aggregate corpus remains
+unclassified until a locked provenance epoch completes.
 
 The current state is not a valid parity baseline:
 
@@ -124,7 +127,7 @@ The current state is not a valid parity baseline:
   set under `/var/tmp/ert/ffc-31142048669-failed.log` for the next locked
   baseline comparison.
 - The integer(8) transfer/function crash cluster from that run is fixed on
-  current main by ffc `a8f788c` (the guard itself landed as `7dc6059`, rebased
+  current main by ffc `cc91e32` (the guard itself landed as `7dc6059`, rebased
   onto c_ptr extraction `aab7ef9`).
   `lower_i64_expression` and `lower_i64_call` previously relied on C-like
   short-circuit evaluation: a contained or module procedure with no external
@@ -154,8 +157,9 @@ The current state is not a valid parity baseline:
   and focused DIMENSION,
   Lazy-array, and gfortran differential oracles. The current production
   inventory at that pre-transfer head was exactly 65 `.inc` files and 76,696
-  lines; current main after TRANSFER extraction is 64 `.inc` files / 76,336
-  lines. This is a link correctness repair, not an aggregate corpus PASS claim.
+  lines; the pre-integer current main after TRANSFER extraction was 64 `.inc`
+  files / 76,336 lines. This is a link correctness repair, not an aggregate
+  corpus PASS claim.
 
 - FortFront corpus case `issue_2848_dimension_statement.f90` is now traced to
   the ffc provider boundary: lazy-inserted declarations and bare `DIMENSION`
@@ -178,8 +182,8 @@ The current state is not a valid parity baseline:
 - Current manifests contain 5,527 XFAIL rows, 288 FAIL-owner rows, 12 NOREF
   rows, and 2,305 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
-- There are 64 tracked production `.inc` files containing 76,336 lines. The
-  5,219-line host module has 39 direct include sites. Another 322 invocation
+- There are 64 tracked production `.inc` files containing 76,199 lines. The
+  5,219-line host module has 37 direct include sites. Another 330 invocation
   sites use `find_symbol_compat`, compared with 12 binding-keyed lookup sites.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
   and [#677](https://github.com/lazy-fortran/ffc/pull/677), conflict with main
@@ -450,7 +454,7 @@ gone. The new `test_session_inferred_module_compiler` compiles and runs the
 same accepted Lazy fragment with ffc and gfortran, comparing output; the
 existing inferred integer/logical/real and Lazy array/derived/function tests
 remain green in the focused shard. PR #689 merged as `240b84e` and is included
-in the current ffc main `a8f788c`; its latest full CI observation is run
+in the current ffc main `cc91e32`; its latest full CI observation is run
 `31142048669`.
 The oracle creates its scoped `/var/tmp/ert` workspace before emitting artifacts,
 so clean CI runners and remote probes share the same test-workspace contract.
@@ -480,7 +484,8 @@ load helpers. Its textual include and host include site are gone. The existing
 oracles remain green after the move, and their IEEE bit-pattern expectations
 are checked against gfortran in the focused differential probe. No XFAIL,
 manifest, or expectation row changed. The extraction's clean local `fo build`
-covers 443/443 units and leaves 64 tracked `.inc` files (76,336 lines); this
+covers 443/443 units and left 64 tracked `.inc` files (76,336 lines) before
+the integer leaf; this
 focused evidence does not promote the aggregate suite while the formatter
 baseline and corpus failures remain open.
 
@@ -488,8 +493,20 @@ The 576-line `integer` leaf is now `session_program_lowering_integer.f90`, a
 typed descendant with six explicit parent interfaces and GCC14-safe helper
 exports. Its textual include and host include site are gone. The accepted
 integer-power, accepted/rejected integer-intrinsic, and integer-kind differential
-oracles remain green; the clean local build covers 443/443 units and the new
-submodule passes its targeted formatter check. No XFAIL or manifest row changed.
+oracles remain green; the clean local build covers 444/444 units, and the
+integer-intrinsic oracle provides a full link gate after the GCC14-safe helper
+exports. The new submodule passes its targeted formatter check. No XFAIL or
+manifest row changed. Earlier CI run
+[31147920280](https://github.com/lazy-fortran/ffc/actions/runs/31147920280)
+exposed four GCC14 link references; explicit parent exports repaired them, and
+the local integer-intrinsic link oracle passed. PR #700 merged as `cc91e32`;
+its pull-request CI run
+[31148209961](https://github.com/lazy-fortran/ffc/actions/runs/31148209961)
+reported `build + fpm test=CANCELLED` and `fo fmt --check=FAIL` (known
+formatter/full-suite baseline). The post-merge current-head run
+[31148890868](https://github.com/lazy-fortran/ffc/actions/runs/31148890868)
+was cancelled before `build + fpm test` completed to avoid a duplicate full
+corpus run; no aggregate PASS is claimed.
 After this extraction, the ffc source inventory is 64 tracked `.inc` files
 containing 76,199 lines; no aggregate corpus PASS is claimed.
 
@@ -575,6 +592,12 @@ RHS/deallocation semantics, rank-2 copy, finalization on scope exit,
 `ALLOCATE(SOURCE=)`/`MOLD=`, polymorphic dynamic element sizes, and non-unit
 bound addressing remain separate gates. Do not mark #643 complete until each
 has a positive and negative behavioral oracle.
+PR #699 merged as `b0b7775`. Its focused local ffc-vs-gfortran oracle remains
+green, while pull-request CI run
+[31147819374](https://github.com/lazy-fortran/ffc/actions/runs/31147819374)
+reported `build + fpm test=FAIL` and `fo fmt --check=FAIL`; the post-merge
+push run was cancelled. Those are retained as known aggregate/baseline
+observations, not a claim that the focused deep-copy behavior regressed.
 
 ### Wave 5: I/O
 
