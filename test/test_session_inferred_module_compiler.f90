@@ -28,6 +28,7 @@ program test_session_inferred_module_compiler
     ffc_out = base//'.ffc.out'
     reference_out = base//'.gfortran.out'
 
+    call execute_command_line('mkdir -p /var/tmp/ert')
     call execute_command_line('rm -f '//src//' '//exe//' '//reference//' '// &
         ffc_out//' '//reference_out)
     options = compiler_frontend_options_t()
