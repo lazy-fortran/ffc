@@ -41,9 +41,10 @@ uncertainty.
 
 The current implementation heads for this gate are ffc `eb39ce6` (code
 baseline, with typed array-shape extraction plus the
-GCC14 descendant-link export fix), FortFront `704cd27f` (semantic code
-baseline, with separate module-procedure dummy resolution and implicit
-DIMENSION dummy preservation,
+GCC14 descendant-link export fix), FortFront `39bac6c2` (semantic code
+baseline, with separate module-procedure dummy resolution, explicit semantic
+context mode initialization for GCC14, and implicit DIMENSION dummy
+preservation,
 IMPLICIT NONE
 undeclared-name diagnostics, nested binding identity, continuation-comment,
 and inline-IF fixes), fo `32ef96d`,
@@ -57,8 +58,8 @@ compiler/dashboard failures. That exit is not a clean release gate.
 The current ffc merge CI is [run 31136869798](https://github.com/lazy-fortran/ffc/actions/runs/31136869798)
 (in progress); the prior run [31136459600](https://github.com/lazy-fortran/ffc/actions/runs/31136459600)
 was docs-only and had the known formatting failure while its build/test job
-continued. FortFront merge CI is [run 31137139530](https://github.com/lazy-fortran/fortfront/actions/runs/31137139530)
-(queued for current main `b4f1d2f2`); and
+continued. FortFront merge CI is [run 31138513938](https://github.com/lazy-fortran/fortfront/actions/runs/31138513938)
+(in progress for current main `39bac6c2`); and
 the last checked fo ancestor was `e3cff007` (run 31122586327, failed/cancelled).
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
@@ -74,6 +75,12 @@ The current state is not a valid parity baseline:
   GCC14.2 on `faepkub4`; a clean `fpm build` and the array-shape module
   consumer oracle now link and pass there. Formatting and aggregate debt
   remain visible until the merge CI above completes.
+- FortFront's strict `IMPLICIT NONE` gate had a second GCC14 portability
+  defect: `INTENT(OUT)` context construction did not portably apply default
+  component initialization. FortFront `229f5f11` assigns the mode policy
+  explicitly; its focused oracle passes with GCC16 locally and GCC14.2 on
+  `faepkub4`. ffc must keep this revision in the next cross-repository
+  consumer matrix.
 - The live corpus plan contains 11,046 files: 563 FortFront F90, 265
   FortFront LF, 4,280 LFortran, and 5,938 `gfortran.dg`.
   `--sample 900` selects one global 900-file sample, not 900 per suite.
