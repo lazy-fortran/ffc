@@ -39,10 +39,11 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `b93514b` (roadmap
-refresh on top of the typed array-
-shape extraction plus the GCC14 descendant-link export fix), FortFront
-`193457a9` (implicit DIMENSION dummy preservation, IMPLICIT NONE
+The current implementation heads for this gate are ffc `eb39ce6` (code
+baseline; roadmap tip `75a20c6`, with typed array-shape extraction plus the
+GCC14 descendant-link export fix), FortFront `193457a9` (semantic code
+baseline; roadmap tip `2179929e`, with implicit DIMENSION dummy preservation,
+IMPLICIT NONE
 undeclared-name diagnostics, nested binding identity, continuation-comment,
 and inline-IF fixes), fo `32ef96d`,
 and LIRIC `3facb898`. The code baselines are not green: ffc and fo still lack
