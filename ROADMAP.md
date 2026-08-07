@@ -39,22 +39,23 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `338fea4` (main
+The current implementation heads for this gate are ffc `e25dbc9` (docs head;
+code parent `338fea4`, main
 runtime-synchronized baseline with typed inferred-symbol, array-shape, ISO
 C-pointer, TRANSFER, integer, BLOCK/DO CONCURRENT, DO WHILE, GOTO, WHERE,
 and SELECT lowering extraction, plus complex, intrinsic-extra, and reduction
 expression lowering extraction, and the GCC14
 descendant-link export fix, the integer(8) external-call guard, and the
-bare-DIMENSION host export repair), FortFront `c0a32743`
+bare-DIMENSION host export repair), FortFront `7fb1332d`
 (semantic code baseline, with separate module-procedure dummy resolution, explicit semantic
 context mode initialization for GCC14, and implicit DIMENSION dummy
 preservation, IMPLICIT NONE
 undeclared-name diagnostics, nested binding identity, continuation-comment,
 and inline-IF fixes, plus the #2973 typed legacy-I/O implied-do AST oracle;
-documentation handoff markers are `0689f81c` and
-`d8c8769`), fo `e1751bc`,
-and LIRIC `3facb898`. The code baselines are not green: ffc and fo still lack
-a completed current-head suite, while FortFront's Ubuntu lane is green and its
+documentation handoff marker is `0689f81c`), fo `469e66a`,
+and LIRIC `3facb898`. The code baselines are not release-green: ffc's union
+measurement is not provenance-verified and retains failures, while fo still
+has its known formatter/fpm baseline; FortFront's Ubuntu lane is green and its
 Windows lane retains the known portability failures.
 The ffc focused observation gate is green locally;
 the checked-in parity snapshot remains stale and is not a release baseline.
@@ -182,7 +183,7 @@ The current state is not a valid parity baseline:
   explicitly; its focused oracle passes with GCC16 locally and GCC14.2 on
   `faepkub4`. ffc must keep this revision in the next cross-repository
   consumer matrix.
-- The live corpus plan contains 11,046 files: 563 FortFront F90, 265
+- The live corpus plan contains 11,053 files: 570 FortFront F90, 265
   FortFront LF, 4,280 LFortran, and 5,938 `gfortran.dg`.
   `--sample 900` selects one global 900-file sample, not 900 per suite.
 - The checked-in dashboard is pinned to older components and reports 10,924
@@ -554,6 +555,29 @@ runtime-link, and separate-compilation tests. Its dynamic `sum(make())`
 oracle preserves exactly-once evaluation. The current inventory is 51 files /
 67,182 lines. No aggregate corpus PASS is claimed.
 
+The final 2026-08-07 union measurement covered every one of those 11,053
+files. FortFront F90 and LF ran as complete suites; the 4,280 LFortran and
+5,938 `gfortran.dg` files ran in eight deterministic, disjoint shards per
+suite, with separate scratch/cache directories, and their case-level JSONL
+records were summed only after all 16 shards completed. This bounds wall time
+without changing the oracle or duplicating a case. Raw reports are under
+`/mnt/storage/lazy-fortran-artifacts-final-20260807`.
+
+| Suite | PASS | XFAIL | XPASS | FAIL | NOREF | SKIP | Total |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| FortFront F90 | 387 | 85 | 3 | 93 | 100 | 2 | 570 |
+| FortFront LF | 187 | 48 | 3 | 27 | 0 | 0 | 265 |
+| LFortran (8 shards) | 985 | 3,025 | 188 | 79 | 161 | 3 | 4,280 |
+| `gfortran.dg` (8 shards) | 1,360 | 2,082 | 91 | 105 | 2 | 2,300 | 5,938 |
+| **Union** | **2,919** | **5,240** | **285** | **304** | **263** | **2,305** | **11,053** |
+
+The observed PASS rate is 2,919/11,053 = **26.41%**. Excluding the 263
+compile-only/no-reference PASS records, the independently-oracled behavioral
+PASS rate is 2,656/11,053 = **24.03%**. These are measurements, not release
+claims: 304 FAIL, 285 XPASS, 5,240 XFAIL, and 2,305 SKIP rows remain, and the
+shard summaries are not provenance-verified. The completion criterion remains
+zero unreviewed FAIL/XPASS/XFAIL/SKIP/NOREF in the locked epoch.
+
 Extract the remaining leaves in this order:
 
 `intrinsics` (2,141), `expr_lowering` (1,796), `logical_reduction` (1,615),
@@ -718,7 +742,7 @@ interaction coverage rather than an arbitrary fixed sample
 Replace repeated random seeds with deterministic, non-overlapping,
 duration-balanced shards. A shard epoch's exact union covers the locked
 manifest at one compiler/configuration. Sampling remains a discovery and rate
-estimate only: with 11,046 cases, a clean random sample of 900 has only about
+estimate only: with 11,053 cases, a clean random sample of 900 has only about
 an 8.15% chance to hit one hidden failure and can still conceal about 35
 failures at a one-sided 95% bound. LLVM lit already supports prior-failures
 first, slowest-first ordering, coverage, timing, and explicit sharding
