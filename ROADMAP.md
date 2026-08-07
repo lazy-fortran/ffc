@@ -55,11 +55,10 @@ the checked-in parity snapshot remains stale and is not a release baseline.
 The final local `fo` gate at `10b2af1` built 435/435 units and ran 350 tests;
 the observation smoke passed and the run retains 26 named pre-existing
 compiler/dashboard failures. That exit is not a clean release gate.
-The current ffc merge CI is [run 31136869798](https://github.com/lazy-fortran/ffc/actions/runs/31136869798)
-(in progress); the prior run [31136459600](https://github.com/lazy-fortran/ffc/actions/runs/31136459600)
-was docs-only and had the known formatting failure while its build/test job
-continued. FortFront merge CI is [run 31138513938](https://github.com/lazy-fortran/fortfront/actions/runs/31138513938)
-(in progress for current main `39bac6c2`); and
+The current ffc merge CI is [run 31138583625](https://github.com/lazy-fortran/ffc/actions/runs/31138583625)
+(in progress; formatting has already failed and build/test is still running).
+FortFront merge CI is [run 31138641474](https://github.com/lazy-fortran/fortfront/actions/runs/31138641474)
+(in progress for current main `a1d07243`); and
 the last checked fo ancestor was `e3cff007` (run 31122586327, failed/cancelled).
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
