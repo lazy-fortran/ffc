@@ -450,6 +450,8 @@ module session_program_lowering_impl
     public :: storage_name_listed, storage_source_lines
     public :: strip_data_source_comment, strip_line_comment
     public :: strip_literal_quotes, try_const_int64
+    public :: get_unit_body_indices, module_declaration_var_names
+    public :: lazy_defaults_active
 
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from
