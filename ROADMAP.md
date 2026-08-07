@@ -108,6 +108,24 @@ The current state is not a valid parity baseline:
   new module-regression signal. Preserve the exact log and normalized failure
   set under `/var/tmp/ert/ffc-31142048669-failed.log` for the next locked
   baseline comparison.
+- The integer(8) transfer/function crash cluster from that run has a bounded
+  backend fix in branch `luna/descriptor-integer8-20260807`.
+  `lower_i64_expression` and `lower_i64_call` previously relied on C-like
+  short-circuit evaluation: a contained or module procedure with no external
+  ABI record evaluated `external_procedures(0)` inside `.AND.`/`.OR.` probes,
+  causing a compiler SIGSEGV before code emission. The fix computes the
+  external index once and nests every indexed lookup behind `ext_idx > 0`; an
+  un-named call/subscript now reports a lowering diagnostic instead of
+  dereferencing an invalid node. The independent existing oracles
+  `test_session_integer8_function_compiler` and
+  `test_session_transfer_compiler` both pass locally after the fix (the former
+  had failed with exit 139 before it; the latter had failed in its
+  `integer(8)`/`TRANSFER` case). A direct differential probe compiled both
+  cases with ffc and gfortran and compared output byte-for-byte:
+  `4000000000` for the module function and `4607182418800017408` for
+  `TRANSFER`. No XFAIL, manifest, or expectation row changed; rerun the
+  focused pair first, then refresh the full locked CI failure set before
+  promoting this slice.
 - FortFront's strict `IMPLICIT NONE` gate had a second GCC14 portability
   defect: `INTENT(OUT)` context construction did not portably apply default
   component initialization. FortFront `229f5f11` assigns the mode policy
