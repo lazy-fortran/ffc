@@ -39,7 +39,7 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `62bd93b` (code
+The current implementation heads for this gate are ffc `999cddf` (code
 baseline, with typed inferred-symbol and array-shape extraction plus the
 GCC14 descendant-link export fix), FortFront `39bac6c2` (semantic code
 baseline, with separate module-procedure dummy resolution, explicit semantic
@@ -92,6 +92,12 @@ The current state is not a valid parity baseline:
   `scripts/generate_runtime_source.sh`; the existing `test_runtime_link_compiler`
   behavioral oracle remains mandatory and checks byte identity, strict C11
   compilation, declared symbols, and execution through the emitted runtime.
+- A second GCC14 reproduction on `faepkub4` was not an acceptance oracle:
+  `FO_JOBS=1 fo build` aborted inside the remote compiler/tooling process with
+  parser diagnostics followed by `free(): invalid pointer`. Keep that host
+  result classified as infrastructure instability; the clean GCC14 link
+  oracle is the current-head GitHub build and the dedicated remote probe that
+  completed without allocator failure.
 - FortFront's strict `IMPLICIT NONE` gate had a second GCC14 portability
   defect: `INTENT(OUT)` context construction did not portably apply default
   component initialization. FortFront `229f5f11` assigns the mode policy
