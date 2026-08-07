@@ -294,7 +294,7 @@ contains
         do i = 1, arena%size
             if (.not. node_exists(arena, i)) cycle
             select type (node => arena%entries(i)%node)
-            type is (declaration_node)
+                type is (declaration_node)
                 if (declaration_is_bare_dimension(node) .and. &
                     allocated(node%var_name) .and. &
                     same_name(node%var_name, name)) then
