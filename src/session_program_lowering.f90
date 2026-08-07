@@ -452,6 +452,11 @@ module session_program_lowering_impl
     public :: strip_literal_quotes, try_const_int64
     public :: get_unit_body_indices, module_declaration_var_names
     public :: lazy_defaults_active
+    public :: null_ptr_operand, define_c_ptr_symbol
+    public :: call_or_subscript_arg_indices, is_named_call
+    public :: lower_c_ptr_expression, lower_c_loc
+    public :: c_f_pointer_shape_extents, associate_c_f_pointer_array
+    public :: lower_c_associated, lower_c_f_pointer
 
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from
@@ -2455,6 +2460,76 @@ module session_program_lowering_impl
             type(mono_type_t), intent(in) :: inferred
             type(lowering_context_t), intent(in), optional :: context
         end function inferred_type_to_value_kind
+    end interface
+    interface
+        module function null_ptr_operand(context) result(op)
+            type(lowering_context_t), intent(in) :: context
+            type(lr_operand_desc_t) :: op
+        end function null_ptr_operand
+        module subroutine define_c_ptr_symbol(context, name, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine define_c_ptr_symbol
+        module subroutine call_or_subscript_arg_indices(arena, node_index, &
+                                                         arg_indices, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, allocatable, intent(out) :: arg_indices(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine call_or_subscript_arg_indices
+        module function is_named_call(arena, node_index, name)
+            logical :: is_named_call
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: name
+        end function is_named_call
+        recursive module subroutine lower_c_ptr_expression(arena, node_index, &
+                                                           context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_c_ptr_expression
+        module subroutine lower_c_loc(arena, arg_indices, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: arg_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_c_loc
+        module subroutine c_f_pointer_shape_extents(arena, shape_index, extents, &
+                                                     error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: shape_index
+            integer, allocatable, intent(out) :: extents(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine c_f_pointer_shape_extents
+        module subroutine associate_c_f_pointer_array(arena, shape_index, context, &
+                                                       symbol_index, ptr_value, &
+                                                       error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: shape_index
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(in) :: ptr_value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine associate_c_f_pointer_array
+        module subroutine lower_c_associated(arena, arg_indices, context, value, &
+                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: arg_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_c_associated
+        module subroutine lower_c_f_pointer(arena, arg_indices, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: arg_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_c_f_pointer
     end interface
     interface
         module subroutine check_storage_association_restrictions(arena, error_msg)
@@ -4585,7 +4660,6 @@ contains
     include 'session_program_lowering_intrinsics_extra.inc'
     include 'session_program_lowering_logical_reduction.inc'
     include 'session_program_lowering_transfer.inc'
-    include 'session_program_lowering_c_ptr.inc'
     include 'session_program_lowering_pointer.inc'
     include 'session_program_lowering_proc_dummy.inc'
     include 'session_program_lowering_statement_function.inc'
