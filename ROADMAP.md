@@ -39,18 +39,17 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `c204f97` (main
-runtime-synchronized baseline; this PR adds typed inferred-symbol and
-array-shape extraction plus the GCC14 descendant-link export fix), FortFront
-`f46a005` (semantic code
-baseline, with separate module-procedure dummy resolution, explicit semantic
+The current implementation heads for this gate are ffc `240b84e` (main
+runtime-synchronized baseline with typed inferred-symbol and array-shape
+extraction plus the GCC14 descendant-link export fix), FortFront `f46a005`
+(semantic code baseline, with separate module-procedure dummy resolution, explicit semantic
 context mode initialization for GCC14, and implicit DIMENSION dummy
-preservation,
-IMPLICIT NONE
+preservation, IMPLICIT NONE
 undeclared-name diagnostics, nested binding identity, continuation-comment,
-and inline-IF fixes), fo `32ef96d`,
+and inline-IF fixes), fo `e1751bc`,
 and LIRIC `3facb898`. The code baselines are not green: ffc and fo still lack
-a completed current-head suite, while the latest FortFront run is pending.
+a completed current-head suite, while FortFront's Ubuntu lane is green and its
+Windows lane retains the known portability failures.
 The ffc focused observation gate is green locally;
 the checked-in parity snapshot remains stale and is not a release baseline.
 The final local `fo` gate at `10b2af1` built 435/435 units and ran 350 tests;
@@ -59,8 +58,8 @@ compiler/dashboard failures. That exit is not a clean release gate.
 The current ffc merge CI is [run 31142048669](https://github.com/lazy-fortran/ffc/actions/runs/31142048669)
 (completed with the build passing but the independent `fo fmt --check` and
 fpm test jobs failing; the run log is the authoritative failure inventory).
-FortFront merge CI is tracked against current main `f46a005`; and fo's
-current checked ancestor is `e1751bc`.
+FortFront merge CI is tracked against current main `f46a005`; fo's current
+checked ancestor is `e1751bc`; and the merged extraction commit is `240b84e`.
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
 `395e3d8131c189cd58e8c8061cdc77d1c44e3822`.
