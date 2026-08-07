@@ -100,15 +100,22 @@ contains
     if (.not. node_exists(arena, node_index)) return
     select type (node => arena%entries(node_index)%node)
         type is (declaration_node)
-        if (allocated(node%var_name) .and. len_trim(node%var_name) > 0) then
-            call add_explicit_decl_name(context, node%var_name)
-        end if
-        if (allocated(node%var_names)) then
-            do i = 1, size(node%var_names)
-                if (len_trim(node%var_names(i)) > 0) then
-                    call add_explicit_decl_name(context, node%var_names(i))
-                end if
-            end do
+        ! FortFront inserts `is_inferred` declarations during lazy
+        ! standardization. They are metadata for the type-inference pass, not
+        ! user declarations and have no collected binding/storage record in
+        ! ffc. Treating them as explicit here suppresses the inferred-symbol
+        ! seed that executable references need (#2848).
+        if (.not. node%is_inferred .and. .not. declaration_is_bare_dimension(node)) then
+            if (allocated(node%var_name) .and. len_trim(node%var_name) > 0) then
+                call add_explicit_decl_name(context, node%var_name)
+            end if
+            if (allocated(node%var_names)) then
+                do i = 1, size(node%var_names)
+                    if (len_trim(node%var_names(i)) > 0) then
+                        call add_explicit_decl_name(context, node%var_names(i))
+                    end if
+                end do
+            end if
         end if
         type is (do_loop_node)
         if (allocated(node%body_indices)) then
@@ -270,9 +277,33 @@ contains
     if (.not. allocated(inferred)) return
     if (inferred%kind <= 0) return
     value_kind = inferred_type_to_value_kind(inferred, context)
+    ! A bare DIMENSION's shape is materialized when its first executable
+    ! reference is lowered (after the main function is active). Defining its
+    ! alloca during this metadata prepass would fail with "no active block".
+    if (inferred%kind == TARRAY .and. has_bare_dimension(arena, name)) return
     if (value_kind <= 0) return
     call define_symbol(context, name, value_kind, error_msg)
     end procedure try_seed_inferred_symbol
+
+    logical function has_bare_dimension(arena, name) result(found)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        integer :: i
+
+        found = .false.
+        do i = 1, arena%size
+            if (.not. node_exists(arena, i)) cycle
+            select type (node => arena%entries(i)%node)
+                type is (declaration_node)
+                if (declaration_is_bare_dimension(node) .and. &
+                    allocated(node%var_name) .and. &
+                    same_name(node%var_name, name)) then
+                    found = .true.
+                    return
+                end if
+            end select
+        end do
+    end function has_bare_dimension
 
     module procedure inferred_type_to_value_kind
     ! Map a FortFront mono_type_t kind to the ffc value_kind constant.

@@ -3464,6 +3464,70 @@
                                        error_msg)
     end subroutine load_i32_array_element
 
+    subroutine materialize_bare_dimension_array(arena, target, context, &
+                                                symbol_index, error_msg)
+        ! A standalone DIMENSION statement supplies shape but no type-spec.
+        ! FortFront inserts inferred metadata for the name, while ffc's
+        ! declaration prepass intentionally skips the bare node. Materialize
+        ! the default-typed array at the first executable reference, when the
+        ! main LIRIC block is active (#2848).
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(declaration_node) :: declaration
+        integer :: i, array_lower_bound, array_size, value_kind
+        character(len=:), allocatable :: shape_error
+
+        call set_empty(error_msg)
+        symbol_index = 0
+        if (.not. allocated(target%name)) return
+        symbol_index = find_symbol_compat(context, target%name)
+        if (symbol_index > 0) then
+            if (context%symbols(symbol_index)%is_array) return
+            ! A scalar inferred seed must not mask the array declaration.
+            symbol_index = 0
+        end if
+        value_kind = VALUE_F32
+        select case (target%resolved_type_kind)
+        case (TINT); value_kind = VALUE_I32
+        case (TREAL); value_kind = VALUE_F32
+        case (TDOUBLE); value_kind = VALUE_F64
+        case (TLOGICAL); value_kind = VALUE_LOGICAL
+        case (TCOMPLEX); value_kind = VALUE_C4
+        end select
+        do i = 1, arena%size
+            if (.not. node_exists(arena, i)) cycle
+            select type (candidate => arena%entries(i)%node)
+            type is (declaration_node)
+                if (.not. declaration_is_bare_dimension(candidate)) cycle
+                if (.not. allocated(candidate%var_name)) cycle
+                if (.not. same_name(candidate%var_name, target%name)) cycle
+                declaration = candidate
+                declaration%type_name = 'real'
+                select case (value_kind)
+                case (VALUE_I32); declaration%type_name = 'integer'
+                case (VALUE_F64); declaration%type_name = 'double precision'
+                case (VALUE_LOGICAL); declaration%type_name = 'logical'
+                end select
+                call get_array_bounds(declaration, context, array_lower_bound, &
+                    array_size, shape_error)
+                if (len_trim(shape_error) > 0) then
+                    error_msg = shape_error
+                    return
+                end if
+                call define_declared_array_symbol(context, declaration, &
+                    target%name, array_lower_bound, array_size, value_kind, &
+                    error_msg)
+                if (len_trim(error_msg) == 0) then
+                    symbol_index = find_symbol_compat(context, target%name)
+                end if
+                return
+            end select
+        end do
+    end subroutine materialize_bare_dimension_array
+
     subroutine lower_array_element_assignment(arena, node, target, context, value, &
                                               error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -3479,6 +3543,11 @@
         vk = VALUE_I32
         if (allocated(target%name)) then
             sym_idx = find_symbol_compat(context, target%name)
+            if (sym_idx <= 0 .or. .not. context%symbols(sym_idx)%is_array) then
+                call materialize_bare_dimension_array(arena, target, context, &
+                    sym_idx, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
             if (sym_idx > 0) vk = context%symbols(sym_idx)%value_kind
         end if
 
@@ -3717,6 +3786,11 @@
         end if
 
         symbol_index = find_symbol_compat(context, node%name)
+        if (symbol_index <= 0 .or. .not. context%symbols(symbol_index)%is_array) then
+            call materialize_bare_dimension_array(arena, node, context, &
+                symbol_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (symbol_index <= 0) then
             error_msg = 'array identifier was not declared: '//trim(node%name)
             return
@@ -4005,6 +4079,11 @@
             return
         end if
         symbol_index = find_symbol_compat(context, node%name)
+        if (symbol_index <= 0 .or. .not. context%symbols(symbol_index)%is_array) then
+            call materialize_bare_dimension_array(arena, node, context, &
+                symbol_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (symbol_index <= 0) then
             error_msg = 'real array identifier was not declared: '//trim(node%name)
             return
