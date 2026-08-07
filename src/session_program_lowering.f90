@@ -397,7 +397,8 @@ module session_program_lowering_impl
     public :: is_complex_valued, is_contained_deferred_char_function
     public :: is_contained_f32_function, is_contained_f64_function
     public :: is_contained_function_reference
-    public :: is_declared_array_element_ref, is_equivalence_text
+    public :: is_allocatable_element_ref, is_declared_array_element_ref
+    public :: is_equivalence_text
     public :: kind_of_literal, lower_f32_expression, lower_f64_expression
     public :: lower_i32_expression, lower_logical_expression
     public :: lower_print_expression_value, lower_print_logical_value
@@ -453,12 +454,18 @@ module session_program_lowering_impl
     public :: strip_literal_quotes, try_const_int64
     public :: get_unit_body_indices, module_declaration_var_names
     public :: lazy_defaults_active
+    public :: load_array_linear_element, store_array_linear_element
     public :: null_ptr_operand, define_c_ptr_symbol
     public :: call_or_subscript_arg_indices, is_named_call
     public :: lower_c_ptr_expression, lower_c_loc
     public :: c_f_pointer_shape_extents, associate_c_f_pointer_array
     public :: lower_c_associated, lower_c_f_pointer
     public :: make_reference_argument
+    public :: lower_transfer_intrinsic, lower_transfer_source_element
+    public :: transfer_array_source_symbol, transfer_operand_bytes
+    public :: transfer_kind_bytes, transfer_pair_supported
+    public :: transfer_alloca, transfer_store, transfer_load
+    public :: lower_transfer_array_assignment
 
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from
@@ -2532,6 +2539,90 @@ module session_program_lowering_impl
             type(lowering_context_t), intent(inout) :: context
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_c_f_pointer
+    end interface
+    interface
+        module subroutine lower_transfer_intrinsic(arena, node, context, target_kind, &
+                                                    value, handled, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: target_kind
+            type(lr_operand_desc_t), intent(out) :: value
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_transfer_intrinsic
+        module subroutine lower_transfer_source_element(arena, node_index, context, &
+                                                         source_kind, linear_index, &
+                                                         value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: source_kind
+            integer(c_int64_t), intent(in) :: linear_index
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_transfer_source_element
+        module function transfer_array_source_symbol(arena, node_index, context) &
+                result(symbol_index)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            integer :: symbol_index
+        end function transfer_array_source_symbol
+        module function transfer_operand_kind(arena, node_index, context) result(kind)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            integer :: kind
+        end function transfer_operand_kind
+        module function transfer_operand_bytes(arena, node_index, value_kind, context) &
+                result(bytes)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index, value_kind
+            type(lowering_context_t), intent(in) :: context
+            integer :: bytes
+        end function transfer_operand_bytes
+        module function transfer_kind_bytes(value_kind) result(bytes)
+            integer, intent(in) :: value_kind
+            integer :: bytes
+        end function transfer_kind_bytes
+        module function transfer_pair_supported(source_kind, target_kind) result(ok)
+            integer, intent(in) :: source_kind, target_kind
+            logical :: ok
+        end function transfer_pair_supported
+        module function transfer_alloca(context, kind, address, error_msg) result(ok)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: kind
+            type(lr_operand_desc_t), intent(out) :: address
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical :: ok
+        end function transfer_alloca
+        module function transfer_store(context, kind, value, address, error_msg) &
+                result(ok)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: kind
+            type(lr_operand_desc_t), intent(in) :: value
+            type(lr_operand_desc_t), intent(in) :: address
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical :: ok
+        end function transfer_store
+        module function transfer_load(context, kind, address, value, error_msg) &
+                result(ok)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: kind
+            type(lr_operand_desc_t), intent(in) :: address
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical :: ok
+        end function transfer_load
+        module subroutine lower_transfer_array_assignment(arena, node, symbol_index, &
+                                                           context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(assignment_node), intent(in) :: node
+            integer, intent(in) :: symbol_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_transfer_array_assignment
     end interface
     interface
         module subroutine check_storage_association_restrictions(arena, error_msg)
@@ -4662,7 +4753,6 @@ contains
     include 'session_program_lowering_intrinsics.inc'
     include 'session_program_lowering_intrinsics_extra.inc'
     include 'session_program_lowering_logical_reduction.inc'
-    include 'session_program_lowering_transfer.inc'
     include 'session_program_lowering_pointer.inc'
     include 'session_program_lowering_proc_dummy.inc'
     include 'session_program_lowering_statement_function.inc'
