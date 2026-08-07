@@ -144,6 +144,15 @@ The current state is not a valid parity baseline:
   formatter mismatch and fpm/corpus failures; current-head run `31144484273`
   is still waiting for its build/fpm job.
 
+- Post-merge CI [run `31144972941`](https://github.com/lazy-fortran/ffc/actions/runs/31144972941)
+  reached ffc main `8a43a3c` and failed at link: the new inferred-symbol
+  descendant called host predicate `declaration_is_bare_dimension`, but the
+  host module did not export it. The repair is a single explicit host export;
+  it is validated with a clean `fo clean`/`fo build` and focused DIMENSION,
+  Lazy-array, and gfortran differential oracles. The current production
+  inventory remains exactly 65 `.inc` files and 76,696 lines; this is a link
+  correctness repair, not an aggregate corpus PASS claim.
+
 - FortFront corpus case `issue_2848_dimension_statement.f90` is now traced to
   the ffc provider boundary: lazy-inserted declarations and bare `DIMENSION`
   nodes were incorrectly treated as explicit, so no inferred scalar/array
