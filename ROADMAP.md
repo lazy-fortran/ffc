@@ -42,8 +42,8 @@ uncertainty.
 The current implementation heads for this gate are ffc `eb39ce6` (code
 baseline, with typed array-shape extraction plus the
 GCC14 descendant-link export fix), FortFront `704cd27f` (semantic code
-baseline; roadmap tip `b4f1d2f2`, with separate module-procedure dummy
-resolution and implicit DIMENSION dummy preservation,
+baseline, with separate module-procedure dummy resolution and implicit
+DIMENSION dummy preservation,
 IMPLICIT NONE
 undeclared-name diagnostics, nested binding identity, continuation-comment,
 and inline-IF fixes), fo `32ef96d`,
