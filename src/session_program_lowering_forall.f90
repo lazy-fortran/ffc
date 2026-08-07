@@ -1,3 +1,6 @@
+submodule (session_program_lowering_impl) session_program_lowering_forall
+    implicit none
+contains
     ! FORALL construct: indexed elementwise array assignment.
     !
     ! FORALL (i=lo:hi[, ...][, mask]) uses a sequential loop nest, with one
@@ -20,9 +23,9 @@
         context%forall_body_statement_index = 0
         if (node%num_indices < 1) then
             call unsupported_feature_error('forall construct', &
-                                           node%line, node%column, &
-                                           'FORALL requires at least one index', &
-                                           error_msg)
+                node%line, node%column, &
+                'FORALL requires at least one index', &
+                error_msg)
             return
         end if
         if (.not. allocated(node%index_names)) then
@@ -40,13 +43,13 @@
             sym = find_symbol_compat(context, trim(node%index_names(k)))
             if (sym <= 0) then
                 call define_i32_symbol(context, trim(node%index_names(k)), &
-                                       error_msg)
+                    error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (context%symbols(sym)%value_kind /= VALUE_I32) then
                 call unsupported_feature_error('forall index', node%line, &
-                                               node%column, &
-                                               'FORALL index must be integer', &
-                                               error_msg)
+                    node%column, &
+                    'FORALL index must be integer', &
+                    error_msg)
                 return
             end if
         end do
@@ -102,10 +105,10 @@
         end if
         if (.not. node_exists(arena, body_index)) return
         select type (statement => arena%entries(body_index)%node)
-        type is (assignment_node)
+            type is (assignment_node)
             if (.not. node_exists(arena, statement%target_index)) return
             select type (target => arena%entries(statement%target_index)%node)
-            type is (call_or_subscript_node)
+                type is (call_or_subscript_node)
                 if (.not. allocated(target%name)) return
                 target_name = trim(target%name)
             class default
@@ -134,13 +137,13 @@
             return
         end select
         total_bytes = int(context%symbols(symbol_index)%array_size, c_int64_t) * &
-                      element_bytes
+            element_bytes
         if (.not. emit_alloca_bytes(context%session, &
-                i64_immediate(context%session, total_bytes), &
-                context%forall_snapshot_address, error_msg)) return
+            i64_immediate(context%session, total_bytes), &
+            context%forall_snapshot_address, error_msg)) return
         if (.not. emit_memcpy(context%session, context%forall_snapshot_address, &
-                context%symbols(symbol_index)%element_address, &
-                i64_immediate(context%session, total_bytes), error_msg)) return
+            context%symbols(symbol_index)%element_address, &
+            i64_immediate(context%session, total_bytes), error_msg)) return
         context%forall_snapshot_symbol = symbol_index
         context%forall_snapshot_reads = .true.
     end subroutine prepare_forall_snapshot
@@ -167,10 +170,10 @@
         stride_index = 0
         if (allocated(node%stride_indices)) stride_index = node%stride_indices(level)
         call lower_counted_loop(arena, trim(node%index_names(level)), &
-                                node%lower_bound_indices(level), &
-                                node%upper_bound_indices(level), stride_index, &
-                                node%line, node%column, emit_forall_inner, &
-                                context, value, error_msg)
+            node%lower_bound_indices(level), &
+            node%upper_bound_indices(level), stride_index, &
+            node%line, node%column, emit_forall_inner, &
+            context, value, error_msg)
     contains
         subroutine emit_forall_inner(ctx, terminated, err)
             type(lowering_context_t), intent(inout) :: ctx
@@ -209,17 +212,17 @@
         if (context%forall_body_statement_index > 0) then
             selected_body(1) = context%forall_body_statement_index
             call lower_statement_list(arena, selected_body, context, value, &
-                                      terminated, error_msg)
+                terminated, error_msg)
         else
             call lower_statement_list(arena, node%body_indices, context, value, &
-                                      terminated, error_msg)
+                terminated, error_msg)
         end if
         if (len_trim(error_msg) > 0) return
         if (terminated) then
             call unsupported_feature_error('forall body', node%line, node%column, &
-                                           'direct LIRIC session does not support '// &
-                                           'stop or return inside a FORALL', &
-                                           error_msg)
+                'direct LIRIC session does not support '// &
+                'stop or return inside a FORALL', &
+                error_msg)
         end if
     end subroutine lower_forall_body
 
@@ -238,13 +241,13 @@
         integer :: selected_body(1)
 
         call lower_i1_condition(arena, node%mask_expr_index, context, condition, &
-                                error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
 
         body_block = create_liric_block(context%session)
         merge_block = create_liric_block(context%session)
         if (.not. emit_liric_condbr(context%session, condition, body_block, &
-                                    merge_block, error_msg)) return
+            merge_block, error_msg)) return
 
         if (.not. set_liric_block(context%session, body_block, error_msg)) return
         context%current_block_id = body_block
@@ -252,17 +255,17 @@
         if (context%forall_body_statement_index > 0) then
             selected_body(1) = context%forall_body_statement_index
             call lower_statement_list(arena, selected_body, context, value, &
-                                      terminated, error_msg)
+                terminated, error_msg)
         else
             call lower_statement_list(arena, node%body_indices, context, value, &
-                                      terminated, error_msg)
+                terminated, error_msg)
         end if
         if (len_trim(error_msg) > 0) return
         if (terminated) then
             call unsupported_feature_error('forall body', node%line, node%column, &
-                                           'direct LIRIC session does not support '// &
-                                           'stop or return inside a FORALL', &
-                                           error_msg)
+                'direct LIRIC session does not support '// &
+                'stop or return inside a FORALL', &
+                error_msg)
             return
         end if
         if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
@@ -272,3 +275,5 @@
         context%current_block_terminated = .false.
         call set_empty(error_msg)
     end subroutine lower_forall_masked_body
+
+end submodule session_program_lowering_forall

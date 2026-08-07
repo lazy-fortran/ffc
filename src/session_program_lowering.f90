@@ -433,6 +433,7 @@ module session_program_lowering_impl
     public :: array_ctor_literal_class, array_ctor_typespec_class
     public :: assign_i32_to_symbol, char_length_operands, cmp_class_name
     public :: declared_type_of_name, define_symbol, dummy_signature
+    public :: define_i32_symbol
     public :: expression_value_kind, ffc_unit_global_name
     public :: file_unit_pseudo_name, identifier_name, identifier_name_at
     public :: inquiry_arg_real_kind, io_control_value
@@ -474,6 +475,8 @@ module session_program_lowering_impl
     public :: lower_counted_loop
     public :: push_storage_scope, pop_storage_scope
     public :: lower_associate, bind_associate_name
+    public :: lower_forall, prepare_forall_snapshot, clear_forall_snapshot
+    public :: lower_forall_level, lower_forall_body, lower_forall_masked_body
     public :: materialize_scalar_associate_source, associate_selector_is_array
     public :: associate_symbol_slot, bind_associate_array_section
     public :: bind_associate_component, bind_associate_alloc_array_component
@@ -3427,6 +3430,43 @@ module session_program_lowering_impl
             type(lowering_context_t), intent(inout) :: context
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_computed_goto
+    end interface
+    interface
+        recursive module subroutine lower_forall(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(forall_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_forall
+        module subroutine prepare_forall_snapshot(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(forall_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine prepare_forall_snapshot
+        module subroutine clear_forall_snapshot(context)
+            type(lowering_context_t), intent(inout) :: context
+        end subroutine clear_forall_snapshot
+        recursive module subroutine lower_forall_level(arena, node, level, &
+                                                        context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(forall_node), intent(in) :: node
+            integer, intent(in) :: level
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_forall_level
+        module subroutine lower_forall_body(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(forall_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_forall_body
+        module subroutine lower_forall_masked_body(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(forall_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_forall_masked_body
     end interface
     interface
         module subroutine lower_associate(arena, node, node_index, context, &
