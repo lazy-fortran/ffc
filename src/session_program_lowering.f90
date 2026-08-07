@@ -380,6 +380,7 @@ module session_program_lowering_impl
     public :: component_element_access_kind, component_slot_width
     public :: declaration_declares_name, declaration_index_for_name
     public :: declaration_is_assumed_rank, declaration_is_assumed_shape
+    public :: declaration_is_bare_dimension
     public :: declaration_named, declaration_value_kind
     public :: derived_component_access_kind, dim_is_assumed_shape
     public :: dim_is_assumed_size, dummy_explicit_element_count
