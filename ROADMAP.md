@@ -393,8 +393,8 @@ type-to-value-kind mapping. Its textual include and host include site are
 gone. The new `test_session_inferred_module_compiler` compiles and runs the
 same accepted Lazy fragment with ffc and gfortran, comparing output; the
 existing inferred integer/logical/real and Lazy array/derived/function tests
-remain green in the focused shard. PR #689 is currently head `81c90fa`,
-rebased onto ffc main `c204f97`; its latest full CI observation is run
+remain green in the focused shard. PR #689 merged as `240b84e` and is included
+in the current ffc main `5541088`; its latest full CI observation is run
 `31142048669`.
 The oracle creates its scoped `/var/tmp/ert` workspace before emitting artifacts,
 so clean CI runners and remote probes share the same test-workspace contract.
