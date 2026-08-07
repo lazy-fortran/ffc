@@ -39,9 +39,10 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `fdda5a1` (code
-baseline, with typed inferred-symbol and array-shape extraction plus the
-GCC14 descendant-link export fix), FortFront `39bac6c2` (semantic code
+The current implementation heads for this gate are ffc `c204f97` (main
+runtime-synchronized baseline; this PR adds typed inferred-symbol and
+array-shape extraction plus the GCC14 descendant-link export fix), FortFront
+`f46a005` (semantic code
 baseline, with separate module-procedure dummy resolution, explicit semantic
 context mode initialization for GCC14, and implicit DIMENSION dummy
 preservation,
@@ -55,12 +56,11 @@ the checked-in parity snapshot remains stale and is not a release baseline.
 The final local `fo` gate at `10b2af1` built 435/435 units and ran 350 tests;
 the observation smoke passed and the run retains 26 named pre-existing
 compiler/dashboard failures. That exit is not a clean release gate.
-The current ffc merge CI is [run 31139398939](https://github.com/lazy-fortran/ffc/actions/runs/31139398939)
+The current ffc merge CI is [run 31142048669](https://github.com/lazy-fortran/ffc/actions/runs/31142048669)
 (completed with the build passing but the independent `fo fmt --check` and
 fpm test jobs failing; the run log is the authoritative failure inventory).
-FortFront merge CI is [run 31138641474](https://github.com/lazy-fortran/fortfront/actions/runs/31138641474)
-(in progress for current main `a1d07243`); and
-the last checked fo ancestor was `e3cff007` (run 31122586327, failed/cancelled).
+FortFront merge CI is tracked against current main `f46a005`; and fo's
+current checked ancestor is `e1751bc`.
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
 `395e3d8131c189cd58e8c8061cdc77d1c44e3822`.
@@ -98,6 +98,17 @@ The current state is not a valid parity baseline:
   result classified as infrastructure instability; the clean GCC14 link
   oracle is the current-head GitHub build and the dedicated remote probe that
   completed without allocator failure.
+- Run `31142048669` is the post-runtime-sync acceptance observation for this
+  branch: LIRIC and ffc build/link passed; the known repository-wide formatter
+  gate failed; and fpm's existing direct/corpus suites still fail. Relative to
+  `31139981992`, the `runtime_link`, `test_session_inferred_module_compiler`,
+  and `test_session_nested_character_substring_compiler` failures are gone;
+  there is no inferred-extraction-specific failure or undefined reference.
+  The remaining F90/LF timeout and diagnostic/output clusters are downstream
+  corpus debt (their selected file names vary with the runner timeout), not a
+  new module-regression signal. Preserve the exact log and normalized failure
+  set under `/var/tmp/ert/ffc-31142048669-failed.log` for the next locked
+  baseline comparison.
 - FortFront's strict `IMPLICIT NONE` gate had a second GCC14 portability
   defect: `INTENT(OUT)` context construction did not portably apply default
   component initialization. FortFront `229f5f11` assigns the mode policy
@@ -383,7 +394,9 @@ type-to-value-kind mapping. Its textual include and host include site are
 gone. The new `test_session_inferred_module_compiler` compiles and runs the
 same accepted Lazy fragment with ffc and gfortran, comparing output; the
 existing inferred integer/logical/real and Lazy array/derived/function tests
-remain green in the focused shard.
+remain green in the focused shard. PR #689 is currently head `81c90fa`,
+rebased onto ffc main `c204f97`; its latest full CI observation is run
+`31142048669`.
 The oracle creates its scoped `/var/tmp/ert` workspace before emitting artifacts,
 so clean CI runners and remote probes share the same test-workspace contract.
 The nested-character #669 oracle now establishes that directory itself as well,
