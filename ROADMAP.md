@@ -41,8 +41,9 @@ uncertainty.
 
 The current implementation heads for this gate are ffc `eb39ce6` (code
 baseline, with typed array-shape extraction plus the
-GCC14 descendant-link export fix), FortFront `193457a9` (semantic code
-baseline; roadmap tip `2179929e`, with implicit DIMENSION dummy preservation,
+GCC14 descendant-link export fix), FortFront `704cd27f` (semantic code
+baseline; roadmap tip `b4f1d2f2`, with separate module-procedure dummy
+resolution and implicit DIMENSION dummy preservation,
 IMPLICIT NONE
 undeclared-name diagnostics, nested binding identity, continuation-comment,
 and inline-IF fixes), fo `32ef96d`,
@@ -53,11 +54,11 @@ the checked-in parity snapshot remains stale and is not a release baseline.
 The final local `fo` gate at `10b2af1` built 435/435 units and ran 350 tests;
 the observation smoke passed and the run retains 26 named pre-existing
 compiler/dashboard failures. That exit is not a clean release gate.
-The current ffc merge CI is [run 31136814219](https://github.com/lazy-fortran/ffc/actions/runs/31136814219)
-(pending); the prior run [31136459600](https://github.com/lazy-fortran/ffc/actions/runs/31136459600)
+The current ffc merge CI is [run 31136869798](https://github.com/lazy-fortran/ffc/actions/runs/31136869798)
+(in progress); the prior run [31136459600](https://github.com/lazy-fortran/ffc/actions/runs/31136459600)
 was docs-only and had the known formatting failure while its build/test job
-continued. FortFront merge CI is [run 31136399036](https://github.com/lazy-fortran/fortfront/actions/runs/31136399036)
-(pending for current main `2179929e`); and
+continued. FortFront merge CI is [run 31137139530](https://github.com/lazy-fortran/fortfront/actions/runs/31137139530)
+(queued for current main `b4f1d2f2`); and
 the last checked fo ancestor was `e3cff007` (run 31122586327, failed/cancelled).
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
@@ -232,6 +233,9 @@ failures require FortFront facts that ffc cannot reconstruct safely:
 - FortFront #2975's nested-`ASSOCIATE` owner-binding correction is now landed
   at `d1c6a894`; the ffc direct-session regression
   `test_session_associate_selectors_compiler` passes against that revision.
+  FortFront `8d3e5a8a` also resolves separate module-procedure dummies from the
+  parent interface identity; the ffc consumer gate must use that fact rather
+  than reconstructing dummy bindings by spelling.
   The remaining host-storage work must consume that identity and reject an
   absent edge rather than re-register by spelling.
 - Host-associated polymorphic `CLASS(t), ALLOCATABLE` selectors in
@@ -624,7 +628,7 @@ Architectural supersets guide implementation, not issue closure:
 
 | Owner | Active contract before ffc can close the dependent work |
 | --- | --- |
-| FortFront | rejection/accepted-side correctness [#2883](https://github.com/lazy-fortran/fortfront/issues/2883), [#2897](https://github.com/lazy-fortran/fortfront/issues/2897), [#2924](https://github.com/lazy-fortran/fortfront/issues/2924), [#2951](https://github.com/lazy-fortran/fortfront/issues/2951), [#2970](https://github.com/lazy-fortran/fortfront/issues/2970), [#2986](https://github.com/lazy-fortran/fortfront/issues/2986), and [#2987](https://github.com/lazy-fortran/fortfront/issues/2987). #2993 is landed in FortFront `193457a9`; the implicit-DIMENSION preservation oracle is landed in `e5e8157b`; continuation-comment lexer defect [#2996](https://github.com/lazy-fortran/fortfront/issues/2996) and parser/identity [#2973](https://github.com/lazy-fortran/fortfront/issues/2973), [#2975](https://github.com/lazy-fortran/fortfront/issues/2975), [#2980](https://github.com/lazy-fortran/fortfront/issues/2980), [#2994](https://github.com/lazy-fortran/fortfront/issues/2994) remain active |
+| FortFront | rejection/accepted-side correctness [#2883](https://github.com/lazy-fortran/fortfront/issues/2883), [#2897](https://github.com/lazy-fortran/fortfront/issues/2897), [#2924](https://github.com/lazy-fortran/fortfront/issues/2924), [#2951](https://github.com/lazy-fortran/fortfront/issues/2951), [#2970](https://github.com/lazy-fortran/fortfront/issues/2970), [#2986](https://github.com/lazy-fortran/fortfront/issues/2986), and [#2987](https://github.com/lazy-fortran/fortfront/issues/2987). #2993 is landed in FortFront `704cd27f`; the separate-module dummy resolver is `8d3e5a8a`, and the implicit-DIMENSION preservation oracle is `e5e8157b`; continuation-comment lexer defect [#2996](https://github.com/lazy-fortran/fortfront/issues/2996) and parser/identity [#2973](https://github.com/lazy-fortran/fortfront/issues/2973), [#2975](https://github.com/lazy-fortran/fortfront/issues/2975), [#2980](https://github.com/lazy-fortran/fortfront/issues/2980), [#2994](https://github.com/lazy-fortran/fortfront/issues/2994) remain active |
 | LIRIC | Restore producer artifacts and explicit build-failure reporting in [#533](https://github.com/krystophny/liric/issues/533) before relying on the semantic public-session gate [#523](https://github.com/krystophny/liric/issues/523); current Bench Matrix, scheduled compatibility, and nightly runs are red |
 | fo | [#117](https://github.com/lazy-fortran/fo/issues/117) for the assignment-name-ending-in-function oracle before formatting changes, [#119](https://github.com/lazy-fortran/fo/issues/119) for unbounded JSON results, and [#103](https://github.com/lazy-fortran/fo/issues/103) for diagnostics; the parent/submodule DAG and ffc order-shim prerequisite are already landed in fo `32ef96d`/ffc `763ba0c` |
 | fluff | [#262](https://github.com/lazy-fortran/fluff/issues/262): verify every test executable can fail the build before fo #59 consumes deep-lint JSON |
