@@ -1,9 +1,7 @@
-    subroutine lower_if(arena, node, context, value, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(if_node), intent(in) :: node
-        type(lowering_context_t), intent(inout) :: context
-        type(lr_operand_desc_t), intent(out) :: value
-        character(len=:), allocatable, intent(out) :: error_msg
+submodule (session_program_lowering_impl) session_program_lowering_control
+    implicit none
+contains
+    module procedure lower_if
         integer :: empty_else(0)
 
         if (node%condition_index <= 0) then
@@ -22,20 +20,9 @@
             call lower_if_arm(arena, node, 0, empty_else, context, value, &
                               error_msg)
         end if
-    end subroutine lower_if
+    end procedure lower_if
 
-    recursive subroutine lower_if_arm(arena, node, elseif_index, else_indices, &
-                                      context, value, error_msg)
-        ! Lower one arm of an IF / ELSE IF cascade. elseif_index 0 is the main
-        ! IF condition and THEN body; index k>0 selects node%elseif_blocks(k).
-        ! else_indices is the final ELSE body, reached only after the last arm.
-        type(ast_arena_t), intent(in) :: arena
-        type(if_node), intent(in) :: node
-        integer, intent(in) :: elseif_index
-        integer, intent(in) :: else_indices(:)
-        type(lowering_context_t), intent(inout) :: context
-        type(lr_operand_desc_t), intent(out) :: value
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure lower_if_arm
         type(lr_operand_desc_t) :: condition
         type(symbol_t), allocatable :: saved_symbols(:)
         integer :: saved_symbol_count
@@ -145,14 +132,9 @@
             context%symbol_count = else_result%symbol_count
             call set_empty(error_msg)
         end if
-    end subroutine lower_if_arm
+    end procedure lower_if_arm
 
-    subroutine snapshot_branch_result(context, result)
-        ! Capture the current block's terminated state, symbol table, and
-        ! predecessor block id into a branch_result_t. Used for an else arm that
-        ! was lowered by a nested IF cascade rather than lower_if_branch.
-        type(lowering_context_t), intent(in) :: context
-        type(branch_result_t), intent(out) :: result
+    module procedure snapshot_branch_result
         integer :: i
 
         result%terminated = context%current_block_terminated
@@ -163,18 +145,9 @@
         end do
         result%symbol_count = context%symbol_count
         result%predecessor_block_id = context%current_block_id
-    end subroutine snapshot_branch_result
+    end procedure snapshot_branch_result
 
-    subroutine lower_if_branch(arena, node_indices, block_id, merge_block, &
-                               context, value, result, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: node_indices(:)
-        integer(c_int32_t), intent(in) :: block_id
-        integer(c_int32_t), intent(in) :: merge_block
-        type(lowering_context_t), intent(inout) :: context
-        type(lr_operand_desc_t), intent(out) :: value
-        type(branch_result_t), intent(out) :: result
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure lower_if_branch
         integer :: i
 
         if (.not. set_liric_block(context%session, block_id, error_msg)) return
@@ -198,13 +171,9 @@
         end if
 
         call set_empty(error_msg)
-    end subroutine lower_if_branch
+    end procedure lower_if_branch
 
-    subroutine merge_branch_symbols(context, then_result, else_result, error_msg)
-        type(lowering_context_t), intent(inout) :: context
-        type(branch_result_t), intent(in) :: then_result
-        type(branch_result_t), intent(in) :: else_result
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure merge_branch_symbols
         integer :: i
 
         if (then_result%symbol_count /= else_result%symbol_count) then
@@ -237,15 +206,9 @@
         end do
 
         call set_empty(error_msg)
-    end subroutine merge_branch_symbols
+    end procedure merge_branch_symbols
 
-    subroutine merge_symbol_value(context, then_result, else_result, index, &
-                                  error_msg)
-        type(lowering_context_t), intent(inout) :: context
-        type(branch_result_t), intent(in) :: then_result
-        type(branch_result_t), intent(in) :: else_result
-        integer, intent(in) :: index
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure merge_symbol_value
 
         select case (then_result%symbols(index)%value_kind)
         case (VALUE_I32, VALUE_LOGICAL)
@@ -310,26 +273,15 @@
         end select
 
         call set_empty(error_msg)
-    end subroutine merge_symbol_value
+    end procedure merge_symbol_value
 
-    logical function same_operand(lhs, rhs)
-        type(lr_operand_desc_t), intent(in) :: lhs
-        type(lr_operand_desc_t), intent(in) :: rhs
+    module procedure same_operand
 
         same_operand = lhs%kind == rhs%kind .and. lhs%payload == rhs%payload &
                        .and. lhs%global_offset == rhs%global_offset
-    end function same_operand
+    end procedure same_operand
 
-    subroutine lower_pause(node, context, error_msg)
-        ! gfortran writes a PAUSE banner to stderr (fd 2):
-        !   PAUSE <message>
-        !   To resume execution, type go.  Other input will terminate the job.
-        ! then waits on stdin. End-of-input terminates the job with exit 0,
-        ! suppressing any later output. Emit the banner via dprintf and read one
-        ! byte: on EOF (getchar() == -1) call exit(0); otherwise resume (#280).
-        type(pause_node), intent(in) :: node
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
+    module procedure lower_pause
         character(len=:), allocatable :: msg_text, banner
         type(lr_operand_desc_t) :: fa(3), fmtop, msgop, ch, is_eof
         type(lr_operand_desc_t) :: eof_imm
@@ -392,4 +344,5 @@
         context%current_block_id = resume_block
         context%current_block_terminated = .false.
         call set_empty(error_msg)
-    end subroutine lower_pause
+    end procedure lower_pause
+end submodule session_program_lowering_control
