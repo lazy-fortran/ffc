@@ -479,7 +479,7 @@ module session_program_lowering_impl
     public :: collect_carried_symbols, reserve_backedge_value
     public :: carried_backedge_operand, emit_carried_phi, emit_carried_copy
     public :: begin_loop_exit_tracking, end_loop_exit_tracking
-    public :: merge_loop_exit_values, lower_statement_list
+    public :: merge_loop_exit_values
     public :: is_contained_i32_function, is_proc_pointer_call
     public :: is_statement_function_call, is_type_bound_method_call
     public :: lower_array_locate_intrinsic, lower_array_reduction_intrinsic
