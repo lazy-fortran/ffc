@@ -483,6 +483,16 @@ module session_program_lowering_impl
     public :: lower_elementwise_user_call
     public :: lower_elementwise_type_bound_user_call
     public :: is_elemental_minmax_call, lower_elementwise_minmax_call
+    ! WHERE's typed descendant also uses these host-side array, elemental, and
+    ! polymorphic helpers.  Export them so GCC cold submodule links cannot
+    ! resolve private ancestor definitions as local-only symbols.
+    public :: lower_array_elementwise_value, build_array_expression
+    public :: cached_array_expression_symbol, is_elementwise_array_operand
+    public :: character_array_symbol_element_operands
+    public :: class_dummy_declared_type_index, emit_class_scalar_descriptor
+    public :: total_component_slots, class_receiver_dispatches_dynamically
+    public :: class_dispatch_callee, contained_elemental_signature
+    public :: method_call_info
     public :: lower_select_case, lower_select_type, lower_select_type_default
     public :: lower_select_rank, allocate_targets_class_star
     public :: lower_class_star_allocate
