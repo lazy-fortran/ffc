@@ -473,6 +473,13 @@ module session_program_lowering_impl
     public :: call_emit_name, copy_back_reference_args, eval_kind_of_arg
     public :: degeneric_call_name, fold_named_constant_at_node
     public :: integer_opcode
+    ! Loop helpers referenced by the typed DO WHILE descendant.  These remain
+    ! part of the ancestor implementation API so GCC emits linkable symbols
+    ! for cold submodule builds instead of private local definitions.
+    public :: collect_carried_symbols, reserve_backedge_value
+    public :: carried_backedge_operand, emit_carried_phi, emit_carried_copy
+    public :: begin_loop_exit_tracking, end_loop_exit_tracking
+    public :: merge_loop_exit_values, lower_statement_list
     public :: is_contained_i32_function, is_proc_pointer_call
     public :: is_statement_function_call, is_type_bound_method_call
     public :: lower_array_locate_intrinsic, lower_array_reduction_intrinsic
@@ -2701,6 +2708,15 @@ module session_program_lowering_impl
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_i32_array_element
+    end interface
+    interface
+        module subroutine lower_do_while(arena, node, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(do_while_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_do_while
     end interface
     interface
         module subroutine check_storage_association_restrictions(arena, error_msg)
