@@ -472,6 +472,16 @@ module session_program_lowering_impl
     public :: lower_do_loop, lower_statement_list
     public :: lower_counted_loop
     public :: push_storage_scope, pop_storage_scope
+    public :: lower_associate, bind_associate_name
+    public :: materialize_scalar_associate_source, associate_selector_is_array
+    public :: associate_symbol_slot, bind_associate_array_section
+    public :: bind_associate_component, bind_associate_alloc_array_component
+    public :: attach_symbol_binding, find_symbol_for_binding
+    public :: describe_array_section, array_section_source_linear_index
+    public :: array_section_total_elements, lower_expression_by_kind
+    public :: store_reference_value, component_access_is_alloc_array
+    public :: component_base_type_index, find_derived_component, component_kind
+    public :: lower_derived_component_address
     public :: body_has_statement_labels, is_executable_body_node
     public :: lower_labeled_program_body, lower_declaration_region_node
     public :: promote_scalars_to_memory, build_label_table, find_label_block
@@ -3416,6 +3426,73 @@ module session_program_lowering_impl
             type(lowering_context_t), intent(inout) :: context
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_computed_goto
+    end interface
+    interface
+        module subroutine lower_associate(arena, node, node_index, context, &
+                                          error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(associate_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_associate
+        module subroutine bind_associate_name(arena, assoc, association_index, &
+                                              scope_index, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(association_t), intent(in) :: assoc
+            integer, intent(in) :: association_index
+            integer, intent(in) :: scope_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_associate_name
+        module subroutine materialize_scalar_associate_source(context, &
+                                                              symbol_index, &
+                                                              error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine materialize_scalar_associate_source
+        recursive module function associate_selector_is_array(arena, node_index, &
+                                                              context) result(is_arr)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_arr
+        end function associate_selector_is_array
+        module function associate_symbol_slot(context, binding) result(idx)
+            type(lowering_context_t), intent(inout) :: context
+            type(declaration_binding_t), intent(in) :: binding
+            integer :: idx
+        end function associate_symbol_slot
+        module subroutine bind_associate_array_section(arena, slice_node, &
+                                                        assoc_name, binding, &
+                                                        context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(array_slice_node), intent(in) :: slice_node
+            character(len=*), intent(in) :: assoc_name
+            type(declaration_binding_t), intent(in) :: binding
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_associate_array_section
+        module subroutine bind_associate_component(arena, comp_node, assoc_name, &
+                                                   binding, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(component_access_node), intent(in) :: comp_node
+            character(len=*), intent(in) :: assoc_name
+            type(declaration_binding_t), intent(in) :: binding
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_associate_component
+        module subroutine bind_associate_alloc_array_component(arena, comp_node, &
+                                                               assoc_name, binding, &
+                                                               context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(component_access_node), intent(in) :: comp_node
+            character(len=*), intent(in) :: assoc_name
+            type(declaration_binding_t), intent(in) :: binding
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_associate_alloc_array_component
     end interface
     ! IF/ELSE IF branch merging and PAUSE lowering live in a typed descendant.
     ! Keep each procedure's ancestor contract explicit so cold submodule builds

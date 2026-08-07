@@ -1,3 +1,6 @@
+submodule (session_program_lowering_impl) session_program_lowering_associate
+    implicit none
+contains
     subroutine lower_associate(arena, node, node_index, context, error_msg)
         ! Lower an ASSOCIATE construct over scalar selectors. Each associate
         ! name is bound, for the construct scope only, to the value of its
@@ -21,12 +24,12 @@
         call push_storage_scope(context, saved_symbol_count, saved_floor)
         do i = 1, size(node%associations)
             call bind_associate_name(arena, node%associations(i), i, node_index, &
-                                     context, error_msg)
+                context, error_msg)
             if (len_trim(error_msg) > 0) exit
         end do
         if (len_trim(error_msg) == 0 .and. allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
-                                      terminated, error_msg)
+                terminated, error_msg)
         end if
         ! Associate names are scoped to the construct: drop their storage and
         ! binding identities even when body lowering reports an error.
@@ -36,7 +39,7 @@
     end subroutine lower_associate
 
     subroutine bind_associate_name(arena, assoc, association_index, scope_index, &
-                                   context, error_msg)
+            context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(association_t), intent(in) :: assoc
         integer, intent(in) :: association_index
@@ -63,7 +66,7 @@
         end if
         if (.not. node_exists(arena, assoc%expr_index)) then
             error_msg = 'associate selector expression is missing for '// &
-                        trim(assoc%name)
+                trim(assoc%name)
             return
         end if
 
@@ -90,16 +93,16 @@
         ! size, and writes through the associate name flow to the source.
         if (node_exists(arena, assoc%expr_index)) then
             select type (sel => arena%entries(assoc%expr_index)%node)
-            type is (array_slice_node)
+                type is (array_slice_node)
                 call bind_associate_array_section(arena, sel, assoc%name, binding, &
-                                                  context, error_msg)
+                    context, error_msg)
                 return
-            type is (component_access_node)
+                type is (component_access_node)
                 ! A derived-type component selector (associate(s => a%comp))
                 ! aliases the component's storage address, so reads and writes
                 ! through the associate name flow to the component.
                 call bind_associate_component(arena, sel, assoc%name, binding, &
-                                              context, error_msg)
+                    context, error_msg)
                 return
             end select
         end if
@@ -120,14 +123,14 @@
         ! Otherwise the selector is an expression: evaluate it once and bind the
         ! associate name to that value for the construct scope.
         value_kind = expression_value_kind(arena, assoc%expr_index, context, &
-                                           VALUE_I32)
+            VALUE_I32)
         select case (value_kind)
         case (VALUE_F32, VALUE_F64, VALUE_LOGICAL, VALUE_I32)
             call lower_expression_by_kind(arena, assoc%expr_index, context, &
-                                          value_kind, value, error_msg)
+                value_kind, value, error_msg)
         case default
             error_msg = 'associate selector for '//trim(assoc%name)// &
-                        ' uses an unsupported scalar type'
+                ' uses an unsupported scalar type'
             return
         end select
         if (len_trim(error_msg) > 0) return
@@ -147,7 +150,7 @@
     end subroutine bind_associate_name
 
     subroutine materialize_scalar_associate_source(context, symbol_index, &
-                                                    error_msg)
+            error_msg)
         ! Ordinary local scalars use SSA values until an ASSOCIATE selector
         ! needs storage. Materialize that value once so the original and the
         ! associate name share storage for subsequent reads and writes.
@@ -193,7 +196,7 @@
     end subroutine materialize_scalar_associate_source
 
     recursive logical function associate_selector_is_array(arena, node_index, &
-                                                           context) result(is_arr)
+            context) result(is_arr)
         ! An expression is array-valued when any identifier leaf names an array
         ! symbol. Binary operators propagate array shape from either operand;
         ! a whole-array reference (no subscript) is array-valued as well.
@@ -209,9 +212,9 @@
 
         if (is_binary_op(arena, node_index)) then
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
-                                    bin_right, bin_line, bin_col, bin_err)
+                bin_right, bin_line, bin_col, bin_err)
             is_arr = associate_selector_is_array(arena, bin_left, context) .or. &
-                     associate_selector_is_array(arena, bin_right, context)
+                associate_selector_is_array(arena, bin_right, context)
             return
         end if
 
@@ -238,7 +241,7 @@
     end function associate_symbol_slot
 
     subroutine bind_associate_array_section(arena, slice_node, assoc_name, &
-                                            binding, context, error_msg)
+            binding, context, error_msg)
         ! associate(x => a(lo:hi)): bind x to a rank-1, unit-stride view onto
         ! a(lo:hi)'s own storage (the associate name always starts at lower
         ! bound 1, Fortran 2018 11.1.3.3). Element access through x GEPs the
@@ -321,7 +324,7 @@
     end subroutine bind_associate_array_section
 
     subroutine bind_associate_component(arena, comp_node, assoc_name, binding, &
-                                        context, error_msg)
+            context, error_msg)
         ! associate(s => a%comp): bind s to the component's own storage
         ! address, so reads and writes through s flow to a%comp.
         type(ast_arena_t), intent(in) :: arena
@@ -368,7 +371,7 @@
     end subroutine bind_associate_component
 
     subroutine bind_associate_alloc_array_component(arena, comp_node, assoc_name, &
-                                                    binding, context, error_msg)
+            binding, context, error_msg)
         ! An allocatable array component selector aliases the component data
         ! pointer, not the inline descriptor. Keep the descriptor only long
         ! enough to load the data address; derived-array element addressing then
@@ -385,16 +388,16 @@
 
         call set_empty(error_msg)
         base_type = component_base_type_index(arena, comp_node%base_expr_index, &
-                                              context)
+            context)
         if (base_type <= 0) then
             error_msg = 'allocatable array component base is not a derived type'
             return
         end if
         component_index = find_derived_component(context, base_type, &
-                                                 comp_node%component_name)
+            comp_node%component_name)
         if (component_index <= 0) then
             error_msg = 'allocatable array component is not declared: '// &
-                        trim(comp_node%component_name)
+                trim(comp_node%component_name)
             return
         end if
         comp_kind = component_kind(context, base_type, component_index)
@@ -409,10 +412,10 @@
             descriptor, error_msg, 'associate allocatable array component')
         if (len_trim(error_msg) > 0) return
         if (.not. emit_ptr_load(context%session, descriptor, data_ptr, &
-                                error_msg)) return
+            error_msg)) return
 
         component_type = context%derived_types(base_type)% &
-                          component_type_index(component_index)
+            component_type_index(component_index)
         idx = associate_symbol_slot(context, binding)
         context%symbols(idx)%name = trim(assoc_name)
         context%symbols(idx)%value_kind = comp_kind
@@ -438,3 +441,4 @@
         call attach_symbol_binding(context, idx, binding)
         call set_empty(error_msg)
     end subroutine bind_associate_alloc_array_component
+end submodule session_program_lowering_associate
