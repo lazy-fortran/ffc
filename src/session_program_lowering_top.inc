@@ -1311,7 +1311,6 @@
     include 'session_program_lowering_goto.inc'
     include 'session_program_lowering_associate.inc'
     include 'session_program_lowering_loops.inc'
-    include 'session_program_lowering_do_while.inc'
     include 'session_program_lowering_interface.inc'
     include 'session_program_lowering_derived_types.inc'
     include 'session_program_lowering_pdt.inc'

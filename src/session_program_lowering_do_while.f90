@@ -1,4 +1,7 @@
-    subroutine lower_do_while(arena, node, context, value, error_msg)
+submodule (session_program_lowering_impl) session_program_lowering_do_while
+    implicit none
+contains
+    module subroutine lower_do_while(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(do_while_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -32,7 +35,7 @@
         entry_block = context%current_block_id
         initial_symbol_count = context%symbol_count
         call collect_carried_symbols(context, carried_indices, &
-                                     carried_count)
+            carried_count)
         if (carried_count > 0) then
             allocate(entry_values(context%symbol_count))
             allocate(header_values(context%symbol_count))
@@ -45,7 +48,7 @@
             if (len_trim(error_msg) > 0) return
             backedge_values(carried_indices(i)) = &
                 carried_backedge_operand(context, carried_indices(i), &
-                                         reserved_vreg)
+                reserved_vreg)
         end do
 
         header_block = create_liric_block(context%session)
@@ -59,18 +62,18 @@
         context%current_block_terminated = .false.
         do i = 1, carried_count
             if (.not. emit_carried_phi(context, carried_indices(i), &
-                                       entry_values(carried_indices(i)), &
-                                       entry_block, &
-                                       backedge_values(carried_indices(i)), &
-                                       latch_block, &
-                                       header_values(carried_indices(i)), &
-                                       error_msg)) return
+                entry_values(carried_indices(i)), &
+                entry_block, &
+                backedge_values(carried_indices(i)), &
+                latch_block, &
+                header_values(carried_indices(i)), &
+                error_msg)) return
             context%symbols(carried_indices(i))%value = &
                 header_values(carried_indices(i))
         end do
 
         call lower_i1_condition(arena, node%condition_index, context, &
-                                condition, error_msg)
+            condition, error_msg)
         if (len_trim(error_msg) > 0) return
         ! Lowering a condition may materialise an array-valued actual (for
         ! example a character-array comparison passed to a contained function).
@@ -78,7 +81,7 @@
         ! merged on each iteration.
         initial_symbol_count = context%symbol_count
         if (.not. emit_liric_condbr(context%session, condition, body_block, &
-                                    exit_block, error_msg)) return
+            exit_block, error_msg)) return
 
         if (.not. set_liric_block(context%session, body_block, error_msg)) return
         context%current_block_id = body_block
@@ -91,11 +94,11 @@
         context%in_loop = .true.
         context%current_block_exited_loop = .false.
         call begin_loop_exit_tracking(context, saved_loop_exit_blocks, &
-                                      saved_loop_exit_values, &
-                                      saved_loop_exit_count)
+            saved_loop_exit_values, &
+            saved_loop_exit_count)
         if (allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
-                                      body_terminated, error_msg)
+                body_terminated, error_msg)
             if (len_trim(error_msg) > 0) return
         end if
         body_exited = context%current_block_exited_loop
@@ -105,15 +108,15 @@
         context%current_block_exited_loop = .false.
         if (context%symbol_count /= initial_symbol_count) then
             error_msg = 'direct LIRIC session DO WHILE cannot merge '// &
-                        'loop declarations'
+                'loop declarations'
             return
         end if
         if (body_terminated .and. .not. body_exited) then
             call unsupported_feature_error('terminating do while body', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support stop or return inside '// &
-                                           'do while loops', error_msg)
+                node%line, node%column, &
+                'direct LIRIC session does not '// &
+                'support stop or return inside '// &
+                'do while loops', error_msg)
             return
         end if
         if (.not. body_terminated) then
@@ -138,12 +141,12 @@
         context%current_block_terminated = .false.
         do i = 1, carried_count
             call merge_loop_exit_values(context, carried_indices(i), &
-                                        header_values(carried_indices(i)), &
-                                        header_block, error_msg)
+                header_values(carried_indices(i)), &
+                header_block, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
         call end_loop_exit_tracking(context, saved_loop_exit_blocks, &
-                                    saved_loop_exit_values, saved_loop_exit_count)
+            saved_loop_exit_values, saved_loop_exit_count)
         value = i32_immediate(context%session, 0_c_int64_t)
         if (carried_count > 0) then
             deallocate(entry_values)
@@ -155,3 +158,4 @@
         end if
         call set_empty(error_msg)
     end subroutine lower_do_while
+end submodule session_program_lowering_do_while
