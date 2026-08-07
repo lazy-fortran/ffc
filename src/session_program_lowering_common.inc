@@ -1395,7 +1395,7 @@
         ! Bind a COMMON complex scalar's re/im parts to the two halves of its
         ! storage in the block buffer, matching the local-variable complex storage model (address=re,
         ! element_address=im) so the existing complex load/store paths work
-        ! unchanged (session_program_lowering_complex.inc).
+        ! unchanged (session_program_lowering_complex.f90).
         use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
         type(common_slot_t), intent(in) :: slot
         integer, intent(in) :: sym

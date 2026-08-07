@@ -606,6 +606,271 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine counted_loop_body_i
     end interface
+    ! Complex expression, component, and print lowering lives in a typed
+    ! descendant.  Keep every entry point explicit: host-side expression,
+    ! intrinsic, array, and print paths call several mutually-recursive
+    ! helpers, and a cold submodule build must resolve those symbols without
+    ! textual include association.
+    public :: lower_c4_assignment, lower_c8_assignment
+    public :: eval_c4_rhs, eval_c8_rhs
+    public :: lower_complex_component_access_load
+    public :: complex_component_kind, lower_complex_component_conversion
+    public :: lower_print_complex4, lower_print_complex8
+    public :: is_contained_complex_function, lower_print_complex_result_call
+    public :: lower_print_array_result_call
+    interface
+        module subroutine lower_c4_assignment(arena, rhs_index, sym_idx, &
+                                              context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: rhs_index, sym_idx
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_c4_assignment
+        module subroutine lower_c8_assignment(arena, rhs_index, sym_idx, &
+                                              context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: rhs_index, sym_idx
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_c8_assignment
+        recursive module function is_complex_valued(arena, node_index, context, &
+                                                    want_kind) result(is_c)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: want_kind
+            logical :: is_c
+        end function is_complex_valued
+        recursive module subroutine eval_c4_operand(arena, node_index, context, &
+                                                     re_val, im_val, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: re_val, im_val
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine eval_c4_operand
+        recursive module subroutine eval_c8_operand(arena, node_index, context, &
+                                                     re_val, im_val, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: re_val, im_val
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine eval_c8_operand
+        module subroutine lower_real_component_f32(arena, node_index, context, &
+                                                    value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_real_component_f32
+        module subroutine lower_real_component_f64(arena, node_index, context, &
+                                                    value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_real_component_f64
+        recursive module subroutine eval_c4_rhs(arena, rhs_index, context, &
+                                                re_val, im_val, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: rhs_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: re_val, im_val
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine eval_c4_rhs
+        recursive module subroutine eval_c8_rhs(arena, rhs_index, context, &
+                                                re_val, im_val, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: rhs_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: re_val, im_val
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine eval_c8_rhs
+        module subroutine complex_binary_op(arena, node_index, op, left, right, &
+                                            opc, line, col, kind_tag, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=:), allocatable, intent(out) :: op
+            integer, intent(out) :: left, right, opc, line, col
+            character(len=*), intent(in) :: kind_tag
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine complex_binary_op
+        module subroutine complex_combine_c4(context, op, opc, ar, ai, br, bi, &
+                                             re_val, im_val, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: op
+            integer, intent(in) :: opc
+            type(lr_operand_desc_t), intent(in) :: ar, ai, br, bi
+            type(lr_operand_desc_t), intent(out) :: re_val, im_val
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine complex_combine_c4
+        module subroutine complex_denom_c4(context, cr, ci, denom, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: cr, ci
+            type(lr_operand_desc_t), intent(out) :: denom
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine complex_denom_c4
+        module subroutine complex_combine_c8(context, op, opc, ar, ai, br, bi, &
+                                             re_val, im_val, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: op
+            integer, intent(in) :: opc
+            type(lr_operand_desc_t), intent(in) :: ar, ai, br, bi
+            type(lr_operand_desc_t), intent(out) :: re_val, im_val
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine complex_combine_c8
+        module subroutine complex_denom_c8(context, cr, ci, denom, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: cr, ci
+            type(lr_operand_desc_t), intent(out) :: denom
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine complex_denom_c8
+        module subroutine load_complex_identifier(arena, rhs_index, context, &
+                                                   want_kind, is_f32, re_val, &
+                                                   im_val, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: rhs_index, want_kind
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: is_f32
+            type(lr_operand_desc_t), intent(out) :: re_val, im_val
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine load_complex_identifier
+        module function cmplx_call_args(arena, node_index, re_arg, im_arg) &
+                result(is_call)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(out) :: re_arg, im_arg
+            logical :: is_call
+        end function cmplx_call_args
+        module function keyword_arg_name(arena, arg_index, kw_name) result(is_kw)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: arg_index
+            character(len=:), allocatable, intent(out) :: kw_name
+            logical :: is_kw
+        end function keyword_arg_name
+        module function conjg_call_arg(arena, node_index, arg) result(is_call)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(out) :: arg
+            logical :: is_call
+        end function conjg_call_arg
+        module function complex_component_kind(arena, node, context) result(kind)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            integer :: kind
+        end function complex_component_kind
+        module function is_complex_component_extract(arena, node, context, &
+                                                      want_kind) result(matches)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: want_kind
+            logical :: matches
+        end function is_complex_component_extract
+        module function is_complex_array_element_arg(arena, node_index, context, &
+                                                      want_kind) result(matches)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: want_kind
+            logical :: matches
+        end function is_complex_array_element_arg
+        module subroutine lower_complex_component_extract(arena, node, context, &
+                                                           is_f32, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: is_f32
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_complex_component_extract
+        module subroutine lower_complex_component_conversion(arena, node, context, &
+                                                             want_kind, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: want_kind
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_complex_component_conversion
+        module subroutine lower_complex_array_element_extract(arena, elem_index, &
+                                                              context, is_f32, &
+                                                              want_imag, value, &
+                                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: elem_index
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: is_f32, want_imag
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_complex_array_element_extract
+        module subroutine resolve_complex_component_slot(arena, comp_node, &
+                                                          context, is_f32, addr, &
+                                                          matched, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(component_access_node), intent(in) :: comp_node
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(out) :: is_f32
+            type(lr_operand_desc_t), intent(out) :: addr
+            logical, intent(out) :: matched
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine resolve_complex_component_slot
+        module subroutine lower_complex_component_access_load(arena, comp_node, &
+                                                              context, want_f32, &
+                                                              value, matched, &
+                                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(component_access_node), intent(in) :: comp_node
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: want_f32
+            type(lr_operand_desc_t), intent(out) :: value
+            logical, intent(out) :: matched
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_complex_component_access_load
+        module subroutine try_lower_complex_component_write(arena, node, target, &
+                                                            context, handled, &
+                                                            error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(assignment_node), intent(in) :: node
+            type(component_access_node), intent(in) :: target
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine try_lower_complex_component_write
+        module subroutine lower_print_complex4(sym_idx, context, error_msg)
+            integer, intent(in) :: sym_idx
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_print_complex4
+        module function is_contained_complex_function(context, name) result(is_c)
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: name
+            logical :: is_c
+        end function is_contained_complex_function
+        module subroutine lower_print_complex_result_call(arena, node_index, &
+                                                           context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_print_complex_result_call
+        module subroutine lower_print_array_result_call(arena, node_index, &
+                                                         context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_print_array_result_call
+        module subroutine lower_print_complex8(sym_idx, context, error_msg)
+            integer, intent(in) :: sym_idx
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_print_complex8
+    end interface
     interface
         module subroutine lower_print(arena, node, context, error_msg)
             type(ast_arena_t), intent(in) :: arena
@@ -5465,7 +5730,6 @@ contains
     include 'session_program_lowering_read_al.inc'
     include 'session_program_lowering_print_expr.inc'
     include 'session_program_lowering_expr_lowering.inc'
-    include 'session_program_lowering_complex.inc'
     include 'session_program_lowering_complex_arrays.inc'
     include 'session_program_lowering_intrinsics.inc'
     include 'session_program_lowering_intrinsics_extra.inc'
