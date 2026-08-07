@@ -1,3 +1,7 @@
+submodule (session_program_lowering_impl) session_program_lowering_reduction_expr
+    implicit none
+contains
+
     ! sum() (and friends) over a general array-valued expression argument:
     ! a binary-op combination of arrays/sections (sum(a + b), sum(a(1:3) +
     ! b(1:3))), or a bare call to a contained function that returns an
@@ -952,3 +956,5 @@
                                       context%symbols(info%source_index)%value_kind, &
                                       elems, value, error_msg)
     end subroutine lower_section_norm2
+
+end submodule session_program_lowering_reduction_expr
