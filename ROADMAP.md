@@ -181,6 +181,14 @@ passing, rebased commit at a time, in this order.
    external-procedure guard in `lower_logical_call` now fixes this crash, with
    `test_session_logical_result_call_compiler` as the positive behavioral
    oracle; retain the corpus FAIL until the current-head gate reclassifies it.
+   A bounded 2026-08-07 owner audit confirms that #540/#532 cannot be repaired
+   by deleting rows from the current manifests: the live owner validator
+   reports 105 closed issue IDs (82 ffc, 23 FortFront) across owner-bearing
+   XFAIL/FAIL_OWNER sets, while retained schema-v2 reports cover only the 563
+   and 265 FortFront suites. Keep every row visible and run one locked
+   four-suite provenance epoch before promoting XPASS rows, regenerating the
+   dashboard, or changing ownership; existing owner/XPASS validators already
+   have independent fake-GitHub behavioral fixtures.
 5. Finish binding identity and module contracts: #584 plus the procedure,
    generic, external-unit, and Lazy-specialization issues that depend on it.
 6. Converge on one descriptor/expression/lifetime model: #337, #338, #348,
