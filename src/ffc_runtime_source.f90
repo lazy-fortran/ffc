@@ -148,8 +148,6 @@ contains
         text = text// &
             '#include <string.h>'//NL
         text = text// &
-            '#include <ctype.h>'//NL
-        text = text// &
             '#include <sys/stat.h>'//NL
         text = text//NL
         text = text// &
@@ -194,13 +192,11 @@ contains
             '}'//NL
         text = text//NL
         text = text// &
-            '/* Compare a Fortran STATUS= value case-insensitively and ignore'//NL
+            '/* Case-sensitive compare; the compiler lowers STATUS= values in'//NL
         text = text// &
-            ' * fixed-length trailing blanks. */'//NL
+            ' * lower case. */'//NL
         text = text// &
             'static int ffc_streq(const char *a, const char *b) {'//NL
-        text = text// &
-            '    int i = 0;'//NL
         text = text// &
             '    if (a == NULL || b == NULL) {'//NL
         text = text// &
@@ -208,23 +204,15 @@ contains
         text = text// &
             '    }'//NL
         text = text// &
-            '    while (a[i] != ''\0'' && b[i] != ''\0'' &&'//NL
+            '    while (*a != ''\0'' && *a == *b) {'//NL
         text = text// &
-            '           tolower((unsigned char)a[i]) =='//NL
+            '        a++;'//NL
         text = text// &
-            '           tolower((unsigned char)b[i])) {'//NL
-        text = text// &
-            '        i++;'//NL
+            '        b++;'//NL
         text = text// &
             '    }'//NL
         text = text// &
-            '    while (a[i] == '' '') {'//NL
-        text = text// &
-            '        i++;'//NL
-        text = text// &
-            '    }'//NL
-        text = text// &
-            '    return a[i] == ''\0'' && b[i] == ''\0'';'//NL
+            '    return *a == *b;'//NL
         text = text// &
             '}'//NL
         text = text//NL
