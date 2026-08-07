@@ -39,7 +39,7 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `d3cbba4` (main
+The current implementation heads for this gate are ffc `6ab632d` (main
 runtime-synchronized baseline with typed inferred-symbol, array-shape, ISO
 C-pointer, TRANSFER, integer, BLOCK/DO CONCURRENT, DO WHILE, and GOTO
 lowering extraction, the GCC14
@@ -73,7 +73,7 @@ checked ancestor is `e1751bc`; and the merged ffc extraction commits are
 inferred symbols `240b84e`, ISO C pointers `aab7ef9`, and TRANSFER `a8f788c`,
 with the integer(8) guard `7dc6059`, bare-DIMENSION export repair `f7adff5`,
 rank-1 deep-copy `b0b7775`, typed integer lowering `cc91e32`, and structured
-control leaves through `d3cbba4` on current ffc main. No aggregate PASS is
+control leaves through `6ab632d` on current ffc main. No aggregate PASS is
 claimed.
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
@@ -185,7 +185,7 @@ The current state is not a valid parity baseline:
 - Current manifests contain 5,527 XFAIL rows, 288 FAIL-owner rows, 12 NOREF
   rows, and 2,305 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
-- There are 57 tracked production `.inc` files containing 73,867 lines. The
+- There are 56 tracked production `.inc` files containing 73,592 lines. The
   5,219-line host module has 37 direct include sites. Another 330 invocation
   sites use `find_symbol_compat`, compared with 12 binding-keyed lookup sites.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
@@ -523,7 +523,9 @@ claimed. The subsequent loops extraction `400470c`, control extraction
 `d3cbba4` reduce the inventory to 57 files / 73,867 lines. Their local clean
 builds cover 448/448, 449/449, 450/450, and 450/450 units respectively; the
 loop #626/#671, control, associate, and eight-case differential oracles pass.
-No aggregate PASS is claimed.
+No aggregate PASS is claimed. The FORALL extraction `6ab632d` removes its
+274-line include, passes the #673 alias/statement-order gfortran differential
+and the standard FORALL compiler test, and leaves 56 files / 73,592 lines.
 
 Extract the remaining leaves in this order:
 
@@ -537,8 +539,7 @@ while refactoring call evaluation.
 
 ### Wave 3A: structured control
 
-`select` (1,365), `where` (1,275), and
-`forall` (159).
+`select` (1,365), and `where` (1,275).
 
 The loop/control slice includes #626 and #671 fall-through/termination
 oracles. The FORALL slice fixes #673 with statement-level temporaries wherever
