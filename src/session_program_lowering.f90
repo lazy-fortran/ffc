@@ -420,6 +420,32 @@ module session_program_lowering_impl
     public :: const_expr_reason, call_const_reason
     public :: identifier_const_reason, shape_inquiry_reason
     public :: arena_has_function_def_named
+    ! Additional helpers referenced by descendants extracted after the initial
+    ! GCC-14 visibility pass above.  Keep these explicit so gfortran-14 emits
+    ! externally linkable definitions instead of local symbols.
+    public :: append_storage_name, arena_proc_param_count
+    public :: array_ctor_literal_class, array_ctor_typespec_class
+    public :: assign_i32_to_symbol, char_length_operands, cmp_class_name
+    public :: declared_type_of_name, define_symbol, dummy_signature
+    public :: expression_value_kind, ffc_unit_global_name
+    public :: file_unit_pseudo_name, identifier_name, identifier_name_at
+    public :: inquiry_arg_real_kind, io_control_value
+    public :: is_boz_literal_text, is_character_array_element
+    public :: is_character_literal, is_fortran_identifier_char
+    public :: is_integer_text, is_logical_literal
+    public :: is_real_array_reduction, is_real_dot_product
+    public :: is_real_inquiry_intrinsic, is_real_literal
+    public :: iso_c_binding_kind_value, iso_fortran_env_kind_value
+    public :: leading_identifier, literal_is_f64
+    public :: lower_i16_expression, lower_i64_expression
+    public :: lower_i8_expression, node_is_boz_literal
+    public :: normalize_format_body, procedure_def_name, ptr_plus_i32
+    public :: real_conversion_intrinsic, real_conversion_kind_is_f64
+    public :: real_intrinsic_is_f64, reject_constant_substring_overrun
+    public :: runtime_local_array_kind_ok, scalar_real_expr_kind
+    public :: storage_name_listed, storage_source_lines
+    public :: strip_data_source_comment, strip_line_comment
+    public :: strip_literal_quotes, try_const_int64
 
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from
