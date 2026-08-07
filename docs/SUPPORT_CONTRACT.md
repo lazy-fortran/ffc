@@ -67,9 +67,11 @@ to a different procedure or be reported as an unknown module name. The
 derived-dummy subroutine and function regressions in
 `test_session_read_fmod_compiler` cover this boundary, with gfortran accepting
 the function consumer as the independent positive oracle. Imported derived
-types, nested `ASSOCIATE` owners, and host-polymorphic selectors remain
-unsupported until their public FortFront binding facts and matching ffc
-behavioral tests land (see #584 and FortFront #2974/#2975).
+types and host-polymorphic selectors remain unsupported until their public
+FortFront binding facts and matching ffc behavioral tests land (see #584 and
+FortFront #2974). FortFront's nested `ASSOCIATE` owner binding is corrected at
+`d1c6a894`, with the direct-session regression covered by
+`test_session_associate_selectors_compiler`.
 
 ## Supported now
 

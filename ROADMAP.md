@@ -220,9 +220,11 @@ failures require FortFront facts that ffc cannot reconstruct safely:
   compound declaration after a non-constant array specification
   (`legacy_array_sections_03.f90`). ffc must not infer the missing scalar from
   its use site.
-- FortFront #2975 must retain the owner binding through nested `ASSOCIATE`
-  scopes (`gpu_metal_145.f90`). ffc's host-storage pre-pass must consume that
-  identity and reject an absent edge rather than re-register by spelling.
+- FortFront #2975's nested-`ASSOCIATE` owner-binding correction is now landed
+  at `d1c6a894`; the ffc direct-session regression
+  `test_session_associate_selectors_compiler` passes against that revision.
+  The remaining host-storage work must consume that identity and reject an
+  absent edge rather than re-register by spelling.
 - Host-associated polymorphic `CLASS(t), ALLOCATABLE` selectors in
   `class_is_1_ok.f90` and `type_is_1_ok.f90` need a public FortFront binding and
   dynamic-type fact for the contained procedure. The direct one-level

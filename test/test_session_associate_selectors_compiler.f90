@@ -12,6 +12,7 @@ program test_session_associate_selectors
     if (.not. test_associate_component_read()) all_passed = .false.
     if (.not. test_associate_component_write()) all_passed = .false.
     if (.not. test_associate_allocatable_array_component()) all_passed = .false.
+    if (.not. test_nested_associate_local_dummy()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: associate array-section and component selectors lower ' // &
@@ -129,5 +130,31 @@ contains
         test_associate_allocatable_array_component = expect_exit_status( &
             source, 6, '/tmp/ffc_session_associate_allocatable_array')
     end function test_associate_allocatable_array_component
+
+    logical function test_nested_associate_local_dummy()
+        ! FortFront #2975: a dummy referenced by a selector inside two nested
+        ! ASSOCIATE constructs remains local to the contained function.  If it
+        ! is mislabeled as host-associated, ffc allocates a second symbol and
+        ! the selector reads the wrong value.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'real :: x'//new_line('a')// &
+            'x = 41.0'//new_line('a')// &
+            'stop int(compute(x))'//new_line('a')// &
+            'contains'//new_line('a')// &
+            'pure function compute(x) result(r)'//new_line('a')// &
+            'real, intent(in) :: x'//new_line('a')// &
+            'real :: r'//new_line('a')// &
+            'associate(n => 1)'//new_line('a')// &
+            '    associate(z => x + real(n))'//new_line('a')// &
+            '        r = z'//new_line('a')// &
+            '    end associate'//new_line('a')// &
+            'end associate'//new_line('a')// &
+            'end function compute'//new_line('a')// &
+            'end program main'
+
+        test_nested_associate_local_dummy = expect_exit_status( &
+            source, 42, '/var/tmp/ert/ffc_session_nested_associate_dummy')
+    end function test_nested_associate_local_dummy
 
 end program test_session_associate_selectors
