@@ -186,7 +186,7 @@ The current state is not a valid parity baseline:
   rows, and 2,305 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
 - There are 60 tracked production `.inc` files containing 75,365 lines. The
-  5,219-line host module has 33 direct include sites. Another 330 invocation
+  5,219-line host module has 37 direct include sites. Another 330 invocation
   sites use `find_symbol_compat`, compared with 12 binding-keyed lookup sites.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
   and [#677](https://github.com/lazy-fortran/ffc/pull/677), conflict with main
