@@ -48,7 +48,8 @@ bare-DIMENSION host export repair), FortFront `c0a32743`
 context mode initialization for GCC14, and implicit DIMENSION dummy
 preservation, IMPLICIT NONE
 undeclared-name diagnostics, nested binding identity, continuation-comment,
-and inline-IF fixes; documentation handoff markers are `0a082664` and
+and inline-IF fixes, plus the #2973 typed legacy-I/O implied-do AST oracle;
+documentation handoff markers are `0689f81c` and
 `d8c8769`), fo `e1751bc`,
 and LIRIC `3facb898`. The code baselines are not green: ffc and fo still lack
 a completed current-head suite, while FortFront's Ubuntu lane is green and its
@@ -65,7 +66,7 @@ TRANSFER tests passed, and the full fpm/corpus job retained the existing
 semantic/corpus failure clusters; `fo fmt --check` retained the fo #117
 baseline. No transfer-specific failure or undefined reference remained after
 the explicit host exports. FortFront merge CI is tracked against current main
-`c0a32743`; its documentation handoff markers are `0a082664` and
+`c0a32743`; its documentation handoff markers are `0689f81c` and
 `d8c8769`; fo's current
 checked ancestor is `e1751bc`; and the merged ffc extraction commits are
 inferred symbols `240b84e`, ISO C pointers `aab7ef9`, and TRANSFER `a8f788c`,
