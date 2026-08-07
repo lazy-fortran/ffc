@@ -39,10 +39,11 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `7dc6059` (main
+The current implementation heads for this gate are ffc `f7adff5` (main
 runtime-synchronized baseline with typed inferred-symbol, array-shape, and
 ISO C-pointer extraction, the GCC14 descendant-link export fix, and the
-integer(8) external-call guard), FortFront `f46a005`
+integer(8) external-call guard plus the bare-DIMENSION host export repair),
+FortFront `f46a005`
 (semantic code baseline, with separate module-procedure dummy resolution, explicit semantic
 context mode initialization for GCC14, and implicit DIMENSION dummy
 preservation, IMPLICIT NONE
@@ -61,18 +62,19 @@ The latest completed ffc merge CI observation is [run
 the pre-merge inferred-extraction head `81c90fa` (the build passed, while the
 independent `fo fmt --check` and fpm test jobs failed; its log is the
 authoritative failure inventory). No full current-head CI observation has
-completed after c_ptr `aab7ef9` and integer(8) guard `7dc6059`; the focused
-oracles below are the only acceptance evidence for those commits, so no
-aggregate PASS is claimed.
+completed after c_ptr `aab7ef9`, integer(8) guard `7dc6059`, and the
+bare-DIMENSION export repair `f7adff5`; the focused oracles below are the
+only acceptance evidence for those commits, so no aggregate PASS is claimed.
 The current-head CI is [run
-31144484273](https://github.com/lazy-fortran/ffc/actions/runs/31144484273) at
-ffc `7dc6059`: the independent `fo fmt --check` job has completed with the
+31145340427](https://github.com/lazy-fortran/ffc/actions/runs/31145340427) at
+ffc `f7adff5`: the independent `fo fmt --check` job has completed with the
 known fo #117 baseline failure, while `build + fpm test` remains in progress.
 This run is not yet an aggregate result.
 FortFront merge CI is tracked against current main `f46a005`; fo's current
 checked ancestor is `e1751bc`; and the merged ffc extraction commits are
 inferred symbols `240b84e` and ISO C pointers `aab7ef9`, with the integer(8)
-guard now on current ffc main as `7dc6059`.
+guard `7dc6059` and bare-DIMENSION export repair `f7adff5` on current ffc
+main.
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
 `395e3d8131c189cd58e8c8061cdc77d1c44e3822`.
@@ -123,7 +125,8 @@ The current state is not a valid parity baseline:
   set under `/var/tmp/ert/ffc-31142048669-failed.log` for the next locked
   baseline comparison.
 - The integer(8) transfer/function crash cluster from that run is fixed on
-  current main by ffc `7dc6059` (rebased onto c_ptr extraction `aab7ef9`).
+  current main by ffc `f7adff5` (the guard itself landed as `7dc6059`, rebased
+  onto c_ptr extraction `aab7ef9`).
   `lower_i64_expression` and `lower_i64_call` previously relied on C-like
   short-circuit evaluation: a contained or module procedure with no external
   ABI record evaluated `external_procedures(0)` inside `.AND.`/`.OR.` probes,
@@ -141,14 +144,15 @@ The current state is not a valid parity baseline:
   focused pair first, then refresh the full locked CI failure set before
   promoting this slice. This focused evidence does not claim an aggregate
   PASS: the last completed merge observation still records the known fo #117
-  formatter mismatch and fpm/corpus failures; current-head run `31144484273`
+  formatter mismatch and fpm/corpus failures; current-head run `31145340427`
   is still waiting for its build/fpm job.
 
 - Post-merge CI [run `31144972941`](https://github.com/lazy-fortran/ffc/actions/runs/31144972941)
   reached ffc main `8a43a3c` and failed at link: the new inferred-symbol
   descendant called host predicate `declaration_is_bare_dimension`, but the
-  host module did not export it. The repair is a single explicit host export;
-  it is validated with a clean `fo clean`/`fo build` and focused DIMENSION,
+  host module did not export it. The repair is the single explicit host export
+  in current main `f7adff5`; it is validated with a clean `fo clean`/`fo build`
+  and focused DIMENSION,
   Lazy-array, and gfortran differential oracles. The current production
   inventory remains exactly 65 `.inc` files and 76,696 lines; this is a link
   correctness repair, not an aggregate corpus PASS claim.
@@ -446,7 +450,7 @@ gone. The new `test_session_inferred_module_compiler` compiles and runs the
 same accepted Lazy fragment with ffc and gfortran, comparing output; the
 existing inferred integer/logical/real and Lazy array/derived/function tests
 remain green in the focused shard. PR #689 merged as `240b84e` and is included
-in the current ffc main `7dc6059`; its latest full CI observation is run
+in the current ffc main `f7adff5`; its latest full CI observation is run
 `31142048669`.
 The oracle creates its scoped `/var/tmp/ert` workspace before emitting artifacts,
 so clean CI runners and remote probes share the same test-workspace contract.
@@ -464,7 +468,7 @@ manifest entry changed. The extraction commit's local `fo build` covered
 442/442 units and four focused C-interoperability oracles passed; its remote
 build/link gate was green. These focused results do not promote the aggregate
 suite: the known fo #117 formatter baseline and existing fpm/corpus failures
-remain open in the last completed observation; current-head run `31144484273`
+remain open in the last completed observation; current-head run `31145340427`
 has not completed its build/fpm job.
 
 Extract the remaining leaves in this order:
