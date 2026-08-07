@@ -420,6 +420,10 @@ module session_program_lowering_impl
     public :: const_expr_reason, call_const_reason
     public :: identifier_const_reason, shape_inquiry_reason
     public :: arena_has_function_def_named
+    public :: collect_inferred_symbols, collect_explicit_decl_names
+    public :: collect_module_export_names, mark_explicit_declarations
+    public :: name_is_explicitly_declared, add_explicit_decl_name
+    public :: try_seed_inferred_symbol, inferred_type_to_value_kind
     ! Additional helpers referenced by descendants extracted after the initial
     ! GCC-14 visibility pass above.  Keep these explicit so gfortran-14 emits
     ! externally linkable definitions instead of local symbols.
@@ -2403,6 +2407,54 @@ module session_program_lowering_impl
         end function declaration_declares_name
     end interface
     interface
+        module subroutine collect_inferred_symbols(arena, root_index, context, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: root_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine collect_inferred_symbols
+        module subroutine collect_explicit_decl_names(arena, root_index, context, &
+                                                      error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: root_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine collect_explicit_decl_names
+        module subroutine collect_module_export_names(context, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine collect_module_export_names
+        recursive module subroutine mark_explicit_declarations(arena, node_index, &
+                                                               context)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+        end subroutine mark_explicit_declarations
+        module function name_is_explicitly_declared(context, name) result(found)
+            logical :: found
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: name
+        end function name_is_explicitly_declared
+        module subroutine add_explicit_decl_name(context, name)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+        end subroutine add_explicit_decl_name
+        module subroutine try_seed_inferred_symbol(arena, node_index, name, &
+                                                   context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: name
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine try_seed_inferred_symbol
+        module function inferred_type_to_value_kind(inferred, context) result(vk)
+            integer :: vk
+            type(mono_type_t), intent(in) :: inferred
+            type(lowering_context_t), intent(in), optional :: context
+        end function inferred_type_to_value_kind
+    end interface
+    interface
         module subroutine check_storage_association_restrictions(arena, error_msg)
             type(ast_arena_t), intent(in) :: arena
             character(len=:), allocatable, intent(out) :: error_msg
@@ -3469,7 +3521,6 @@ contains
 
     include 'session_program_lowering_data.inc'
     include 'session_program_lowering_declarations.inc'
-    include 'session_program_lowering_inferred.inc'
     include 'session_program_lowering_lazy_monomorph.inc'
     subroutine define_declared_symbol(context, node, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
