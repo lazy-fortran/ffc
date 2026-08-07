@@ -39,7 +39,7 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `1abd543` (code
+The current implementation heads for this gate are ffc `fdda5a1` (code
 baseline, with typed inferred-symbol and array-shape extraction plus the
 GCC14 descendant-link export fix), FortFront `39bac6c2` (semantic code
 baseline, with separate module-procedure dummy resolution, explicit semantic
