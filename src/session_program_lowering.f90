@@ -477,6 +477,12 @@ module session_program_lowering_impl
     public :: lower_associate, bind_associate_name
     public :: lower_forall, prepare_forall_snapshot, clear_forall_snapshot
     public :: lower_forall_level, lower_forall_body, lower_forall_masked_body
+    public :: lower_where_stmt, lower_where_construct, lower_where_mask_element
+    public :: lower_elementwise_scalar_operand, is_elemental_real_call
+    public :: lower_elementwise_elemental_call, is_elemental_user_call
+    public :: lower_elementwise_user_call
+    public :: lower_elementwise_type_bound_user_call
+    public :: is_elemental_minmax_call, lower_elementwise_minmax_call
     public :: materialize_scalar_associate_source, associate_selector_is_array
     public :: associate_symbol_slot, bind_associate_array_section
     public :: bind_associate_component, bind_associate_alloc_array_component
@@ -3598,6 +3604,109 @@ module session_program_lowering_impl
             type(lowering_context_t), intent(inout) :: context
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_pause
+    end interface
+    ! WHERE and whole-array elemental helpers are defined in a typed
+    ! descendant. Keep the contracts explicit: ancestor lowering calls
+    ! several of these helpers directly, and GCC 14 otherwise gives the
+    ! cold submodule references local linkage.
+    interface
+        module subroutine lower_where_stmt(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(where_stmt_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_where_stmt
+        module subroutine lower_where_construct(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(where_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_where_construct
+        module subroutine lower_where_mask_element(arena, mask_index, &
+                                                   linear_index, context, cond, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: mask_index
+            integer, intent(in) :: linear_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: cond
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_where_mask_element
+        module subroutine lower_elementwise_scalar_operand(arena, node_index, &
+                                                           target_symbol_index, &
+                                                           context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(in) :: target_symbol_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_elementwise_scalar_operand
+        module function is_elemental_real_call(arena, node_index) result(is_call)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            logical :: is_call
+        end function is_elemental_real_call
+        module subroutine lower_elementwise_elemental_call(arena, node_index, &
+                                                           target_symbol_index, &
+                                                           linear_index, context, &
+                                                           value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(in) :: target_symbol_index
+            integer, intent(in) :: linear_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_elementwise_elemental_call
+        module function is_elemental_user_call(arena, node_index, context) &
+            result(is_call)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_call
+        end function is_elemental_user_call
+        module subroutine lower_elementwise_user_call(arena, node_index, &
+                                                      target_symbol_index, &
+                                                      linear_index, context, value, &
+                                                      error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(in) :: target_symbol_index
+            integer, intent(in) :: linear_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_elementwise_user_call
+        module subroutine lower_elementwise_type_bound_user_call(arena, node_index, &
+                                                                 target_symbol_index, &
+                                                                 linear_index, context, &
+                                                                 value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(in) :: target_symbol_index
+            integer, intent(in) :: linear_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_elementwise_type_bound_user_call
+        module function is_elemental_minmax_call(arena, node_index) result(is_call)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            logical :: is_call
+        end function is_elemental_minmax_call
+        module subroutine lower_elementwise_minmax_call(arena, node_index, &
+                                                        target_symbol_index, &
+                                                        linear_index, context, value, &
+                                                        error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(in) :: target_symbol_index
+            integer, intent(in) :: linear_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_elementwise_minmax_call
     end interface
 contains
     include 'session_program_lowering_top.inc'

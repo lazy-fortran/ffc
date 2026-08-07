@@ -1,3 +1,6 @@
+submodule (session_program_lowering_impl) session_program_lowering_where
+    implicit none
+contains
     ! WHERE construct and statement: masked elementwise array assignment.
     !
     ! A WHERE assigns to array elements only where a conformable logical mask is
@@ -1273,3 +1276,5 @@
             libm32 = 'roundf'; libm64 = 'round'
         end if
     end subroutine elemental_real_libm_names
+
+end submodule session_program_lowering_where
