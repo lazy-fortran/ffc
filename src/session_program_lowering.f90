@@ -468,6 +468,8 @@ module session_program_lowering_impl
     public :: lower_transfer_array_assignment
     public :: lower_i32_pow, lower_i32_call, lower_storage_size_intrinsic
     public :: lower_kind_intrinsic, lower_i32_array_element
+    public :: lower_do_loop, lower_statement_list
+    public :: push_storage_scope, pop_storage_scope
     public :: call_emit_name, copy_back_reference_args, eval_kind_of_arg
     public :: degeneric_call_name, fold_named_constant_at_node
     public :: integer_opcode
@@ -3169,6 +3171,21 @@ module session_program_lowering_impl
             type(lowering_context_t), intent(in) :: context
             logical :: is_assumed
         end function declaration_is_assumed_size
+    end interface
+    interface
+        module subroutine lower_block_construct(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(block_construct_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_block_construct
+        module subroutine lower_do_concurrent(arena, node, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(do_loop_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_do_concurrent
     end interface
 contains
     include 'session_program_lowering_top.inc'
