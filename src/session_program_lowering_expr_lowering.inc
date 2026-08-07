@@ -1350,6 +1350,10 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (.not. allocated(node%name)) then
+                error_msg = 'integer(8) call/subscript expression has no name'
+                return
+            end if
             if (node%base_expr_index <= 0 .and. &
                 .not. is_contained_function_reference(node, context) .and. &
                 (node%is_array_access .or. &
@@ -1383,11 +1387,19 @@
                     return
                 end if
                 ext_idx = external_procedure_index(context, node%name)
-                if (contained_function_kind(context, node%name) == VALUE_I64 .or. &
-                    (ext_idx > 0 .and. context%external_procedures(ext_idx)% &
-                        return_value_kind == VALUE_I64)) then
+                ! Fortran does not short-circuit .AND./.OR. expressions.  Do
+                ! not index external_procedures(0) while probing a contained
+                ! or module procedure that has no external ABI record.
+                if (contained_function_kind(context, node%name) == VALUE_I64) then
                     call lower_i64_call(arena, node, context, value, error_msg)
                     return
+                end if
+                if (ext_idx > 0) then
+                    if (context%external_procedures(ext_idx)%return_value_kind == &
+                        VALUE_I64) then
+                        call lower_i64_call(arena, node, context, value, error_msg)
+                        return
+                    end if
                 end if
                 if (same_name(node%name, 'transfer') .and. &
                     contained_function_kind(context, node%name) == 0) then
@@ -1417,28 +1429,27 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
+        integer :: ext_idx
 
-        if (external_procedure_index(context, node%name) > 0 .and. &
-            (context%external_procedures( &
-                external_procedure_index(context, node%name))%is_bind_c .or. &
-             .not. context%external_procedures( &
-                external_procedure_index(context, node%name))%by_reference)) then
-            if (allocated(node%arg_indices)) then
-                call prepare_bind_c_args(arena, node%arg_indices, &
-                    external_procedure_index(context, node%name), context, args, &
-                    copyback_indices, error_msg)
-            else
-                call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, &
-                    external_procedure_index(context, node%name), context, args, &
-                    copyback_indices, error_msg)
+        ext_idx = external_procedure_index(context, node%name)
+        if (ext_idx > 0) then
+            if (context%external_procedures(ext_idx)%is_bind_c .or. &
+                .not. context%external_procedures(ext_idx)%by_reference) then
+                if (allocated(node%arg_indices)) then
+                    call prepare_bind_c_args(arena, node%arg_indices, &
+                        ext_idx, context, args, copyback_indices, error_msg)
+                else
+                    call prepare_bind_c_args(arena, NO_ACTUAL_ARGS, &
+                        ext_idx, context, args, copyback_indices, error_msg)
+                end if
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_c_i64_call(context%session, &
+                        trim(context%external_procedures(ext_idx)%c_name), args, &
+                        value, error_msg)) return
+                call copy_back_reference_args(context, args, copyback_indices, &
+                                              error_msg)
+                return
             end if
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_c_i64_call(context%session, &
-                    trim(context%external_procedures( &
-                    external_procedure_index(context, node%name))%c_name), args, &
-                    value, error_msg)) return
-            call copy_back_reference_args(context, args, copyback_indices, error_msg)
-            return
         end if
 
         if (allocated(node%arg_indices)) then

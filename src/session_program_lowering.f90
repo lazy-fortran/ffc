@@ -3774,6 +3774,7 @@ contains
         call set_empty(error_msg)
     end subroutine lower_parameter_declaration
     ! Array lowering is included here; keep this unit invalidated when the include changes.
+    ! Integer(8) call/index guards and transfer dispatch are part of this unit.
     ! Typed TRANSPOSE also shares this include's complex and logical paths.
     ! Parameter TRANSPOSE initialization uses the same typed array stores.
     ! Typed integer MIN/MAX calls use the i64 comparison wrapper.
