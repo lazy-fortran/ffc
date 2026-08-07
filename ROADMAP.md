@@ -154,8 +154,8 @@ The current state is not a valid parity baseline:
   in current main `f7adff5`; it is validated with a clean `fo clean`/`fo build`
   and focused DIMENSION,
   Lazy-array, and gfortran differential oracles. The current production
-  inventory remains exactly 65 `.inc` files and 76,696 lines; this is a link
-  correctness repair, not an aggregate corpus PASS claim.
+  inventory at that pre-transfer head was exactly 65 `.inc` files and 76,696
+  lines; this is a link correctness repair, not an aggregate corpus PASS claim.
 
 - FortFront corpus case `issue_2848_dimension_statement.f90` is now traced to
   the ffc provider boundary: lazy-inserted declarations and bare `DIMENSION`
@@ -178,7 +178,7 @@ The current state is not a valid parity baseline:
 - Current manifests contain 5,527 XFAIL rows, 288 FAIL-owner rows, 12 NOREF
   rows, and 2,305 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
-- There are 65 tracked production `.inc` files containing 76,696 lines. The
+- There are 64 tracked production `.inc` files containing 76,336 lines. The
   5,219-line host module has 39 direct include sites. Another 322 invocation
   sites use `find_symbol_compat`, compared with 12 binding-keyed lookup sites.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
@@ -471,9 +471,21 @@ suite: the known fo #117 formatter baseline and existing fpm/corpus failures
 remain open in the last completed observation; current-head run `31145340427`
 has not completed its build/fpm job.
 
+The 439-line `transfer` leaf is now `session_program_lowering_transfer.f90`,
+a typed descendant with explicit interfaces for scalar and whole-array
+`TRANSFER`, kind/byte validation, and typed bit-punning allocation, store, and
+load helpers. Its textual include and host include site are gone. The existing
+`test_session_transfer_compiler` and `test_session_transfer_array_compiler`
+oracles remain green after the move, and their IEEE bit-pattern expectations
+are checked against gfortran in the focused differential probe. No XFAIL,
+manifest, or expectation row changed. The extraction's clean local `fo build`
+covers 443/443 units and leaves 64 tracked `.inc` files (76,336 lines); this
+focused evidence does not promote the aggregate suite while the formatter
+baseline and corpus failures remain open.
+
 Extract the remaining leaves in this order:
 
-`transfer` (439), `integer` (576),
+`integer` (576),
 `complex` (1,330),
 `intrinsics_extra` (1,322), `intrinsics` (2,141), `expr_lowering` (1,796),
 `logical_reduction` (1,615), and `reduction_expr` (954).
