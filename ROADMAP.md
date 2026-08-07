@@ -39,7 +39,7 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `caf3203` (main
+The current implementation heads for this gate are ffc `d3cbba4` (main
 runtime-synchronized baseline with typed inferred-symbol, array-shape, ISO
 C-pointer, TRANSFER, integer, BLOCK/DO CONCURRENT, DO WHILE, and GOTO
 lowering extraction, the GCC14
@@ -73,7 +73,7 @@ checked ancestor is `e1751bc`; and the merged ffc extraction commits are
 inferred symbols `240b84e`, ISO C pointers `aab7ef9`, and TRANSFER `a8f788c`,
 with the integer(8) guard `7dc6059`, bare-DIMENSION export repair `f7adff5`,
 rank-1 deep-copy `b0b7775`, typed integer lowering `cc91e32`, and structured
-control leaves through `caf3203` on current ffc main. No aggregate PASS is
+control leaves through `d3cbba4` on current ffc main. No aggregate PASS is
 claimed.
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
@@ -515,10 +515,19 @@ containing 76,199 lines. The structured-control wave then merged BLOCK/DO
 CONCURRENT `0663b2d`, DO WHILE `e36fbe3`, GOTO `92dac2e`, the duplicate-export
 repair `48d68e4`, and retired-include deletion `caf3203`. Their clean local
 builds cover 445/445, 446/446, and 447/447 units respectively; focused
-structured-control and GCC differential oracles pass. The current inventory is
-60 tracked `.inc` files / 75,365 lines. PR CI was cancelled by merge or
-concurrency after local cold-link gates passed; no XFAIL or aggregate PASS is
-claimed.
+structured-control and GCC differential oracles pass. The counted-loop leaf
+then merged as `400470c` (#712), deleting its 660-line host include. Its first
+current-head CI run [31150918226](https://github.com/lazy-fortran/ffc/actions/runs/31150918226)
+completed the build but exposed cold fpm-link references to `lower_i1_condition`
+and `select_value`; the former was exported by the control follow-up `8682a4b`
+and the latter by `d3cbba4` (#715). The current local cold build covers 450/450
+units and the nested-DO/#626, counted-DO, EXIT/CYCLE, DO WHILE, and #671
+contained-call gfortran-oracle suite is 8/8 PASS. PR run
+[31151305828](https://github.com/lazy-fortran/ffc/actions/runs/31151305828)
+reached the fpm Build ffc step without undefined references before merge
+concurrency cancelled the remaining full test job; `fo fmt --check` retains the
+known repository-wide formatter baseline. The current inventory is 57 tracked
+`.inc` files / 73,867 lines. No XFAIL or aggregate PASS is claimed.
 
 Extract the remaining leaves in this order:
 
