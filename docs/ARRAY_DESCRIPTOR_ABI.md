@@ -189,6 +189,13 @@ runtime-sized automatic arrays (#335), and allocatable arrays (#336). Pointer
 arrays and section views migrate in their own issues, as does retiring the
 last of the legacy runtime-shape metadata.
 
+The declaration-shape classifier is now isolated in the typed
+`session_program_lowering_array_shape.f90` descendant. It preserves the
+assumed-shape/assumed-rank/assumed-size classification boundary without
+changing descriptor bytes or hidden arguments;
+`test_session_array_shape_module_compiler` compares the emitted rank-2 shape
+and element observations with gfortran.
+
 Allocatable **components** of a derived type keep their own inline
 `{data, extent}` record for now; that representation is not part of this
 contract yet. Coarray codimensions are outside this descriptor.

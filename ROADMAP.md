@@ -1,6 +1,6 @@
 # ffc convergence roadmap
 
-Snapshot: 2026-08-06, Europe/Vienna. This document is the execution plan for
+Snapshot: 2026-08-07, Europe/Vienna. This document is the execution plan for
 bringing `ffc` to its declared language scope. The completion, reliability,
 and performance criteria are defined below. Generated reports own live counts.
 
@@ -72,7 +72,7 @@ The current state is not a valid parity baseline:
 - Current manifests contain 5,527 XFAIL rows, 288 FAIL-owner rows, 12 NOREF
   rows, and 2,305 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
-- There are 67 tracked production `.inc` files containing 77,690 lines. The
+- There are 67 tracked production `.inc` files containing 77,394 lines. The
   5,219-line host module has 42 direct include sites. Another 322 invocation
   sites use `find_symbol_compat`, compared with 12 binding-keyed lookup sites.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
@@ -378,7 +378,19 @@ named module with an explicit API. It does not remain textual inclusion.
 (349), `complex_arrays` (516), `assumed_shape_descriptor` (616),
 `assumed_shape_extent` (642), `char_arrays` (800), `runtime_alloc` (904),
 `pointer` (1,707), `allocatable` (2,925), `array_elements` (4,494), and
-`arrays` (6,771).
+`arrays` (6,475).
+
+The first 296-line declaration-shape slice of `arrays` is now the typed
+`session_program_lowering_array_shape.f90` descendant. Its eleven explicit
+module-procedure interfaces classify assumed-shape, assumed-rank,
+assumed-size, and runtime-bound declarations without private host association;
+the moved routines are deleted from the textual include. The
+`test_session_array_shape_module_compiler` differential oracle compiles the
+same rank-2 assumed-shape and assumed-size program with ffc and gfortran and
+compares their output. Existing assumed-shape, assumed-size, and runtime-bound
+compiler tests remain focused regression gates. This is a shape-classifier
+seam only; descriptor storage, sections, and allocation remain in their
+contract-owned waves below.
 
 Sequence by contract. First, #337 establishes section views. Next come #338
 pointer arrays, #348 character descriptors, and #643 derived allocatable

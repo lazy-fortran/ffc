@@ -2780,6 +2780,72 @@ module session_program_lowering_impl
             logical :: is_character
         end function actual_is_character
     end interface
+
+    interface
+        module function dim_is_assumed_shape(arena, dim_index) result(is_assumed)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: dim_index
+            logical :: is_assumed
+        end function dim_is_assumed_shape
+        module function declaration_is_assumed_shape(node, context) result(is_assumed)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_assumed
+        end function declaration_is_assumed_shape
+        module function declaration_is_runtime_rank1(node, context) result(is_runtime)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_runtime
+        end function declaration_is_runtime_rank1
+        recursive module function bound_expr_references_variable(arena, idx, context) &
+                result(has_var)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            type(lowering_context_t), intent(in) :: context
+            logical :: has_var
+        end function bound_expr_references_variable
+        module function bound_identifier_references_variable(arena, idx, context) &
+                result(has_var)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            type(lowering_context_t), intent(in) :: context
+            logical :: has_var
+        end function bound_identifier_references_variable
+        module function declaration_bound_is_variable_driven(node, context) &
+                result(is_var)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_var
+        end function declaration_bound_is_variable_driven
+        module function declaration_is_runtime_local_array(node, context, value_kind) &
+                result(is_local)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: value_kind
+            logical :: is_local
+        end function declaration_is_runtime_local_array
+        module function declaration_rebinds_runtime_array_result(node, context) &
+                result(is_rebind)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_rebind
+        end function declaration_rebinds_runtime_array_result
+        module function declaration_is_assumed_rank(node, context) result(is_rank)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_rank
+        end function declaration_is_assumed_rank
+        module function dim_is_assumed_size(arena, dim_index) result(is_assumed)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: dim_index
+            logical :: is_assumed
+        end function dim_is_assumed_size
+        module function declaration_is_assumed_size(node, context) result(is_assumed)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_assumed
+        end function declaration_is_assumed_size
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
