@@ -552,6 +552,15 @@ module session_program_lowering_impl
     public :: resolve_comparison_mask, try_alloc_component_mask_reduction
     public :: parse_i32_literal, prepare_reference_args
     public :: reject_monomorphized_call, set_empty
+    ! Reduction-expression submodule calls these host lowering helpers.  Keep
+    ! them externally linkable on GCC 14, where private ancestor procedures can
+    ! otherwise receive local linkage in a cold submodule build.
+    public :: alloc_array_result_info, alloc_array_result_static_size
+    public :: allocatable_descriptor_extent_i32, emit_allocatable_element_load
+    public :: enter_liric_block, load_array_element_at_operand
+    public :: lower_array_section_element_from_info
+    public :: real_opcode, reduction_combine, reduction_identity
+    public :: reduction_is_mask_valued, reduction_operation
     public :: unsupported_array_subscript, unsupported_intrinsic_error
     public :: unsupported_feature_error
 
@@ -4310,6 +4319,185 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_elementwise_minmax_call
     end interface
+    ! General array-expression reductions and NORM2 are implemented in their
+    ! own typed descendant.  Keep every procedure contract explicit so cold
+    ! submodule builds do not rely on textual include host association.
+    interface
+        recursive module function reduction_arg_extent(arena, node_index, context, &
+                                                       vk, extent) result(ok)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: vk
+            integer, intent(out) :: extent
+            logical :: ok
+        end function reduction_arg_extent
+        recursive module function reduction_expression_has_kind(arena, node_index, &
+                                                                 context, vk) result(has)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: vk
+            logical :: has
+        end function reduction_expression_has_kind
+        module function reduction_expression_is_abs_call(arena, node_index) &
+                result(is_abs)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            logical :: is_abs
+        end function reduction_expression_is_abs_call
+        recursive module function reduction_expression_extent_operand(arena, &
+                node_index, context, extent, error_msg) result(has_array)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: extent
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical :: has_array
+        end function reduction_expression_extent_operand
+        recursive module subroutine lower_runtime_reduction_arg_element(arena, &
+                node_index, linear_index, vk, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lr_operand_desc_t), intent(in) :: linear_index
+            integer, intent(in) :: vk
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_runtime_reduction_arg_element
+        module subroutine lower_runtime_general_expr_reduction(arena, arg_index, &
+                vk, context, value, error_msg, reduction_name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: arg_index, vk
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+            character(len=*), intent(in) :: reduction_name
+        end subroutine lower_runtime_general_expr_reduction
+        recursive module subroutine lower_reduction_arg_element(arena, node_index, &
+                linear_index, vk, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer(c_int64_t), intent(in) :: linear_index
+            integer, intent(in) :: vk
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_reduction_arg_element
+        module subroutine lower_reduction_scalar(arena, node_index, vk, context, &
+                                                 value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(in) :: vk
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_reduction_scalar
+        module subroutine lower_general_expr_reduction(arena, arg_index, extent, &
+                vk, context, value, error_msg, reduction_name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: arg_index
+            integer, intent(in) :: extent
+            integer, intent(in) :: vk
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+            character(len=*), intent(in) :: reduction_name
+        end subroutine lower_general_expr_reduction
+        module subroutine alloc_array_result_kind(arena, context, name, elem_kind, &
+                                                   rank, ok)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: name
+            integer, intent(out) :: elem_kind
+            integer, intent(out) :: rank
+            logical, intent(out) :: ok
+        end subroutine alloc_array_result_kind
+        module subroutine alloc_array_result_call_info(arena, value_index, context, &
+                                                        elem_kind, rank, ok)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: value_index
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(out) :: elem_kind
+            integer, intent(out) :: rank
+            logical, intent(out) :: ok
+        end subroutine alloc_array_result_call_info
+        module subroutine lower_alloc_call_reduction(arena, node, context, value, &
+                                                      error_msg, reduction_name)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+            character(len=*), intent(in) :: reduction_name
+        end subroutine lower_alloc_call_reduction
+        module subroutine norm2_real_immediate(context, vk, val, value)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: vk
+            real(c_double), intent(in) :: val
+            type(lr_operand_desc_t), intent(out) :: value
+        end subroutine norm2_real_immediate
+        module function norm2_binary(context, vk, op, lhs, rhs, value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: vk
+            integer(c_int), intent(in) :: op
+            type(lr_operand_desc_t), intent(in) :: lhs
+            type(lr_operand_desc_t), intent(in) :: rhs
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical :: norm2_binary
+        end function norm2_binary
+        module function norm2_libm(context, vk, name32, name64, arg, value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: vk
+            character(len=*), intent(in) :: name32
+            character(len=*), intent(in) :: name64
+            type(lr_operand_desc_t), intent(in) :: arg
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical :: norm2_libm
+        end function norm2_libm
+        module function norm2_fcmp(context, vk, predicate, lhs, rhs, value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: vk
+            integer(c_int), intent(in) :: predicate
+            type(lr_operand_desc_t), intent(in) :: lhs
+            type(lr_operand_desc_t), intent(in) :: rhs
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical :: norm2_fcmp
+        end function norm2_fcmp
+        module subroutine norm2_scale_factor(context, vk, elems, scale, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: vk
+            type(lr_operand_desc_t), intent(in) :: elems(:)
+            type(lr_operand_desc_t), intent(out) :: scale
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine norm2_scale_factor
+        module subroutine emit_norm2_from_elements(context, vk, elems, value, &
+                                                    error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: vk
+            type(lr_operand_desc_t), intent(in) :: elems(:)
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_norm2_from_elements
+        module subroutine lower_symbol_norm2(context, source_index, array_size, &
+                                             value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: source_index
+            integer, intent(in) :: array_size
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_symbol_norm2
+        module subroutine lower_section_norm2(info, total, context, value, error_msg)
+            type(array_section_info_t), intent(in) :: info
+            integer(c_int64_t), intent(in) :: total
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_section_norm2
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -5094,7 +5282,6 @@ contains
     include 'session_program_lowering_allocatable.inc'
     include 'session_program_lowering_runtime_alloc.inc'
     include 'session_program_lowering_alloc_array_result.inc'
-    include 'session_program_lowering_reduction_expr.inc'
     include 'session_program_lowering_io_implied_do.inc'
     include 'session_program_lowering_scalar_allocatable.inc'
     include 'session_program_lowering_internal_write.inc'
