@@ -39,9 +39,10 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `eb39ce6` (code
-baseline, with typed array-shape extraction plus the
-GCC14 descendant-link export fix), FortFront `39bac6c2` (semantic code
+The current implementation heads for this gate are ffc `c204f97` (main
+runtime-synchronized baseline; this PR adds typed inferred-symbol and
+array-shape extraction plus the GCC14 descendant-link export fix), FortFront
+`f46a005` (semantic code
 baseline, with separate module-procedure dummy resolution, explicit semantic
 context mode initialization for GCC14, and implicit DIMENSION dummy
 preservation,
@@ -55,12 +56,11 @@ the checked-in parity snapshot remains stale and is not a release baseline.
 The final local `fo` gate at `10b2af1` built 435/435 units and ran 350 tests;
 the observation smoke passed and the run retains 26 named pre-existing
 compiler/dashboard failures. That exit is not a clean release gate.
-The current ffc merge CI is [run 31139398939](https://github.com/lazy-fortran/ffc/actions/runs/31139398939)
+The current ffc merge CI is [run 31142048669](https://github.com/lazy-fortran/ffc/actions/runs/31142048669)
 (completed with the build passing but the independent `fo fmt --check` and
 fpm test jobs failing; the run log is the authoritative failure inventory).
-FortFront merge CI is [run 31138641474](https://github.com/lazy-fortran/fortfront/actions/runs/31138641474)
-(in progress for current main `a1d07243`); and
-the last checked fo ancestor was `e3cff007` (run 31122586327, failed/cancelled).
+FortFront merge CI is tracked against current main `f46a005`; and fo's
+current checked ancestor is `e1751bc`.
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
 `395e3d8131c189cd58e8c8061cdc77d1c44e3822`.
@@ -92,6 +92,23 @@ The current state is not a valid parity baseline:
   `scripts/generate_runtime_source.sh`; the existing `test_runtime_link_compiler`
   behavioral oracle remains mandatory and checks byte identity, strict C11
   compilation, declared symbols, and execution through the emitted runtime.
+- A second GCC14 reproduction on `faepkub4` was not an acceptance oracle:
+  `FO_JOBS=1 fo build` aborted inside the remote compiler/tooling process with
+  parser diagnostics followed by `free(): invalid pointer`. Keep that host
+  result classified as infrastructure instability; the clean GCC14 link
+  oracle is the current-head GitHub build and the dedicated remote probe that
+  completed without allocator failure.
+- Run `31142048669` is the post-runtime-sync acceptance observation for this
+  branch: LIRIC and ffc build/link passed; the known repository-wide formatter
+  gate failed; and fpm's existing direct/corpus suites still fail. Relative to
+  `31139981992`, the `runtime_link`, `test_session_inferred_module_compiler`,
+  and `test_session_nested_character_substring_compiler` failures are gone;
+  there is no inferred-extraction-specific failure or undefined reference.
+  The remaining F90/LF timeout and diagnostic/output clusters are downstream
+  corpus debt (their selected file names vary with the runner timeout), not a
+  new module-regression signal. Preserve the exact log and normalized failure
+  set under `/var/tmp/ert/ffc-31142048669-failed.log` for the next locked
+  baseline comparison.
 - FortFront's strict `IMPLICIT NONE` gate had a second GCC14 portability
   defect: `INTENT(OUT)` context construction did not portably apply default
   component initialization. FortFront `229f5f11` assigns the mode policy
@@ -106,8 +123,8 @@ The current state is not a valid parity baseline:
 - Current manifests contain 5,527 XFAIL rows, 288 FAIL-owner rows, 12 NOREF
   rows, and 2,305 SKIP rows. Of 5,552 rows with issue ownership, 4,524 point
   to 105 closed issues. Those are inventory facts, not current outcomes.
-- There are 67 tracked production `.inc` files containing 77,394 lines. The
-  5,219-line host module has 42 direct include sites. Another 322 invocation
+- There are 66 tracked production `.inc` files containing 77,047 lines. The
+  5,219-line host module has 40 direct include sites. Another 322 invocation
   sites use `find_symbol_compat`, compared with 12 binding-keyed lookup sites.
 - The only open ffc pull requests, [#596](https://github.com/lazy-fortran/ffc/pull/596)
   and [#677](https://github.com/lazy-fortran/ffc/pull/677), conflict with main
@@ -370,9 +387,24 @@ existing dynamic-STATUS regression, FILE-variable path, positional-unit path,
 and OPEN/WRITE/CLOSE round-trip all remain green after the move; no behavior
 was accepted from a state-only check.
 
+The 347-line `inferred` leaf is now
+`session_program_lowering_inferred.f90`: a typed descendant with eight explicit
+interfaces for Lazy inferred-symbol collection, declaration shadowing, and
+type-to-value-kind mapping. Its textual include and host include site are
+gone. The new `test_session_inferred_module_compiler` compiles and runs the
+same accepted Lazy fragment with ffc and gfortran, comparing output; the
+existing inferred integer/logical/real and Lazy array/derived/function tests
+remain green in the focused shard. PR #689 is currently head `81c90fa`,
+rebased onto ffc main `c204f97`; its latest full CI observation is run
+`31142048669`.
+The oracle creates its scoped `/var/tmp/ert` workspace before emitting artifacts,
+so clean CI runners and remote probes share the same test-workspace contract.
+The nested-character #669 oracle now establishes that directory itself as well,
+removing an FPM execution-order dependency from its independent gfortran check.
+
 Extract the remaining leaves in this order:
 
-`inferred` (347), `c_ptr` (362), `transfer` (439), `integer` (576),
+`c_ptr` (362), `transfer` (439), `integer` (576),
 `complex` (1,330),
 `intrinsics_extra` (1,322), `intrinsics` (2,141), `expr_lowering` (1,796),
 `logical_reduction` (1,615), and `reduction_expr` (954).
