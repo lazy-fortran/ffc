@@ -1,0 +1,545 @@
+submodule (session_program_lowering_impl) session_program_lowering_integer
+    implicit none
+contains
+    module procedure lower_i32_expression
+    use liric_session_bindings, only: LR_OP_ADD
+    integer(c_int64_t) :: literal_value
+    type(lr_operand_desc_t) :: lhs
+    type(lr_operand_desc_t) :: rhs
+    integer :: opcode
+    integer :: symbol_index
+    character(len=:), allocatable :: bin_op
+    integer :: bin_left, bin_right, bin_line, bin_col
+    character(len=:), allocatable :: lit_value, lit_type
+    character(len=:), allocatable :: id_name
+    integer(c_int64_t) :: const_value
+    logical :: const_found
+
+    if (.not. node_exists(arena, node_index)) then
+        error_msg = 'expression index does not reference an AST node'
+        return
+    end if
+
+    if (is_statement_function_call(arena, node_index, context)) then
+        call lower_statement_function_call(arena, node_index, VALUE_I32, &
+            context, value, error_msg)
+        return
+    end if
+
+    if (is_literal(arena, node_index)) then
+        call get_literal_info(arena, node_index, lit_value, lit_type, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (is_logical_literal(arena, node_index)) then
+            call lower_logical_expression(arena, node_index, context, value, &
+                error_msg)
+            return
+        end if
+        call parse_i32_literal(lit_value, literal_value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        value = i32_immediate(context%session, literal_value)
+        return
+    end if
+
+    if (is_binary_op(arena, node_index)) then
+        block
+            integer :: op_slot
+            if (overloaded_operator_slot(arena, node_index, context, op_slot)) &
+                then
+                call lower_overloaded_operator(arena, node_index, op_slot, &
+                    context, value, error_msg)
+                return
+            end if
+        end block
+        call get_binary_op_info(arena, node_index, bin_op, bin_left, &
+            bin_right, bin_line, bin_col, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, bin_left, context, lhs, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (trim(bin_op) == '**') then
+            call lower_i32_pow(arena, bin_right, bin_line, bin_col, &
+                context, lhs, value, error_msg)
+            return
+        end if
+        call lower_i32_expression(arena, bin_right, context, rhs, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call integer_opcode(bin_op, opcode, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unsupported_feature_error('integer operator', &
+                bin_line, bin_col, &
+                'direct LIRIC session supports '// &
+                '+, -, *, and / for integer '// &
+                'expressions', error_msg)
+            return
+        end if
+        if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, value, &
+            error_msg)) return
+        return
+    end if
+
+    if (is_identifier(arena, node_index)) then
+        call get_identifier_name(arena, node_index, id_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (same_name(id_name, 'c_null_ptr')) then
+            ! iso_c_binding null pointer constant: an opaque zero.
+            value = i32_immediate(context%session, 0_c_int64_t)
+            call set_empty(error_msg)
+            return
+        end if
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
+        if (symbol_index <= 0) then
+            ! A host-associated named constant has no symbol in this
+            ! procedure's context; fold it from its bound declaration.
+            call fold_named_constant_at_node(context, node_index, id_name, &
+                const_value, const_found, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (const_found) then
+                value = i32_immediate(context%session, const_value)
+                call set_empty(error_msg)
+                return
+            end if
+            ! An intrinsic-module kind constant (iso_fortran_env int32,
+            ! iso_c_binding c_int) has no lowering symbol either; it is a
+            ! compile-time integer whose value is its kind number.
+            const_found = iso_fortran_env_kind_value(id_name, const_value)
+            if (.not. const_found) then
+                const_found = iso_c_binding_kind_value(id_name, const_value)
+            end if
+            if (const_found) then
+                value = i32_immediate(context%session, const_value)
+                call set_empty(error_msg)
+                return
+            end if
+            error_msg = 'integer identifier was not declared: '//trim(id_name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_array .and. &
+            context%symbols(symbol_index)%value_kind == VALUE_LOGICAL) then
+            call lower_logical_expression(arena, node_index, context, value, &
+                error_msg)
+            return
+        end if
+        if (context%symbols(symbol_index)%is_array) then
+            call unsupported_feature_error('array expression', &
+                get_node_line(arena, node_index), &
+                get_node_column(arena, node_index), &
+                'array reads require exactly one '// &
+                'subscript', error_msg)
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+            error_msg = 'integer expression used non-integer identifier: '// &
+                trim(id_name)
+            return
+        end if
+        if (context%symbols(symbol_index)%has_address .and. &
+            context%symbols(symbol_index)%is_reference) then
+            if (.not. emit_i32_load(context%session,  &
+                context%symbols(symbol_index)%address, value, &
+                error_msg)) return
+        else
+            value = context%symbols(symbol_index)%value
+            call set_empty(error_msg)
+        end if
+        return
+    end if
+
+    select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+        if (node%base_expr_index > 0 .and. &
+            is_type_bound_method_call(arena, node, context)) then
+            call lower_method_call_i32(arena, node, context, value, error_msg)
+        else if (node%base_expr_index > 0) then
+            call lower_derived_component_element_load(arena, node, context, &
+                value, error_msg)
+        else if (node%is_array_access .and. &
+                .not. is_contained_function_reference(node, context)) then
+            call lower_i32_array_element(arena, node, context, value, error_msg)
+        else if (is_allocatable_element_ref(node, context)) then
+            call lower_i32_array_element(arena, node, context, value, error_msg)
+        else if (is_declared_array_element_ref(node, context)) then
+            call lower_i32_array_element(arena, node, context, value, error_msg)
+        else
+            call lower_i32_call(arena, node, context, value, error_msg)
+        end if
+        type is (component_access_node)
+        call lower_derived_component_load(arena, node, context, value, error_msg)
+        type is (array_slice_node)
+        call unsupported_array_subscript(arena, node_index, &
+            'ranges and slices', error_msg)
+    class default
+        error_msg = 'ffc direct-session lowering only supports integer expressions'
+    end select
+    end procedure lower_i32_expression
+
+    module procedure lower_i32_pow
+    use liric_session_bindings, only: LR_OP_MUL
+    integer(c_int64_t) :: exponent
+    character(len=:), allocatable :: parse_error
+    type(lr_operand_desc_t) :: product
+    integer(c_int64_t) :: i
+
+    call parse_i32_constant(arena, exp_index, exponent, 'exponent', &
+        parse_error)
+    if (len_trim(parse_error) > 0) then
+        call unsupported_feature_error('integer exponent', line, column, &
+            'direct LIRIC session only supports '// &
+            'a non-negative integer literal '// &
+            'exponent', error_msg)
+        return
+    end if
+    if (exponent < 0_c_int64_t) then
+        call unsupported_feature_error('negative integer exponent', line, &
+            column, &
+            'direct LIRIC session only supports '// &
+            'a non-negative integer literal '// &
+            'exponent', error_msg)
+        return
+    end if
+
+    if (exponent == 0_c_int64_t) then
+        value = i32_immediate(context%session, 1_c_int64_t)
+        call set_empty(error_msg)
+        return
+    end if
+
+    value = base
+    do i = 2_c_int64_t, exponent
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, value, base, &
+            product, error_msg)) return
+        value = product
+    end do
+    call set_empty(error_msg)
+    end procedure lower_i32_pow
+
+    module procedure lower_i32_call
+    type(lr_operand_desc_t), allocatable :: args(:)
+    integer, allocatable :: copyback_indices(:)
+    integer :: intrinsic_id
+    character(len=:), allocatable :: call_name
+    integer :: call_arg_count
+    integer :: call_arg_kinds(MAX_PROC_ARGS)
+    integer :: call_arg_ranks(MAX_PROC_ARGS)
+
+    if (node%base_expr_index > 0) then
+        call lower_derived_component_element_load(arena, node, context, value, &
+            error_msg)
+        return
+    end if
+    if (node%is_array_access) then
+        call unsupported_feature_error('array expression', &
+            node%line, node%column, &
+            'direct LIRIC session does not '// &
+            'support reading array elements', &
+            error_msg)
+        return
+    end if
+    if (.not. allocated(node%name)) then
+        error_msg = 'direct LIRIC session function call requires a name'
+        return
+    end if
+
+    ! Resolve generic -> specific (#249 B7c).
+    call call_argument_kinds(arena, node, context, VALUE_I32, &
+        call_arg_count, call_arg_kinds)
+    call call_argument_ranks(arena, node, context, call_arg_count, &
+        call_arg_ranks)
+    call reject_monomorphized_call(context, trim(node%name), node%line, &
+        node%column, error_msg)
+    if (len_trim(error_msg) > 0) return
+    call_name = degeneric_call_name(context, node%name, &
+        call_arg_count, call_arg_kinds, call_arg_ranks)
+
+    ! A use-associated generic resolves to one of its specifics first, so the
+    ! external lookup uses the resolved name (#415).
+    if (external_procedure_index(context, call_name) > 0) then
+        if (context%external_procedures( &
+            external_procedure_index(context, call_name))%is_bind_c) then
+            call lower_external_i32_call(arena, node, &
+                external_procedure_index(context, call_name), context, value, &
+                error_msg)
+        else if (context%external_procedures( &
+                external_procedure_index(context, call_name))%by_reference) then
+            call lower_module_proc_i32_call(arena, node, &
+                external_procedure_index(context, call_name), context, value, &
+                error_msg, call_name)
+        else
+            call lower_external_i32_call(arena, node, &
+                external_procedure_index(context, call_name), context, value, &
+                error_msg)
+        end if
+        return
+    end if
+    if (same_name(node%name, 'command_argument_count') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_command_argument_count(node, context, value, error_msg)
+        return
+    end if
+    if (same_name(node%name, 'len') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_i32_len_intrinsic(arena, node, context, value, error_msg)
+        return
+    end if
+    if (same_name(node%name, 'len_trim') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_i32_len_trim_intrinsic(arena, node, context, value, &
+            error_msg)
+        return
+    end if
+    if (same_name(node%name, 'iachar') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_iachar_intrinsic(arena, node, context, value, error_msg)
+        return
+    end if
+    if (same_name(node%name, 'index') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_index_intrinsic(arena, node, context, value, error_msg)
+        return
+    end if
+    if (same_name(node%name, 'size') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_array_size_intrinsic(arena, node, context, value, error_msg)
+        return
+    end if
+    if (same_name(node%name, 'storage_size') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_storage_size_intrinsic(arena, node, context, value, &
+            error_msg)
+        return
+    end if
+    if (same_name(node%name, 'kind') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_kind_intrinsic(arena, node, context, value, error_msg)
+        return
+    end if
+    if (same_name(node%name, 'sum') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_array_reduction_intrinsic(arena, node, context, value, &
+            error_msg, 'sum')
+        return
+    end if
+    if (same_name(node%name, 'product') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_array_reduction_intrinsic(arena, node, context, value, &
+            error_msg, 'product')
+        return
+    end if
+    if (same_name(node%name, 'maxval') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_array_reduction_intrinsic(arena, node, context, value, &
+            error_msg, 'maxval')
+        return
+    end if
+    if (same_name(node%name, 'minval') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_array_reduction_intrinsic(arena, node, context, value, &
+            error_msg, 'minval')
+        return
+    end if
+    if (same_name(node%name, 'norm2') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        error_msg = 'norm2 requires a real array argument'
+        return
+    end if
+    if (same_name(node%name, 'dot_product') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_i32_dot_product_intrinsic(arena, node, context, value, &
+            error_msg)
+        return
+    end if
+    if (same_name(node%name, 'lbound') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_lbound_intrinsic(arena, node, context, value, error_msg)
+        return
+    end if
+    if (same_name(node%name, 'ubound') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_ubound_intrinsic(arena, node, context, value, error_msg)
+        return
+    end if
+    if (same_name(node%name, 'count') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_logical_array_count_intrinsic(arena, node, context, value, &
+            error_msg)
+        return
+    end if
+    if (same_name(node%name, 'any') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_logical_array_any_intrinsic(arena, node, context, value, &
+            error_msg)
+        return
+    end if
+    if (same_name(node%name, 'all') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_logical_array_all_intrinsic(arena, node, context, value, &
+            error_msg)
+        return
+    end if
+    if (same_name(node%name, 'maxloc') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_array_locate_intrinsic(arena, node, context, value, &
+            error_msg, .true.)
+        return
+    end if
+    if (same_name(node%name, 'minloc') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_array_locate_intrinsic(arena, node, context, value, &
+            error_msg, .false.)
+        return
+    end if
+    if (same_name(node%name, 'scan') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_scan_intrinsic(arena, node, context, value, error_msg)
+        return
+    end if
+    if (same_name(node%name, 'verify') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_verify_intrinsic(arena, node, context, value, error_msg)
+        return
+    end if
+
+    ! Procedure pointer indirect call (B3d): fp(args).
+    if (is_proc_pointer_call(context, node%name)) then
+        call lower_i32_proc_ptr_call(arena, node, context, value, error_msg)
+        return
+    end if
+    if (same_name(call_name, 'transfer') .and. .not. &
+        is_contained_i32_function(context, call_name)) then
+        block
+            logical :: handled
+            call lower_transfer_intrinsic(arena, node, context, VALUE_I32, &
+                value, handled, error_msg)
+            if (handled) return
+            if (len_trim(error_msg) > 0) return
+        end block
+    end if
+    if ((same_name(call_name, 'min0') .or. same_name(call_name, 'min1') .or. &
+        same_name(call_name, 'max0') .or. same_name(call_name, 'max1')) .and. &
+        .not. is_contained_i32_function(context, call_name)) then
+        call lower_i32_legacy_minmax_call(arena, node, context, &
+            same_name(call_name, 'min1') .or. &
+            same_name(call_name, 'max1'), &
+            same_name(call_name, 'max0') .or. &
+            same_name(call_name, 'max1'), value, &
+            error_msg)
+        return
+    end if
+    intrinsic_id = i32_intrinsic_id(call_name)
+    if (.not. is_contained_i32_function(context, call_name)) then
+        if (intrinsic_id /= I32_INTRINSIC_NONE) then
+            call lower_i32_intrinsic_call(arena, node, intrinsic_id, &
+                context, value, error_msg)
+            return
+        end if
+        if (node%is_intrinsic) then
+            call unsupported_intrinsic_error(node, error_msg)
+            return
+        end if
+        call unsupported_feature_error( &
+            'scalar function call or array expression', &
+            node%line, node%column, &
+            'direct LIRIC session only supports contained scalar '// &
+            'functions, supported intrinsics, and scalar variables', &
+            error_msg)
+        return
+    end if
+
+    if (allocated(node%arg_indices)) then
+        call prepare_reference_args(arena, node%arg_indices, context, &
+            VALUE_I32, call_name, args, &
+            copyback_indices, error_msg)
+        if (len_trim(error_msg) > 0) return
+    else
+        call prepare_reference_args(arena, NO_ACTUAL_ARGS, context, &
+            VALUE_I32, call_name, args, &
+            copyback_indices, error_msg)
+        if (len_trim(error_msg) > 0) return
+    end if
+
+    if (.not. emit_i32_call(context%session, call_emit_name(arena, call_name, &
+        context), &
+        args, value, error_msg)) return
+    call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end procedure lower_i32_call
+
+    module procedure lower_storage_size_intrinsic
+    character(len=:), allocatable :: name, name_error
+    integer :: symbol_index, bytes
+    integer(c_int64_t) :: kind_value
+
+    call set_empty(error_msg)
+    if (.not. allocated(node%arg_indices) .or. &
+        size(node%arg_indices) < 1) then
+        error_msg = 'storage_size requires an argument'
+        return
+    end if
+
+    bytes = 0
+    if (is_identifier(arena, node%arg_indices(1))) then
+        call get_identifier_name(arena, node%arg_indices(1), name, name_error)
+        if (len_trim(name_error) > 0) then
+            error_msg = name_error
+            return
+        end if
+        symbol_index = resolve_symbol_at_node(context, node%arg_indices(1), name)
+        if (symbol_index > 0) then
+            bytes = transfer_kind_bytes( &
+                context%symbols(symbol_index)%value_kind)
+            if (context%symbols(symbol_index)%value_kind == VALUE_LOGICAL .and. &
+                context%symbols(symbol_index)%logical_kind_bytes > 0) then
+                bytes = context%symbols(symbol_index)%logical_kind_bytes
+            end if
+        end if
+    else if (is_literal(arena, node%arg_indices(1))) then
+        call kind_of_literal(arena, node%arg_indices(1), context, kind_value, &
+            error_msg)
+        if (len_trim(error_msg) > 0) return
+        bytes = int(kind_value)
+    end if
+
+    if (bytes <= 0) then
+        error_msg = 'storage_size argument has no supported scalar kind'
+        return
+    end if
+    value = i32_immediate(context%session, &
+        int(8 * bytes, c_int64_t))
+    end procedure lower_storage_size_intrinsic
+
+    module procedure lower_kind_intrinsic
+    integer(c_int64_t) :: kind_value
+
+    call eval_kind_of_arg(arena, node, context, kind_value, error_msg)
+    if (len_trim(error_msg) > 0) return
+    value = i32_immediate(context%session, kind_value)
+    end procedure lower_kind_intrinsic
+
+    module procedure lower_i32_array_element
+    type(lr_operand_desc_t) :: element_address
+    integer :: symbol_index
+
+    ! An integer(8)/(1)/(2) array element must load through its own width;
+    ! reject here instead of silently misreading through an i32-width GEP.
+    if (allocated(node%name)) then
+        symbol_index = find_symbol_compat(context, node%name)
+        if (symbol_index > 0) then
+            if (context%symbols(symbol_index)%value_kind == VALUE_I64 .or. &
+                context%symbols(symbol_index)%value_kind == VALUE_I8 .or. &
+                context%symbols(symbol_index)%value_kind == VALUE_I16) then
+                error_msg = 'integer expression used a non-default-kind '// &
+                    'array element: '//trim(node%name)
+                return
+            end if
+        end if
+    end if
+
+    call lower_i32_array_element_address(arena, node, context, element_address, &
+        error_msg)
+    if (len_trim(error_msg) > 0) return
+
+    if (.not. emit_i32_load(context%session, element_address, value, error_msg)) then
+        error_msg = 'arr_read_load: '//error_msg
+        return
+    end if
+    call set_empty(error_msg)
+    end procedure lower_i32_array_element
+end submodule session_program_lowering_integer

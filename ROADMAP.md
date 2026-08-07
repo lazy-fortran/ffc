@@ -490,6 +490,8 @@ exports. Its textual include and host include site are gone. The accepted
 integer-power, accepted/rejected integer-intrinsic, and integer-kind differential
 oracles remain green; the clean local build covers 443/443 units and the new
 submodule passes its targeted formatter check. No XFAIL or manifest row changed.
+After this extraction, the ffc source inventory is 64 tracked `.inc` files
+containing 76,199 lines; no aggregate corpus PASS is claimed.
 
 Extract the remaining leaves in this order:
 
