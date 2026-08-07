@@ -39,7 +39,7 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `de04a46` (main
+The current implementation heads for this gate are ffc `fc3ea15` (main
 runtime-synchronized baseline with typed inferred-symbol, array-shape, ISO
 C-pointer, TRANSFER, integer, BLOCK/DO CONCURRENT, DO WHILE, and GOTO
 lowering extraction, the GCC14
@@ -73,7 +73,9 @@ checked ancestor is `e1751bc`; and the merged ffc extraction commits are
 inferred symbols `240b84e`, ISO C pointers `aab7ef9`, and TRANSFER `a8f788c`,
 with the integer(8) guard `7dc6059`, bare-DIMENSION export repair `f7adff5`,
 rank-1 deep-copy `b0b7775`, typed integer lowering `cc91e32`, and structured
-control leaves through `de04a46` on current ffc main. No aggregate PASS is
+control leaves through `fc3ea15` on current ffc main. The WHERE extraction's
+GCC cold-link defect was repaired by exporting its ten host helpers in
+`fc3ea15`; no aggregate PASS is
 claimed.
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
@@ -529,7 +531,11 @@ and the standard FORALL compiler test. WHERE extraction `d0dbafd` then
 removes its 1,275-line include; masked assignment and ELSEWHERE independent
 oracles pass. SELECT extraction `de04a46` removes its 1,365-line include;
 case, type/rank selector, runtime, and derived-selector independent oracles
-pass. The current inventory is 54 files / 70,951 lines.
+pass. The current inventory is 54 files / 70,951 lines. The repair has a
+local cold `fo clean && fo build` gate at 453/453, five focused compiler tests
+pass, and independent gfortran differentials produce exact WHERE output
+`2 3 30 40` and SELECT output `27`. PR #723's aggregate CI remains observed
+separately; its earlier WHERE link failure is not treated as a semantic PASS.
 
 Extract the remaining leaves in this order:
 
