@@ -55,8 +55,9 @@ the checked-in parity snapshot remains stale and is not a release baseline.
 The final local `fo` gate at `10b2af1` built 435/435 units and ran 350 tests;
 the observation smoke passed and the run retains 26 named pre-existing
 compiler/dashboard failures. That exit is not a clean release gate.
-The current ffc merge CI is [run 31138583625](https://github.com/lazy-fortran/ffc/actions/runs/31138583625)
-(in progress; formatting has already failed and build/test is still running).
+The current ffc merge CI is [run 31138820207](https://github.com/lazy-fortran/ffc/actions/runs/31138820207)
+(in progress at this snapshot; its independent `fo fmt --check` job has
+failed and the GCC14 build/test job is still running).
 FortFront merge CI is [run 31138641474](https://github.com/lazy-fortran/fortfront/actions/runs/31138641474)
 (in progress for current main `a1d07243`); and
 the last checked fo ancestor was `e3cff007` (run 31122586327, failed/cancelled).
@@ -74,6 +75,17 @@ The current state is not a valid parity baseline:
   GCC14.2 on `faepkub4`; a clean `fpm build` and the array-shape module
   consumer oracle now link and pass there. Formatting and aggregate debt
   remain visible until the merge CI above completes.
+- The formatter failure is a pre-existing tool/baseline mismatch, not a
+  feature regression in this ffc head. With the CI-pinned fo `e1751bc`, a
+  clean checkout of ffc `8cd454b` reports 87 tracked `.f90` files needing
+  formatting; the same complete list was emitted by the prior CI run
+  31137477221 at ffc `196a3bfc`. fo's native formatter replaced the previous
+  fprettify implementation in fo `9bef0f7`, and fo issue [#117](https://github.com/lazy-fortran/fo/issues/117)
+  still owns its formatter-correctness oracle. Running `fo fmt` rewrites
+  9,865 lines across those 87 files, mostly continuation indentation, so no
+  mass rewrite or CI bypass is accepted before #117's independent oracle and
+  a reviewed ffc formatting sweep. Keep this gate recorded as FAIL until that
+  evidence exists.
 - FortFront's strict `IMPLICIT NONE` gate had a second GCC14 portability
   defect: `INTENT(OUT)` context construction did not portably apply default
   component initialization. FortFront `229f5f11` assigns the mode policy
