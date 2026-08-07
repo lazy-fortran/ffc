@@ -1307,7 +1307,6 @@
                                            'support this AST node', error_msg)
         end select
     end subroutine unsupported_statement_node
-    include 'session_program_lowering_associate.inc'
     include 'session_program_lowering_interface.inc'
     include 'session_program_lowering_derived_types.inc'
     include 'session_program_lowering_pdt.inc'
