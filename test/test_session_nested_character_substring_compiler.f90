@@ -56,6 +56,7 @@ contains
         integer :: unit, exit_stat, status
 
         matches_gfortran = .false.
+        call execute_command_line('mkdir -p /var/tmp/ert')
         base = '/var/tmp/ert/ffc_issue669_'//trim(stem)
         src = base//'.f90'
         exe = base//'.ffc'

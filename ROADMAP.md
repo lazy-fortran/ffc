@@ -386,6 +386,8 @@ existing inferred integer/logical/real and Lazy array/derived/function tests
 remain green in the focused shard.
 The oracle creates its scoped `/var/tmp/ert` workspace before emitting artifacts,
 so clean CI runners and remote probes share the same test-workspace contract.
+The nested-character #669 oracle now establishes that directory itself as well,
+removing an FPM execution-order dependency from its independent gfortran check.
 
 Extract the remaining leaves in this order:
 
