@@ -466,6 +466,34 @@ module session_program_lowering_impl
     public :: transfer_kind_bytes, transfer_pair_supported
     public :: transfer_alloca, transfer_store, transfer_load
     public :: lower_transfer_array_assignment
+    public :: lower_i32_pow, lower_i32_call, lower_storage_size_intrinsic
+    public :: lower_kind_intrinsic, lower_i32_array_element
+    public :: call_emit_name, copy_back_reference_args, eval_kind_of_arg
+    public :: degeneric_call_name, fold_named_constant_at_node
+    public :: integer_opcode
+    public :: is_contained_i32_function, is_proc_pointer_call
+    public :: is_statement_function_call, is_type_bound_method_call
+    public :: lower_array_locate_intrinsic, lower_array_reduction_intrinsic
+    public :: lower_array_size_intrinsic, lower_command_argument_count
+    public :: lower_derived_component_element_load, lower_external_i32_call
+    public :: lower_derived_component_load
+    public :: lower_i32_array_element_address, lower_i32_dot_product_intrinsic
+    public :: lower_i32_intrinsic_call, lower_i32_legacy_minmax_call
+    public :: i32_intrinsic_id
+    public :: lower_i32_len_intrinsic, lower_i32_len_trim_intrinsic
+    public :: lower_i32_proc_ptr_call, lower_iachar_intrinsic
+    public :: lower_index_intrinsic, lower_lbound_intrinsic
+    public :: lower_logical_array_all_intrinsic
+    public :: lower_logical_array_any_intrinsic
+    public :: lower_logical_array_count_intrinsic, lower_method_call_i32
+    public :: lower_module_proc_i32_call, lower_overloaded_operator
+    public :: lower_scan_intrinsic, lower_statement_function_call
+    public :: lower_ubound_intrinsic
+    public :: lower_verify_intrinsic, overloaded_operator_slot
+    public :: parse_i32_literal, prepare_reference_args
+    public :: reject_monomorphized_call, set_empty
+    public :: unsupported_array_subscript, unsupported_intrinsic_error
+    public :: unsupported_feature_error
 
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from
@@ -2623,6 +2651,54 @@ module session_program_lowering_impl
             type(lowering_context_t), intent(inout) :: context
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_transfer_array_assignment
+        recursive module subroutine lower_i32_expression(arena, node_index, &
+                                                          context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_i32_expression
+        module subroutine lower_i32_pow(arena, exp_index, line, column, context, &
+                                        base, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: exp_index, line, column
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: base
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_i32_pow
+        module subroutine lower_i32_call(arena, node, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_i32_call
+        module subroutine lower_storage_size_intrinsic(arena, node, context, &
+                                                        value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_storage_size_intrinsic
+        module subroutine lower_kind_intrinsic(arena, node, context, value, &
+                                               error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_kind_intrinsic
+        module subroutine lower_i32_array_element(arena, node, context, value, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_i32_array_element
     end interface
     interface
         module subroutine check_storage_association_restrictions(arena, error_msg)
@@ -4749,7 +4825,6 @@ contains
     include 'session_program_lowering_expr_lowering.inc'
     include 'session_program_lowering_complex.inc'
     include 'session_program_lowering_complex_arrays.inc'
-    include 'session_program_lowering_integer.inc'
     include 'session_program_lowering_intrinsics.inc'
     include 'session_program_lowering_intrinsics_extra.inc'
     include 'session_program_lowering_logical_reduction.inc'
