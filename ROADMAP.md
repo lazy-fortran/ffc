@@ -39,20 +39,19 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The implementation baselines for this gate are `ffc` `06ebfc4` (schema-v2
-provenance, action epochs, and the allocatable-descriptor submodule), FortFront
-`9a3a7a50`, fo `32ef96d`, and LIRIC `3facb898`. The code baselines are not
-green: ffc and fo still lack a completed current-head suite, while FortFront's
-latest completed run failed. The ffc focused observation gate is green locally;
+The current implementation heads for this gate are ffc `c9d1227` (typed array-
+shape extraction and its differential oracle), FortFront `ca26bf9d` (nested
+binding identity plus continuation-comment and inline-IF fixes), fo `32ef96d`,
+and LIRIC `3facb898`. The code baselines are not green: ffc and fo still lack
+a completed current-head suite, while the latest FortFront run is pending.
+The ffc focused observation gate is green locally;
 the checked-in parity snapshot remains stale and is not a release baseline.
 The final local `fo` gate at `10b2af1` built 435/435 units and ran 350 tests;
 the observation smoke passed and the run retains 26 named pre-existing
 compiler/dashboard failures. That exit is not a clean release gate.
-The last checked ffc parent was `61cbceb` (CI run 30807386910, red for the
-GCC14 submodule-link and formatting gates); the latest checked FortFront
-implementation was `9a3a7a50` (roundtrip timeout fixture is now explicitly
-slow; the preceding run 31127135731 was Windows/aggregate failed and
-Ubuntu cancelled); and
+The current ffc CI is [run 31134105860](https://github.com/lazy-fortran/ffc/actions/runs/31134105860)
+(queued); FortFront CI is [run 31134675652](https://github.com/lazy-fortran/fortfront/actions/runs/31134675652)
+(pending); and
 the last checked fo ancestor was `e3cff007` (run 31122586327, failed/cancelled).
 The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
@@ -60,10 +59,10 @@ The external pins are LFortran
 
 The current state is not a valid parity baseline:
 
-- [main CI run 30807386910](https://github.com/lazy-fortran/ffc/actions/runs/30807386910)
-  is the last checked ffc parent and is red. The GCC14 submodule-link defect
-  is fixed by ffc `45194aa`; the 18 order shims are removed by `763ba0c`.
-  The formatting debt remains unchecked on current main.
+- The current-head CI links above are intentionally not treated as green until
+  they complete. The GCC14 submodule-link defect is fixed by ffc `45194aa`,
+  and the 18 order shims are removed by `763ba0c`; formatting and aggregate
+  debt remain visible.
 - The live corpus plan contains 11,046 files: 563 FortFront F90, 265
   FortFront LF, 4,280 LFortran, and 5,938 `gfortran.dg`.
   `--sample 900` selects one global 900-file sample, not 900 per suite.
