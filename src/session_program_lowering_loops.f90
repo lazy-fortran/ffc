@@ -1,4 +1,7 @@
-    subroutine lower_do_loop(arena, node, context, value, error_msg)
+submodule (session_program_lowering_impl) session_program_lowering_loops
+    implicit none
+contains
+    module subroutine lower_do_loop(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(do_loop_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -11,9 +14,9 @@
             return
         end if
         call lower_counted_loop(arena, node%var_name, node%start_expr_index, &
-                                node%end_expr_index, node%step_expr_index, &
-                                node%line, node%column, emit_do_body, context, &
-                                value, error_msg)
+            node%end_expr_index, node%step_expr_index, &
+            node%line, node%column, emit_do_body, context, &
+            value, error_msg)
     contains
         subroutine emit_do_body(ctx, terminated, err)
             type(lowering_context_t), intent(inout) :: ctx
@@ -25,14 +28,14 @@
             call set_empty(err)
             if (allocated(node%body_indices)) then
                 call lower_statement_list(arena, node%body_indices, ctx, &
-                                          body_value, terminated, err)
+                    body_value, terminated, err)
             end if
         end subroutine emit_do_body
     end subroutine lower_do_loop
 
-    subroutine lower_counted_loop(arena, var_name, start_expr_index, &
-                                  end_expr_index, step_expr_index, line, column, &
-                                  body_emit, context, value, error_msg)
+    module subroutine lower_counted_loop(arena, var_name, start_expr_index, &
+            end_expr_index, step_expr_index, line, column, &
+            body_emit, context, value, error_msg)
         ! Emit the LIRIC scaffold for a counted loop over var_name: induction
         ! phi, exit test, body, latch increment. body_emit fills the body block
         ! and reports whether it terminated (e.g. stop/return); DO and FORALL
@@ -91,21 +94,21 @@
         end if
 
         call lower_i32_expression(arena, start_expr_index, context, &
-                                  start_value, error_msg)
+            start_value, error_msg)
         if (len_trim(error_msg) > 0) return
         call lower_i32_expression(arena, end_expr_index, context, &
-                                  end_value, error_msg)
+            end_value, error_msg)
         if (len_trim(error_msg) > 0) return
         call resolve_do_step(arena, step_expr_index, context, step_value, &
-                             step_operand, step_is_runtime, error_msg)
+            step_operand, step_is_runtime, error_msg)
         if (len_trim(error_msg) > 0) return
 
-      context%symbols(loop_symbol_index)%value = start_value
+        context%symbols(loop_symbol_index)%value = start_value
         entry_block = context%current_block_id
         initial_symbol_count = context%symbol_count
         call collect_carried_symbols(context, carried_indices, &
-                                     carried_count)
-      if (carried_count > 0) then
+            carried_count)
+        if (carried_count > 0) then
             call grow_symbols(context)
             allocate(entry_values(context%symbol_count))
             allocate(header_values(context%symbol_count))
@@ -118,7 +121,7 @@
             if (len_trim(error_msg) > 0) return
             backedge_values(carried_indices(i)) = &
                 carried_backedge_operand(context, carried_indices(i), &
-                                         reserved_vreg)
+                reserved_vreg)
         end do
 
         header_block = create_liric_block(context%session)
@@ -132,27 +135,27 @@
         context%current_block_terminated = .false.
         do i = 1, carried_count
             if (.not. emit_carried_phi(context, carried_indices(i), &
-                                       entry_values(carried_indices(i)), &
-                                       entry_block, &
-                                       backedge_values(carried_indices(i)), &
-                                       latch_block, &
-                                       header_values(carried_indices(i)), &
-                                       error_msg)) return
+                entry_values(carried_indices(i)), &
+                entry_block, &
+                backedge_values(carried_indices(i)), &
+                latch_block, &
+                header_values(carried_indices(i)), &
+                error_msg)) return
             context%symbols(carried_indices(i))%value = &
                 header_values(carried_indices(i))
         end do
 
         if (step_is_runtime) then
             call lower_do_condition_runtime(context, loop_symbol_index, &
-                                            end_value, step_operand, condition, &
-                                            error_msg)
+                end_value, step_operand, condition, &
+                error_msg)
         else
             call lower_do_condition(context, loop_symbol_index, end_value, &
-                                    step_value, condition, error_msg)
+                step_value, condition, error_msg)
         end if
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_condbr(context%session, condition, body_block, &
-                                    exit_block, error_msg)) return
+            exit_block, error_msg)) return
 
         if (.not. set_liric_block(context%session, body_block, error_msg)) return
         context%current_block_id = body_block
@@ -165,8 +168,8 @@
         context%in_loop = .true.
         context%current_block_exited_loop = .false.
         call begin_loop_exit_tracking(context, saved_loop_exit_blocks, &
-                                      saved_loop_exit_values, &
-                                      saved_loop_exit_count)
+            saved_loop_exit_values, &
+            saved_loop_exit_count)
         ! The induction variable lives in the phi-carried %value register for
         ! the whole scaffold (condition/increment never touch memory). A
         ! memory-backed loop variable (COMMON, SAVE, ...) is read by address
@@ -175,9 +178,9 @@
         if (context%symbols(loop_symbol_index)%has_address .and. &
             context%symbols(loop_symbol_index)%is_reference) then
             if (.not. emit_i32_store(context%session, &
-                                     context%symbols(loop_symbol_index)%value, &
-                                     context%symbols(loop_symbol_index)%address, &
-                                     error_msg)) return
+                context%symbols(loop_symbol_index)%value, &
+                context%symbols(loop_symbol_index)%address, &
+                error_msg)) return
         end if
         call body_emit(context, body_terminated, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -203,10 +206,10 @@
         end if
         if (body_terminated .and. .not. body_exited) then
             call unsupported_feature_error('terminating do loop body', &
-                                           line, column, &
-                                           'direct LIRIC session does not '// &
-                                           'support stop or return inside '// &
-                                           'counted do loops', error_msg)
+                line, column, &
+                'direct LIRIC session does not '// &
+                'support stop or return inside '// &
+                'counted do loops', error_msg)
             return
         end if
         if (.not. body_terminated) then
@@ -221,7 +224,7 @@
             step_operand = i32_immediate(context%session, step_value)
         end if
         reserved_vreg = int(backedge_values(loop_symbol_index)%payload, &
-                            c_int32_t)
+            c_int32_t)
         if (.not. emit_i32_binary_into(context%session,  &
             LR_OP_ADD, header_values(loop_symbol_index), step_operand, &
             reserved_vreg, next_index, error_msg)) return
@@ -238,12 +241,12 @@
         context%current_block_terminated = .false.
         do i = 1, carried_count
             call merge_loop_exit_values(context, carried_indices(i), &
-                                        header_values(carried_indices(i)), &
-                                        header_block, error_msg)
+                header_values(carried_indices(i)), &
+                header_block, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
         call end_loop_exit_tracking(context, saved_loop_exit_blocks, &
-                                    saved_loop_exit_values, saved_loop_exit_count)
+            saved_loop_exit_values, saved_loop_exit_count)
         ! A normal (F2018 11.1.7.4.3) loop exit leaves the induction variable
         ! one step past the last executed value; publish that final %value to
         ! memory for a memory-backed loop variable, matching the per-iteration
@@ -251,9 +254,9 @@
         if (context%symbols(loop_symbol_index)%has_address .and. &
             context%symbols(loop_symbol_index)%is_reference) then
             if (.not. emit_i32_store(context%session, &
-                                     context%symbols(loop_symbol_index)%value, &
-                                     context%symbols(loop_symbol_index)%address, &
-                                     error_msg)) return
+                context%symbols(loop_symbol_index)%value, &
+                context%symbols(loop_symbol_index)%address, &
+                error_msg)) return
         end if
         value = i32_immediate(context%session, 0_c_int64_t)
         if (carried_count > 0) then
@@ -267,8 +270,8 @@
         call set_empty(error_msg)
     end subroutine lower_counted_loop
 
-    subroutine begin_loop_exit_tracking(context, saved_blocks, saved_values, &
-                                        saved_count)
+    module subroutine begin_loop_exit_tracking(context, saved_blocks, saved_values, &
+            saved_count)
         type(lowering_context_t), intent(inout) :: context
         integer(c_int32_t), allocatable, intent(out) :: saved_blocks(:)
         type(lr_operand_desc_t), allocatable, intent(out) :: saved_values(:,:)
@@ -286,8 +289,8 @@
         allocate(context%loop_exit_values(context%symbol_count, 0))
     end subroutine begin_loop_exit_tracking
 
-    subroutine end_loop_exit_tracking(context, saved_blocks, saved_values, &
-                                      saved_count)
+    module subroutine end_loop_exit_tracking(context, saved_blocks, saved_values, &
+            saved_count)
         type(lowering_context_t), intent(inout) :: context
         integer(c_int32_t), allocatable, intent(inout) :: saved_blocks(:)
         type(lr_operand_desc_t), allocatable, intent(inout) :: saved_values(:,:)
@@ -308,7 +311,7 @@
         context%loop_exit_count = saved_count
     end subroutine end_loop_exit_tracking
 
-    subroutine record_loop_exit(context, error_msg)
+    module subroutine record_loop_exit(context, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t), allocatable :: new_blocks(:)
@@ -344,8 +347,8 @@
         call set_empty(error_msg)
     end subroutine record_loop_exit
 
-    subroutine merge_loop_exit_values(context, symbol_index, header_value, &
-                                      header_block, error_msg)
+    module subroutine merge_loop_exit_values(context, symbol_index, header_value, &
+            header_block, error_msg)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
         type(lr_operand_desc_t), intent(in) :: header_value
@@ -372,14 +375,14 @@
             blocks(i + 1) = context%loop_exit_blocks(i)
         end do
         if (.not. emit_liric_phi_n(context%session, values, blocks, &
-                                   context%symbols(symbol_index)%value, &
-                                   error_msg)) return
+            context%symbols(symbol_index)%value, &
+            error_msg)) return
         deallocate(values)
         deallocate(blocks)
         call set_empty(error_msg)
     end subroutine merge_loop_exit_values
 
-    subroutine collect_carried_symbols(context, indices, count)
+    module subroutine collect_carried_symbols(context, indices, count)
         ! A loop-modified scalar must flow through the header phi and the latch
         ! backedge copy so a read in the body sees this iteration's value, not
         ! the pre-loop entry value (#300). Integers, logicals, and reals qualify;
@@ -409,7 +412,7 @@
         end do
     end subroutine collect_carried_symbols
 
-    function carried_backedge_operand(context, symbol_index, reserved_vreg) &
+    module function carried_backedge_operand(context, symbol_index, reserved_vreg) &
             result(operand)
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: symbol_index
@@ -426,8 +429,9 @@
         end select
     end function carried_backedge_operand
 
-    logical function emit_carried_phi(context, symbol_index, entry_value, &
+    module function emit_carried_phi(context, symbol_index, entry_value, &
             entry_block, backedge_value, back_block, header_value, error_msg)
+        logical :: emit_carried_phi
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
         type(lr_operand_desc_t), intent(in) :: entry_value
@@ -447,8 +451,9 @@
         end select
     end function emit_carried_phi
 
-    logical function emit_carried_copy(context, symbol_index, backedge_value, &
+    module function emit_carried_copy(context, symbol_index, backedge_value, &
             result, error_msg)
+        logical :: emit_carried_copy
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
         type(lr_operand_desc_t), intent(in) :: backedge_value
@@ -466,7 +471,7 @@
             if (.not. is_i32_like_kind( &
                 context%symbols(symbol_index)%value_kind)) then
                 error_msg = 'direct LIRIC session loop only carries integer, '// &
-                            'logical, or real scalar symbols'
+                    'logical, or real scalar symbols'
                 emit_carried_copy = .false.
                 return
             end if
@@ -476,22 +481,24 @@
         end select
     end function emit_carried_copy
 
-    logical function is_i32_like_kind(value_kind)
+    module function is_i32_like_kind(value_kind)
+        logical :: is_i32_like_kind
         integer, intent(in) :: value_kind
 
         is_i32_like_kind = value_kind == VALUE_I32 .or. &
-                           value_kind == VALUE_LOGICAL
+            value_kind == VALUE_LOGICAL
     end function is_i32_like_kind
 
-    logical function is_carried_kind(value_kind)
+    module function is_carried_kind(value_kind)
+        logical :: is_carried_kind
         integer, intent(in) :: value_kind
 
         is_carried_kind = is_i32_like_kind(value_kind) .or. &
-                          value_kind == VALUE_F32 .or. &
-                          value_kind == VALUE_F64
+            value_kind == VALUE_F32 .or. &
+            value_kind == VALUE_F64
     end function is_carried_kind
 
-    subroutine reserve_backedge_value(context, vreg, error_msg)
+    module subroutine reserve_backedge_value(context, vreg, error_msg)
         type(lowering_context_t), intent(in) :: context
         integer(c_int32_t), intent(out) :: vreg
         character(len=:), allocatable, intent(out) :: error_msg
@@ -505,8 +512,8 @@
         end if
     end subroutine reserve_backedge_value
 
-    subroutine lower_do_condition(context, loop_symbol_index, end_value, &
-                                  step_value, condition, error_msg)
+    module subroutine lower_do_condition(context, loop_symbol_index, end_value, &
+            step_value, condition, error_msg)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: loop_symbol_index
         type(lr_operand_desc_t), intent(in) :: end_value
@@ -521,12 +528,12 @@
             pred = LR_CMP_SGE
         end if
         if (.not. emit_liric_i32_icmp(context%session, pred, &
-                                      context%symbols(loop_symbol_index)%value, &
-                                      end_value, condition, error_msg)) return
+            context%symbols(loop_symbol_index)%value, &
+            end_value, condition, error_msg)) return
     end subroutine lower_do_condition
 
-    subroutine resolve_do_step(arena, step_expr_index, context, step_value, &
-                               step_operand, step_is_runtime, error_msg)
+    module subroutine resolve_do_step(arena, step_expr_index, context, step_value, &
+            step_operand, step_is_runtime, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: step_expr_index
         type(lowering_context_t), intent(inout) :: context
@@ -544,14 +551,14 @@
         end if
 
         call parse_i32_constant(arena, step_expr_index, step_value, 'step', &
-                                parse_error)
+            parse_error)
         if (len_trim(parse_error) == 0) then
             if (step_value == 0_c_int64_t) then
                 call unsupported_feature_error('do loop step', &
-                                          get_node_line(arena, step_expr_index), &
-                                          get_node_column(arena, step_expr_index), &
-                                          'direct LIRIC session requires a '// &
-                                          'nonzero literal step', error_msg)
+                    get_node_line(arena, step_expr_index), &
+                    get_node_column(arena, step_expr_index), &
+                    'direct LIRIC session requires a '// &
+                    'nonzero literal step', error_msg)
                 return
             end if
             call set_empty(error_msg)
@@ -563,12 +570,12 @@
         ! the standard; ffc does not insert a runtime zero trap.
         step_is_runtime = .true.
         call lower_i32_expression(arena, step_expr_index, context, step_operand, &
-                                  error_msg)
+            error_msg)
     end subroutine resolve_do_step
 
-    subroutine lower_do_condition_runtime(context, loop_symbol_index, &
-                                          end_value, step_operand, condition, &
-                                          error_msg)
+    module subroutine lower_do_condition_runtime(context, loop_symbol_index, &
+            end_value, step_operand, condition, &
+            error_msg)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: loop_symbol_index
         type(lr_operand_desc_t), intent(in) :: end_value
@@ -582,18 +589,18 @@
 
         zero = i32_immediate(context%session, 0_c_int64_t)
         if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGE, step_operand, &
-                                      zero, step_nonneg, error_msg)) return
+            zero, step_nonneg, error_msg)) return
         if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, &
-                                  context%symbols(loop_symbol_index)%value, &
-                                  end_value, ascending_cond, error_msg)) return
+            context%symbols(loop_symbol_index)%value, &
+            end_value, ascending_cond, error_msg)) return
         if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGE, &
-                                  context%symbols(loop_symbol_index)%value, &
-                                  end_value, descending_cond, error_msg)) return
+            context%symbols(loop_symbol_index)%value, &
+            end_value, descending_cond, error_msg)) return
         call select_value(context, step_nonneg, ascending_cond, &
-                          descending_cond, condition, error_msg)
+            descending_cond, condition, error_msg)
     end subroutine lower_do_condition_runtime
 
-    recursive subroutine parse_i32_constant(arena, node_index, value, name, error_msg)
+    recursive module subroutine parse_i32_constant(arena, node_index, value, name, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         integer(c_int64_t), intent(out) :: value
@@ -605,13 +612,13 @@
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'DO loop '//trim(name)// &
-                        ' index does not reference an AST node'
+                ' index does not reference an AST node'
             return
         end if
 
         if (is_binary_op(arena, node_index)) then
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
-                                    bin_right, bin_line, bin_col, error_msg)
+                bin_right, bin_line, bin_col, error_msg)
             if (len_trim(error_msg) > 0) return
             if (bin_op == '-' .and. &
                 (bin_left <= 0 .or. is_zero_i32_literal(arena, bin_left))) then
@@ -621,30 +628,31 @@
                 call set_empty(error_msg)
             else
                 call unsupported_feature_error('do loop '//trim(name), &
-                                               get_node_line(arena, node_index), &
-                                               get_node_column(arena, node_index), &
-                                               'direct LIRIC session only '// &
-                                               'supports literal steps', error_msg)
+                    get_node_line(arena, node_index), &
+                    get_node_column(arena, node_index), &
+                    'direct LIRIC session only '// &
+                    'supports literal steps', error_msg)
             end if
             return
         end if
 
         if (is_literal(arena, node_index)) then
             call get_literal_info(arena, node_index, lit_value, lit_type, &
-                                  error_msg)
+                error_msg)
             if (len_trim(error_msg) > 0) return
             call parse_i32_literal(lit_value, value, error_msg)
             return
         end if
 
         call unsupported_feature_error('do loop '//trim(name), &
-                                       get_node_line(arena, node_index), &
-                                       get_node_column(arena, node_index), &
-                                       'direct LIRIC session only '// &
-                                       'supports literal steps', error_msg)
+            get_node_line(arena, node_index), &
+            get_node_column(arena, node_index), &
+            'direct LIRIC session only '// &
+            'supports literal steps', error_msg)
     end subroutine parse_i32_constant
 
-    logical function is_zero_i32_literal(arena, node_index)
+    module function is_zero_i32_literal(arena, node_index)
+        logical :: is_zero_i32_literal
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
 
@@ -658,3 +666,4 @@
         if (len_trim(lit_err) > 0) return
         is_zero_i32_literal = (trim(lit_value) == '0')
     end function is_zero_i32_literal
+end submodule session_program_lowering_loops
