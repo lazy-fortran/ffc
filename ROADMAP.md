@@ -40,7 +40,7 @@ uncertainty.
 ## Audited state: do not infer a percentage
 
 The current implementation heads for this gate are ffc `eb39ce6` (code
-baseline; roadmap tip `75a20c6`, with typed array-shape extraction plus the
+baseline, with typed array-shape extraction plus the
 GCC14 descendant-link export fix), FortFront `193457a9` (semantic code
 baseline; roadmap tip `2179929e`, with implicit DIMENSION dummy preservation,
 IMPLICIT NONE
@@ -53,7 +53,7 @@ the checked-in parity snapshot remains stale and is not a release baseline.
 The final local `fo` gate at `10b2af1` built 435/435 units and ran 350 tests;
 the observation smoke passed and the run retains 26 named pre-existing
 compiler/dashboard failures. That exit is not a clean release gate.
-The current ffc merge CI is [run 31136716925](https://github.com/lazy-fortran/ffc/actions/runs/31136716925)
+The current ffc merge CI is [run 31136814219](https://github.com/lazy-fortran/ffc/actions/runs/31136814219)
 (pending); the prior run [31136459600](https://github.com/lazy-fortran/ffc/actions/runs/31136459600)
 was docs-only and had the known formatting failure while its build/test job
 continued. FortFront merge CI is [run 31136399036](https://github.com/lazy-fortran/fortfront/actions/runs/31136399036)
