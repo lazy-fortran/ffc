@@ -469,6 +469,7 @@ module session_program_lowering_impl
     public :: lower_i32_pow, lower_i32_call, lower_storage_size_intrinsic
     public :: lower_kind_intrinsic, lower_i32_array_element
     public :: lower_i1_condition
+    public :: select_value
     public :: lower_do_loop, lower_statement_list
     public :: lower_counted_loop
     public :: push_storage_scope, pop_storage_scope
