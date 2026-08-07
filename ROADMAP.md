@@ -41,8 +41,8 @@ uncertainty.
 
 The current implementation heads for this gate are ffc `fc3ea15` (main
 runtime-synchronized baseline with typed inferred-symbol, array-shape, ISO
-C-pointer, TRANSFER, integer, BLOCK/DO CONCURRENT, DO WHILE, and GOTO
-lowering extraction, the GCC14
+C-pointer, TRANSFER, integer, BLOCK/DO CONCURRENT, DO WHILE, GOTO, WHERE,
+and SELECT lowering extraction, plus the GCC14
 descendant-link export fix, the integer(8) external-call guard, and the
 bare-DIMENSION host export repair), FortFront `c0a32743`
 (semantic code baseline, with separate module-procedure dummy resolution, explicit semantic
@@ -529,9 +529,11 @@ No aggregate PASS is claimed. The FORALL extraction `6ab632d` removes its
 274-line include, passes the #673 alias/statement-order gfortran differential
 and the standard FORALL compiler test. WHERE extraction `d0dbafd` then
 removes its 1,275-line include; masked assignment and ELSEWHERE independent
-oracles pass. SELECT extraction `de04a46` removes its 1,365-line include;
+oracles pass. The historical SELECT extraction commit `de04a46` removed its
+1,365-line include; that code is now part of current main `fc3ea15`, and its
 case, type/rank selector, runtime, and derived-selector independent oracles
-pass. The current inventory is 54 files / 70,951 lines. The repair has a
+pass. These structured-control leaves are present in current ffc main
+`fc3ea15`; the current inventory is 54 files / 70,951 lines. The repair has a
 local cold `fo clean && fo build` gate at 453/453, five focused compiler tests
 pass, and independent gfortran differentials produce exact WHERE output
 `2 3 30 40` and SELECT output `27`. PR #723's aggregate CI remains observed
