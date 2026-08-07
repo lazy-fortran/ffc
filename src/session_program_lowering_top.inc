@@ -1321,7 +1321,6 @@
     include 'session_program_lowering_common.inc'
     include 'session_program_lowering_equivalence.inc'
     include 'session_program_lowering_where.inc'
-    include 'session_program_lowering_forall.inc'
     include 'session_program_lowering_namelist.inc'
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
