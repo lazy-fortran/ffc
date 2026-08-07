@@ -468,6 +468,7 @@ module session_program_lowering_impl
     public :: lower_transfer_array_assignment
     public :: lower_i32_pow, lower_i32_call, lower_storage_size_intrinsic
     public :: lower_kind_intrinsic, lower_i32_array_element
+    public :: lower_i1_condition
     public :: lower_do_loop, lower_statement_list
     public :: lower_counted_loop
     public :: push_storage_scope, pop_storage_scope
@@ -3415,6 +3416,70 @@ module session_program_lowering_impl
             type(lowering_context_t), intent(inout) :: context
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_computed_goto
+    end interface
+    ! IF/ELSE IF branch merging and PAUSE lowering live in a typed descendant.
+    ! Keep each procedure's ancestor contract explicit so cold submodule builds
+    ! do not rely on textual host association.
+    interface
+        module subroutine lower_if(arena, node, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(if_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_if
+        recursive module subroutine lower_if_arm(arena, node, elseif_index, &
+                                                  else_indices, context, value, &
+                                                  error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(if_node), intent(in) :: node
+            integer, intent(in) :: elseif_index
+            integer, intent(in) :: else_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_if_arm
+        module subroutine snapshot_branch_result(context, result)
+            type(lowering_context_t), intent(in) :: context
+            type(branch_result_t), intent(out) :: result
+        end subroutine snapshot_branch_result
+        module subroutine lower_if_branch(arena, node_indices, block_id, &
+                                          merge_block, context, value, result, &
+                                          error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_indices(:)
+            integer(c_int32_t), intent(in) :: block_id
+            integer(c_int32_t), intent(in) :: merge_block
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            type(branch_result_t), intent(out) :: result
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_if_branch
+        module subroutine merge_branch_symbols(context, then_result, &
+                                               else_result, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(branch_result_t), intent(in) :: then_result
+            type(branch_result_t), intent(in) :: else_result
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine merge_branch_symbols
+        module subroutine merge_symbol_value(context, then_result, else_result, &
+                                             index, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(branch_result_t), intent(in) :: then_result
+            type(branch_result_t), intent(in) :: else_result
+            integer, intent(in) :: index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine merge_symbol_value
+        module function same_operand(lhs, rhs)
+            type(lr_operand_desc_t), intent(in) :: lhs
+            type(lr_operand_desc_t), intent(in) :: rhs
+            logical :: same_operand
+        end function same_operand
+        module subroutine lower_pause(node, context, error_msg)
+            type(pause_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_pause
     end interface
 contains
     include 'session_program_lowering_top.inc'
