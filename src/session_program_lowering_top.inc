@@ -1325,7 +1325,6 @@
     include 'session_program_lowering_save_static.inc'
     include 'session_program_lowering_common.inc'
     include 'session_program_lowering_equivalence.inc'
-    include 'session_program_lowering_block_concurrent.inc'
     include 'session_program_lowering_where.inc'
     include 'session_program_lowering_forall.inc'
     include 'session_program_lowering_namelist.inc'
