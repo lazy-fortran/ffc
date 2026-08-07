@@ -1,3 +1,6 @@
+submodule (session_program_lowering_impl) session_program_lowering_complex
+    implicit none
+contains
     ! Complex assignment and load helpers.
     ! Storage: re in symbol%address (f32 or f64 alloca), im in element_address.
     ! symbol%value holds the last-loaded re SSA value (used as fallback).
@@ -1328,3 +1331,5 @@
                                            error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_print_complex8
+
+end submodule session_program_lowering_complex
