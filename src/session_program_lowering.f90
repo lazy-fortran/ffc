@@ -469,6 +469,7 @@ module session_program_lowering_impl
     public :: lower_i32_pow, lower_i32_call, lower_storage_size_intrinsic
     public :: lower_kind_intrinsic, lower_i32_array_element
     public :: lower_do_loop, lower_statement_list
+    public :: lower_counted_loop
     public :: push_storage_scope, pop_storage_scope
     public :: body_has_statement_labels, is_executable_body_node
     public :: lower_labeled_program_body, lower_declaration_region_node
@@ -2713,6 +2714,146 @@ module session_program_lowering_impl
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_i32_array_element
+    end interface
+    interface
+        module subroutine lower_do_loop(arena, node, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(do_loop_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_do_loop
+        module subroutine lower_counted_loop(arena, var_name, start_expr_index, &
+                                             end_expr_index, step_expr_index, line, &
+                                             column, body_emit, context, value, &
+                                             error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: var_name
+            integer, intent(in) :: start_expr_index, end_expr_index
+            integer, intent(in) :: step_expr_index, line, column
+            procedure(counted_loop_body_i) :: body_emit
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_counted_loop
+        module subroutine record_loop_exit(context, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine record_loop_exit
+        module subroutine begin_loop_exit_tracking(context, saved_blocks, &
+                                                   saved_values, saved_count)
+            type(lowering_context_t), intent(inout) :: context
+            integer(c_int32_t), allocatable, intent(out) :: saved_blocks(:)
+            type(lr_operand_desc_t), allocatable, intent(out) :: saved_values(:,:)
+            integer, intent(out) :: saved_count
+        end subroutine begin_loop_exit_tracking
+        module subroutine end_loop_exit_tracking(context, saved_blocks, &
+                                                 saved_values, saved_count)
+            type(lowering_context_t), intent(inout) :: context
+            integer(c_int32_t), allocatable, intent(inout) :: saved_blocks(:)
+            type(lr_operand_desc_t), allocatable, intent(inout) :: saved_values(:,:)
+            integer, intent(in) :: saved_count
+        end subroutine end_loop_exit_tracking
+        module subroutine merge_loop_exit_values(context, symbol_index, &
+                                                 header_value, header_block, &
+                                                 error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(in) :: header_value
+            integer(c_int32_t), intent(in) :: header_block
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine merge_loop_exit_values
+        module subroutine collect_carried_symbols(context, indices, count)
+            type(lowering_context_t), intent(in) :: context
+            integer, allocatable, intent(out) :: indices(:)
+            integer, intent(out) :: count
+        end subroutine collect_carried_symbols
+        module function carried_backedge_operand(context, symbol_index, &
+                                                 reserved_vreg) result(operand)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: symbol_index
+            integer(c_int32_t), intent(in) :: reserved_vreg
+            type(lr_operand_desc_t) :: operand
+        end function carried_backedge_operand
+        module function emit_carried_phi(context, symbol_index, &
+                                         entry_value, entry_block, &
+                                         backedge_value, back_block, &
+                                         header_value, error_msg)
+            logical :: emit_carried_phi
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(in) :: entry_value
+            integer(c_int32_t), intent(in) :: entry_block
+            type(lr_operand_desc_t), intent(in) :: backedge_value
+            integer(c_int32_t), intent(in) :: back_block
+            type(lr_operand_desc_t), intent(out) :: header_value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_carried_phi
+        module function emit_carried_copy(context, symbol_index, &
+                                          backedge_value, result, error_msg)
+            logical :: emit_carried_copy
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(in) :: backedge_value
+            type(lr_operand_desc_t), intent(out) :: result
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function emit_carried_copy
+        module subroutine reserve_backedge_value(context, vreg, error_msg)
+            type(lowering_context_t), intent(in) :: context
+            integer(c_int32_t), intent(out) :: vreg
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine reserve_backedge_value
+        recursive module subroutine parse_i32_constant(arena, node_index, value, &
+                                                        name, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer(c_int64_t), intent(out) :: value
+            character(len=*), intent(in) :: name
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine parse_i32_constant
+        module function is_i32_like_kind(value_kind)
+            logical :: is_i32_like_kind
+            integer, intent(in) :: value_kind
+        end function is_i32_like_kind
+        module function is_carried_kind(value_kind)
+            logical :: is_carried_kind
+            integer, intent(in) :: value_kind
+        end function is_carried_kind
+        module subroutine lower_do_condition(context, loop_symbol_index, end_value, &
+                                             step_value, condition, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: loop_symbol_index
+            type(lr_operand_desc_t), intent(in) :: end_value
+            integer(c_int64_t), intent(in) :: step_value
+            type(lr_operand_desc_t), intent(out) :: condition
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_do_condition
+        module subroutine resolve_do_step(arena, step_expr_index, context, &
+                                          step_value, step_operand, step_is_runtime, &
+                                          error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: step_expr_index
+            type(lowering_context_t), intent(inout) :: context
+            integer(c_int64_t), intent(out) :: step_value
+            type(lr_operand_desc_t), intent(out) :: step_operand
+            logical, intent(out) :: step_is_runtime
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine resolve_do_step
+        module subroutine lower_do_condition_runtime(context, loop_symbol_index, &
+                                                     end_value, step_operand, &
+                                                     condition, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: loop_symbol_index
+            type(lr_operand_desc_t), intent(in) :: end_value
+            type(lr_operand_desc_t), intent(in) :: step_operand
+            type(lr_operand_desc_t), intent(out) :: condition
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_do_condition_runtime
+        module function is_zero_i32_literal(arena, node_index)
+            logical :: is_zero_i32_literal
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+        end function is_zero_i32_literal
     end interface
     interface
         module subroutine lower_do_while(arena, node, context, value, error_msg)
