@@ -408,7 +408,7 @@ constant SHAPE validation. Its textual include and host include site are gone;
 the existing accepted/rejected ISO C pointer tests remain green, and the new
 `test_session_c_ptr_module_compiler` compiles and runs the same scalar/array
 round-trip with ffc and gfortran before comparing their output. No XFAIL or
-manifest entry changed. The branch build remains at 441/441 units.
+manifest entry changed. The branch build covers 442/442 units.
 
 Extract the remaining leaves in this order:
 
