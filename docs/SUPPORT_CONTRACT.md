@@ -127,6 +127,12 @@ running tracker issues:
 | #173 | Upstream: FortFront compiler-API queries needed for self-hosting. |
 | #174 | Upstream: LIRIC C-API capabilities needed for self-hosting. |
 
+Static type-bound overrides are supported for a statically declared
+`type(child_t)` receiver in `type, extends(parent_t) :: child_t`: a local
+binding wins over the inherited parent binding for default `PASS` and `NOPASS`.
+Unresolved runtime `CLASS` dispatch and procedure-pointer calls remain outside
+this slice.
+
 Unsupported features must fail during parsing, semantic analysis, or
 lowering with a diagnostic. Silent partial lowering is a bug.
 

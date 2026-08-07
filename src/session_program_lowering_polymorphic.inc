@@ -561,8 +561,8 @@
         if (.not. allocated(context%derived_types(type_index)%binding_method_names)) &
             return
         do b = 1, context%derived_types(type_index)%binding_count
-            if (trim(context%derived_types(type_index)%binding_method_names(b)) == &
-                trim(method_name)) then
+            if (same_name(context%derived_types(type_index)% &
+                          binding_method_names(b), method_name)) then
                 slot = b
                 return
             end if

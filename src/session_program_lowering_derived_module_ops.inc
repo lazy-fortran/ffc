@@ -142,9 +142,9 @@
         ! A plain class(t) scalar takes the class descriptor here. A class
         ! allocatable also carries one, but it is bound at its own declaration
         ! path (#421) because its storage is deferred until ALLOCATE; a class
-        ! pointer still has no dynamic type.
+        ! pointer likewise has a runtime dynamic type, even though pointer
+        ! dispatch is not lowered by the static type-bound slice.
         if (node%is_allocatable) return
-        if (node%is_pointer) return
         declaration_is_class_polymorphic = is_class_derived_type_spec(node%type_name)
     end function declaration_is_class_polymorphic
 

@@ -239,8 +239,11 @@ module scope. A type carrying a single scalar `final` binding runs that
 finaliser exactly once when an owned scalar value of the type dies: when the
 procedure owning a local derived variable ends execution, and when an owned
 allocatable scalar is deallocated. Dummy arguments borrow their storage and are
-never finalised; array finalisation, inheritance override dispatch, and several
-`final` bindings on one type stay rejected. A `select type` on a monomorphic
+never finalised; array finalisation and several `final` bindings on one type
+stay rejected. A statically declared `type(child_t)` receiver selects a local
+type-bound override in `type, extends(parent_t) :: child_t`, including default
+`PASS` and `NOPASS`; unresolved runtime `CLASS` dispatch remains outside this
+slice. A `select type` on a monomorphic
 declared-type selector - a `class(t)` scalar dummy or local whose dynamic type
 is only ever its declared type `t` - resolves statically: the `type is (t)` or
 `class is (t)` arm naming the declared type (else `class default`) is chosen at

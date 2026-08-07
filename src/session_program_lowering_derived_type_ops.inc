@@ -1235,6 +1235,9 @@
             context%symbols(index)%is_pointer = .true.
             context%symbols(index)%is_associated = .false.
         end if
+        if (declaration_is_class_polymorphic(node)) then
+            context%symbols(index)%is_polymorphic = .true.
+        end if
         if (node%is_target) context%symbols(index)%is_target = .true.
 
         ! A plain scalar derived pointer has no instance storage until `p => t`.
@@ -1842,13 +1845,19 @@
         symbol_index = find_symbol_compat(context, var_name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_derived) return
+        if (context%symbols(symbol_index)%is_polymorphic .and. &
+            context%symbols(symbol_index)%is_pointer) then
+            error_msg = 'unresolved dynamic dispatch for type-bound procedure "'// &
+                trim(method_name)//'" through a polymorphic pointer receiver'
+            return
+        end if
         type_index = context%symbols(symbol_index)%derived_type_index
         if (type_index <= 0) return
         if (.not. allocated(context%derived_types(type_index)%binding_method_names)) &
             return
         do b = 1, context%derived_types(type_index)%binding_count
-            if (trim(context%derived_types(type_index)%binding_method_names(b)) == &
-                method_name) then
+            if (same_name(context%derived_types(type_index)% &
+                          binding_method_names(b), method_name)) then
                 if (allocated(context%derived_types(type_index)%binding_pass_names)) &
                     pass_name = trim(context%derived_types(type_index)% &
                                      binding_pass_names(b))
@@ -2179,7 +2188,10 @@
 
         call method_call_info(arena, node, context, base_var_index, impl_name, &
                               pass_name, is_type_bound_method_call, err)
-        if (len_trim(err) > 0) is_type_bound_method_call = .false.
+        ! Keep the method path selected when resolution produced a diagnostic;
+        ! the lowering caller must report that diagnostic instead of treating
+        ! the expression as an ordinary derived component access.
+        if (len_trim(err) > 0) is_type_bound_method_call = .true.
     end function is_type_bound_method_call
 
     subroutine method_call_arg_indices(node, base_var_index, position, combined)
@@ -2242,13 +2254,19 @@
         call resolve_named_derived_instance(context, var_name, receiver_addr, &
             type_index, symbol_index, nested_receiver, error_msg)
         if (len_trim(error_msg) > 0) return
+        if (context%symbols(symbol_index)%is_polymorphic .and. &
+            context%symbols(symbol_index)%is_pointer) then
+            error_msg = 'unresolved dynamic dispatch for type-bound procedure "'// &
+                trim(method_name)//'" through a polymorphic pointer receiver'
+            return
+        end if
         call set_empty(impl_name)
         call set_empty(pass_name)
         pass_arg = .true.
         slot = 0
         do b = 1, context%derived_types(type_index)%binding_count
-            if (trim(context%derived_types(type_index)%binding_method_names(b)) == &
-                method_name) then
+            if (same_name(context%derived_types(type_index)% &
+                          binding_method_names(b), method_name)) then
                 if (allocated(context%derived_types(type_index)%binding_pass_names)) &
                     pass_name = trim(context%derived_types(type_index)% &
                                      binding_pass_names(b))

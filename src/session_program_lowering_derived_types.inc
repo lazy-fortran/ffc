@@ -910,8 +910,8 @@
                 ! Override inherited binding with same method name, or append.
                 overrides = .false.
                 do b = 1, inherited
-                    if (trim(context%derived_types(type_index)% &
-                              binding_method_names(b)) == trim(method_name_buf)) then
+                    if (same_name(context%derived_types(type_index)% &
+                              binding_method_names(b), method_name_buf)) then
                         context%derived_types(type_index)%binding_target_names(b) = &
                             target_name_buf
                         context%derived_types(type_index)%binding_specific_names(b) = &
