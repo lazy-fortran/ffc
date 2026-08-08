@@ -3979,6 +3979,12 @@
                                         i64_immediate(context%session, 0_c_int64_t), &
                                         slot_address, 24_c_int64_t, error_msg)) return
                             end if
+                            if (component_alloc_rank_at(context, base_type, &
+                                    comp_index) == 4) then
+                                if (.not. emit_i64_store_at(context%session, &
+                                        i64_immediate(context%session, 0_c_int64_t), &
+                                        slot_address, 32_c_int64_t, error_msg)) return
+                            end if
                         end block
                     end if
                 end if

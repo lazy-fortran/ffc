@@ -1,8 +1,7 @@
-program test_session_alloc_rank3_component_compiler
-    ! Rank-three intrinsic allocatable components through the direct LIRIC
-    ! session. The positive case is differential against a separately built
-    ! gfortran executable; boundary cases pin the deliberately narrow owner
-    ! contract.
+program test_session_alloc_rank4_component_compiler
+    ! Rank-four intrinsic allocatable components through the direct LIRIC
+    ! session. Positive behavior is compared with an independently compiled
+    ! gfortran executable; unsupported component forms remain explicit.
     use ffc_test_support, only: expect_error_contains
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
@@ -12,16 +11,15 @@ program test_session_alloc_rank3_component_compiler
 
     logical :: all_passed
 
-    print *, '=== direct session rank-3 allocatable component test ==='
-    all_passed = .true.
-    if (.not. test_runtime_lifecycle()) all_passed = .false.
-    if (.not. test_whole_component_copy_rejected()) all_passed = .false.
+    print *, '=== direct session rank-4 allocatable component test ==='
+    all_passed = test_runtime_lifecycle()
     if (.not. test_rank5_rejected()) all_passed = .false.
-    if (.not. test_unsupported_kind_rejected()) all_passed = .false.
+    if (.not. test_derived_rejected()) all_passed = .false.
+    if (.not. test_kind_rejected()) all_passed = .false.
     if (.not. test_target_rejected()) all_passed = .false.
     if (.not. test_alias_rejected()) all_passed = .false.
     if (.not. all_passed) stop 1
-    print *, 'PASS: rank-3 intrinsic allocatable components lower through LIRIC'
+    print *, 'PASS: rank-4 intrinsic allocatable components lower through LIRIC'
 
 contains
 
@@ -29,81 +27,63 @@ contains
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: box_t'//new_line('a')// &
-            '    integer, allocatable :: iv(:,:,:) '//new_line('a')// &
-            '    real, allocatable :: rv(:,:,:) '//new_line('a')// &
-            '    logical, allocatable :: lv(:,:,:) '//new_line('a')// &
+            '    integer, allocatable :: iv(:,:,:,:)'//new_line('a')// &
+            '    real, allocatable :: rv(:,:,:,:)'//new_line('a')// &
+            '    logical, allocatable :: lv(:,:,:,:)'//new_line('a')// &
             '  end type box_t'//new_line('a')// &
             '  type(box_t) :: x'//new_line('a')// &
-            '  integer :: i, j, k, m, n, p, isum, lsum'//new_line('a')// &
+            '  integer :: i, j, k, l, m, n, p, q, isum, lsum'//new_line('a')// &
             '  real :: rsum'//new_line('a')// &
             '  m = 2'//new_line('a')// &
             '  n = 2'//new_line('a')// &
-            '  p = 3'//new_line('a')// &
+            '  p = 2'//new_line('a')// &
+            '  q = 3'//new_line('a')// &
             '  if (allocated(x%iv)) error stop 1'//new_line('a')// &
-            '  allocate(x%iv(m,n,p))'//new_line('a')// &
-            '  allocate(x%rv(m,n,p))'//new_line('a')// &
-            '  allocate(x%lv(m,n,p))'//new_line('a')// &
+            '  allocate(x%iv(m,n,p,q), x%rv(m,n,p,q), x%lv(m,n,p,q))'//new_line('a')// &
             '  if (.not. allocated(x%iv)) error stop 2'//new_line('a')// &
-            '  if (size(x%iv) /= m*n*p) error stop 3'//new_line('a')// &
-            '  if (size(x%iv,1) /= m) error stop 4'//new_line('a')// &
-            '  if (size(x%iv,2) /= n) error stop 5'//new_line('a')// &
-            '  if (size(x%iv,3) /= p) error stop 6'//new_line('a')// &
-            '  if (size(x%rv) /= m*n*p .or. size(x%lv,3) /= p) '// &
-            'error stop 7'//new_line('a')// &
-            '  do k = 1, p'//new_line('a')// &
-            '    do j = 1, n'//new_line('a')// &
-            '      do i = 1, m'//new_line('a')// &
-            '        x%iv(i,j,k) = 100*i + 10*j + k'//new_line('a')// &
-            '        x%rv(i,j,k) = real(i) + 0.25*real(j) + 0.5*real(k)'// &
-            new_line('a')// &
-            '        x%lv(i,j,k) = mod(i+j+k, 2) == 0'//new_line('a')// &
+            '  if (size(x%iv) /= m*n*p*q) error stop 3'//new_line('a')// &
+            '  if (size(x%iv,1) /= m .or. size(x%iv,2) /= n .or. '// &
+            'size(x%iv,3) /= p .or. size(x%iv,4) /= q) error stop 4'//new_line('a')// &
+            '  do l = 1, q'//new_line('a')// &
+            '    do k = 1, p'//new_line('a')// &
+            '      do j = 1, n'//new_line('a')// &
+            '        do i = 1, m'//new_line('a')// &
+            '          x%iv(i,j,k,l) = 1000*i + 100*j + 10*k + l'//new_line('a')// &
+            '          x%rv(i,j,k,l) = real(i) + 0.25*real(j) + '// &
+            '0.5*real(k) + 0.75*real(l)'//new_line('a')// &
+            '          x%lv(i,j,k,l) = mod(i+j+k+l, 2) == 0'//new_line('a')// &
+            '        end do'//new_line('a')// &
             '      end do'//new_line('a')// &
             '    end do'//new_line('a')// &
             '  end do'//new_line('a')// &
-            '  isum = x%iv(1,1,1) + x%iv(2,2,3)'//new_line('a')// &
-            '  rsum = x%rv(1,1,1) + x%rv(2,2,3)'//new_line('a')// &
+            '  call touch(x)'//new_line('a')// &
+            '  isum = x%iv(1,1,1,1) + x%iv(2,2,2,3)'//new_line('a')// &
+            '  rsum = x%rv(1,1,1,1) + x%rv(2,2,2,3)'//new_line('a')// &
             '  lsum = 0'//new_line('a')// &
-            '  do k = 1, p'//new_line('a')// &
-            '    do j = 1, n'//new_line('a')// &
-            '      do i = 1, m'//new_line('a')// &
-            '        if (x%lv(i,j,k)) lsum = lsum + 1'//new_line('a')// &
+            '  do l = 1, q'//new_line('a')// &
+            '    do k = 1, p'//new_line('a')// &
+            '      do j = 1, n'//new_line('a')// &
+            '        do i = 1, m'//new_line('a')// &
+            '          if (x%lv(i,j,k,l)) lsum = lsum + 1'//new_line('a')// &
+            '        end do'//new_line('a')// &
             '      end do'//new_line('a')// &
             '    end do'//new_line('a')// &
             '  end do'//new_line('a')// &
-            '  if (isum /= 334) error stop 8'//new_line('a')// &
-            '  if (abs(rsum - 5.75) > 1.0e-6) error stop 9'//new_line('a')// &
-            '  if (lsum /= 6) error stop 10'//new_line('a')// &
             '  print *, size(x%iv), size(x%iv,1), size(x%iv,2), '// &
-            'size(x%iv,3), isum, lsum, x%iv(2,2,3)'//new_line('a')// &
-            '  print *, x%lv(1,1,1), x%lv(2,1,1), x%lv(1,2,1), '// &
-            'x%lv(2,2,1), x%lv(1,1,2), x%lv(2,1,2), '// &
-            'x%lv(1,2,2), x%lv(2,2,2), x%lv(1,1,3), '// &
-            'x%lv(2,1,3), x%lv(1,2,3), x%lv(2,2,3)'//new_line('a')// &
-            '  deallocate(x%iv)'//new_line('a')// &
-            '  deallocate(x%rv)'//new_line('a')// &
-            '  deallocate(x%lv)'//new_line('a')// &
+            'size(x%iv,3), size(x%iv,4), isum'//new_line('a')// &
+            '  print *, rsum, lsum, x%iv(2,2,2,3), x%lv(1,1,1,1)'//new_line('a')// &
+            '  deallocate(x%iv, x%rv, x%lv)'//new_line('a')// &
             '  if (allocated(x%iv) .or. allocated(x%rv) .or. '// &
-            'allocated(x%lv)) error stop 11'//new_line('a')// &
+            'allocated(x%lv)) error stop 5'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine touch(y)'//new_line('a')// &
+            '    type(box_t), intent(inout) :: y'//new_line('a')// &
+            '    y%iv(2,2,2,3) = y%iv(2,2,2,3) + 1'//new_line('a')// &
+            '  end subroutine touch'//new_line('a')// &
             'end program main'
 
         test_runtime_lifecycle = matches_gfortran(source, 'runtime_lifecycle')
     end function test_runtime_lifecycle
-
-    logical function test_whole_component_copy_rejected()
-        character(len=*), parameter :: source = &
-            'program main'//new_line('a')// &
-            '  type :: t'//new_line('a')// &
-            '    integer, allocatable :: a(:,:,:)'//new_line('a')// &
-            '  end type t'//new_line('a')// &
-            '  type(t) :: x'//new_line('a')// &
-            '  integer :: b(2,2,2)'//new_line('a')// &
-            '  x%a = b'//new_line('a')// &
-            'end program main'
-
-        test_whole_component_copy_rejected = expect_error_contains(source, &
-            'whole-component assignment supports rank-1 components only', &
-            '/tmp/ffc_alloc_rank3_component_copy_reject')
-    end function test_whole_component_copy_rejected
 
     logical function test_rank5_rejected()
         character(len=*), parameter :: source = &
@@ -112,53 +92,64 @@ contains
             '    integer, allocatable :: a(:,:,:,:,:)'//new_line('a')// &
             '  end type t'//new_line('a')// &
             'end program main'
-
         test_rank5_rejected = expect_error_contains(source, &
             'rank-1 through rank-4 intrinsic allocatable components', &
-            '/tmp/ffc_alloc_rank3_component_rank5_reject')
+            '/tmp/ffc_alloc_rank4_component_rank5_reject')
     end function test_rank5_rejected
 
-    logical function test_unsupported_kind_rejected()
+    logical function test_derived_rejected()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: inner_t'//new_line('a')// &
+            '    integer :: value'//new_line('a')// &
+            '  end type inner_t'//new_line('a')// &
+            '  type :: t'//new_line('a')// &
+            '    type(inner_t), allocatable :: a(:,:,:,:)'//new_line('a')// &
+            '  end type t'//new_line('a')// &
+            'end program main'
+        test_derived_rejected = expect_error_contains(source, &
+            'only a rank-1 allocatable array of a derived type is supported', &
+            '/tmp/ffc_alloc_rank4_component_derived_reject')
+    end function test_derived_rejected
+
+    logical function test_kind_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: t'//new_line('a')// &
-            '    integer(8), allocatable :: a(:,:,:)'//new_line('a')// &
+            '    integer(8), allocatable :: a(:,:,:,:)'//new_line('a')// &
             '  end type t'//new_line('a')// &
             'end program main'
-
-        test_unsupported_kind_rejected = expect_error_contains(source, &
+        test_kind_rejected = expect_error_contains(source, &
             'only integer, real, and logical allocatable array components', &
-            '/tmp/ffc_alloc_rank3_component_kind_reject')
-    end function test_unsupported_kind_rejected
+            '/tmp/ffc_alloc_rank4_component_kind_reject')
+    end function test_kind_rejected
 
     logical function test_target_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: t'//new_line('a')// &
-            '    integer, allocatable, target :: a(:,:,:)'//new_line('a')// &
+            '    integer, allocatable, target :: a(:,:,:,:)'//new_line('a')// &
             '  end type t'//new_line('a')// &
             'end program main'
-
         test_target_rejected = expect_error_contains(source, &
             'rank-3 and rank-4 allocatable TARGET components are not supported', &
-            '/tmp/ffc_alloc_rank3_component_target_reject')
+            '/tmp/ffc_alloc_rank4_component_target_reject')
     end function test_target_rejected
 
     logical function test_alias_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: t'//new_line('a')// &
-            '    integer, allocatable :: a(:,:,:)'//new_line('a')// &
+            '    integer, allocatable :: a(:,:,:,:)'//new_line('a')// &
             '  end type t'//new_line('a')// &
             '  type(t) :: x'//new_line('a')// &
             '  associate(y => x%a)'//new_line('a')// &
             '    print *, allocated(y)'//new_line('a')// &
             '  end associate'//new_line('a')// &
             'end program main'
-
         test_alias_rejected = expect_error_contains(source, &
             'rank-3 and rank-4 allocatable array component aliases are not supported', &
-            '/tmp/ffc_alloc_rank3_component_alias_reject')
+            '/tmp/ffc_alloc_rank4_component_alias_reject')
     end function test_alias_rejected
 
     logical function matches_gfortran(source, stem)
@@ -172,7 +163,7 @@ contains
         integer :: unit, exit_stat, status
 
         matches_gfortran = .false.
-        base = '/var/tmp/ert/ffc_alloc_rank3_component_'//trim(stem)
+        base = '/var/tmp/ert/ffc_alloc_rank4_component_'//trim(stem)
         src = base//'.f90'
         exe = base//'.ffc'
         ref = base//'.gf'
@@ -226,4 +217,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_alloc_rank3_component_compiler
+end program test_session_alloc_rank4_component_compiler

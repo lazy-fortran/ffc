@@ -1275,10 +1275,10 @@ subroutine collect_component_declaration(component_index, parent_line, &
                     comp_allocatable = .false.
                 end select
             end if
-            ! A rank-1/rank-2/rank-3 allocatable array component of intrinsic type
+            ! A rank-1/rank-2/rank-3/rank-4 allocatable array component of intrinsic type
             ! stores an inline descriptor (data pointer + one i64 extent per
             ! dimension). Character elements use the same descriptor layout for
-            ! the older rank-1/rank-2 path; rank three deliberately excludes
+            ! the older rank-1/rank-2 path; rank three and rank four deliberately exclude
             ! character until its element descriptor semantics are complete.
             ! Higher ranks, pointer, and c_ptr element types stay unsupported.
             comp_alloc_array = component%is_allocatable .and. &
@@ -1298,16 +1298,16 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 call unsupported_feature_error('allocatable array component', &
                     component%line, component%column, &
                     'only integer, real, and logical allocatable array '// &
-                    'components of rank 1 through rank 3 are supported', error_msg)
+                    'components of rank 1 through rank 4 are supported', error_msg)
                 return
             end if
             if (component%is_allocatable .and. component%is_array .and. &
-                component_alloc_array_rank(component) == 3 .and. &
+                component_alloc_array_rank(component) >= 3 .and. &
                 component%is_target) then
                 call unsupported_feature_error( &
-                    'rank-3 allocatable array component', component%line, &
+                    'rank-3/rank-4 allocatable array component', component%line, &
                     component%column, &
-                    'rank-3 allocatable TARGET components are not supported', &
+                    'rank-3 and rank-4 allocatable TARGET components are not supported', &
                     error_msg)
                 return
             end if
@@ -1677,7 +1677,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             if (.not. component_alloc_array_rank_bounded(component)) then
                 call unsupported_feature_error('derived type component', &
                     component%line, component%column, &
-                    'only rank-1 through rank-3 intrinsic allocatable components '// &
+                    'only rank-1 through rank-4 intrinsic allocatable components '// &
                     'are supported', error_msg)
                 return
             end if
@@ -1698,7 +1698,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 call unsupported_feature_error('allocatable array component', &
                     component%line, component%column, &
                     'only integer, real, and logical allocatable array '// &
-                    'components of rank 1 through rank 3 are supported', error_msg)
+                    'components of rank 1 through rank 4 are supported', error_msg)
                 return
             end select
         end if
@@ -1887,14 +1887,15 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (.not. component%is_allocatable .or. .not. component%is_array) return
         if (.not. allocated(component%dimension_indices)) return
         if (size(component%dimension_indices) < 1 .or. &
-            size(component%dimension_indices) > 3) return
+            size(component%dimension_indices) > 4) return
         rank = size(component%dimension_indices)
     end function component_alloc_array_rank
 
     logical function component_alloc_array_rank_bounded(component) result(is_bounded)
         type(declaration_node), intent(in) :: component
 
-        is_bounded = component_alloc_array_rank(component) >= 1
+        is_bounded = component_alloc_array_rank(component) >= 1 .and. &
+                     component_alloc_array_rank(component) <= 4
     end function component_alloc_array_rank_bounded
 
     subroutine component_array_count(component, context, array_size, error_msg)
