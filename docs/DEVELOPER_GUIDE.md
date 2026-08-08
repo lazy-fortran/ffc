@@ -83,6 +83,29 @@ LIBRARY_PATH=/path/to/liric/build fo test          # full suite
 LIBRARY_PATH=/path/to/liric/build fo test test_session_empty_program_compiler
 ```
 
+### Attributing failures from parallel test runs
+
+Do not attribute a broad parallel `fo test` failure to the newest lowering
+change from the aggregate result alone. `fo` uses a shared action cache by
+default, so concurrent checkouts or dependency changes can reuse a target,
+module, or dependency artifact from another checkout. Record the commit and
+working-tree state, then reproduce a representative target individually:
+
+```bash
+git rev-parse HEAD
+git status --short --branch
+LIBRARY_PATH=/path/to/liric/build fo test test_session_<target>
+```
+
+For a before/after comparison, use separate clean checkouts and distinct
+`FO_CACHE_DIR` values. The parent checkout must complete its own build before
+its test result is evidence. If that build stops in FortFront (for example on
+an implicit-interface diagnostic), report it as a dependency-build failure;
+it is not an FFC regression and must not be converted into an expected test
+failure. A behavioral oracle that passes individually, together with
+unrelated individual failures, is evidence to fix the affected pre-existing
+feature or the dependency/cache setup rather than the latest feature commit.
+
 For CLI checks:
 
 ```bash
