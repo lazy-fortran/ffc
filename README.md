@@ -248,14 +248,15 @@ scalar dispatch slice (e.g. `allocate(..., source=)` of a differing dynamic
 type) still decline. A rank-1 `class(base_t), allocatable :: a(:)` array may
 be allocated with a compatible concrete type-spec (`allocate(child_t ::
 a(n))`), preserving the dynamic type and concrete element stride through
-`select type`. A rank-1 integer whole array may also bind to
-`class(*), intent(in) :: values(:)` through the canonical array descriptor;
-`select type (items => values)` narrows that view for `size(items)` and element
-reads. Integer and `real(8)` whole-array actuals use the canonical descriptor's
-element size, real type code, byte stride, and reserved runtime type id. The
-class-star array boundary refuses default/single-precision real, logical and
-other unsupported kinds, sections, allocatable ownership, and pointer/target
-ownership. A scalar `class(base_t), pointer` may be explicitly
+`select type`. A rank-1 or rank-2 integer whole array may also bind to
+`class(*), intent(in) :: values(:)` or `values(:,:)` through the canonical array
+descriptor; `select type (items => values)` narrows that view for `size(items)`
+and column-major element reads. Integer and `real(8)` whole-array actuals use
+the canonical descriptor's element size, real type code, per-dimension shape
+and byte stride, and reserved runtime type id. This bounded class-star array
+slice refuses rank-3-and-higher arrays, default/single-precision real, logical
+and other unsupported kinds, sections, allocatable ownership, and
+pointer/target ownership. A scalar `class(base_t), pointer` may be explicitly
 allocated with a compatible concrete type-spec (`allocate(child_t :: p)`), and
 a type-bound function call through `p` dispatches through the allocated dynamic
 type's vtable. A scalar `class(base_t), intent(in)` dummy borrows the same

@@ -408,6 +408,11 @@
             end if
         end if
         if (is_class_star_dummy) then
+            if (rank /= 1 .and. rank /= 2) then
+                error_msg = 'class(*) assumed-shape lowering currently supports '// &
+                    'only rank-1 and rank-2 whole-array actuals'
+                return
+            end if
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F64) then
                 error_msg = 'class(*) assumed-shape lowering currently supports '// &
                     'only default integer and real(8) whole-array actuals'
