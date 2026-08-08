@@ -226,8 +226,9 @@
                                             args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_derived(arena, arg_indices(i), context) .and. &
+                     .not. actual_is_whole_array(arena, arg_indices(i), context) .and. &
                      callee_dummy_assumed_shape_dims(arena, callee_name, &
-                                        call_arg_param_pos(i, sp)) < 1) then
+                                         call_arg_param_pos(i, sp)) < 1) then
                 ! A derived actual reaching a class(t) dummy is passed as the
                 ! scalar class descriptor so the dummy carries the actual's
                 ! dynamic type; a type(t) dummy takes the bare base address of
@@ -337,7 +338,9 @@
                                                call_arg_param_pos(i, sp)) .and. &
                      callee_dummy_assumed_shape_dims(arena, callee_name, &
                                          call_arg_param_pos(i, sp)) < 1 .and. &
-                     actual_is_array_expression(arena, arg_indices(i), context)) then
+                     actual_is_array_expression(arena, arg_indices(i), context) .and. &
+                     .not. actual_is_whole_array(arena, arg_indices(i), context) .and. &
+                     .not. actual_is_contiguous_section(arena, arg_indices(i), context)) then
                 ! An array-valued expression has no storage of its own. Materialise
                 ! it into a temporary with the dummy's element kind, then pass the
                 ! temporary's contiguous base address just like a named array.
