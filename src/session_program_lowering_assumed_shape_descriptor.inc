@@ -338,9 +338,16 @@
             return
         end if
 
-        if (present(assumed_rank) .and. assumed_rank) then
-            dummy_lowers(1:rank) = 1
-            has_dummy_lowers = .true.
+        if (present(assumed_rank)) then
+            if (assumed_rank) then
+                dummy_lowers(1:rank) = 1
+                has_dummy_lowers = .true.
+            else
+                call callee_dummy_assumed_shape_lowers(arena, callee_name, param_pos, &
+                                                       context, rank, dummy_lowers, &
+                                                       has_dummy_lowers, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
         else
             call callee_dummy_assumed_shape_lowers(arena, callee_name, param_pos, &
                                                    context, rank, dummy_lowers, &
