@@ -35,7 +35,11 @@ sized by a
 runtime bound (`integer :: a(n)` or `real :: a(0:n)` inside a procedure, where
 `n` is a dummy, host, or COMMON value the compiler cannot fold), covering
 element read/write and whole-array scalar broadcast through the runtime
-descriptor; rank-1 additionally supports `size`, `sum` (integer),
+descriptor; runtime-bounded scalar section assignment also supports rank-1
+through rank-4 sections with multiple retained dimensions (for example
+`a(2:n,1:m) = value`), using live bounds and column-major coordinates;
+array-valued RHS forms and unsupported noncontiguous or ambiguous sections
+remain explicit refusals. Rank-1 additionally supports `size`, `sum` (integer),
 `lbound`/`ubound`, whole-array `print`, and whole-array copy over a runtime
 loop; fixed-size
 rank-1 and

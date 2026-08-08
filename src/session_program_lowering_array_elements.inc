@@ -692,7 +692,9 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: source_name
         integer :: source_index, source_rank, dim, bounds_index, kept_dim
+        integer :: retained_count
         logical :: keep_dim(2)
+        logical :: use_generic
         type(lr_operand_desc_t) :: lower_op(2), upper_op(2), stride_op(2)
         type(lr_operand_desc_t) :: extent_op(2), source_extent_op(2), coord_op(2)
         type(lr_operand_desc_t) :: temp_op, diff_op, term_op, source_linear
@@ -706,7 +708,30 @@
             return
         end if
         source_rank = context%symbols(source_index)%array_rank
-        if (source_rank > 2) then
+        ! The generic path is the canonical column-major decoder for a
+        ! multi-dimensional runtime section.  Keep the older rank-2 fast path
+        ! for one retained dimension (for example m(:, k)); it also carries
+        ! the established runtime whole-array print behaviour.  A rank-2
+        ! section with two ranges must use the generic decoder.
+        retained_count = 0
+        do dim = 1, min(source_rank, 2)
+            if (dim > slice_node%num_dimensions .or. &
+                slice_node%bounds_indices(dim) <= 0) then
+                retained_count = retained_count + 1
+                cycle
+            end if
+            bounds_index = slice_node%bounds_indices(dim)
+            if (.not. node_exists(arena, bounds_index)) cycle
+            select type (bounds_node => arena%entries(bounds_index)%node)
+            type is (range_expression_node)
+                retained_count = retained_count + 1
+            type is (array_bounds_node)
+                retained_count = retained_count + 1
+            end select
+        end do
+        use_generic = source_rank > 2
+        if (source_rank == 2 .and. retained_count > 1) use_generic = .true.
+        if (use_generic) then
             call lower_runtime_array_section_element_address_operand_generic(arena, &
                 slice_node, linear_index, context, element_address, error_msg)
             return
@@ -2611,11 +2636,12 @@
     end subroutine load_allocatable_linear_element
 
     subroutine lower_array_section_assignment(arena, node, target, context, error_msg)
-        !! Assign to a rank-1 integer array section: arr(lo:hi:st) = rhs, where
-        !! rhs is an array constructor, another rank-1 section, or a scalar. The
-        !! section bounds are compile-time constants (describe_array_section), so
-        !! emit one element store per position. Only rank-1 integer sections are
-        !! handled; anything else returns an error and stays xfail.
+        !! Assign to an array section: arr(lo:hi:st, ...) = rhs, where rhs is
+        !! an array expression or a scalar. Compile-time sections are expanded
+        !! element by element; runtime-bounded sections use the same descriptor
+        !! address calculation and a counted loop over all retained dimensions.
+        !! Unsupported shapes and ambiguous/non-contiguous actuals still return
+        !! a diagnostic from the section classifier or RHS lowering.
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
         type(array_slice_node), intent(in) :: target
@@ -2648,14 +2674,11 @@
         if (len_trim(error_msg) > 0) return
 
         if (tinfo%has_runtime_bounds) then
-            if (tinfo%result_rank /= 1) then
-                error_msg = 'runtime array section assignment requires one kept dimension'
-                return
-            end if
-
             ! A scalar RHS has no extent to report.  Evaluate it once before
             ! entering the loop, then broadcast that value through the live
-            ! section coordinates.
+            ! section coordinates.  The runtime extent helper multiplies all
+            ! retained dimensions, and the generic address helper decodes the
+            ! linear index in column-major order.
             if (.not. actual_is_array_expression(arena, node%value_index, context)) then
                 select case (context%symbols(tinfo%source_index)%value_kind)
                 case (VALUE_F32)
