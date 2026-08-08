@@ -136,8 +136,12 @@ type-bound function call through `p` loads the allocated dynamic type's vtable
 entry. The descriptor starts null/unassociated, records the concrete dynamic
 type on allocation, and does not claim pointer ownership. Class-pointer arrays,
 pointer reassociation, pointer deallocation/ownership/finalization, and
-allocation of a finalizable pointer type remain rejected. Other runtime
-`CLASS` dispatch forms and procedure-pointer calls remain outside this slice.
+allocation of a finalizable pointer type remain rejected. A scalar
+`class(base_t), intent(in)` dummy receives the same descriptor as a borrowed
+view, and one non-generic default-`PASS` binding overridden by `child_t` loads
+the child implementation from the dynamic type's vtable. Generic and deferred
+bindings, class arrays, procedure-pointer calls, and other runtime `CLASS`
+flows remain outside this slice and are rejected.
 
 Unsupported features must fail during parsing, semantic analysis, or
 lowering with a diagnostic. Silent partial lowering is a bug.

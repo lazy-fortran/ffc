@@ -229,13 +229,16 @@ descriptor. These stack: an inner element may itself hold an allocatable derived
 array or intrinsic allocatable array component, so `obj%z(i)%arr(j)%arr(k)`
 reaches through several heap indirections. Non-zero scalar component defaults on
 heap elements, whole-component assignment, and allocatable derived array dummy
-arguments stay unsupported; genuinely polymorphic `class` forms (e.g.
-`allocate(..., source=)` of a differing dynamic type) still decline. A scalar
-`class(base_t), pointer` may be explicitly allocated with a compatible
-concrete type-spec (`allocate(child_t :: p)`), and a type-bound function call
-through `p` dispatches through the allocated dynamic type's vtable. Class-pointer
-arrays, pointer reassociation, pointer deallocation/ownership/finalization, and
-allocation of a finalizable pointer type remain rejected. A
+arguments stay unsupported; genuinely polymorphic `class` forms outside the
+scalar dispatch slice (e.g. `allocate(..., source=)` of a differing dynamic
+type) still decline. A scalar `class(base_t), pointer` may be explicitly
+allocated with a compatible concrete type-spec (`allocate(child_t :: p)`), and
+a type-bound function call through `p` dispatches through the allocated dynamic
+type's vtable. A scalar `class(base_t), intent(in)` dummy borrows the same
+descriptor and dispatches one non-generic default-`PASS` binding to a child
+override at runtime. Class-pointer arrays, pointer reassociation, pointer
+deallocation/ownership/finalization, generic/deferred bindings, and allocation
+of a finalizable pointer type remain rejected. A
 nested component may carry a bare `inner()` default-constructor initialiser, and
 a bare `t()` constructor default-initialises an instance, including for a type
 with nested components. A scalar derived `parameter` initialised by a

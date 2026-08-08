@@ -1864,6 +1864,12 @@
                 pass_arg = .true.
                 if (allocated(context%derived_types(type_index)%binding_pass_args)) &
                     pass_arg = context%derived_types(type_index)%binding_pass_args(b)
+                if (pass_arg .and. class_receiver_dispatches_dynamically(context, &
+                        symbol_index)) then
+                    call reject_unsupported_runtime_binding(context, type_index, b, &
+                        error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
                 call resolve_type_bound_target(arena, type_index, b, &
                     node%arg_indices, pass_arg, context, impl_name, error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -2273,6 +2279,10 @@
         if (slot <= 0) then
             error_msg = 'no type-bound procedure "'//method_name//'" on '//var_name
             return
+        end if
+        if (pass_arg .and. class_receiver_dispatches_dynamically(context, symbol_index)) then
+            call reject_unsupported_runtime_binding(context, type_index, slot, error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
         call resolve_type_bound_target(arena, type_index, slot, arg_indices, &
             pass_arg, context, impl_name, error_msg)

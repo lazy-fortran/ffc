@@ -643,6 +643,39 @@
                 error_msg)) return
     end subroutine class_dispatch_callee
 
+    subroutine reject_unsupported_runtime_binding(context, type_index, slot, &
+                                                  error_msg)
+        ! A runtime vtable slot has one fixed code address. Generic bindings
+        ! need call-site overload resolution and deferred bindings have no
+        ! address, so neither can be used by this scalar dispatch slice.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: slot
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: method_name, specifics
+
+        call set_empty(error_msg)
+        if (type_index <= 0 .or. type_index > context%derived_type_count) return
+        if (slot <= 0 .or. slot > context%derived_types(type_index)%binding_count) return
+        method_name = trim(context%derived_types(type_index)%binding_method_names(slot))
+        if (allocated(context%derived_types(type_index)%binding_target_names)) then
+            if (len_trim(context%derived_types(type_index)% &
+                    binding_target_names(slot)) == 0) then
+                error_msg = 'deferred type-bound procedure "'//trim(method_name)// &
+                    '" is not supported by runtime dispatch'
+                return
+            end if
+        end if
+        if (allocated(context%derived_types(type_index)%binding_specific_names)) then
+            specifics = trim(context%derived_types(type_index)% &
+                binding_specific_names(slot))
+            if (index(specifics, ' ') > 0) then
+                error_msg = 'generic type-bound procedure "'//trim(method_name)// &
+                    '" is not supported by runtime dispatch'
+            end if
+        end if
+    end subroutine reject_unsupported_runtime_binding
+
     subroutine class_receiver_argument(context, arena, impl_name, position, &
                                        symbol_index, argument, error_msg)
         ! Argument the receiver of a type-bound call occupies. The passed-object
