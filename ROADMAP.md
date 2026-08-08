@@ -85,6 +85,24 @@ The external pins are LFortran
 `caf87b660f803148f000046392a5da803f9fc630` and GCC
 `395e3d8131c189cd58e8c8061cdc77d1c44e3822`.
 
+### Current mainline build repair (2026-08-08)
+
+Current ffc `main` (`fd3b5e8`) had a broken complex-lowering extraction. C
+preprocessing treated `/*` examples inside Fortran `!` comments as an
+unterminated block comment, which hid the complex-value predicate; the
+extracted complex procedures also needed to be declared as parent module
+procedures. The repair removes preprocessing-ambiguous operator examples and
+restores the module-procedure bindings. `fo build` now completes all 457/457
+units, and the complex, arithmetic, cast, component, array, intrinsic, and
+function-result behavioral oracles pass. The aggregate `fo test` gate remains
+red on existing unrelated corpus and runtime clusters, so this is a build and
+regression repair rather than a release-green claim.
+
+The allocatable-derived-array branch `bc80407` remains unmerged: its focused
+compiler oracle passes, but it conflicts with current main in the lowering,
+descriptor ABI, roadmap, and add/add test areas. Rebase and conflict-specific
+oracles are required before promoting that dependency slice.
+
 PR #699 (bounded rank-1 deep-copy assignment) merged as `b0b7775`, and PR
 #700 (typed integer lowering extraction) merged as `cc91e32`. Their focused
 local behavioral gates are recorded below; the aggregate corpus remains

@@ -5,7 +5,7 @@ contains
     ! Storage: re in symbol%address (f32 or f64 alloca), im in element_address.
     ! symbol%value holds the last-loaded re SSA value (used as fallback).
 
-    subroutine lower_c4_assignment(arena, rhs_index, sym_idx, context, error_msg)
+    module subroutine lower_c4_assignment(arena, rhs_index, sym_idx, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: rhs_index, sym_idx
         type(lowering_context_t), intent(inout) :: context
@@ -29,7 +29,7 @@ contains
         call set_empty(error_msg)
     end subroutine lower_c4_assignment
 
-    subroutine lower_c8_assignment(arena, rhs_index, sym_idx, context, error_msg)
+    module subroutine lower_c8_assignment(arena, rhs_index, sym_idx, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: rhs_index, sym_idx
         type(lowering_context_t), intent(inout) :: context
@@ -55,11 +55,12 @@ contains
 
     ! True when node_index evaluates to a genuinely complex value of want_kind:
     ! a cmplx() call, a (re,im) literal, an identifier already declared with
-    ! that complex kind, or a +/-/*// combination where either side is. Any
+    ! that complex kind, or a plus/minus/multiply/divide combination where either
+    ! side is. Any
     ! other expression (real identifier, real/int literal, real function call,
     ! ** etc.) is real and must be promoted with a zero imaginary part instead
     ! of being decomposed as complex.
-    recursive function is_complex_valued(arena, node_index, context, want_kind) &
+    recursive module function is_complex_valued(arena, node_index, context, want_kind) &
         result(is_c)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -110,7 +111,7 @@ contains
     ! Evaluate an operand of a complex(4) binary combination: route through
     ! eval_c4_rhs when it is genuinely complex, otherwise widen the real value
     ! with a zero imaginary part.
-    recursive subroutine eval_c4_operand(arena, node_index, context, re_val, &
+    recursive module subroutine eval_c4_operand(arena, node_index, context, re_val, &
                                          im_val, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -128,7 +129,7 @@ contains
         im_val = liric_f32_immediate(context%session, 0.0_c_float)
     end subroutine eval_c4_operand
 
-    recursive subroutine eval_c8_operand(arena, node_index, context, re_val, &
+    recursive module subroutine eval_c8_operand(arena, node_index, context, re_val, &
                                          im_val, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -151,7 +152,7 @@ contains
     ! literal/real-to-complex forms accept integer or wider-precision operands.
     ! Unknown kinds fall through to the plain f32 path, which either handles the
     ! node or emits the existing unsupported-form error (no new hard failure).
-    subroutine lower_real_component_f32(arena, node_index, context, value, &
+    module subroutine lower_real_component_f32(arena, node_index, context, value, &
                                         error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -180,7 +181,7 @@ contains
         end select
     end subroutine lower_real_component_f32
 
-    subroutine lower_real_component_f64(arena, node_index, context, value, &
+    module subroutine lower_real_component_f64(arena, node_index, context, value, &
                                         error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -211,10 +212,10 @@ contains
 
     ! Evaluate a complex(4) rhs into its real/imag SSA components. Handles the
     ! (re, im) literal, a complex(4) identifier load, cmplx(re, im), and binary
-    ! +/-/*// where either operand may be real (promoted with im=0) or
+    ! plus/minus/multiply/divide where either operand may be real (promoted with
     ! complex(4). f32 components come from lower_f32_expression so real scalar
     ! literals widen correctly.
-    recursive subroutine eval_c4_rhs(arena, rhs_index, context, re_val, im_val, &
+    recursive module subroutine eval_c4_rhs(arena, rhs_index, context, re_val, im_val, &
                                      error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: rhs_index
@@ -350,7 +351,7 @@ contains
         end select
     end subroutine eval_c4_rhs
 
-    recursive subroutine eval_c8_rhs(arena, rhs_index, context, re_val, im_val, &
+    recursive module subroutine eval_c8_rhs(arena, rhs_index, context, re_val, im_val, &
                                      error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: rhs_index
@@ -485,11 +486,11 @@ contains
         end select
     end subroutine eval_c8_rhs
 
-    ! Validate a complex binary node as +/-/*// and return the operands plus the
-    ! float opcode. +/- combine componentwise; * and / use the full complex
+    ! Validate a complex binary node as plus/minus/multiply/divide and return
+    ! the operands plus the float opcode. +/- combine componentwise; * and /
     ! formula (see complex_combine_c4/c8). ** and other operators stay rejected
     ! so unsupported forms remain xfail. kind_tag names the kind in the error.
-    subroutine complex_binary_op(arena, node_index, op, left, right, opc, &
+    module subroutine complex_binary_op(arena, node_index, op, left, right, opc, &
                                  line, col, kind_tag, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -515,7 +516,7 @@ contains
     ! +/- are componentwise; * and / use the Cartesian formulas:
     !   (a+bi)*(c+di) = (ac-bd) + (ad+bc)i
     !   (a+bi)/(c+di) = ((ac+bd) + (bc-ad)i) / (c*c+d*d)
-    subroutine complex_combine_c4(context, op, opc, ar, ai, br, bi, &
+    module subroutine complex_combine_c4(context, op, opc, ar, ai, br, bi, &
                                   re_val, im_val, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: op
@@ -563,7 +564,7 @@ contains
                                         im_val, error_msg)) return
     end subroutine complex_combine_c4
 
-    subroutine complex_denom_c4(context, cr, ci, denom, error_msg)
+    module subroutine complex_denom_c4(context, cr, ci, denom, error_msg)
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(in) :: cr, ci
         type(lr_operand_desc_t), intent(out) :: denom
@@ -578,7 +579,7 @@ contains
                                         error_msg)) return
     end subroutine complex_denom_c4
 
-    subroutine complex_combine_c8(context, op, opc, ar, ai, br, bi, &
+    module subroutine complex_combine_c8(context, op, opc, ar, ai, br, bi, &
                                   re_val, im_val, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: op
@@ -624,7 +625,7 @@ contains
                                         im_val, error_msg)) return
     end subroutine complex_combine_c8
 
-    subroutine complex_denom_c8(context, cr, ci, denom, error_msg)
+    module subroutine complex_denom_c8(context, cr, ci, denom, error_msg)
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(in) :: cr, ci
         type(lr_operand_desc_t), intent(out) :: denom
@@ -641,7 +642,7 @@ contains
 
     ! Load the re/im components of a complex identifier rhs of want_kind.
     ! is_f32 selects f32 vs f64 component loads.
-    subroutine load_complex_identifier(arena, rhs_index, context, want_kind, &
+    module subroutine load_complex_identifier(arena, rhs_index, context, want_kind, &
                                        is_f32, re_val, im_val, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: rhs_index, want_kind
@@ -692,13 +693,14 @@ contains
     ! target): a keyword kind= argument, which fortfront keeps as a keyword
     ! assignment node, or a third positional argument. Any other keyword argument
     ! makes the recognizer decline.
-    logical function cmplx_call_args(arena, node_index, re_arg, im_arg) &
+    module function cmplx_call_args(arena, node_index, re_arg, im_arg) &
         result(is_call)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         integer, intent(out) :: re_arg, im_arg
         character(len=:), allocatable :: name, kw_name
         integer :: i, npos
+        logical :: is_call
 
         is_call = .false.
         re_arg = 0
@@ -736,11 +738,12 @@ contains
     ! True when arg_index is a keyword actual argument (name=value), which
     ! fortfront keeps as a keyword assignment node; kw_name is the lowercased
     ! keyword name.
-    logical function keyword_arg_name(arena, arg_index, kw_name) result(is_kw)
+    module function keyword_arg_name(arena, arg_index, kw_name) result(is_kw)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: arg_index
         character(len=:), allocatable, intent(out) :: kw_name
         character(len=:), allocatable :: id_err
+        logical :: is_kw
 
         is_kw = .false.
         call set_empty(kw_name)
@@ -761,11 +764,12 @@ contains
 
     ! Recognize a conjg()/dconjg() intrinsic call with a single argument; arg
     ! is that argument's node index.
-    logical function conjg_call_arg(arena, node_index, arg) result(is_call)
+    module function conjg_call_arg(arena, node_index, arg) result(is_call)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         integer, intent(out) :: arg
         character(len=:), allocatable :: name
+        logical :: is_call
 
         is_call = .false.
         arg = 0
@@ -787,12 +791,13 @@ contains
     ! the argument is not a supported complex scalar or array element. The
     ! result is independent of REAL's optional KIND selector: a selector may
     ! require a conversion after the complex component is extracted.
-    integer function complex_component_kind(arena, node, context) result(kind)
+    module function complex_component_kind(arena, node, context) result(kind)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable :: name, arg_name, err
         integer :: sym
+        integer :: kind
 
         kind = SCALAR_REAL_NONE
         if (.not. allocated(node%name)) return
@@ -828,24 +833,26 @@ contains
     ! True when node is real(z)/aimag(z) on a complex symbol of want_kind
     ! (VALUE_C4 or VALUE_C8). Used by the scalar-kind engine and retained as a
     ! narrow predicate for callers that only need a yes/no answer.
-    logical function is_complex_component_extract(arena, node, context, &
+    module function is_complex_component_extract(arena, node, context, &
                                                   want_kind) result(matches)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         integer, intent(in) :: want_kind
         type(lowering_context_t), intent(in) :: context
+        logical :: matches
 
         matches = complex_component_kind(arena, node, context) == want_kind
     end function is_complex_component_extract
 
     ! True when node_index is a complex(want_kind) array element access x(i).
-    logical function is_complex_array_element_arg(arena, node_index, context, &
+    module function is_complex_array_element_arg(arena, node_index, context, &
                                                   want_kind) result(matches)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: want_kind
         integer :: sym
+        logical :: matches
 
         matches = .false.
         if (.not. node_exists(arena, node_index)) return
@@ -864,7 +871,7 @@ contains
 
     ! Lower real(z)/aimag(z) by loading the matching component slot of the
     ! complex symbol. is_f32 selects f32 vs f64 component loads.
-    subroutine lower_complex_component_extract(arena, node, context, &
+    module subroutine lower_complex_component_extract(arena, node, context, &
                                                is_f32, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
@@ -905,7 +912,7 @@ contains
     ! scalar result kind. REAL(z, KIND=k) selects the result kind, not the
     ! width of z's stored component, so this path must handle both widening and
     ! narrowing instead of routing solely by the source complex kind.
-    subroutine lower_complex_component_conversion(arena, node, context, &
+    module subroutine lower_complex_component_conversion(arena, node, context, &
                                                   want_kind, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
@@ -943,7 +950,7 @@ contains
 
     ! Lower real(x(i))/aimag(x(i)) for a complex array element by loading the
     ! wanted component of the element's re/im GEP addresses.
-    subroutine lower_complex_array_element_extract(arena, elem_index, context, &
+    module subroutine lower_complex_array_element_extract(arena, elem_index, context, &
                                                    is_f32, want_imag, value, &
                                                    error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -983,7 +990,7 @@ contains
     ! component access to the single f32/f64 slot address it names. matched is
     ! .false. with an empty error_msg when the node is not a complex re/im
     ! component, so the caller falls through to the derived-type component path.
-    subroutine resolve_complex_component_slot(arena, comp_node, context, &
+    module subroutine resolve_complex_component_slot(arena, comp_node, context, &
                                               is_f32, addr, matched, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(component_access_node), intent(in) :: comp_node
@@ -1056,7 +1063,7 @@ contains
 
     ! Load a complex(4)/complex(8) %re/%im component into want_f32-typed value.
     ! matched=.false. means the caller must fall through to the derived path.
-    subroutine lower_complex_component_access_load(arena, comp_node, context, &
+    module subroutine lower_complex_component_access_load(arena, comp_node, context, &
                                                    want_f32, value, matched, &
                                                    error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -1093,7 +1100,7 @@ contains
     ! Store an assignment RHS into a complex(4)/complex(8) %re/%im component,
     ! leaving the other component untouched. handled=.false. with an empty
     ! error_msg means the target is not a complex re/im component.
-    subroutine try_lower_complex_component_write(arena, node, target, context, &
+    module subroutine try_lower_complex_component_write(arena, node, target, context, &
                                                  handled, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
@@ -1122,7 +1129,7 @@ contains
         end if
     end subroutine try_lower_complex_component_write
 
-    subroutine lower_print_complex4(sym_idx, context, error_msg)
+    module subroutine lower_print_complex4(sym_idx, context, error_msg)
         integer, intent(in) :: sym_idx
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
@@ -1137,16 +1144,17 @@ contains
         call set_empty(error_msg)
     end subroutine lower_print_complex4
 
-    logical function is_contained_complex_function(context, name) result(is_c)
+    module function is_contained_complex_function(context, name) result(is_c)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
         integer :: kind
+        logical :: is_c
 
         kind = contained_function_kind(context, name)
         is_c = kind == VALUE_C4 .or. kind == VALUE_C8
     end function is_contained_complex_function
 
-    subroutine lower_print_complex_result_call(arena, node_index, context, &
+    module subroutine lower_print_complex_result_call(arena, node_index, context, &
                                                error_msg)
         ! print *, cfunc(): emit the sret call into a scratch complex buffer,
         ! then load and print re/im. The callee writes re@+0, im@+4 (c4)/+8 (c8).
@@ -1218,7 +1226,7 @@ contains
         end select
     end subroutine lower_print_complex_result_call
 
-    subroutine lower_print_array_result_call(arena, node_index, context, error_msg)
+    module subroutine lower_print_array_result_call(arena, node_index, context, error_msg)
         ! print *, vec_fn(): allocate a scratch array buffer, run the sret call
         ! into it, then print each element in storage order with list-directed
         ! spacing (array function results in a print list).
@@ -1317,7 +1325,7 @@ contains
         end select
     end subroutine lower_print_array_result_call
 
-    subroutine lower_print_complex8(sym_idx, context, error_msg)
+    module subroutine lower_print_complex8(sym_idx, context, error_msg)
         integer, intent(in) :: sym_idx
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg

@@ -293,7 +293,7 @@
     end function leaf_folds_whole_complex_array
 
     ! Evaluate the RHS complex value of a whole-array assignment at one linear
-    ! element index. Binary +/-/*// recurse; a whole complex-array operand loads
+    ! element index. Binary plus/minus/multiply/divide recurse; a whole complex-array operand loads
     ! its element; scalar/self-indexed leaves broadcast via eval_cN_rhs.
     recursive subroutine eval_complex_array_element(arena, node_index, &
                                                     target_sym, linear_index, &
