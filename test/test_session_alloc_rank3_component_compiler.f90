@@ -70,15 +70,20 @@ contains
             '      end do'//new_line('a')// &
             '    end do'//new_line('a')// &
             '  end do'//new_line('a')// &
-            '  if (isum /= 334 .or. lsum /= 6) error stop 8'//new_line('a')// &
+            '  if (isum /= 334) error stop 8'//new_line('a')// &
             '  if (abs(rsum - 5.75) > 1.0e-6) error stop 9'//new_line('a')// &
+            '  if (lsum /= 6) error stop 10'//new_line('a')// &
             '  print *, size(x%iv), size(x%iv,1), size(x%iv,2), '// &
             'size(x%iv,3), isum, lsum, x%iv(2,2,3)'//new_line('a')// &
+            '  print *, x%lv(1,1,1), x%lv(2,1,1), x%lv(1,2,1), '// &
+            'x%lv(2,2,1), x%lv(1,1,2), x%lv(2,1,2), '// &
+            'x%lv(1,2,2), x%lv(2,2,2), x%lv(1,1,3), '// &
+            'x%lv(2,1,3), x%lv(1,2,3), x%lv(2,2,3)'//new_line('a')// &
             '  deallocate(x%iv)'//new_line('a')// &
             '  deallocate(x%rv)'//new_line('a')// &
             '  deallocate(x%lv)'//new_line('a')// &
             '  if (allocated(x%iv) .or. allocated(x%rv) .or. '// &
-            'allocated(x%lv)) error stop 10'//new_line('a')// &
+            'allocated(x%lv)) error stop 11'//new_line('a')// &
             'end program main'
 
         test_runtime_lifecycle = matches_gfortran(source, 'runtime_lifecycle')

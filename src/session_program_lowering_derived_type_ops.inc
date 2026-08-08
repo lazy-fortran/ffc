@@ -1498,7 +1498,7 @@
         type(lr_operand_desc_t) :: idx1, idx2, idx3, zero1, zero2, zero3
         type(lr_operand_desc_t) :: idx1_i64, idx2_i64, idx3_i64
         type(lr_operand_desc_t) :: extent1, extent2, column2, plane_stride, plane_offset
-        type(lr_operand_desc_t) :: linear_index, byte_offset
+        type(lr_operand_desc_t) :: linear_index, linear_with_plane, byte_offset
 
         call alloc_array_component_descriptor(arena, access_index, context, &
                                               desc_addr, error_msg)
@@ -1538,8 +1538,15 @@
                 plane_stride, error_msg)) return
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, idx3_i64, plane_stride, &
                 plane_offset, error_msg)) return
+        ! Do not use linear_index as both an input and the output of the LIR
+        ! operation. emit_i64_binary has an INTENT(OUT) result, so passing the
+        ! same descriptor as an input aliases an output argument and can erase
+        ! the input before the LIR instruction is formed. The rank-3 component
+        ! path then computed the wrong element address (most visibly for
+        ! logical components).
         if (.not. emit_i64_binary(context%session, LR_OP_ADD, linear_index, &
-                plane_offset, linear_index, error_msg)) return
+                plane_offset, linear_with_plane, error_msg)) return
+        linear_index = linear_with_plane
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, linear_index, &
                 i64_immediate(context%session, &
                     int(allocatable_elem_size(comp_kind), c_int64_t)), &
