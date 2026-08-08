@@ -118,8 +118,8 @@ subroutine also accepts an allocatable actual of runtime-only extent:
 the per-dimension extents travel as hidden arguments, so `size(a)`,
 `size(a, dim)`, `ubound(a, dim)`, element read/write (rank-2 uses the runtime
 leading extent as the column-major stride), a `do` loop bound by
-`size(a, dim)`, and scalar `sum(a)` over integer or real elements all work
-against the caller's runtime allocation. An assumed-size dummy
+`size(a, dim)`, and scalar `sum(a)`/`product(a)` over default integer or real
+elements all work against the caller's runtime allocation. An assumed-size dummy
 (`a(*)`, `a(n1, ..., *)`, dummy arguments only) folds its leading dimensions
 at compile time and binds to the actual's base address, so element read/write
 and `lbound(a, dim)` work; the trailing dimension carries no extent, so

@@ -3804,21 +3804,24 @@
             ! descriptor has a runtime-only extent and no compile-time
             ! array_size to unroll over; walk a genuine loop instead.
             if (context%symbols(source_index)%has_runtime_dim_size(1)) then
-                if (trim(reduction_name) == 'sum' .and. &
-                    any(context%symbols(source_index)%value_kind == &
-                        [VALUE_I32, VALUE_F32, VALUE_F64])) then
-                    if (context%symbols(source_index)%array_rank <= 2) then
-                        call lower_runtime_sum(context, source_index, value, &
-                                               error_msg)
+                if (trim(reduction_name) == 'sum' .or. &
+                    trim(reduction_name) == 'product') then
+                    if (any(context%symbols(source_index)%value_kind == &
+                            [VALUE_I32, VALUE_F32, VALUE_F64])) then
+                        if (context%symbols(source_index)%array_rank <= 2) then
+                            call lower_runtime_reduction(context, source_index, &
+                                trim(reduction_name), value, error_msg)
+                            return
+                        end if
+                        error_msg = trim(reduction_name)// &
+                            ' over runtime-extent arrays supports rank-1 and '// &
+                            'rank-2 only'
                         return
                     end if
-                    error_msg = 'sum over runtime-extent arrays supports '// &
-                                'rank-1 and rank-2 only'
-                    return
                 end if
                 error_msg = trim(reduction_name)//' over a runtime-extent '// &
                             'assumed-shape dummy supports integer and real '// &
-                            'sum only'
+                            'sum and product only'
                 return
             end if
             array_size = context%symbols(source_index)%array_size

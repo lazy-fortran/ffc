@@ -468,42 +468,66 @@
         call set_empty(error_msg)
     end subroutine load_array_element_at_runtime_index
 
-    subroutine runtime_sum_accumulator_slot(context, value_kind, slot, zero, &
-                                            error_msg)
-        ! Accumulator stack slot and typed zero for a runtime reduction loop.
+    subroutine runtime_reduction_accumulator_slot(context, value_kind, &
+                                                  reduction_name, slot, identity, &
+                                                  error_msg)
+        ! Accumulator stack slot and typed identity for a runtime reduction loop.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: value_kind
+        character(len=*), intent(in) :: reduction_name
         type(lr_operand_desc_t), intent(out) :: slot
-        type(lr_operand_desc_t), intent(out) :: zero
+        type(lr_operand_desc_t), intent(out) :: identity
         character(len=:), allocatable, intent(out) :: error_msg
 
         select case (value_kind)
         case (VALUE_F32)
             if (.not. emit_liric_f32_alloca(context%session, slot, error_msg)) &
                 return
-            zero = liric_f32_immediate(context%session, 0.0_c_float)
-            if (.not. emit_liric_f32_store(context%session, zero, slot, &
+            if (trim(reduction_name) == 'sum') then
+                identity = liric_f32_immediate(context%session, 0.0_c_float)
+            else if (trim(reduction_name) == 'product') then
+                identity = liric_f32_immediate(context%session, 1.0_c_float)
+            else
+                error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
+                return
+            end if
+            if (.not. emit_liric_f32_store(context%session, identity, slot, &
                                            error_msg)) return
         case (VALUE_F64)
             if (.not. emit_liric_f64_alloca(context%session, slot, error_msg)) &
                 return
-            zero = liric_f64_immediate(context%session, 0.0_c_double)
-            if (.not. emit_liric_f64_store(context%session, zero, slot, &
+            if (trim(reduction_name) == 'sum') then
+                identity = liric_f64_immediate(context%session, 0.0_c_double)
+            else if (trim(reduction_name) == 'product') then
+                identity = liric_f64_immediate(context%session, 1.0_c_double)
+            else
+                error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
+                return
+            end if
+            if (.not. emit_liric_f64_store(context%session, identity, slot, &
                                            error_msg)) return
         case default
             if (.not. emit_i32_alloca(context%session, slot, error_msg)) return
-            zero = i32_immediate(context%session, 0_c_int64_t)
-            if (.not. emit_i32_store(context%session, zero, slot, error_msg)) &
+            if (trim(reduction_name) == 'sum') then
+                identity = i32_immediate(context%session, 0_c_int64_t)
+            else if (trim(reduction_name) == 'product') then
+                identity = i32_immediate(context%session, 1_c_int64_t)
+            else
+                error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
+                return
+            end if
+            if (.not. emit_i32_store(context%session, identity, slot, error_msg)) &
                 return
         end select
         call set_empty(error_msg)
-    end subroutine runtime_sum_accumulator_slot
+    end subroutine runtime_reduction_accumulator_slot
 
-    subroutine runtime_sum_accumulate(context, value_kind, slot, element, &
-                                      error_msg)
-        ! One accumulation step of a runtime reduction loop: slot = slot + element.
+    subroutine runtime_reduction_accumulate(context, value_kind, reduction_name, &
+                                            slot, element, error_msg)
+        ! One accumulation step of a runtime reduction loop.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: value_kind
+        character(len=*), intent(in) :: reduction_name
         type(lr_operand_desc_t), intent(in) :: slot
         type(lr_operand_desc_t), intent(in) :: element
         character(len=:), allocatable, intent(out) :: error_msg
@@ -513,27 +537,51 @@
         case (VALUE_F32)
             if (.not. emit_liric_f32_load(context%session, slot, current, &
                                           error_msg)) return
-            if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, current, &
-                                            element, updated, error_msg)) return
+            if (trim(reduction_name) == 'sum') then
+                if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, &
+                        current, element, updated, error_msg)) return
+            else if (trim(reduction_name) == 'product') then
+                if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, &
+                        current, element, updated, error_msg)) return
+            else
+                error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
+                return
+            end if
             if (.not. emit_liric_f32_store(context%session, updated, slot, &
                                            error_msg)) return
         case (VALUE_F64)
             if (.not. emit_liric_f64_load(context%session, slot, current, &
                                           error_msg)) return
-            if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, current, &
-                                            element, updated, error_msg)) return
+            if (trim(reduction_name) == 'sum') then
+                if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, &
+                        current, element, updated, error_msg)) return
+            else if (trim(reduction_name) == 'product') then
+                if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, &
+                        current, element, updated, error_msg)) return
+            else
+                error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
+                return
+            end if
             if (.not. emit_liric_f64_store(context%session, updated, slot, &
                                            error_msg)) return
         case default
             if (.not. emit_i32_load(context%session, slot, current, error_msg)) &
                 return
-            if (.not. emit_i32_binary(context%session, LR_OP_ADD, current, &
-                                      element, updated, error_msg)) return
+            if (trim(reduction_name) == 'sum') then
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, current, &
+                        element, updated, error_msg)) return
+            else if (trim(reduction_name) == 'product') then
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, current, &
+                        element, updated, error_msg)) return
+            else
+                error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
+                return
+            end if
             if (.not. emit_i32_store(context%session, updated, slot, error_msg)) &
                 return
         end select
         call set_empty(error_msg)
-    end subroutine runtime_sum_accumulate
+    end subroutine runtime_reduction_accumulate
 
     subroutine runtime_sum_result(context, value_kind, slot, value, error_msg)
         type(lowering_context_t), intent(inout) :: context
@@ -556,9 +604,10 @@
         call set_empty(error_msg)
     end subroutine runtime_sum_result
 
-    subroutine lower_runtime_sum(context, source_index, value, error_msg)
-        ! sum(a) over a rank-1 or rank-2 array whose extent is known only at run
-        ! time (an assumed-shape dummy or automatic array): there is no
+    subroutine lower_runtime_reduction(context, source_index, reduction_name, &
+                                       value, error_msg)
+        ! sum/product(a) over a rank-1 or rank-2 array whose extent is known only
+        ! at run time (an assumed-shape dummy or automatic array): there is no
         ! compile-time array_size to unroll over, so walk a genuine LIRIC loop
         ! over the contiguous column-major element count. The loop counter uses
         ! the reserved-backedge-vreg PHI technique of a counted DO; the
@@ -566,6 +615,7 @@
         ! share one loop shape.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: source_index
+        character(len=*), intent(in) :: reduction_name
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: extent, next_extent, accumulator, zero
@@ -579,13 +629,15 @@
         value_kind = context%symbols(source_index)%value_kind
         if (context%symbols(source_index)%array_rank < 1 .or. &
             context%symbols(source_index)%array_rank > 2) then
-            error_msg = 'runtime sum supports rank-1 and rank-2 arrays only'
+            error_msg = trim(reduction_name)// &
+                ' over runtime-extent arrays supports rank-1 and rank-2 only'
             return
         end if
         extent = context%symbols(source_index)%runtime_dim_size(1)
         if (context%symbols(source_index)%array_rank == 2) then
             if (.not. context%symbols(source_index)%has_runtime_dim_size(2)) then
-                error_msg = 'runtime sum is missing the second array extent'
+                error_msg = trim(reduction_name)// &
+                    ' is missing the second array extent'
                 return
             end if
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
@@ -594,8 +646,8 @@
             extent = next_extent
         end if
 
-        call runtime_sum_accumulator_slot(context, value_kind, accumulator, &
-                                          zero, error_msg)
+        call runtime_reduction_accumulator_slot(context, value_kind, &
+            reduction_name, accumulator, zero, error_msg)
         if (len_trim(error_msg) > 0) return
         value = zero
 
@@ -638,8 +690,8 @@
         call load_array_element_at_operand(context, source_index, header_idx, &
                                             element, error_msg)
         if (len_trim(error_msg) > 0) return
-        call runtime_sum_accumulate(context, value_kind, accumulator, element, &
-                                    error_msg)
+        call runtime_reduction_accumulate(context, value_kind, reduction_name, &
+                                          accumulator, element, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
 
@@ -655,4 +707,4 @@
         context%current_block_id = exit_block
         context%current_block_terminated = .false.
         call runtime_sum_result(context, value_kind, accumulator, value, error_msg)
-    end subroutine lower_runtime_sum
+    end subroutine lower_runtime_reduction
