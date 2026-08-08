@@ -244,6 +244,12 @@ contents; the next call through `fp` picks up the new address.
   integer, real, and logical arguments. Callers pass a reference slot; variable
   actual arguments are copied back after the call, and parameter assignment
   stores through the pointer.
+- A scalar procedure dummy declared as `procedure(interface) :: p` is lowered
+  as the same opaque callable-address parameter, including when `interface` is
+  an `abstract interface` declared in the host or module scope. Calls through
+  `p` use the statically declared scalar result and argument ABI; unsupported
+  descriptor-bearing or polymorphic procedure signatures remain outside this
+  slice.
 - Function results are represented by assignment to the function result name.
 - A contained function returning a whole derived value is emitted as a `void`
   function taking a hidden first pointer argument to the caller's result

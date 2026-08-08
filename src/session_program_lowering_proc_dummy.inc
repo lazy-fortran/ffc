@@ -10,12 +10,14 @@
     ! There is exactly one callable-address convention in the lowerer.
 
     logical function dummy_is_procedure(arena, body_indices, name) result(is_proc)
-        ! True when `name` is declared by an interface body in this scope, which
-        ! for a dummy argument name makes it a dummy procedure.
+        ! True when `name` is declared by an interface body in this scope, or by
+        ! a PROCEDURE(interface) declaration.  The latter is how a dummy names
+        ! an ABSTRACT INTERFACE declared in a host/module scope; it is still a
+        ! callable address and must not be lowered as data.
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: body_indices(:)
         character(len=*), intent(in) :: name
-        integer :: i, j
+        integer :: i, j, k
         character(len=:), allocatable :: body_name
 
         is_proc = .false.
@@ -23,6 +25,23 @@
         do i = 1, size(body_indices)
             if (.not. node_exists(arena, body_indices(i))) cycle
             select type (iface => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. declaration_names_procedure(iface)) cycle
+                if (allocated(iface%var_name)) then
+                    if (same_name(iface%var_name, name)) then
+                        is_proc = .true.
+                        return
+                    end if
+                end if
+                if (iface%is_multi_declaration .and. &
+                    allocated(iface%var_names)) then
+                    do k = 1, size(iface%var_names)
+                        if (same_name(iface%var_names(k), name)) then
+                            is_proc = .true.
+                            return
+                        end if
+                    end do
+                end if
             type is (interface_block_node)
                 if (iface%is_abstract) cycle
                 if (allocated(iface%name)) then
