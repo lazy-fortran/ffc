@@ -284,10 +284,10 @@ module session_program_lowering_types
         type(lr_operand_desc_t) :: runtime_array_stride_bytes
         ! Runtime extents for descriptor-backed dummies whose actual has no
         ! compile-time-foldable shape, or for the genuine assumed-rank
-        ! rank(1)/rank(2)/rank(3) SELECT RANK slice. array_dim_sizes stays the
+        ! rank(1)/rank(2)/rank(3)/rank(4) SELECT RANK slice. array_dim_sizes stays the
         ! 0 sentinel; each active dimension's count lives in this i32 operand.
-        logical, dimension(3) :: has_runtime_dim_size = .false.
-        type(lr_operand_desc_t), dimension(3) :: runtime_dim_size
+        logical, dimension(4) :: has_runtime_dim_size = .false.
+        type(lr_operand_desc_t), dimension(4) :: runtime_dim_size
         ! Element stride, in i32 slots, of a polymorphic array dummy (#422).
         ! A class(t) array dummy may receive an actual whose dynamic element
         ! type is an extension of t, so its elements are wider than the

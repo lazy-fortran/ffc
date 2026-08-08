@@ -161,25 +161,27 @@ copy all read the descriptor's dimension records. Rank-four owners and
 derived allocatable components remain outside that path; their separate
 inline component descriptor is documented by the support contract.
 
-### Assumed-rank `RANK (1)` / `RANK (2)` / `RANK (3)` boundary
+### Assumed-rank `RANK (1)` / `RANK (2)` / `RANK (3)` / `RANK (4)` boundary
 
 The supported genuine assumed-rank slice uses this same descriptor without a
-second ABI. For a contained `REAL :: x(..)` dummy called with a rank-1 or
-rank-2 whole array, the caller allocates a borrowed stack
+second ABI. For a contained `REAL :: x(..)` dummy called with a rank-1,
+rank-2, rank-3, or rank-4 whole array, the caller allocates a borrowed stack
 `array_descriptor_t`, fills `base`, `element_size`,
 `element_type=ARRAY_ELEMENT_REAL`, the actual rank, the allocated/associated
 flags, and each active dimension's `lower_bound=1`, `extent`, and
 `stride_bytes`, then passes the descriptor address through the dummy's single
 visible pointer parameter. The callee does not infer rank from source or
 append hidden extents. Inside exactly one matching `RANK (1)`, `RANK (2)`, or
-`RANK (3)` arm it loads every active extent from dimensions 1 through 3; rank
-1 retains descriptor byte-stride addressing, while rank 2 and rank 3 compute
-column-major linear indices with the descriptor element-size stride. Rank 3
-uses `i1 + (i2-1)*extent(1) + (i3-1)*extent(1)*extent(2)`.
+`RANK (3)`, or `RANK (4)` arm it loads every active extent from dimensions 1
+through 4; rank 1 retains descriptor byte-stride addressing, while rank 2,
+rank 3, and rank 4 compute column-major linear indices with the descriptor
+element-size stride. Rank 3 uses `i1 + (i2-1)*extent(1) +
+(i3-1)*extent(1)*extent(2)` and rank 4 adds
+`(i4-1)*extent(1)*extent(2)*extent(3)`.
 
 This boundary is borrowed: the callee never releases or changes descriptor
-ownership. Only a whole rank-1, rank-2, or rank-3 REAL actual with one
-matching rank arm is admitted. Scalar actuals, rank four and higher,
+ownership. Only a whole rank-1, rank-2, rank-3, or rank-4 REAL actual with one
+matching rank arm is admitted. Scalar actuals, rank five and higher,
 dynamic-shape forms, sections and aliases (including pointers), global or
 owning storage, `RANK DEFAULT`, `RANK (*)`, unsupported or non-matching rank
 arms, and unsupported element kinds are outside the boundary and must be

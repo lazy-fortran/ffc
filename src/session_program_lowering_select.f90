@@ -1182,8 +1182,8 @@ contains
         ! arm is ever live. Resolve that rank from the selector's declaration,
         ! then lower only the matching `rank (n)` arm (or `rank default`)
         ! inline. Genuine assumed-rank `(..)` dummies use the canonical runtime
-        ! descriptor and currently admit exactly one REAL rank(1), rank(2), or
-        ! rank(3) whole-array arm.
+        ! descriptor and currently admit exactly one REAL rank(1), rank(2),
+        ! rank(3), or rank(4) whole-array arm.
         type(ast_arena_t), intent(in) :: arena
         type(select_rank_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -1223,7 +1223,7 @@ contains
             end if
             if (node%default_index > 0) then
                 call unsupported_feature_error('select rank statement', node%line, &
-                    node%column, 'RANK DEFAULT is refused for the assumed-rank rank(1)/rank(2)/rank(3) slice', &
+                    node%column, 'RANK DEFAULT is refused for the assumed-rank rank(1)/rank(2)/rank(3)/rank(4) slice', &
                     error_msg)
                 return
             end if
@@ -1236,13 +1236,14 @@ contains
                     if (len_trim(error_msg) > 0) return
                     if (rank_value == -2) then
                         call unsupported_feature_error('select rank statement', node%line, &
-                            node%column, 'RANK (*) is refused for the assumed-rank rank(1)/rank(2)/rank(3) slice', &
+                            node%column, 'RANK (*) is refused for the assumed-rank rank(1)/rank(2)/rank(3)/rank(4) slice', &
                             error_msg)
                         return
                     end if
-                    if (rank_value /= 1 .and. rank_value /= 2 .and. rank_value /= 3) then
+                    if (rank_value /= 1 .and. rank_value /= 2 .and. rank_value /= 3 .and. &
+                        rank_value /= 4) then
                         call unsupported_feature_error('select rank statement', node%line, &
-                            node%column, 'only one statically valid RANK (1), RANK (2), or RANK (3) arm is supported', &
+                            node%column, 'only one statically valid RANK (1), RANK (2), RANK (3), or RANK (4) arm is supported', &
                             error_msg)
                         return
                     end if
@@ -1253,15 +1254,15 @@ contains
             end if
             if (rank_arm_count /= 1) then
                 call unsupported_feature_error('select rank statement', node%line, &
-                    node%column, 'assumed-rank lowering requires exactly one RANK (1), RANK (2), or RANK (3) arm', &
+                    node%column, 'assumed-rank lowering requires exactly one RANK (1), RANK (2), RANK (3), or RANK (4) arm', &
                     error_msg)
                 return
             end if
             call resolve_assumed_rank(context, context%current_proc_name, sel_name, &
                 actual_rank, actual_rank_ok)
-            if (actual_rank_ok .and. actual_rank > 3) then
+            if (actual_rank_ok .and. actual_rank > 4) then
                 call unsupported_feature_error('select rank statement', node%line, &
-                    node%column, 'only a rank-1, rank-2, or rank-3 whole REAL array is supported', &
+                    node%column, 'only a rank-1, rank-2, rank-3, or rank-4 whole REAL array is supported', &
                     error_msg)
                 return
             end if
@@ -1312,7 +1313,7 @@ contains
         call set_empty(error_msg)
         descriptor = context%symbols(sym_index)%runtime_descriptor_address
         if (.not. emit_ptr_load(context%session, descriptor, base, error_msg)) return
-        if (selected_rank < 1 .or. selected_rank > 3) then
+        if (selected_rank < 1 .or. selected_rank > 4) then
             error_msg = 'assumed-rank binding received an unsupported rank'
             return
         end if
