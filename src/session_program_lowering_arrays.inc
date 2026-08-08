@@ -3807,8 +3807,13 @@
                 if (trim(reduction_name) == 'sum' .and. &
                     any(context%symbols(source_index)%value_kind == &
                         [VALUE_I32, VALUE_F32, VALUE_F64])) then
-                    call lower_runtime_sum(context, source_index, value, &
-                                           error_msg)
+                    if (context%symbols(source_index)%array_rank <= 2) then
+                        call lower_runtime_sum(context, source_index, value, &
+                                               error_msg)
+                        return
+                    end if
+                    error_msg = 'sum over runtime-extent arrays supports '// &
+                                'rank-1 and rank-2 only'
                     return
                 end if
                 error_msg = trim(reduction_name)//' over a runtime-extent '// &

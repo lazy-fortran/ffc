@@ -34,13 +34,15 @@ whole-array copy, elemental `+`/`-`/`*`, whole-array `print`, `lbound`,
 sized by a
 runtime bound (`integer :: a(n)` or `real :: a(0:n)` inside a procedure, where
 `n` is a dummy, host, or COMMON value the compiler cannot fold), covering
-element read/write and whole-array scalar broadcast through the runtime
-descriptor; runtime-bounded scalar section assignment also supports rank-1
+element read/write, whole-array scalar broadcast, and scalar `sum` over
+integer or real elements through the runtime descriptor; runtime-bounded
+scalar section assignment also supports rank-1
 through rank-4 sections with multiple retained dimensions (for example
 `a(2:n,1:m) = value`), using live bounds and column-major coordinates;
 array-valued RHS forms and unsupported noncontiguous or ambiguous sections
-remain explicit refusals. Rank-1 additionally supports `size`, `sum` (integer),
-`lbound`/`ubound`, whole-array `print`, and whole-array copy over a runtime
+remain explicit refusals. Rank-1 and rank-2 additionally support `size` and
+`sum` (integer or real), while rank-1 also supports `lbound`/`ubound`,
+whole-array `print`, and whole-array copy over a runtime
 loop; fixed-size
 rank-1 and
 rank-2 `character(len=N)` arrays (character-literal element assignment, element
@@ -115,9 +117,9 @@ or rank-2 assumed-shape dummy of a
 subroutine also accepts an allocatable actual of runtime-only extent:
 the per-dimension extents travel as hidden arguments, so `size(a)`,
 `size(a, dim)`, `ubound(a, dim)`, element read/write (rank-2 uses the runtime
-leading extent as the column-major stride), and a `do` loop bound by
-`size(a, dim)` all work against the caller's runtime allocation; rank-1 also
-supports integer `sum(a)`. An assumed-size dummy
+leading extent as the column-major stride), a `do` loop bound by
+`size(a, dim)`, and scalar `sum(a)` over integer or real elements all work
+against the caller's runtime allocation. An assumed-size dummy
 (`a(*)`, `a(n1, ..., *)`, dummy arguments only) folds its leading dimensions
 at compile time and binds to the actual's base address, so element read/write
 and `lbound(a, dim)` work; the trailing dimension carries no extent, so

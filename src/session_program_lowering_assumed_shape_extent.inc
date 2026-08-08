@@ -557,17 +557,18 @@
     end subroutine runtime_sum_result
 
     subroutine lower_runtime_sum(context, source_index, value, error_msg)
-        ! sum(a) over a rank-1 array whose extent is known only at run time (an
-        ! assumed-shape dummy bound through the caller's array descriptor):
-        ! there is no compile-time array_size to unroll over, so walk a genuine
-        ! LIRIC loop. The loop counter uses the reserved-backedge-vreg PHI
-        ! technique of a counted DO; the accumulator lives in a stack slot so
-        ! integer and real element kinds share one loop shape.
+        ! sum(a) over a rank-1 or rank-2 array whose extent is known only at run
+        ! time (an assumed-shape dummy or automatic array): there is no
+        ! compile-time array_size to unroll over, so walk a genuine LIRIC loop
+        ! over the contiguous column-major element count. The loop counter uses
+        ! the reserved-backedge-vreg PHI technique of a counted DO; the
+        ! accumulator lives in a stack slot so integer and real element kinds
+        ! share one loop shape.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: source_index
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: extent, accumulator, zero
+        type(lr_operand_desc_t) :: extent, next_extent, accumulator, zero
         type(lr_operand_desc_t) :: entry_idx, header_idx, backedge_idx
         type(lr_operand_desc_t) :: condition, element, next_idx
         integer(c_int32_t) :: entry_block, header_block, body_block, &
@@ -576,7 +577,22 @@
         integer :: value_kind
 
         value_kind = context%symbols(source_index)%value_kind
+        if (context%symbols(source_index)%array_rank < 1 .or. &
+            context%symbols(source_index)%array_rank > 2) then
+            error_msg = 'runtime sum supports rank-1 and rank-2 arrays only'
+            return
+        end if
         extent = context%symbols(source_index)%runtime_dim_size(1)
+        if (context%symbols(source_index)%array_rank == 2) then
+            if (.not. context%symbols(source_index)%has_runtime_dim_size(2)) then
+                error_msg = 'runtime sum is missing the second array extent'
+                return
+            end if
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
+                    context%symbols(source_index)%runtime_dim_size(2), &
+                    next_extent, error_msg)) return
+            extent = next_extent
+        end if
 
         call runtime_sum_accumulator_slot(context, value_kind, accumulator, &
                                           zero, error_msg)
