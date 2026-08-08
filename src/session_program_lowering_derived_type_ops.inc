@@ -616,7 +616,8 @@
     end subroutine declare_allocatable_derived_array
 
     subroutine lower_allocate_derived_array(arena, size_index1, size_index2, &
-                                             symbol_index, context, error_msg)
+                                             symbol_index, context, error_msg, &
+                                             dynamic_type_index)
         ! Allocate a rank-1 or rank-2 derived allocatable through the canonical
         ! array descriptor. Shape specs may be scalar extents or lower:upper
         ! ranges; the descriptor retains the declared lower bounds.
@@ -624,6 +625,7 @@
         integer, intent(in) :: size_index1, size_index2, symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: dynamic_type_index
         type(lr_operand_desc_t) :: lowers(2), extents(2), count_i64, data_ptr
         type(lr_operand_desc_t) :: product_i64, descriptor
         integer :: rank, type_index
@@ -649,6 +651,9 @@
             count_i64 = extents(1)
         end if
         type_index = context%symbols(symbol_index)%derived_type_index
+        if (present(dynamic_type_index)) then
+            if (dynamic_type_index > 0) type_index = dynamic_type_index
+        end if
         element_bytes = int(total_component_slots(context, type_index), &
                             c_int64_t) * 4_c_int64_t
         if (.not. emit_malloc(context%session, count_i64, data_ptr, error_msg, &

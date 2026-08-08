@@ -203,6 +203,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
         integer :: size_index1, size_index2, size_index3, size_index4, symbol_index
+        integer :: dynamic_type_index
         logical :: handled, no_shape
 
         if (.not. allocated(node%var_indices) .or. size(node%var_indices) < 1) then
@@ -312,6 +313,35 @@
         end if
 
         if (context%symbols(symbol_index)%is_derived) then
+            dynamic_type_index = 0
+            if (allocated(node%type_spec)) then
+                if (len_trim(node%type_spec) > 0) then
+                    dynamic_type_index = find_derived_type(context, &
+                        trim(lowercase_text(node%type_spec)))
+                    if (dynamic_type_index <= 0) then
+                        call unsupported_feature_error('allocate statement', node%line, &
+                            node%column, 'unknown derived type in allocate type-spec: '// &
+                            trim(node%type_spec), error_msg)
+                        return
+                    end if
+                    if (.not. context%symbols(symbol_index)%is_polymorphic .and. &
+                        dynamic_type_index /= &
+                        context%symbols(symbol_index)%derived_type_index) then
+                        call unsupported_feature_error('allocate statement', node%line, &
+                            node%column, 'allocate type-spec does not match the declared '// &
+                            'type of '//trim(name), error_msg)
+                        return
+                    end if
+                    if (context%symbols(symbol_index)%is_polymorphic .and. &
+                        .not. derived_type_extends(context, dynamic_type_index, &
+                            context%symbols(symbol_index)%derived_type_index)) then
+                        call unsupported_feature_error('allocate statement', node%line, &
+                            node%column, 'allocate type-spec is not compatible with '// &
+                            'the declared polymorphic type of '//trim(name), error_msg)
+                        return
+                    end if
+                end if
+            end if
             if (size_index3 > 0) then
                 call unsupported_feature_error('allocate statement', node%line, &
                     node%column, 'rank-3 derived allocatable arrays are not '// &
@@ -319,7 +349,8 @@
                 return
             end if
             call lower_allocate_derived_array(arena, size_index1, size_index2, &
-                                               symbol_index, context, error_msg)
+                                               symbol_index, context, error_msg, &
+                                               dynamic_type_index)
         else if (context%symbols(symbol_index)%array_rank == 3) then
             call lower_allocate_i32_3d(arena, size_index1, size_index2, &
                                        size_index3, symbol_index, context, error_msg)

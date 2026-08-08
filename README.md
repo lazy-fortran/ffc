@@ -245,7 +245,10 @@ reaches through several heap indirections. Non-zero scalar component defaults on
 heap elements, whole-component assignment, and allocatable derived array dummy
 arguments stay unsupported; genuinely polymorphic `class` forms outside the
 scalar dispatch slice (e.g. `allocate(..., source=)` of a differing dynamic
-type) still decline. A scalar `class(base_t), pointer` may be explicitly
+type) still decline. A rank-1 `class(base_t), allocatable :: a(:)` array may
+be allocated with a compatible concrete type-spec (`allocate(child_t ::
+a(n))`), preserving the dynamic type and concrete element stride through
+`select type`. A scalar `class(base_t), pointer` may be explicitly
 allocated with a compatible concrete type-spec (`allocate(child_t :: p)`), and
 a type-bound function call through `p` dispatches through the allocated dynamic
 type's vtable. A scalar `class(base_t), intent(in)` dummy borrows the same

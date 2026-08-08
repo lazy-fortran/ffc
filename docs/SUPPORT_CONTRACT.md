@@ -65,6 +65,15 @@ Whole-component assignment, passing a rank-two component as an actual,
 aliases, unsupported kinds, and rank greater than two are explicit refusals,
 not partial support claims.
 
+## Issue-422 polymorphic allocatable-array slice
+
+A rank-1 `class(base_t), allocatable :: a(:)` array may be allocated with a
+compatible concrete derived type-spec (`allocate(child_t :: a(n))`). The
+allocation records the concrete dynamic type and its complete element stride,
+so `select type (a)` can access both inherited and extension components of
+each element. Incompatible type-specs and `SOURCE=`/`MOLD=` allocation of a
+differing dynamic array type remain unsupported.
+
 ## FORALL evaluation contract
 
 For fixed-size intrinsic array-element assignments, the direct session lowerer
