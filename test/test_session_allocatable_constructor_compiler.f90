@@ -104,8 +104,42 @@ contains
 
         test_lazy_209_array_operands = &
             matches_gfortran(all_source, 'lazy_209_all') .and. &
-            matches_gfortran(complex_source, 'lazy_209_complex')
+            matches_gfortran(complex_source, 'lazy_209_complex') .and. &
+            test_runtime_descriptor_copy_oracle()
     end function test_lazy_209_array_operands
+
+    logical function test_runtime_descriptor_copy_oracle()
+        ! The source extent is available only through b's runtime descriptor.
+        ! The output checks allocation, extents, values after each reallocation,
+        ! and that the copy owns independent storage after b is changed.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer, allocatable :: a(:), b(:)'//new_line('a')// &
+            '  integer :: n, i'//new_line('a')// &
+            '  n = 4'//new_line('a')// &
+            '  allocate(b(n))'//new_line('a')// &
+            '  do i = 1, n'//new_line('a')// &
+            '    b(i) = i * 10'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            '  allocate(a(2))'//new_line('a')// &
+            '  a = [-1, -2]'//new_line('a')// &
+            '  a = b'//new_line('a')// &
+            '  print *, allocated(a), size(a), sum(a), a(1), a(4)'//new_line('a')// &
+            '  deallocate(b)'//new_line('a')// &
+            '  n = 2'//new_line('a')// &
+            '  allocate(b(n))'//new_line('a')// &
+            '  do i = 1, n'//new_line('a')// &
+            '    b(i) = i + 6'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            '  a = b'//new_line('a')// &
+            '  print *, allocated(a), size(a), sum(a), a(1), a(2)'//new_line('a')// &
+            '  b(1) = 99'//new_line('a')// &
+            '  print *, a(1), b(1)'//new_line('a')// &
+            'end program main'
+
+        test_runtime_descriptor_copy_oracle = matches_gfortran( &
+            source, 'runtime_descriptor_copy')
+    end function test_runtime_descriptor_copy_oracle
 
     logical function matches_gfortran(source, stem)
         character(len=*), intent(in) :: source, stem

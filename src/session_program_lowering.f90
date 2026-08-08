@@ -5730,6 +5730,9 @@ contains
                     symbol_index, context, error_msg)
                 return
             end if
+            call lower_allocatable_runtime_whole_copy(arena, node, symbol_index, &
+                context, handled, error_msg)
+            if (handled .or. len_trim(error_msg) > 0) return
             if (node_exists(arena, node%value_index)) then
                 select type (rhs => arena%entries(node%value_index)%node)
                     type is (array_literal_node)

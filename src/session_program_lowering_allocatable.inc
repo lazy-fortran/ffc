@@ -1456,6 +1456,119 @@
         handled = .true.
     end subroutine lower_allocatable_character_array_assignment
 
+    subroutine lower_allocatable_runtime_whole_copy(arena, node, target_sym, &
+                                                    context, handled, error_msg)
+        ! a = b where b is a separately allocated rank-1 intrinsic array whose
+        ! extent is present only in its descriptor. Reallocate a from b's
+        ! runtime extent, then copy b through a counted loop. Keep this path
+        ! separate from the compile-time expression machinery: it is one
+        ! concrete whole-copy form, and unsupported RHS patterns still reach
+        ! their existing diagnostics.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: target_sym
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source_name
+        integer :: source_sym, vk
+        type(lr_operand_desc_t) :: source_extent, descriptor, data_ptr
+        type(lr_operand_desc_t) :: entry_idx, header_idx, backedge_idx
+        type(lr_operand_desc_t) :: condition, element, next_idx
+        type(lr_operand_desc_t) :: idx64, byte_offset, element_addr
+        integer(c_int32_t) :: entry_block, header_block, body_block, &
+            latch_block, exit_block, idx_vreg
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node%value_index)) return
+        if (.not. is_identifier(arena, node%value_index)) return
+        if (context%symbols(target_sym)%array_rank /= 1) return
+        vk = context%symbols(target_sym)%value_kind
+        if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. vk /= VALUE_F64 .and. &
+            vk /= VALUE_LOGICAL) return
+
+        call get_identifier_name(arena, node%value_index, source_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_sym = find_symbol_compat(context, source_name)
+        if (source_sym <= 0) return
+        if (.not. context%symbols(source_sym)%is_allocatable) return
+        if (context%symbols(source_sym)%array_rank /= 1) return
+        if (context%symbols(source_sym)%value_kind /= vk) return
+        if (context%symbols(source_sym)%allocatable_static_size > 0) return
+        if (source_sym == target_sym) return
+
+        call allocatable_descriptor_extent_i32(context, source_sym, 1, &
+                                               source_extent, error_msg)
+        if (len_trim(error_msg) > 0) return
+        descriptor = context%symbols(target_sym)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        if (.not. emit_free(context%session, data_ptr, error_msg)) return
+        call lower_allocate_i32_1d_operand(source_extent, target_sym, context, &
+                                            error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(target_sym)%allocatable_static_size = 0
+
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        entry_idx = i32_immediate(context%session, 0_c_int64_t)
+        entry_block = context%current_block_id
+        header_block = create_liric_block(context%session)
+        body_block = create_liric_block(context%session)
+        latch_block = create_liric_block(context%session)
+        exit_block = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, header_block, error_msg)) return
+        context%current_block_id = header_block
+        context%current_block_terminated = .false.
+        idx_vreg = reserve_i32_vreg(context%session)
+        if (idx_vreg == 0_c_int32_t) idx_vreg = reserve_i32_vreg(context%session)
+        if (idx_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve a positive backedge vreg'
+            return
+        end if
+        backedge_idx = i32_vreg(context%session, idx_vreg)
+        if (.not. emit_liric_i32_phi(context%session, entry_idx, entry_block, &
+                backedge_idx, latch_block, header_idx, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_idx, &
+                source_extent, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, body_block, &
+                exit_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, body_block, error_msg)) return
+        context%current_block_id = body_block
+        context%current_block_terminated = .false.
+        call load_alloc_element_runtime(context, source_sym, vk, header_idx, &
+                                        element, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, header_idx, idx64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, idx64, &
+                i64_immediate(context%session, allocatable_elem_size(vk)), &
+                byte_offset, error_msg)) return
+        if (.not. emit_ptr_offset_dyn(context%session, data_ptr, byte_offset, &
+                element_addr, error_msg)) return
+        if (.not. emit_allocatable_element_store(context, vk, element, &
+                                                 element_addr, error_msg)) return
+        if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+        context%current_block_id = latch_block
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_idx, &
+                i32_immediate(context%session, 1_c_int64_t), idx_vreg, next_idx, &
+                error_msg)) return
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, exit_block, error_msg)) return
+        context%current_block_id = exit_block
+        context%current_block_terminated = .false.
+        handled = .true.
+        call set_empty(error_msg)
+    end subroutine lower_allocatable_runtime_whole_copy
+
     subroutine lower_allocatable_scalar_broadcast(arena, value_index, &
                                                   symbol_index, context, error_msg)
         ! a = scalar where a is a rank-1 allocatable: store the scalar into every
