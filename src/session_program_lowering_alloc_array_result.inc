@@ -89,7 +89,7 @@
         if (.not. emit_ptr_store(context%session, moved_ptr, dest_desc, &
                 error_msg)) return
         ! Copy the complete canonical descriptor, not just the legacy prefix:
-        ! rank-2/rank-3 results need their additional dimensions and every descriptor keeps
+        ! rank-2/rank-3/rank-4 results need their additional dimensions and every descriptor keeps
         ! lower bounds, extents, and byte strides in the dimension records.
         do i = 1, ALLOC_DESCRIPTOR_BYTES / 8 - 1
             off = int(i * 8, c_int64_t)
@@ -117,7 +117,7 @@
         character(len=:), allocatable :: result_name, id_name, id_err
         integer, allocatable :: flat(:)
         integer(c_int64_t) :: n
-        integer :: i, node_index, size_index1, size_index2, size_index3
+        integer :: i, node_index, size_index1, size_index2, size_index3, size_index4
 
         static_size = 0
         node_index = 0
@@ -159,11 +159,11 @@
                 if (.not. allocated(stmt%var_indices)) cycle
                 if (size(stmt%var_indices) /= 1) cycle
                 call allocate_target(arena, stmt, id_name, size_index1, &
-                                     size_index2, size_index3, id_err)
+                                     size_index2, size_index3, size_index4, id_err)
                 if (len_trim(id_err) > 0) cycle
                 if (trim(id_name) /= result_name) cycle
                 if (size_index1 == 0 .or. size_index2 /= 0 .or. &
-                    size_index3 /= 0) cycle
+                    size_index3 /= 0 .or. size_index4 /= 0) cycle
                 call eval_i32_constant(arena, size_index1, context, n, id_err)
                 if (len_trim(id_err) == 0 .and. n >= 0_c_int64_t) &
                     static_size = int(n)

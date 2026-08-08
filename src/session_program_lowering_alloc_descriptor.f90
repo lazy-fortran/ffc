@@ -3,7 +3,7 @@ submodule (session_program_lowering_impl) session_program_lowering_alloc_descrip
 contains
     ! Canonical descriptor access for allocatable arrays (#336).
     !
-    ! An `allocatable :: a(:)` / `a(:,:)` / `a(:,:,:)` entity is described by one
+    ! An `allocatable :: a(:)` / `a(:,:)` / `a(:,:,:)` / `a(:,:,:,:)` entity is described by one
     ! `array_descriptor_t` (`docs/ARRAY_DESCRIPTOR_ABI.md`), replacing the
     ! old bespoke rank-two `{data, lower1, upper1, lower2, upper2}` record. Every
     ! read and write of an allocatable's shape goes through the helpers below,
@@ -158,7 +158,7 @@ contains
                 0_c_int64_t, error_msg)) return
         call emit_alloc_desc_flags(context, descriptor, .false., error_msg)
         if (len_trim(error_msg) > 0) return
-        do d = 1, 3
+        do d = 1, 4
             if (.not. emit_i64_store_at(context%session, zero, descriptor, &
                     alloc_desc_dim_offset(d, &
                         int(ARRAY_DIMENSION_EXTENT_OFFSET, c_int64_t)), &

@@ -3476,8 +3476,8 @@
         integer :: source_index, array_index, dim_index, kind_index
         integer :: nargs
         integer(c_int64_t) :: dim_val
-        type(lr_operand_desc_t) :: total_size, extent1, extent2, extent3
-        type(lr_operand_desc_t) :: total_size_12
+        type(lr_operand_desc_t) :: total_size, extent1, extent2, extent3, extent4
+        type(lr_operand_desc_t) :: total_size_12, total_size_123
 
         nargs = 0
         if (allocated(node%arg_indices)) nargs = size(node%arg_indices)
@@ -3554,6 +3554,28 @@
                             extent2, total_size_12, error_msg)) return
                     if (.not. emit_i32_binary(context%session, LR_OP_MUL, &
                             total_size_12, extent3, value, error_msg)) return
+                    call set_empty(error_msg)
+                    return
+                end if
+                if (context%symbols(source_index)%array_rank == 4) then
+                    call allocatable_descriptor_extent_i32(context, source_index, &
+                                                           1, extent1, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call allocatable_descriptor_extent_i32(context, source_index, &
+                                                           2, extent2, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call allocatable_descriptor_extent_i32(context, source_index, &
+                                                           3, extent3, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call allocatable_descriptor_extent_i32(context, source_index, &
+                                                           4, extent4, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent1, &
+                            extent2, total_size_12, error_msg)) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_MUL, &
+                            total_size_12, extent3, total_size_123, error_msg)) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_MUL, &
+                            total_size_123, extent4, value, error_msg)) return
                     call set_empty(error_msg)
                     return
                 end if

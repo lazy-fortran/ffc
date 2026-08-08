@@ -1,5 +1,5 @@
-program test_session_allocatable_rank3_compiler
-    ! Rank-three intrinsic allocatable owners through the direct LIRIC session.
+program test_session_allocatable_rank4_compiler
+    ! Rank-four intrinsic allocatable owners through the direct LIRIC session.
     ! Positive behavior is compared with an independently compiled gfortran
     ! executable; negative cases pin the deliberately narrow owner contract.
     use ffc_test_support, only: expect_error_contains
@@ -11,18 +11,19 @@ program test_session_allocatable_rank3_compiler
 
     logical :: all_passed
 
-    print *, '=== direct session rank-3 allocatable owner test ==='
+    print *, '=== direct session rank-4 allocatable owner test ==='
     all_passed = .true.
     if (.not. test_runtime_lifecycle_and_dummy()) all_passed = .false.
     if (.not. test_runtime_whole_owner_copy()) all_passed = .false.
     if (.not. test_rank5_rejected()) all_passed = .false.
-    if (.not. test_derived_component_rejected()) all_passed = .false.
+    if (.not. test_derived_rejected()) all_passed = .false.
+    if (.not. test_polymorphic_rejected()) all_passed = .false.
     if (.not. test_unsupported_kind_rejected()) all_passed = .false.
     if (.not. test_pointer_rejected()) all_passed = .false.
     if (.not. test_target_rejected()) all_passed = .false.
     if (.not. test_alias_rejected()) all_passed = .false.
     if (.not. all_passed) stop 1
-    print *, 'PASS: rank-3 intrinsic allocatable owners lower through LIRIC'
+    print *, 'PASS: rank-4 intrinsic allocatable owners lower through LIRIC'
 
 contains
 
@@ -30,55 +31,56 @@ contains
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  implicit none'//new_line('a')// &
-            '  integer, allocatable :: iv(:,:,:)'//new_line('a')// &
-            '  real, allocatable :: rv(:,:,:)'//new_line('a')// &
-            '  logical, allocatable :: lv(:,:,:)'//new_line('a')// &
-            '  integer :: i, j, k, m, n, p, isum, lsum'//new_line('a')// &
+            '  integer, allocatable :: iv(:,:,:,:)'//new_line('a')// &
+            '  real, allocatable :: rv(:,:,:,:)'//new_line('a')// &
+            '  logical, allocatable :: lv(:,:,:,:)'//new_line('a')// &
+            '  integer :: i, j, k, l, m, n, p, q, isum'//new_line('a')// &
             '  real :: rsum'//new_line('a')// &
+            '  logical :: lval'//new_line('a')// &
             '  m = 2'//new_line('a')// &
             '  n = 2'//new_line('a')// &
-            '  p = 3'//new_line('a')// &
+            '  p = 2'//new_line('a')// &
+            '  q = 2'//new_line('a')// &
             '  if (allocated(iv)) error stop 1'//new_line('a')// &
-            '  allocate(iv(m,n,p))'//new_line('a')// &
-            '  allocate(rv(m,n,p))'//new_line('a')// &
-            '  allocate(lv(m,n,p))'//new_line('a')// &
+            '  allocate(iv(m,n,p,q))'//new_line('a')// &
+            '  allocate(rv(m,n,p,q))'//new_line('a')// &
+            '  allocate(lv(m,n,p,q))'//new_line('a')// &
             '  if (.not. allocated(iv)) error stop 2'//new_line('a')// &
-            '  if (size(iv) /= m*n*p) error stop 3'//new_line('a')// &
+            '  if (size(iv) /= m*n*p*q) error stop 3'//new_line('a')// &
             '  if (size(iv,1) /= m .or. size(iv,2) /= n .or. '// &
-            'size(iv,3) /= p) error stop 4'//new_line('a')// &
-            '  do k = 1, p'//new_line('a')// &
-            '    do j = 1, n'//new_line('a')// &
-            '      do i = 1, m'//new_line('a')// &
-            '        iv(i,j,k) = 100*i + 10*j + k'//new_line('a')// &
-            '        rv(i,j,k) = real(i) + 0.25*real(j) + 0.5*real(k)'// &
-            new_line('a')// &
-            '        lv(i,j,k) = mod(i+j+k, 2) == 0'//new_line('a')// &
+            'size(iv,3) /= p .or. size(iv,4) /= q) error stop 4'//new_line('a')// &
+            '  do l = 1, q'//new_line('a')// &
+            '    do k = 1, p'//new_line('a')// &
+            '      do j = 1, n'//new_line('a')// &
+            '        do i = 1, m'//new_line('a')// &
+            '          iv(i,j,k,l) = 1000*i + 100*j + 10*k + l'//new_line('a')// &
+            '          rv(i,j,k,l) = real(i) + 0.25*real(j) + '// &
+            '0.5*real(k) + 0.75*real(l)'//new_line('a')// &
+            '          lv(i,j,k,l) = mod(i+j+k+l, 2) == 0'//new_line('a')// &
+            '        end do'//new_line('a')// &
             '      end do'//new_line('a')// &
             '    end do'//new_line('a')// &
             '  end do'//new_line('a')// &
-            '  isum = iv(1,1,1) + iv(2,2,3)'//new_line('a')// &
-            '  rsum = rv(1,1,1) + rv(2,2,3)'//new_line('a')// &
-            '  lsum = 0'//new_line('a')// &
-            '  do k = 1, p'//new_line('a')// &
-            '    do j = 1, n'//new_line('a')// &
-            '      do i = 1, m'//new_line('a')// &
-            '        if (lv(i,j,k)) lsum = lsum + 1'//new_line('a')// &
-            '      end do'//new_line('a')// &
-            '    end do'//new_line('a')// &
-            '  end do'//new_line('a')// &
-            '  call touch(iv)'//new_line('a')// &
-            '  print *, size(iv), size(iv,1), size(iv,2), size(iv,3), isum'// &
-            new_line('a')// &
-            '  print *, rsum, lsum, iv(2,2,3)'//new_line('a')// &
+            '  call touch(iv, rv, lv)'//new_line('a')// &
+            '  isum = iv(2,2,2,2)'//new_line('a')// &
+            '  rsum = rv(1,1,1,1)'//new_line('a')// &
+            '  lval = lv(1,1,1,1)'//new_line('a')// &
+            '  print *, size(iv), size(iv,1), size(iv,2), size(iv,3), '// &
+            'size(iv,4), isum'//new_line('a')// &
+            '  print *, rsum, lval'//new_line('a')// &
             '  deallocate(iv)'//new_line('a')// &
             '  deallocate(rv)'//new_line('a')// &
             '  deallocate(lv)'//new_line('a')// &
             '  if (allocated(iv) .or. allocated(rv) .or. allocated(lv)) '// &
             'error stop 5'//new_line('a')// &
             'contains'//new_line('a')// &
-            '  subroutine touch(x)'//new_line('a')// &
-            '    integer, allocatable, intent(inout) :: x(:,:,:)'//new_line('a')// &
-            '    x(2,2,3) = x(2,2,3) + 1'//new_line('a')// &
+            '  subroutine touch(x, y, z)'//new_line('a')// &
+            '    integer, allocatable, intent(inout) :: x(:,:,:,:)'//new_line('a')// &
+            '    real, allocatable, intent(inout) :: y(:,:,:,:)'//new_line('a')// &
+            '    logical, allocatable, intent(inout) :: z(:,:,:,:)'//new_line('a')// &
+            '    x(2,2,2,2) = x(2,2,2,2) + 1'//new_line('a')// &
+            '    y(1,1,1,1) = y(1,1,1,1) + 1.0'//new_line('a')// &
+            '    z(1,1,1,1) = .not. z(1,1,1,1)'//new_line('a')// &
             '  end subroutine touch'//new_line('a')// &
             'end program main'
 
@@ -90,25 +92,27 @@ contains
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  implicit none'//new_line('a')// &
-            '  integer, allocatable :: src(:,:,:), dst(:,:,:)'// &
-            new_line('a')// &
-            '  integer :: i, j, k, m, n, p'//new_line('a')// &
+            '  integer, allocatable :: src(:,:,:,:), dst(:,:,:,:)'//new_line('a')// &
+            '  integer :: i, j, k, l, m, n, p, q'//new_line('a')// &
             '  m = 2'//new_line('a')// &
             '  n = 3'//new_line('a')// &
             '  p = 2'//new_line('a')// &
-            '  allocate(src(m,n,p))'//new_line('a')// &
-            '  allocate(dst(1,1,1))'//new_line('a')// &
-            '  do k = 1, p'//new_line('a')// &
-            '    do j = 1, n'//new_line('a')// &
-            '      do i = 1, m'//new_line('a')// &
-            '        src(i,j,k) = 100*i + 10*j + k'//new_line('a')// &
+            '  q = 2'//new_line('a')// &
+            '  allocate(src(m,n,p,q))'//new_line('a')// &
+            '  allocate(dst(1,1,1,1))'//new_line('a')// &
+            '  do l = 1, q'//new_line('a')// &
+            '    do k = 1, p'//new_line('a')// &
+            '      do j = 1, n'//new_line('a')// &
+            '        do i = 1, m'//new_line('a')// &
+            '          src(i,j,k,l) = 1000*i + 100*j + 10*k + l'//new_line('a')// &
+            '        end do'//new_line('a')// &
             '      end do'//new_line('a')// &
             '    end do'//new_line('a')// &
             '  end do'//new_line('a')// &
             '  dst = src'//new_line('a')// &
             '  print *, allocated(dst), size(dst), size(dst,1), size(dst,2), '// &
-            'size(dst,3)'//new_line('a')// &
-            '  print *, dst(1,1,1), dst(2,3,2)'//new_line('a')// &
+            'size(dst,3), size(dst,4)'//new_line('a')// &
+            '  print *, dst(1,1,1,1), dst(2,3,2,2)'//new_line('a')// &
             '  deallocate(src)'//new_line('a')// &
             '  deallocate(dst)'//new_line('a')// &
             'end program main'
@@ -125,62 +129,73 @@ contains
 
         test_rank5_rejected = expect_error_contains(source, &
             'rank-1 through rank-4 allocatables', &
-            '/tmp/ffc_alloc_rank3_rank5_reject')
+            '/tmp/ffc_alloc_rank4_rank5_reject')
     end function test_rank5_rejected
 
-    logical function test_derived_component_rejected()
+    logical function test_derived_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: box_t'//new_line('a')// &
-            '    integer, allocatable :: a(:,:,:)'//new_line('a')// &
+            '    integer :: value'//new_line('a')// &
             '  end type box_t'//new_line('a')// &
-            '  type(box_t) :: x'//new_line('a')// &
-            '  allocate(x%a(2,2,2))'//new_line('a')// &
+            '  type(box_t), allocatable :: a(:,:,:,:)'//new_line('a')// &
             'end program main'
 
-        test_derived_component_rejected = expect_error_contains(source, &
-            'only rank-1 and rank-2 intrinsic allocatable components are supported', &
-            '/tmp/ffc_alloc_rank3_derived_component_reject')
-    end function test_derived_component_rejected
+        test_derived_rejected = expect_error_contains(source, &
+            'direct LIRIC session supports rank-1 and rank-2 derived allocatable arrays', &
+            '/tmp/ffc_alloc_rank4_derived_reject')
+    end function test_derived_rejected
+
+    logical function test_polymorphic_rejected()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  class(*), allocatable :: a(:,:,:,:)'//new_line('a')// &
+            'end program main'
+
+        test_polymorphic_rejected = expect_error_contains(source, &
+            'ffc direct-session lowering only supports integer, real, and logical arrays', &
+            '/tmp/ffc_alloc_rank4_polymorphic_reject')
+    end function test_polymorphic_rejected
 
     logical function test_unsupported_kind_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  complex, allocatable :: a(:,:,:)'//new_line('a')// &
+            '  complex, allocatable :: a(:,:,:,:)'//new_line('a')// &
             'end program main'
 
         test_unsupported_kind_rejected = expect_error_contains(source, &
-            'rank-3 allocatables support only integer, real, and logical', &
-            '/tmp/ffc_alloc_rank3_kind_reject')
+            'rank-4 allocatables support only integer, real, and logical', &
+            '/tmp/ffc_alloc_rank4_kind_reject')
     end function test_unsupported_kind_rejected
 
     logical function test_pointer_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer, pointer :: a(:,:,:)'//new_line('a')// &
+            '  integer, pointer :: a(:,:,:,:)'//new_line('a')// &
             'end program main'
 
         test_pointer_rejected = expect_error_contains(source, &
             'supports rank-1 and rank-2 fixed-size integer, real, logical, and complex pointer/target arrays only', &
-            '/tmp/ffc_alloc_rank3_pointer_reject')
+            '/tmp/ffc_alloc_rank4_pointer_reject')
     end function test_pointer_rejected
 
     logical function test_target_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer, allocatable, target :: a(:,:,:)'//new_line('a')// &
+            '  integer, allocatable, target :: a(:,:,:,:)'//new_line('a')// &
             'end program main'
 
         test_target_rejected = expect_error_contains(source, &
-            'supports rank-1 and rank-2 fixed-size integer, real, logical, and complex pointer/target arrays only', &
-            '/tmp/ffc_alloc_rank3_target_reject')
+            'direct LIRIC session supports rank-1 and rank-2 fixed-size integer, '// &
+            'real, logical, and complex pointer/target arrays only', &
+            '/tmp/ffc_alloc_rank4_target_reject')
     end function test_target_rejected
 
     logical function test_alias_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer, allocatable :: a(:,:,:)'//new_line('a')// &
-            '  allocate(a(2,2,2))'//new_line('a')// &
+            '  integer, allocatable :: a(:,:,:,:)'//new_line('a')// &
+            '  allocate(a(2,2,2,2))'//new_line('a')// &
             '  associate(b => a)'//new_line('a')// &
             '    print *, size(b)'//new_line('a')// &
             '  end associate'//new_line('a')// &
@@ -188,7 +203,7 @@ contains
 
         test_alias_rejected = expect_error_contains(source, &
             'allocatable array aliases are not supported', &
-            '/tmp/ffc_alloc_rank3_alias_reject')
+            '/tmp/ffc_alloc_rank4_alias_reject')
     end function test_alias_rejected
 
     logical function matches_gfortran(source, stem)
@@ -202,7 +217,7 @@ contains
         integer :: unit, exit_stat, status
 
         matches_gfortran = .false.
-        base = '/var/tmp/ert/ffc_alloc_rank3_owner_'//trim(stem)
+        base = '/var/tmp/ert/ffc_alloc_rank4_owner_'//trim(stem)
         src = base//'.f90'
         exe = base//'.ffc'
         ref = base//'.gf'
@@ -258,4 +273,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_allocatable_rank3_compiler
+end program test_session_allocatable_rank4_compiler
