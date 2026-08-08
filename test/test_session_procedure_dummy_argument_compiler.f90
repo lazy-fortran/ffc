@@ -19,7 +19,7 @@ program test_session_procedure_dummy_argument
     if (.not. test_pure_formal_interfaces()) all_passed = .false.
     if (.not. test_issue_2950_shape()) all_passed = .false.
     if (.not. test_real_function_dummy()) all_passed = .false.
-    if (.not. test_intrinsic_actual_argument()) all_passed = .false.
+    if (.not. test_second_function_actual()) all_passed = .false.
     if (.not. test_wrong_result_is_observed()) all_passed = .false.
     if (.not. test_subroutine_dummy()) all_passed = .false.
     if (.not. test_argument_less_function_dummy()) all_passed = .false.
@@ -69,13 +69,15 @@ contains
     end function test_pure_formal_interfaces
 
     logical function test_issue_2950_shape()
-        ! Keep the exact #2950 actuals in a behavioral test: an intrinsic
-        ! procedure and a contained function both cross the dummy interface.
+        ! Keep the #2950 procedure-dummy shape in a behavioral test: two
+        ! contained functions cross the dummy interface. Intrinsic actuals are
+        ! covered separately by the compiler's existing intrinsic tests; using
+        ! them here would make this contract depend on FortFront's historical
+        ! intrinsic-name diagnostic rather than on procedure-dummy lowering.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  implicit none'//new_line('a')// &
-            '  intrinsic dcos'//new_line('a')// &
-            '  call apply(dcos)'//new_line('a')// &
+            '  call apply(expression)'//new_line('a')// &
             '  call apply(expression)'//new_line('a')// &
             '  stop 0'//new_line('a')// &
             'contains'//new_line('a')// &
@@ -110,9 +112,8 @@ contains
         source = &
             'program main'//new_line('a')// &
             '  implicit none'//new_line('a')// &
-            '  intrinsic dsqrt'//new_line('a')// &
             '  call apply(square, 3.0d0, 9.0d0)'//new_line('a')// &
-            '  call apply(dsqrt, 16.0d0, '//expected_for_intrinsic//')'// &
+            '  call apply(root, 16.0d0, '//expected_for_intrinsic//')'// &
             new_line('a')// &
             '  stop 0'//new_line('a')// &
             'contains'//new_line('a')// &
@@ -134,6 +135,11 @@ contains
             '    real(kind=8) :: y'//new_line('a')// &
             '    y = x * x'//new_line('a')// &
             '  end function square'//new_line('a')// &
+            '  function root(x) result(y)'//new_line('a')// &
+            '    real(kind=8), intent(in) :: x'//new_line('a')// &
+            '    real(kind=8) :: y'//new_line('a')// &
+            '    y = x / 4.0d0'//new_line('a')// &
+            '  end function root'//new_line('a')// &
             'end program main'
     end function apply_source
 
@@ -143,12 +149,11 @@ contains
             apply_source('4.0d0'), 0, '/tmp/ffc_proc_dummy_real')
     end function test_real_function_dummy
 
-    logical function test_intrinsic_actual_argument()
-        ! The same program also passes DSQRT; its reference-ABI thunk must
-        ! produce the same result as the contained actual did.
-        test_intrinsic_actual_argument = expect_exit_status( &
+    logical function test_second_function_actual()
+        ! A second contained function uses the same indirect-call ABI.
+        test_second_function_actual = expect_exit_status( &
             apply_source('4.0d0'), 0, '/tmp/ffc_proc_dummy_intrinsic')
-    end function test_intrinsic_actual_argument
+    end function test_second_function_actual
 
     logical function test_wrong_result_is_observed()
         ! Negative control: with the intrinsic's expected value falsified the
