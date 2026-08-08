@@ -39,7 +39,15 @@ uncertainty.
 
 ## Audited state: do not infer a percentage
 
-The current implementation heads for this gate are ffc `e25dbc9` (docs head;
+The detailed gate record below is a historical measurement snapshot, not a
+floating description of the current checkout. The independent integration
+audit began on 2026-08-08 at these repository heads: ffc `f0ed424`, FortFront
+`d5f492f8`, fortad `8bbe60f`, and fortad-bench `201d345`. Re-run the focused
+and aggregate gates at those heads before treating the snapshot as current
+support evidence.
+
+The implementation heads for this gate's 2026-08-07 snapshot were ffc
+`e25dbc9` (docs head;
 code parent `338fea4`, main
 runtime-synchronized baseline with typed inferred-symbol, array-shape, ISO
 C-pointer, TRANSFER, integer, BLOCK/DO CONCURRENT, DO WHILE, GOTO, WHERE,
