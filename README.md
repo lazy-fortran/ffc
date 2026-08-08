@@ -94,7 +94,11 @@ base address, with their extent taken from a whole-array actual of
 compile-time size (including a `dimension(n)` bound naming a caller-scope
 `parameter`), so element read/write, `size(a)`, `size(a, dim)`,
 `lbound`/`ubound`, `sum`, and whole-array `print` work in the callee, in both
-program-contained and module procedures. The actual may also be a contiguous
+program-contained and module procedures. A contained `REAL :: x(..)` dummy
+with one whole rank-1 actual and one `RANK (1)` arm uses the canonical borrowed
+array descriptor boundary; rank default/star, scalar or higher-rank actuals,
+dynamic shapes, sections, aliases, and ownership are refused. The actual may
+also be a contiguous
 rank-1 array section with compile-time bounds -- a stride-1 slice `a(2:4)` or a
 whole column `m(:,j)` (integer, `real`, `real(8)`) -- whose extent folds from
 the section and whose first-element address binds the dummy in place. A rank-1

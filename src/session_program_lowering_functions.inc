@@ -3220,6 +3220,10 @@
                                                   context, trim(node%name), &
                                                   error_msg)
         if (len_trim(error_msg) > 0) return
+        call bind_assumed_rank_descriptor_params(arena, node%param_indices, &
+                                                 node%body_indices, context, &
+                                                 trim(node%name), error_msg)
+        if (len_trim(error_msg) > 0) return
 
         ! Host-associate scalar module variables as addressed globals (#263).
         call bind_module_variables_in_context(context, error_msg)

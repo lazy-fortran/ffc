@@ -267,6 +267,10 @@ module session_program_lowering_types
         integer :: character_length = 0
         logical :: has_character_value = .false.
         logical :: is_array = .false.
+        ! An assumed-rank dummy is descriptor-backed until SELECT RANK binds a
+        ! supported concrete arm. It must not be treated as a static array
+        ! before that construct has established the rank.
+        logical :: is_assumed_rank = .false.
         integer :: array_rank = 0
         integer :: array_size = 0
         integer :: array_lower_bound = 1

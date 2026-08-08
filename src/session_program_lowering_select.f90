@@ -1188,6 +1188,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: sel_name
         integer :: sel_index, selector_rank, chosen_body_index
+        integer :: i, rank_value, rank_one_count
         integer, allocatable :: body(:)
         type(lr_operand_desc_t) :: value
         logical :: terminated
@@ -1207,6 +1208,56 @@ contains
             call unsupported_feature_error('select rank statement', node%line, &
                 node%column, 'select rank selector was not declared: '// &
                 trim(sel_name), error_msg)
+            return
+        end if
+        if (context%symbols(sel_index)%is_assumed_rank) then
+            if (context%symbols(sel_index)%value_kind /= VALUE_F32 .and. &
+                context%symbols(sel_index)%value_kind /= VALUE_F64) then
+                call unsupported_feature_error('select rank statement', node%line, &
+                    node%column, 'the assumed-rank slice supports REAL dummies only', &
+                    error_msg)
+                return
+            end if
+            if (node%default_index > 0) then
+                call unsupported_feature_error('select rank statement', node%line, &
+                    node%column, 'RANK DEFAULT is refused for the assumed-rank rank(1) slice', &
+                    error_msg)
+                return
+            end if
+            rank_one_count = 0
+            chosen_body_index = 0
+            if (allocated(node%rank_indices)) then
+                do i = 1, size(node%rank_indices)
+                    call select_rank_block_value(arena, node%rank_indices(i), &
+                                                 rank_value, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (rank_value == -2) then
+                        call unsupported_feature_error('select rank statement', node%line, &
+                            node%column, 'RANK (*) is refused for the assumed-rank rank(1) slice', &
+                            error_msg)
+                        return
+                    end if
+                    if (rank_value /= 1) then
+                        call unsupported_feature_error('select rank statement', node%line, &
+                            node%column, 'only one statically valid RANK (1) arm is supported', &
+                            error_msg)
+                        return
+                    end if
+                    rank_one_count = rank_one_count + 1
+                    chosen_body_index = node%rank_indices(i)
+                end do
+            end if
+            if (rank_one_count /= 1) then
+                call unsupported_feature_error('select rank statement', node%line, &
+                    node%column, 'assumed-rank lowering requires exactly one RANK (1) arm', &
+                    error_msg)
+                return
+            end if
+            call bind_assumed_rank_rank1(context, sel_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call select_rank_block_body(arena, chosen_body_index, body)
+            if (allocated(body)) call lower_statement_list(arena, body, context, &
+                value, terminated, error_msg)
             return
         end if
         ! A scalar selector has rank 0; a declared array carries array_rank.
@@ -1230,6 +1281,40 @@ contains
         call lower_statement_list(arena, body, context, value, terminated, &
                                   error_msg)
     end subroutine lower_select_rank
+
+    subroutine bind_assumed_rank_rank1(context, sym_index, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, base, extent_i64, extent_i32, stride
+
+        call set_empty(error_msg)
+        descriptor = context%symbols(sym_index)%runtime_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, base, error_msg)) return
+        if (.not. emit_i64_load_at(context%session, descriptor, &
+                int(ARRAY_DESCRIPTOR_DIM_OFFSET + ARRAY_DIMENSION_EXTENT_OFFSET, &
+                    c_int64_t), extent_i64, error_msg)) return
+        if (.not. emit_liric_i64_to_i32(context%session, extent_i64, extent_i32, &
+                                       error_msg)) return
+        if (.not. emit_i64_load_at(context%session, descriptor, &
+                int(ARRAY_DESCRIPTOR_DIM_OFFSET + ARRAY_DIMENSION_STRIDE_OFFSET, &
+                    c_int64_t), stride, error_msg)) return
+        context%symbols(sym_index)%is_array = .true.
+        context%symbols(sym_index)%array_rank = 1
+        context%symbols(sym_index)%array_size = 0
+        context%symbols(sym_index)%array_lower_bound = 1
+        context%symbols(sym_index)%array_dim_sizes = 0
+        context%symbols(sym_index)%array_dim_lowers = 0
+        context%symbols(sym_index)%array_dim_lowers(1) = 1
+        context%symbols(sym_index)%has_runtime_dim_size(1) = .true.
+        context%symbols(sym_index)%runtime_dim_size(1) = extent_i32
+        context%symbols(sym_index)%has_runtime_array_stride = .true.
+        context%symbols(sym_index)%runtime_array_stride_bytes = stride
+        context%symbols(sym_index)%element_address = base
+        context%symbols(sym_index)%address = base
+        context%symbols(sym_index)%has_address = .true.
+        context%symbols(sym_index)%is_reference = .true.
+    end subroutine bind_assumed_rank_rank1
 
     subroutine select_rank_choose_body(arena, node, selector_rank, &
                                        chosen_body_index, error_msg)

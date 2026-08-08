@@ -203,18 +203,24 @@
             return
         end if
         param_base = context%symbols(index)%address
-        call resolve_assumed_rank(context, context%current_proc_name, name, &
-                                  actual_rank, ok)
-        if (.not. ok) then
-            call unsupported_feature_error('assumed-rank array', node%line, &
-                node%column, 'assumed-rank dummy rank must come from a '// &
-                'whole-array or scalar actual', error_msg)
+        if (.not. context%symbols(index)%is_assumed_rank) then
+            call resolve_assumed_rank(context, context%current_proc_name, name, &
+                                      actual_rank, ok)
+            if (.not. ok) then
+                call unsupported_feature_error('assumed-rank array', node%line, &
+                    node%column, 'assumed-rank dummy rank must come from a '// &
+                    'whole-array or scalar actual', error_msg)
+                return
+            end if
+            context%symbols(index)%value_kind = value_kind
+            context%symbols(index)%is_array = actual_rank > 0
+            context%symbols(index)%array_rank = actual_rank
+            context%symbols(index)%element_address = param_base
+            call set_empty(error_msg)
             return
         end if
         context%symbols(index)%value_kind = value_kind
-        context%symbols(index)%is_array = actual_rank > 0
-        context%symbols(index)%array_rank = actual_rank
-        context%symbols(index)%element_address = param_base
+        context%symbols(index)%runtime_descriptor_address = param_base
         call set_empty(error_msg)
     end subroutine bind_one_assumed_rank
 

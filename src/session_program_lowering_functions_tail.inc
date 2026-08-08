@@ -106,6 +106,10 @@
                                                   context, trim(node%name), &
                                                   error_msg)
         if (len_trim(error_msg) > 0) return
+        call bind_assumed_rank_descriptor_params(arena, node%param_indices, &
+                                                 node%body_indices, context, &
+                                                 trim(node%name), error_msg)
+        if (len_trim(error_msg) > 0) return
 
         ! Host-associate scalar module variables as addressed globals (#263).
         call bind_module_variables_in_context(context, error_msg)
@@ -818,6 +822,74 @@
             end if
         end do
     end function callee_dummy_value_kind
+
+    integer function callee_dummy_assumed_rank_value_kind(arena, callee_name, &
+                                                          param_pos, context) &
+            result(value_kind)
+        ! Element kind query reserved for descriptor-backed assumed-rank.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        type(lowering_context_t), intent(in) :: context
+        integer :: n
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        value_kind = 0
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (.not. same_name(sb_node%name, callee_name)) cycle
+                value_kind = assumed_rank_dummy_value_kind(arena, &
+                    sb_node%param_indices, sb_node%body_indices, param_pos, context)
+                return
+            end if
+            if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (.not. same_name(fn_node%name, callee_name)) cycle
+                value_kind = assumed_rank_dummy_value_kind(arena, &
+                    fn_node%param_indices, fn_node%body_indices, param_pos, context)
+                return
+            end if
+        end do
+    end function callee_dummy_assumed_rank_value_kind
+
+    integer function assumed_rank_dummy_value_kind(arena, param_indices, &
+                                                   body_indices, param_pos, context) &
+            result(value_kind)
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: param_indices(:)
+        integer, allocatable, intent(in) :: body_indices(:)
+        integer, intent(in) :: param_pos
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: name, name_err, kind_err
+        integer :: i
+
+        value_kind = 0
+        if (.not. allocated(param_indices)) return
+        if (param_pos < 1 .or. param_pos > size(param_indices)) return
+        call parameter_name(arena, param_indices(param_pos), name, name_err)
+        if (len_trim(name_err) > 0) return
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(arena, body_indices(i))) cycle
+            select type (decl => arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. decl%is_array) cycle
+                if (.not. declaration_names_entity(decl, name)) cycle
+                call declaration_value_kind(decl, value_kind, kind_err, context)
+                if (len_trim(kind_err) > 0) value_kind = 0
+                return
+            end select
+        end do
+    end function assumed_rank_dummy_value_kind
 
     logical function fn_return_type_is_i64(node) result(is_i64)
         ! True when the function return type string indicates integer(8)/i64.

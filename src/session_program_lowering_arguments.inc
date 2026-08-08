@@ -53,6 +53,7 @@
         logical :: handled_by_value
         logical :: supplied, is_optional, is_value
         integer :: intent_code, p
+        integer :: assumed_rank_actual_symbol
         ! Actual arguments in dummy-argument order: keyword actuals are moved
         ! to the slot their dummy name selects, and a slot no actual reaches
         ! holds 0 (an omitted optional, passed as a null reference).
@@ -242,6 +243,40 @@
                 ! class(*) dummy (#141).
                 call box_class_star_actual(arena, arg_indices(i), context, &
                                            args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (callee_dummy_is_assumed_rank(arena, callee_name, &
+                                        call_arg_param_pos(i, sp)) .and. &
+                     (callee_dummy_assumed_rank_value_kind(arena, callee_name, &
+                        call_arg_param_pos(i, sp), context) == VALUE_F32 .or. &
+                      callee_dummy_assumed_rank_value_kind(arena, callee_name, &
+                        call_arg_param_pos(i, sp), context) == VALUE_F64)) then
+                ! The narrow assumed-rank slice is a rank-1 REAL descriptor
+                ! boundary. Rank is checked from the actual before emitting the
+                ! descriptor; scalar, higher-rank, section, and alias forms do
+                ! not silently fall back to a base-pointer ABI.
+                if (.not. actual_is_whole_array(arena, arg_indices(i), context)) then
+                    error_msg = 'unsupported assumed-rank actual in '//trim(callee_name)// &
+                        ': only a whole array is supported; sections and aliases are refused'
+                    return
+                end if
+                assumed_rank_actual_symbol = assumed_shape_actual_symbol(arena, &
+                    arg_indices(i), context)
+                if (assumed_rank_actual_symbol > 0) then
+                    if (context%symbols(assumed_rank_actual_symbol)%is_allocatable .or. &
+                        context%symbols(assumed_rank_actual_symbol)%is_runtime_array) then
+                        error_msg = 'unsupported assumed-rank actual in '//trim(callee_name)// &
+                            ': dynamic shapes are not supported'
+                        return
+                    end if
+                end if
+                if (assumed_shape_actual_rank(arena, arg_indices(i), context) /= 1) then
+                    error_msg = 'unsupported assumed-rank actual in '//trim(callee_name)// &
+                        ': only a rank-1 whole REAL array is supported by RANK (1)'
+                    return
+                end if
+                call build_assumed_shape_descriptor(arena, arg_indices(i), &
+                    context, 1, callee_name, call_arg_param_pos(i, sp), &
+                    args(i), error_msg, assumed_rank=.true.)
                 if (len_trim(error_msg) > 0) return
             else if (callee_dummy_assumed_shape_dims(arena, callee_name, &
                                         call_arg_param_pos(i, sp)) >= 1) then

@@ -303,7 +303,7 @@
 
     subroutine build_assumed_shape_descriptor(arena, node_index, context, rank, &
                                               callee_name, param_pos, descriptor, &
-                                              error_msg)
+                                              error_msg, assumed_rank)
         ! Materialize the canonical descriptor an assumed-shape dummy receives.
         ! One stack descriptor per call argument; it borrows the actual's
         ! storage and never claims ownership, so passing an array never changes
@@ -316,6 +316,7 @@
         integer, intent(in) :: param_pos
         type(lr_operand_desc_t), intent(out) :: descriptor
         character(len=:), allocatable, intent(out) :: error_msg
+        logical, intent(in), optional :: assumed_rank
         type(lr_operand_desc_t) :: base, extent, stride, running
         integer :: symbol_index, value_kind, actual_rank, dim
         integer :: dummy_lowers(ARRAY_MAX_RANK)
@@ -337,10 +338,15 @@
             return
         end if
 
-        call callee_dummy_assumed_shape_lowers(arena, callee_name, param_pos, &
-                                               context, rank, dummy_lowers, &
-                                               has_dummy_lowers, error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (present(assumed_rank) .and. assumed_rank) then
+            dummy_lowers(1:rank) = 1
+            has_dummy_lowers = .true.
+        else
+            call callee_dummy_assumed_shape_lowers(arena, callee_name, param_pos, &
+                                                   context, rank, dummy_lowers, &
+                                                   has_dummy_lowers, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (.not. has_dummy_lowers) dummy_lowers(1:rank) = 1
 
         is_empty_actual = assumed_shape_empty_constructor(arena, node_index)
@@ -546,6 +552,45 @@
             end do
         end do
     end subroutine bind_assumed_shape_descriptor_params
+
+    subroutine bind_assumed_rank_descriptor_params(arena, param_indices, &
+                                                   body_indices, context, callee_name, &
+                                                   error_msg)
+        ! An assumed-rank dummy receives the same canonical descriptor as an
+        ! assumed-shape dummy, but its rank is read later by SELECT RANK. Keep
+        ! the descriptor address until that construct establishes rank(1).
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: param_indices(:)
+        integer, allocatable, intent(in) :: body_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: callee_name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, sym_index
+        character(len=:), allocatable :: name
+        type(lr_operand_desc_t) :: descriptor, descriptor_base
+
+        call set_empty(error_msg)
+        if (.not. allocated(param_indices)) return
+        do i = 1, size(param_indices)
+            call parameter_name(arena, param_indices(i), name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. dummy_is_assumed_rank(arena, body_indices, name)) cycle
+            if (assumed_rank_dummy_value_kind(arena, param_indices, body_indices, &
+                                              i, context) /= VALUE_F32 .and. &
+                assumed_rank_dummy_value_kind(arena, param_indices, body_indices, &
+                                              i, context) /= VALUE_F64) cycle
+            sym_index = find_symbol_compat(context, name)
+            if (sym_index <= 0) then
+                error_msg = 'assumed-rank dummy was not registered: '//trim(name)
+                return
+            end if
+            descriptor = context%symbols(sym_index)%address
+            if (.not. emit_ptr_load(context%session, descriptor, descriptor_base, &
+                                    error_msg)) return
+            context%symbols(sym_index)%is_assumed_rank = .true.
+            context%symbols(sym_index)%runtime_descriptor_address = descriptor_base
+        end do
+    end subroutine bind_assumed_rank_descriptor_params
 
     subroutine bind_polymorphic_array_element_stride(arena, context, callee_name, &
                                                      param_pos, sym_index, &
