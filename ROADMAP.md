@@ -98,10 +98,11 @@ function-result behavioral oracles pass. The aggregate `fo test` gate remains
 red on existing unrelated corpus and runtime clusters, so this is a build and
 regression repair rather than a release-green claim.
 
-The allocatable-derived-array branch `bc80407` remains unmerged: its focused
-compiler oracle passes, but it conflicts with current main in the lowering,
-descriptor ABI, roadmap, and add/add test areas. Rebase and conflict-specific
-oracles are required before promoting that dependency slice.
+The allocatable-derived-array slice is already present on current main through
+`0aa7a6f` and the follow-up deep-copy repair `b0b7775`; its focused compiler
+oracle is part of the current test inventory. The similarly named branch
+`bc80407` is a stale duplicate based on the pre-merge head and must not be
+merged again: it conflicts because those changes are already in main.
 
 PR #699 (bounded rank-1 deep-copy assignment) merged as `b0b7775`, and PR
 #700 (typed integer lowering extraction) merged as `cc91e32`. Their focused
