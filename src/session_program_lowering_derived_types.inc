@@ -1275,12 +1275,12 @@ subroutine collect_component_declaration(component_index, parent_line, &
                     comp_allocatable = .false.
                 end select
             end if
-            ! A rank-1/rank-2 allocatable array component of intrinsic type
+            ! A rank-1/rank-2/rank-3 allocatable array component of intrinsic type
             ! stores an inline descriptor (data pointer + one i64 extent per
-            ! dimension). Character elements use the same descriptor layout;
-            ! their fixed element length remains metadata until character
-            ! component element access is lowered. Higher ranks, pointer, and
-            ! c_ptr element types stay unsupported.
+            ! dimension). Character elements use the same descriptor layout for
+            ! the older rank-1/rank-2 path; rank three deliberately excludes
+            ! character until its element descriptor semantics are complete.
+            ! Higher ranks, pointer, and c_ptr element types stay unsupported.
             comp_alloc_array = component%is_allocatable .and. &
                                component%is_array .and. &
                                .not. component%is_pointer .and. &
@@ -1298,7 +1298,17 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 call unsupported_feature_error('allocatable array component', &
                     component%line, component%column, &
                     'only integer, real, and logical allocatable array '// &
-                    'components of rank 1 or 2 are supported', error_msg)
+                    'components of rank 1 through rank 3 are supported', error_msg)
+                return
+            end if
+            if (component%is_allocatable .and. component%is_array .and. &
+                component_alloc_array_rank(component) == 3 .and. &
+                component%is_target) then
+                call unsupported_feature_error( &
+                    'rank-3 allocatable array component', component%line, &
+                    component%column, &
+                    'rank-3 allocatable TARGET components are not supported', &
+                    error_msg)
                 return
             end if
             ! A component default initialiser must be a compile-time integer.
@@ -1667,7 +1677,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             if (.not. component_alloc_array_rank_bounded(component)) then
                 call unsupported_feature_error('derived type component', &
                     component%line, component%column, &
-                    'only rank-1 and rank-2 intrinsic allocatable components '// &
+                    'only rank-1 through rank-3 intrinsic allocatable components '// &
                     'are supported', error_msg)
                 return
             end if
@@ -1688,7 +1698,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 call unsupported_feature_error('allocatable array component', &
                     component%line, component%column, &
                     'only integer, real, and logical allocatable array '// &
-                    'components of rank 1 or 2 are supported', error_msg)
+                    'components of rank 1 through rank 3 are supported', error_msg)
                 return
             end select
         end if
@@ -1877,7 +1887,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (.not. component%is_allocatable .or. .not. component%is_array) return
         if (.not. allocated(component%dimension_indices)) return
         if (size(component%dimension_indices) < 1 .or. &
-            size(component%dimension_indices) > 2) return
+            size(component%dimension_indices) > 3) return
         rank = size(component%dimension_indices)
     end function component_alloc_array_rank
 

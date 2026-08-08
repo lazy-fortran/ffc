@@ -414,6 +414,12 @@ contains
                 'rank-2 allocatable array component aliases are not supported', &
                 error_msg)
             return
+        else if (component_alloc_rank_at(context, base_type, component_index) == 3) then
+            call unsupported_feature_error('associate component selector', &
+                comp_node%line, comp_node%column, &
+                'rank-3 allocatable array component aliases are not supported', &
+                error_msg)
+            return
         end if
         comp_kind = component_kind(context, base_type, component_index)
         if (comp_kind == VALUE_CHARACTER) then

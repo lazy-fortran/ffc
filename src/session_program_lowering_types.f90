@@ -483,7 +483,7 @@ module session_program_lowering_types
         ! with an 8-byte data pointer followed by one i64 extent per dimension.
         ! A null data pointer marks it unallocated.
         logical, allocatable :: component_is_alloc_array(:)
-        ! Declared rank of an allocatable array component (1 or 2); zero for
+        ! Declared rank of an allocatable array component (1 through 3); zero for
         ! scalar and non-allocatable components. This is separate from
         ! component_dim1, which describes fixed-size component storage.
         integer, allocatable :: component_alloc_rank(:)

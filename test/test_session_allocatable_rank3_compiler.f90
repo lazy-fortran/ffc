@@ -16,7 +16,7 @@ program test_session_allocatable_rank3_compiler
     if (.not. test_runtime_lifecycle_and_dummy()) all_passed = .false.
     if (.not. test_runtime_whole_owner_copy()) all_passed = .false.
     if (.not. test_rank5_rejected()) all_passed = .false.
-    if (.not. test_derived_component_rejected()) all_passed = .false.
+    if (.not. test_derived_component_rank4_rejected()) all_passed = .false.
     if (.not. test_unsupported_kind_rejected()) all_passed = .false.
     if (.not. test_pointer_rejected()) all_passed = .false.
     if (.not. test_target_rejected()) all_passed = .false.
@@ -128,20 +128,20 @@ contains
             '/tmp/ffc_alloc_rank3_rank5_reject')
     end function test_rank5_rejected
 
-    logical function test_derived_component_rejected()
+    logical function test_derived_component_rank4_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: box_t'//new_line('a')// &
-            '    integer, allocatable :: a(:,:,:)'//new_line('a')// &
+            '    integer, allocatable :: a(:,:,:,:)'//new_line('a')// &
             '  end type box_t'//new_line('a')// &
             '  type(box_t) :: x'//new_line('a')// &
-            '  allocate(x%a(2,2,2))'//new_line('a')// &
+            '  allocate(x%a(2,2,2,2))'//new_line('a')// &
             'end program main'
 
-        test_derived_component_rejected = expect_error_contains(source, &
-            'only rank-1 and rank-2 intrinsic allocatable components are supported', &
-            '/tmp/ffc_alloc_rank3_derived_component_reject')
-    end function test_derived_component_rejected
+        test_derived_component_rank4_rejected = expect_error_contains(source, &
+            'rank-1 through rank-3 intrinsic allocatable components', &
+            '/tmp/ffc_alloc_rank3_derived_component_rank4_reject')
+    end function test_derived_component_rank4_rejected
 
     logical function test_unsupported_kind_rejected()
         character(len=*), parameter :: source = &

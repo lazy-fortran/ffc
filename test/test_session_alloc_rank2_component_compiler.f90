@@ -18,7 +18,7 @@ program test_session_alloc_rank2_component_compiler
     if (.not. test_actual_argument_rejected()) all_passed = .false.
     if (.not. test_alias_rejected()) all_passed = .false.
     if (.not. test_unsupported_kind_rejected()) all_passed = .false.
-    if (.not. test_rank3_rejected()) all_passed = .false.
+    if (.not. test_rank4_rejected()) all_passed = .false.
     if (.not. all_passed) stop 1
     print *, 'PASS: rank-2 intrinsic allocatable components lower through LIRIC'
 
@@ -151,18 +151,18 @@ contains
             '/tmp/ffc_alloc_rank2_component_kind_reject')
     end function test_unsupported_kind_rejected
 
-    logical function test_rank3_rejected()
+    logical function test_rank4_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: t'//new_line('a')// &
-            '    integer, allocatable :: a(:,:,:)'//new_line('a')// &
+            '    integer, allocatable :: a(:,:,:,:)'//new_line('a')// &
             '  end type t'//new_line('a')// &
             'end program main'
 
-        test_rank3_rejected = expect_error_contains(source, &
-            'only rank-1 and rank-2 intrinsic allocatable components are supported', &
-            '/tmp/ffc_alloc_rank2_component_rank3_reject')
-    end function test_rank3_rejected
+        test_rank4_rejected = expect_error_contains(source, &
+            'rank-1 through rank-3 intrinsic allocatable components', &
+            '/tmp/ffc_alloc_rank2_component_rank4_reject')
+    end function test_rank4_rejected
 
     logical function matches_gfortran(source, stem)
         ! gfortran is the independent behavioural oracle: compile and run the

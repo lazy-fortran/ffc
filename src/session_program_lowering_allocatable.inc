@@ -3096,7 +3096,8 @@
     subroutine lower_one_deallocate_var(arena, node, vi, context, error_msg)
         ! Deallocate a single target (shared by single- and multi-variable
         ! deallocate). Handles an allocatable scalar component, a deferred-length
-        ! character allocatable, a scalar allocatable, and a rank-1/rank-2 array.
+        ! character allocatable, a scalar allocatable, and a rank-1 through rank-4
+        ! array.
         type(ast_arena_t), intent(in) :: arena
         type(deallocate_statement_node), intent(in) :: node
         integer, intent(in) :: vi
@@ -3967,10 +3968,16 @@
                             if (base_type > 0) comp_index = find_derived_component( &
                                 context, base_type, target%component_name)
                             if (component_alloc_rank_at(context, base_type, &
-                                    comp_index) == 2) then
+                                    comp_index) >= 2) then
                                 if (.not. emit_i64_store_at(context%session, &
                                         i64_immediate(context%session, 0_c_int64_t), &
                                         slot_address, 16_c_int64_t, error_msg)) return
+                            end if
+                            if (component_alloc_rank_at(context, base_type, &
+                                    comp_index) == 3) then
+                                if (.not. emit_i64_store_at(context%session, &
+                                        i64_immediate(context%session, 0_c_int64_t), &
+                                        slot_address, 24_c_int64_t, error_msg)) return
                             end if
                         end block
                     end if
