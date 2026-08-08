@@ -938,8 +938,10 @@
         context%symbols(idx) = context%symbols(sel_index)
         context%symbols(idx)%name = trim(assoc_name)
         context%symbols(idx)%derived_type_index = guard_type_index
-        context%symbols(idx)%array_size = &
-            total_component_slots(context, guard_type_index)
+        if (.not. context%symbols(idx)%is_array) then
+            context%symbols(idx)%array_size = &
+                total_component_slots(context, guard_type_index)
+        end if
         if (present(selector_element_address)) then
             context%symbols(idx)%is_array = .false.
             context%symbols(idx)%array_rank = 0

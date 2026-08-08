@@ -318,6 +318,8 @@
         character(len=:), allocatable, intent(out) :: error_msg
         logical, intent(in), optional :: assumed_rank
         type(lr_operand_desc_t) :: base, extent, stride, running
+        type(lr_operand_desc_t) :: dynamic_type_addr
+        type(lr_operand_desc_t) :: dynamic_type_id, dynamic_type_i32
         integer :: symbol_index, value_kind, actual_rank, dim
         integer :: dummy_lowers(ARRAY_MAX_RANK)
         integer :: component_type, component_index
@@ -391,6 +393,13 @@
                 dummy_type_index), c_int64_t)
         else
             value_kind = context%symbols(symbol_index)%value_kind
+            dummy_type_index = 0
+            if (value_kind == VALUE_DERIVED) then
+                call callee_dummy_declared_derived_type(arena, callee_name, &
+                    param_pos, .true., dummy_type_name)
+                if (len_trim(dummy_type_name) > 0) dummy_type_index = &
+                    find_derived_type(context, dummy_type_name)
+            end if
         end if
         if (is_empty_actual) then
             base = null_ptr_operand(context)
@@ -443,6 +452,22 @@
         call store_descriptor_i32(context, 0_c_int32_t, descriptor, &
             int(ARRAY_DESCRIPTOR_RESERVED_OFFSET, c_int64_t), error_msg)
         if (len_trim(error_msg) > 0) return
+        if (dummy_type_index > 0) then
+            ! For a CLASS(t) derived-array dummy, carry the actual dynamic type
+            ! in the otherwise-unused header word.  The callee binds this word
+            ! as its SELECT TYPE identity while retaining the descriptor's
+            ! actual stride and section base.
+            call class_actual_dynamic_type(context, symbol_index, dynamic_type_id, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i64_to_i32(context%session, dynamic_type_id, &
+                                            dynamic_type_i32, error_msg)) return
+            if (.not. emit_ptr_offset(context%session, descriptor, &
+                    int(ARRAY_DESCRIPTOR_RESERVED_OFFSET, c_int64_t), &
+                    dynamic_type_addr, error_msg)) return
+            if (.not. emit_i32_store(context%session, dynamic_type_i32, &
+                                     dynamic_type_addr, error_msg)) return
+        end if
 
         ! Column-major strides: dimension 1 steps one element, dimension d steps
         ! the product of every lower dimension's extent.
@@ -618,6 +643,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: declared_type_index
         type(lr_operand_desc_t) :: elem_bytes, elem_slots, slots_i32
+        type(lr_operand_desc_t) :: dynamic_type_addr, dynamic_type_id
 
         call set_empty(error_msg)
         call class_dummy_declared_type_index(context, arena, callee_name, &
@@ -637,6 +663,17 @@
                                         error_msg)) return
         context%symbols(sym_index)%has_runtime_element_slots = .true.
         context%symbols(sym_index)%runtime_element_slots = slots_i32
+        ! The caller stores the dynamic type id in the descriptor header's
+        ! reserved word for CLASS(t) derived arrays.  Expose it as the same
+        ! runtime identity used by scalar class selectors.
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(ARRAY_DESCRIPTOR_RESERVED_OFFSET, c_int64_t), &
+                dynamic_type_addr, error_msg)) return
+        if (.not. emit_i32_load(context%session, dynamic_type_addr, &
+                                dynamic_type_id, error_msg)) return
+        context%symbols(sym_index)%dynamic_type_address = dynamic_type_addr
+        context%symbols(sym_index)%has_dynamic_type_address = .true.
+        context%symbols(sym_index)%is_polymorphic = .true.
     end subroutine bind_polymorphic_array_element_stride
 
     subroutine bind_optional_assumed_shape_descriptor(context, sym_index, rank, &

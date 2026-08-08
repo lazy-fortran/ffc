@@ -854,6 +854,20 @@
                 return
             end if
             if (context%symbols(binding_index)%is_parameter .and. &
+                context%symbols(binding_index)%is_array .and. &
+                context%symbols(binding_index)%is_derived .and. &
+                (derived_type_extends(context, derived_type_index, &
+                    context%symbols(binding_index)%derived_type_index) .or. &
+                 derived_type_extends(context, &
+                    context%symbols(binding_index)%derived_type_index, &
+                    derived_type_index))) then
+                ! SELECT TYPE may expose the same polymorphic array under its
+                ! narrowed dynamic type. The arm's declaration is a view of
+                ! the existing descriptor-backed dummy, not a new declaration.
+                call set_empty(error_msg)
+                return
+            end if
+            if (context%symbols(binding_index)%is_parameter .and. &
                 .not. context%symbols(binding_index)%is_array .and. &
                 .not. context%symbols(binding_index)%is_derived) then
                 ! A derived-array dummy: the parameter pointer is the base
@@ -868,6 +882,22 @@
         if (.not. is_dummy) then
             index = find_symbol_compat(context, name)
             if (index > 0) then
+                if (context%symbols(index)%is_parameter .and. &
+                    context%symbols(index)%is_array .and. &
+                    context%symbols(index)%is_derived .and. &
+                    context%symbols(index)%derived_type_index /= &
+                        derived_type_index .and. &
+                    (derived_type_extends(context, derived_type_index, &
+                        context%symbols(index)%derived_type_index) .or. &
+                     derived_type_extends(context, &
+                        context%symbols(index)%derived_type_index, &
+                        derived_type_index))) then
+                    ! A SELECT TYPE arm narrows an existing polymorphic array
+                    ! view; it must not allocate a second symbol with the same
+                    ! source name.
+                    call set_empty(error_msg)
+                    return
+                end if
                 if (context%symbols(index)%is_parameter .and. &
                     .not. context%symbols(index)%is_array .and. &
                     .not. context%symbols(index)%is_derived) then
