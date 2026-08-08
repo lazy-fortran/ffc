@@ -1072,6 +1072,23 @@
             return
         end if
 
+        ! Runtime-sized local automatic arrays have a descriptor-backed path
+        ! only through rank four.  Do not let a higher-rank variable-bound
+        ! declaration fall through as an unknown-size fixed array: that would
+        ! silently accept later whole-array operations without a valid shape.
+        if (dim_count > 4) then
+            do i = 1, dim_count
+                if (bound_expr_references_variable(context%arena, &
+                        node%dimension_indices(i), context)) then
+                    call unsupported_feature_error('runtime-sized array', &
+                        node%line, node%column, &
+                        'runtime-sized array supports ranks 1 through 4 only', &
+                        error_msg)
+                    return
+                end if
+            end do
+        end if
+
         do i = 1, dim_count
             dim_index = node%dimension_indices(i)
             if (.not. node_exists(context%arena, dim_index)) then

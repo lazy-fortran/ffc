@@ -611,19 +611,36 @@
     end function symbol_is_runtime_local_array
 
     subroutine emit_runtime_local_array_print(context, sym, vk, error_msg)
-        ! List-directed whole-array print of a rank-1 local runtime array. A
-        ! counted loop reads runtime_dim_size(1) and prints each element with the
-        ! same leading-space spacing as the constant-extent unrolled path.
+        ! List-directed whole-array print of a local runtime array. A counted
+        ! loop walks the product of all runtime extents in column-major storage
+        ! order and prints each element with the same leading-space spacing as
+        ! the constant-extent unrolled path.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: sym, vk
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: extent, total_extent, entry_idx, header_idx, &
                                     backedge_idx
         type(lr_operand_desc_t) :: condition, element, next_idx
+        integer :: d
         integer(c_int32_t) :: entry_block, header_block, body_block, &
                               latch_block, exit_block, idx_vreg
 
+        if (context%symbols(sym)%array_rank < 1 .or. &
+            context%symbols(sym)%array_rank > 4) then
+            error_msg = 'runtime array print supports ranks 1 through 4 only'
+            return
+        end if
         extent = context%symbols(sym)%runtime_dim_size(1)
+        do d = 2, context%symbols(sym)%array_rank
+            if (.not. context%symbols(sym)%has_runtime_dim_size(d)) then
+                error_msg = 'runtime array is missing a runtime extent'
+                return
+            end if
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
+                    context%symbols(sym)%runtime_dim_size(d), total_extent, &
+                    error_msg)) return
+            extent = total_extent
+        end do
         entry_idx = i32_immediate(context%session, 0_c_int64_t)
         entry_block = context%current_block_id
         header_block = create_liric_block(context%session)
