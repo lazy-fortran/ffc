@@ -161,7 +161,7 @@ copy all read the descriptor's dimension records. Rank-four owners and
 derived allocatable components remain outside that path; their separate
 inline component descriptor is documented by the support contract.
 
-### Assumed-rank `RANK (1)` / `RANK (2)` boundary
+### Assumed-rank `RANK (1)` / `RANK (2)` / `RANK (3)` boundary
 
 The supported genuine assumed-rank slice uses this same descriptor without a
 second ABI. For a contained `REAL :: x(..)` dummy called with a rank-1 or
@@ -171,16 +171,18 @@ rank-2 whole array, the caller allocates a borrowed stack
 flags, and each active dimension's `lower_bound=1`, `extent`, and
 `stride_bytes`, then passes the descriptor address through the dummy's single
 visible pointer parameter. The callee does not infer rank from source or
-append hidden extents. Inside exactly one matching `RANK (1)` or `RANK (2)` arm
-it loads the active extents; rank 1 retains descriptor byte-stride addressing,
-while rank 2 computes column-major linear indices using `extent(1)` and the
-element-size stride.
+append hidden extents. Inside exactly one matching `RANK (1)`, `RANK (2)`, or
+`RANK (3)` arm it loads every active extent from dimensions 1 through 3; rank
+1 retains descriptor byte-stride addressing, while rank 2 and rank 3 compute
+column-major linear indices with the descriptor element-size stride. Rank 3
+uses `i1 + (i2-1)*extent(1) + (i3-1)*extent(1)*extent(2)`.
 
 This boundary is borrowed: the callee never releases or changes descriptor
-ownership. Only a whole rank-1 or rank-2 REAL actual with one matching rank arm
-is admitted. Scalar actuals, higher ranks, dynamic-shape forms, sections and
-aliases (including pointers), `RANK DEFAULT`, `RANK (*)`, unsupported or
-non-matching rank arms, and ownership are outside the boundary and must be
+ownership. Only a whole rank-1, rank-2, or rank-3 REAL actual with one
+matching rank arm is admitted. Scalar actuals, rank four and higher,
+dynamic-shape forms, sections and aliases (including pointers), global or
+owning storage, `RANK DEFAULT`, `RANK (*)`, unsupported or non-matching rank
+arms, and unsupported element kinds are outside the boundary and must be
 refused before emitting a descriptor call.
 
 ## View lifetime and aliasing

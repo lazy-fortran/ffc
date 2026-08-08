@@ -96,9 +96,11 @@ compile-time size (including a `dimension(n)` bound naming a caller-scope
 `lbound`/`ubound`, `sum`, and whole-array `print` work in the callee, in both
 program-contained and module procedures. A contained `REAL :: x(..)` dummy
 with one whole rank-1 actual and one `RANK (1)` arm uses the canonical borrowed
-array descriptor boundary; rank default/star, scalar or higher-rank actuals,
-dynamic shapes, sections, aliases, and ownership are refused. The actual may
-also be a contiguous
+array descriptor boundary. The same boundary accepts rank-2 and rank-3 whole
+REAL actuals with one matching `RANK (2)` or `RANK (3)` arm and uses descriptor
+driven column-major scalar addressing. Rank default/star, scalar or higher-rank
+actuals, dynamic shapes, sections, global storage, aliases, and ownership are
+refused. The actual may also be a contiguous
 rank-1 array section with compile-time bounds -- a stride-1 slice `a(2:4)` or a
 whole column `m(:,j)` (integer, `real`, `real(8)`) -- whose extent folds from
 the section and whose first-element address binds the dummy in place. A rank-1

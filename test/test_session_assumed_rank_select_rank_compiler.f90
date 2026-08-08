@@ -120,7 +120,7 @@ contains
                 '/tmp/ffc_assumed_rank_rank_default_reject')) test_refusals = .false.
         if (.not. expect_error_contains(rank_star, 'RANK (*) is refused', &
                 '/tmp/ffc_assumed_rank_rank_star_reject')) test_refusals = .false.
-        if (.not. expect_error_contains(rank_three, 'only a rank-1 or rank-2 whole REAL array', &
+        if (.not. expect_error_contains(rank_three, 'RANK arm does not match', &
                 '/tmp/ffc_assumed_rank_rank_two_reject')) test_refusals = .false.
         if (.not. expect_error_contains(scalar_actual, 'only a whole array', &
                 '/tmp/ffc_assumed_rank_scalar_reject')) test_refusals = .false.
