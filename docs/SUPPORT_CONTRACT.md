@@ -109,6 +109,18 @@ FortFront #2974). FortFront's nested `ASSOCIATE` owner binding is corrected at
 
 ## Supported now
 
+### Unlimited-polymorphic assumed-shape arrays
+
+`class(*), intent(in) :: values(:)` accepts a whole, nonallocatable,
+nonpointer, nontarget explicit-shape array of default `integer` or `real(8)`.
+`select type (items => values)` retains the canonical array descriptor view:
+integer or real element type, 4- or 8-byte element size, column-major byte
+stride, and the reserved runtime type-id word. Default/single-precision real,
+logical, other kinds, sections, allocatable ownership, pointer/target ownership,
+and global storage are refused with named diagnostics. The independent
+gfortran differential oracle is
+`test_session_class_star_assumed_shape_compiler`.
+
 ### Runtime-descriptor rank-2 allocatable copy
 
 Direct LIRIC/session lowering supports `a = b` between separate local rank-2

@@ -1096,7 +1096,7 @@ contains
         select case (trim(lowercase_text(type_name)))
         case ('integer')
             value_kind = VALUE_I32
-        case ('real', 'double precision')
+        case ('real', 'double precision', 'real(8)', 'real(kind=8)')
             value_kind = VALUE_F64
         case ('logical')
             value_kind = VALUE_LOGICAL

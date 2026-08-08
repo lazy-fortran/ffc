@@ -408,12 +408,16 @@
             end if
         end if
         if (is_class_star_dummy) then
-            if (value_kind /= VALUE_I32) then
+            if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F64) then
                 error_msg = 'class(*) assumed-shape lowering currently supports '// &
-                    'only integer whole-array actuals'
+                    'only default integer and real(8) whole-array actuals'
                 return
             end if
-            class_star_type_id = int(TYPE_ID_INTEGER, c_int32_t)
+            if (value_kind == VALUE_F64) then
+                class_star_type_id = int(TYPE_ID_REAL, c_int32_t)
+            else
+                class_star_type_id = int(TYPE_ID_INTEGER, c_int32_t)
+            end if
         end if
         if (is_empty_actual) then
             base = null_ptr_operand(context)

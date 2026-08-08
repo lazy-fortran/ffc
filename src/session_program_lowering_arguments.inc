@@ -246,9 +246,30 @@
                 ! descriptor ABI, not the scalar {data,type_id} box. The
                 ! descriptor's reserved word carries the runtime type id.
                 if (.not. actual_is_whole_array(arena, arg_indices(i), context)) then
-                    error_msg = 'unsupported class(*) assumed-shape actual in '// &
-                        trim(callee_name)//': only a whole nonallocatable array is supported'
+                    if (actual_is_allocatable_array(arena, arg_indices(i), context)) then
+                        error_msg = 'unsupported class(*) assumed-shape actual in '// &
+                            trim(callee_name)//': allocatable ownership is refused'
+                    else
+                        error_msg = 'unsupported class(*) assumed-shape actual in '// &
+                            trim(callee_name)//': sections and non-array actuals are refused'
+                    end if
                     return
+                end if
+                assumed_rank_actual_symbol = assumed_shape_actual_symbol(arena, &
+                    arg_indices(i), context)
+                if (assumed_rank_actual_symbol > 0) then
+                    if (context%symbols(assumed_rank_actual_symbol)%is_pointer .or. &
+                        context%symbols(assumed_rank_actual_symbol)%is_target) then
+                        error_msg = 'unsupported class(*) assumed-shape actual in '// &
+                            trim(callee_name)//': pointer/target ownership is refused'
+                        return
+                    end if
+                    if (symbol_has_global_storage( &
+                            context%symbols(assumed_rank_actual_symbol))) then
+                        error_msg = 'unsupported class(*) assumed-shape actual in '// &
+                            trim(callee_name)//': global storage ownership is refused'
+                        return
+                    end if
                 end if
                 call build_assumed_shape_descriptor(arena, arg_indices(i), &
                     context, callee_dummy_assumed_shape_dims(arena, callee_name, &
