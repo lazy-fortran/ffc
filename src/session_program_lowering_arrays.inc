@@ -3805,7 +3805,9 @@
             ! array_size to unroll over; walk a genuine loop instead.
             if (context%symbols(source_index)%has_runtime_dim_size(1)) then
                 if (trim(reduction_name) == 'sum' .or. &
-                    trim(reduction_name) == 'product') then
+                    trim(reduction_name) == 'product' .or. &
+                    trim(reduction_name) == 'maxval' .or. &
+                    trim(reduction_name) == 'minval') then
                     if (any(context%symbols(source_index)%value_kind == &
                             [VALUE_I32, VALUE_F32, VALUE_F64])) then
                         if (context%symbols(source_index)%array_rank <= 2) then
@@ -3821,7 +3823,7 @@
                 end if
                 error_msg = trim(reduction_name)//' over a runtime-extent '// &
                             'assumed-shape dummy supports integer and real '// &
-                            'sum and product only'
+                            'sum, product, maxval, and minval only'
                 return
             end if
             array_size = context%symbols(source_index)%array_size

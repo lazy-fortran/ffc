@@ -487,6 +487,12 @@
                 identity = liric_f32_immediate(context%session, 0.0_c_float)
             else if (trim(reduction_name) == 'product') then
                 identity = liric_f32_immediate(context%session, 1.0_c_float)
+            else if (trim(reduction_name) == 'minval') then
+                identity = liric_f32_immediate(context%session, &
+                                               huge(0.0_c_float))
+            else if (trim(reduction_name) == 'maxval') then
+                identity = liric_f32_immediate(context%session, &
+                                               -huge(0.0_c_float))
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -500,6 +506,12 @@
                 identity = liric_f64_immediate(context%session, 0.0_c_double)
             else if (trim(reduction_name) == 'product') then
                 identity = liric_f64_immediate(context%session, 1.0_c_double)
+            else if (trim(reduction_name) == 'minval') then
+                identity = liric_f64_immediate(context%session, &
+                                               huge(0.0_c_double))
+            else if (trim(reduction_name) == 'maxval') then
+                identity = liric_f64_immediate(context%session, &
+                                               -huge(0.0_c_double))
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -512,6 +524,10 @@
                 identity = i32_immediate(context%session, 0_c_int64_t)
             else if (trim(reduction_name) == 'product') then
                 identity = i32_immediate(context%session, 1_c_int64_t)
+            else if (trim(reduction_name) == 'minval') then
+                identity = i32_immediate(context%session, 2147483647_c_int64_t)
+            else if (trim(reduction_name) == 'maxval') then
+                identity = i32_immediate(context%session, -2147483648_c_int64_t)
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -531,7 +547,8 @@
         type(lr_operand_desc_t), intent(in) :: slot
         type(lr_operand_desc_t), intent(in) :: element
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: current, updated
+        type(lr_operand_desc_t) :: current, updated, condition, selected
+        integer(c_int) :: predicate
 
         select case (value_kind)
         case (VALUE_F32)
@@ -543,6 +560,11 @@
             else if (trim(reduction_name) == 'product') then
                 if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, &
                         current, element, updated, error_msg)) return
+            else if (trim(reduction_name) == 'minval' .or. &
+                     trim(reduction_name) == 'maxval') then
+                if (.not. emit_liric_f32_call(context%session, &
+                        merge('fminf', 'fmaxf', trim(reduction_name) == 'minval'), &
+                        [current, element], updated, error_msg)) return
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -558,6 +580,11 @@
             else if (trim(reduction_name) == 'product') then
                 if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, &
                         current, element, updated, error_msg)) return
+            else if (trim(reduction_name) == 'minval' .or. &
+                     trim(reduction_name) == 'maxval') then
+                if (.not. emit_liric_f64_call(context%session, &
+                        merge('fmin', 'fmax', trim(reduction_name) == 'minval'), &
+                        [current, element], updated, error_msg)) return
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -573,6 +600,19 @@
             else if (trim(reduction_name) == 'product') then
                 if (.not. emit_i32_binary(context%session, LR_OP_MUL, current, &
                         element, updated, error_msg)) return
+            else if (trim(reduction_name) == 'minval' .or. &
+                     trim(reduction_name) == 'maxval') then
+                if (trim(reduction_name) == 'minval') then
+                    predicate = LR_CMP_SLT
+                else
+                    predicate = LR_CMP_SGT
+                end if
+                if (.not. emit_liric_i32_icmp(context%session, predicate, &
+                        element, current, condition, error_msg)) return
+                call select_value(context, condition, element, current, selected, &
+                                  error_msg)
+                if (len_trim(error_msg) > 0) return
+                updated = selected
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -606,7 +646,7 @@
 
     subroutine lower_runtime_reduction(context, source_index, reduction_name, &
                                        value, error_msg)
-        ! sum/product(a) over a rank-1 or rank-2 array whose extent is known only
+        ! sum/product/maxval/minval(a) over a rank-1 or rank-2 array whose extent is known only
         ! at run time (an assumed-shape dummy or automatic array): there is no
         ! compile-time array_size to unroll over, so walk a genuine LIRIC loop
         ! over the contiguous column-major element count. The loop counter uses

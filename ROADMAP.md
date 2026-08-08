@@ -106,6 +106,17 @@ function-result behavioral oracles pass. The aggregate `fo test` gate remains
 red on existing unrelated corpus and runtime clusters, so this is a build and
 regression repair rather than a release-green claim.
 
+### Bounded runtime extrema slice (2026-08-09)
+
+The post-PRODUCT runtime-reduction tranche now lowers scalar `maxval` and
+`minval` for rank-1 and rank-2 automatic arrays and assumed-shape dummies over
+default integer, `real`, and `real(8)` elements. It reuses the descriptor extent
+product and counted column-major loop, with typed identities for empty runtime
+extents. `test_session_runtime_extreme_compiler` compares filled and empty
+cases against independently compiled gfortran programs and checks precise
+rank-3 refusals for both intrinsics. The known multi-retained runtime
+array-valued-RHS boundary is unchanged and was not part of this tranche.
+
 The allocatable-derived-array slice is already present on current main through
 `0aa7a6f` and the follow-up deep-copy repair `b0b7775`; its focused compiler
 oracle is part of the current test inventory. The similarly named branch

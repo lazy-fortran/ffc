@@ -321,10 +321,10 @@ This slice covers, for a rank-1 or rank-2 runtime-extent dummy: `size(a)`
 (no `dim`; rank-2 returns the product of both runtime extents), `size(a, d)`
 and `ubound(a, d)` for each dimension, element read and write `a(i)` / `a(i, j)`
 (rank-2 column-major addressing uses the runtime leading extent as the stride),
-and a `do` loop bound by `size(a, d)`. `sum(a)` for `integer` elements uses a
-genuine runtime loop (rank-1 only). Function (not subroutine) dummies,
-array-section and array-constructor actuals, `sum`/`product`/`maxval`/`minval`
-over non-integer or rank-2 runtime-extent elements, and rank-2 whole-array
+and a `do` loop bound by `size(a, d)`. `sum(a)`, `product(a)`, `maxval(a)`, and
+`minval(a)` use a genuine runtime loop over default integer, `real`, and
+`real(8)` elements. Function (not subroutine) dummies, array-section and
+array-constructor actuals, and rank-2 whole-array
 operations (`print a`, `a = b`, `matmul`, `transpose`) are not yet covered and
 keep the pre-existing "assumed-shape dummy extent must come from a
 whole-array actual of compile-time size" diagnostic (or the relevant
