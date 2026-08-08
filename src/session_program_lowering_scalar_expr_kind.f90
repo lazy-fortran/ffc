@@ -141,13 +141,15 @@ contains
         end if
 
         ! A typed scalar procedure pointer keeps the result kind of its
-        ! same-unit target.  Resolve only the default-real case here; other
-        ! procedure-pointer result kinds remain unsupported until their own
-        ! lowering path is proven safe.
+        ! same-unit target.  The f64 path is guarded again at lowering time so
+        ! unresolved or flow-sensitive pointers cannot acquire an ABI by
+        ! accident.
         if (is_proc_pointer_call(context, node%name)) then
             call resolve_proc_pointer_callee_name(arena, node%name, callee_name)
             if (is_contained_f32_function(context, callee_name)) then
                 vk = VALUE_F32
+            else if (is_contained_f64_function(context, callee_name)) then
+                vk = VALUE_F64
             end if
             return
         end if

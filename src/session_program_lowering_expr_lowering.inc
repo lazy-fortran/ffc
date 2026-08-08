@@ -928,7 +928,9 @@
                                                     VALUE_F64, value, error_msg)
             return
         end if
-        ! Indirect call through a procedure dummy or procedure pointer (#467).
+        ! Indirect call through a procedure dummy or a resolved scalar
+        ! procedure pointer (#467).  The latter is validated inside the
+        ! lowering helper before its f64 ABI is emitted.
         if (is_proc_pointer_call(context, node%name)) then
             call lower_f64_proc_ptr_call(arena, node, context, value, error_msg)
             return

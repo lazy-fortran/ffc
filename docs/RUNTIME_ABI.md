@@ -204,9 +204,14 @@ clears `is_associated` on the symbol and emits no store.
 
 A call through `fp` loads the slot with a `ptr load` to get the callee address,
 then emits `LR_OP_CALL` with that loaded `ptr` vreg as the first operand
-(indirect call). For a function result the return type is `i32`; for a
-subroutine the return type is `void`. The argument list is passed to the same
-reference-slot ABI used for direct contained-procedure calls.
+(indirect call). For a function result the return type follows the statically
+resolved scalar interface: `i32` for integer, `f32` for default real, and
+`f64` for `real(8)`; for a subroutine the return type is `void`. The argument
+list is passed to the same reference-slot ABI used for direct contained-
+procedure calls. The direct real(8) procedure-pointer slice requires one
+same-unit target assignment outside control flow; unresolved, generic,
+incompatible, and flow-sensitive targets are rejected rather than assigned an
+ABI by guess.
 
 The call site in the IR looks like:
 

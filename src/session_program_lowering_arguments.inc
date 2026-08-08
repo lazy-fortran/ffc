@@ -1938,6 +1938,8 @@ recursive integer function expression_value_kind(arena, node_index, context, &
                                                          callee_name)
                     if (is_contained_f32_function(context, callee_name)) then
                         value_kind = VALUE_F32
+                    else if (is_contained_f64_function(context, callee_name)) then
+                        value_kind = VALUE_F64
                     end if
                 else
                     external_index = external_procedure_index(context, node%name)

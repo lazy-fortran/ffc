@@ -171,6 +171,20 @@
 
         idx = find_symbol_compat(context, node%name)
         call resolve_proc_pointer_callee_name(arena, node%name, callee_name)
+        ! A procedure dummy carries its result ABI in the interface that
+        ! created the dummy.  An explicit procedure pointer has no runtime
+        ! result descriptor, so only a single, direct, same-unit real(8)
+        ! target is safe to lower here.  In particular, do not infer an ABI
+        ! from the first assignment when the pointer is unresolved or can be
+        ! rebound through control flow.
+        if (.not. context%symbols(idx)%is_dummy_argument) then
+            if (.not. proc_pointer_f64_target_is_stable(arena, node%name, &
+                                                        context)) then
+                error_msg = 'procedure pointer call result is unsupported or '// &
+                            'ambiguous: '//trim(node%name)
+                return
+            end if
+        end if
         if (.not. emit_ptr_load(context%session, context%symbols(idx)%address, &
                                 callee_ptr, error_msg)) return
         if (allocated(node%arg_indices)) then
@@ -186,6 +200,59 @@
                                          value, error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_f64_proc_ptr_call
+
+    logical function proc_pointer_f64_target_is_stable(arena, ptr_name, context) &
+        result(is_stable)
+        ! Return true only for the deliberately small f64 procedure-pointer
+        ! boundary: one direct assignment to a same-unit real(8) function,
+        ! outside all flow constructs.  A procedure dummy is handled by the
+        ! caller and does not use this predicate.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: ptr_name
+        type(lowering_context_t), intent(in) :: context
+        integer :: n, parent, assignment_count
+        character(len=:), allocatable :: lhs_name, rhs_name, local_error
+        character(len=:), allocatable :: parent_type
+
+        is_stable = .false.
+        assignment_count = 0
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (pnode => arena%entries(n)%node)
+            type is (pointer_assignment_node)
+                if (.not. is_identifier(arena, pnode%pointer_index)) cycle
+                call get_identifier_name(arena, pnode%pointer_index, lhs_name, &
+                                          local_error)
+                if (len_trim(local_error) > 0) cycle
+                if (.not. same_name(lhs_name, ptr_name)) cycle
+                assignment_count = assignment_count + 1
+                if (assignment_count /= 1) return
+                if (.not. is_identifier(arena, pnode%target_index)) return
+                call get_identifier_name(arena, pnode%target_index, rhs_name, &
+                                          local_error)
+                if (len_trim(local_error) > 0) return
+                if (.not. is_contained_f64_function(context, rhs_name)) return
+
+                parent = arena%entries(n)%parent_index
+                do while (parent > 0 .and. parent <= arena%size)
+                    parent_type = get_node_type_at(arena, parent)
+                    if (parent_type == 'if_node' .or. parent_type == 'if' .or. &
+                        parent_type == 'do_loop_node' .or. &
+                        parent_type == 'do_loop' .or. &
+                        parent_type == 'do_while_node' .or. &
+                        parent_type == 'do_while' .or. &
+                        parent_type == 'select_case_node' .or. &
+                        parent_type == 'select_case' .or. &
+                        parent_type == 'where_node' .or. parent_type == 'where' .or. &
+                        parent_type == 'forall_node' .or. parent_type == 'forall') then
+                        return
+                    end if
+                    parent = arena%entries(parent)%parent_index
+                end do
+            end select
+        end do
+        is_stable = assignment_count == 1
+    end function proc_pointer_f64_target_is_stable
 
     subroutine lower_f32_proc_ptr_call(arena, node, context, value, error_msg)
         ! Indirect default-real function call through a procedure pointer.
