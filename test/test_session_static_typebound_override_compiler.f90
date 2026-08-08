@@ -9,7 +9,7 @@ program test_session_static_typebound_override_compiler
     all_passed = .true.
     if (.not. test_default_pass_override()) all_passed = .false.
     if (.not. test_nopass_override()) all_passed = .false.
-    if (.not. test_unresolved_dynamic_dispatch_is_rejected()) all_passed = .false.
+    if (.not. test_class_pointer_reassociation_is_rejected()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: static type-bound overrides'
@@ -81,9 +81,9 @@ contains
             '/tmp/ffc_static_tbp_nopass')
     end function test_nopass_override
 
-    logical function test_unresolved_dynamic_dispatch_is_rejected()
-        ! A polymorphic pointer receiver has no statically resolved dynamic
-        ! type. Runtime CLASS dispatch is deliberately outside this slice.
+    logical function test_class_pointer_reassociation_is_rejected()
+        ! Scalar class-pointer reassociation remains outside the allocation /
+        ! dispatch slice and must fail before any storage is adopted.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: parent_t'//new_line('a')// &
@@ -109,9 +109,9 @@ contains
             '  end function child_value'//new_line('a')// &
             'end program main'
 
-        test_unresolved_dynamic_dispatch_is_rejected = expect_error_contains( &
-            source, 'polymorphic pointer', &
+        test_class_pointer_reassociation_is_rejected = expect_error_contains( &
+            source, 'class pointer reassociation', &
             '/tmp/ffc_static_tbp_dynamic_reject')
-    end function test_unresolved_dynamic_dispatch_is_rejected
+    end function test_class_pointer_reassociation_is_rejected
 
 end program test_session_static_typebound_override_compiler

@@ -297,8 +297,9 @@
 
     subroutine bind_class_allocatable_descriptor(context, symbol_index, &
                                                  declared_index, error_msg)
-        ! Reserve and null the descriptor of a class allocatable at its
-        ! declaration, so an unallocated entity reads as the null descriptor.
+        ! Reserve and null the descriptor of a class allocatable or pointer at
+        ! its declaration, so an unallocated/unassociated entity reads as the
+        ! null descriptor.
         use, intrinsic :: iso_c_binding, only: c_int64_t
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
@@ -346,8 +347,10 @@
     subroutine record_class_allocation(context, symbol_index, data_ptr, &
                                        dynamic_id, error_msg)
         ! Publish an allocation into the entity's class descriptor: the data
-        ! address, the dynamic type just allocated, and OWNED ownership, so the
-        ! value is released exactly once by whoever holds the descriptor.
+        ! address and the dynamic type just allocated. Allocatable descriptors
+        ! record OWNED storage; class-pointer descriptors deliberately record
+        ! no ownership because pointer deallocation/finalization is outside
+        ! this slice.
         use, intrinsic :: iso_c_binding, only: c_int64_t
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
@@ -368,10 +371,17 @@
                 context%symbols(symbol_index)%class_descriptor_address, &
                 int(POLYMORPHIC_DESCRIPTOR_OWNERSHIP_OFFSET, c_int64_t), &
                 field_addr, error_msg)) return
-        if (.not. emit_i32_store(context%session, &
-                i32_immediate(context%session, &
-                    int(POLYMORPHIC_OWNERSHIP_OWNED, c_int64_t)), field_addr, &
-                error_msg)) return
+        if (context%symbols(symbol_index)%is_pointer) then
+            if (.not. emit_i32_store(context%session, &
+                    i32_immediate(context%session, &
+                        int(POLYMORPHIC_OWNERSHIP_NONE, c_int64_t)), field_addr, &
+                    error_msg)) return
+        else
+            if (.not. emit_i32_store(context%session, &
+                    i32_immediate(context%session, &
+                        int(POLYMORPHIC_OWNERSHIP_OWNED, c_int64_t)), field_addr, &
+                    error_msg)) return
+        end if
     end subroutine record_class_allocation
 
     subroutine release_class_allocation(context, symbol_index, error_msg)

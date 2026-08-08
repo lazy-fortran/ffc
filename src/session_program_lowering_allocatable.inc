@@ -243,6 +243,16 @@
                 ! heap storage and mark it associated (F2018 9.7.1.1).
                 if (context%symbols(symbol_index)%is_pointer .and. &
                     .not. context%symbols(symbol_index)%is_array) then
+                    if (context%symbols(symbol_index)%is_class_pointer) then
+                        if (context%symbols(symbol_index)%derived_type_index > 0) then
+                            if (len_trim(context%derived_types(context%symbols( &
+                                symbol_index)%derived_type_index)%final_proc_name) > 0) then
+                                error_msg = 'class pointer allocation of a finalizable '// &
+                                    'type has unsupported ownership/finalization'
+                                return
+                            end if
+                        end if
+                    end if
                     call lower_allocate_scalar(symbol_index, context, error_msg)
                     if (len_trim(error_msg) == 0) &
                         context%symbols(symbol_index)%is_associated = .true.
@@ -506,7 +516,8 @@
         ! mallocs one instance and default-inits it, identical to the bare
         ! allocate(x) form for a scalar allocatable derived variable.
         if (context%symbols(symbol_index)%is_derived .and. &
-            context%symbols(symbol_index)%is_allocatable .and. &
+            (context%symbols(symbol_index)%is_allocatable .or. &
+             context%symbols(symbol_index)%is_class_pointer) .and. &
             context%symbols(symbol_index)%array_rank == 0) then
             ! allocate(t :: x) names the dynamic type explicitly. For a class
             ! allocatable it may be an extension of the declared type, in which
@@ -522,6 +533,23 @@
                             symbol_index)%derived_type_index)%name)//'"'
                     return
                 end if
+            end if
+            if (context%symbols(symbol_index)%is_class_pointer) then
+                if (spec_type_index <= 0) then
+                    error_msg = 'class pointer ALLOCATE requires a known derived '// &
+                        'type-spec'
+                    return
+                end if
+                if (len_trim(context%derived_types(spec_type_index)%final_proc_name) > 0) then
+                    error_msg = 'class pointer allocation of a finalizable type has '// &
+                        'unsupported ownership/finalization'
+                    return
+                end if
+                call lower_allocate_scalar_derived(symbol_index, context, error_msg, &
+                                                    spec_type_index)
+                if (len_trim(error_msg) == 0) &
+                    context%symbols(symbol_index)%is_associated = .true.
+                return
             end if
             call lower_allocate_scalar_derived(symbol_index, context, error_msg, &
                                                spec_type_index)
@@ -2178,6 +2206,12 @@
             call unsupported_feature_error('deallocate statement', node%line, &
                 node%column, 'deallocate target is not declared: '//trim(name), &
                 error_msg)
+            return
+        end if
+        if (context%symbols(symbol_index)%is_class_pointer) then
+            call unsupported_feature_error('deallocate statement', node%line, &
+                node%column, 'scalar class pointer ownership and finalization are '// &
+                'not supported', error_msg)
             return
         end if
         if (context%symbols(symbol_index)%is_deferred_character) then

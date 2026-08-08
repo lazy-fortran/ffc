@@ -1240,6 +1240,9 @@
         end if
         if (declaration_is_class_pointer(node)) then
             context%symbols(index)%is_class_pointer = .true.
+            call bind_class_allocatable_descriptor(context, index, derived_type_index, &
+                                                   error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
         if (node%is_target) context%symbols(index)%is_target = .true.
 
@@ -1848,11 +1851,6 @@
         symbol_index = find_symbol_compat(context, var_name)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_derived) return
-        if (context%symbols(symbol_index)%is_class_pointer) then
-            error_msg = 'unresolved dynamic dispatch for type-bound procedure "'// &
-                trim(method_name)//'" through a polymorphic pointer receiver'
-            return
-        end if
         type_index = context%symbols(symbol_index)%derived_type_index
         if (type_index <= 0) return
         if (.not. allocated(context%derived_types(type_index)%binding_method_names)) &
@@ -2256,11 +2254,6 @@
         call resolve_named_derived_instance(context, var_name, receiver_addr, &
             type_index, symbol_index, nested_receiver, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (context%symbols(symbol_index)%is_class_pointer) then
-            error_msg = 'unresolved dynamic dispatch for type-bound procedure "'// &
-                trim(method_name)//'" through a polymorphic pointer receiver'
-            return
-        end if
         call set_empty(impl_name)
         call set_empty(pass_name)
         pass_arg = .true.

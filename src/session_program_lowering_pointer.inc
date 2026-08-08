@@ -534,6 +534,10 @@
             call set_empty(error_msg)
             return
         end if
+        if (context%symbols(ptr_index)%is_class_pointer) then
+            error_msg = 'scalar class pointer reassociation is not supported'
+            return
+        end if
         ! p => f(...): a data-pointer function result hands back the target
         ! address itself, so the pointer adopts the returned address (#407).
         if (data_pointer_result_call(arena, node%target_index, context)) then
@@ -955,6 +959,7 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: ptr_name, target_name
+        type(lr_operand_desc_t) :: field_addr, ptr_value
         integer :: ptr_idx, tgt_idx
         logical :: same_target
 
@@ -996,6 +1001,22 @@
             return
         end if
         if (size(arg_indices) == 1) then
+            ! A scalar class pointer has a runtime descriptor even before its
+            ! first ALLOCATE. Read its data field rather than folding the
+            ! lowering-time association flag, so descriptor nulling is part of
+            ! the same runtime contract as dynamic dispatch.
+            if (context%symbols(ptr_idx)%is_class_pointer) then
+                if (.not. emit_ptr_offset(context%session, &
+                        context%symbols(ptr_idx)%class_descriptor_address, &
+                        int(POLYMORPHIC_DESCRIPTOR_DATA_OFFSET, c_int64_t), &
+                        field_addr, error_msg)) return
+                if (.not. emit_ptr_load(context%session, field_addr, ptr_value, &
+                        error_msg)) return
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, &
+                        ptr_value, null_ptr_operand(context), value, error_msg)) &
+                    return
+                return
+            end if
             ! A pointer bound to a data-pointer function result has no
             ! compile-time association flag: test its address against null.
             if (context%symbols(ptr_idx)%has_runtime_association) then

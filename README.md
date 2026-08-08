@@ -230,7 +230,12 @@ array or intrinsic allocatable array component, so `obj%z(i)%arr(j)%arr(k)`
 reaches through several heap indirections. Non-zero scalar component defaults on
 heap elements, whole-component assignment, and allocatable derived array dummy
 arguments stay unsupported; genuinely polymorphic `class` forms (e.g.
-`allocate(..., source=)` of a differing dynamic type) still decline. A
+`allocate(..., source=)` of a differing dynamic type) still decline. A scalar
+`class(base_t), pointer` may be explicitly allocated with a compatible
+concrete type-spec (`allocate(child_t :: p)`), and a type-bound function call
+through `p` dispatches through the allocated dynamic type's vtable. Class-pointer
+arrays, pointer reassociation, pointer deallocation/ownership/finalization, and
+allocation of a finalizable pointer type remain rejected. A
 nested component may carry a bare `inner()` default-constructor initialiser, and
 a bare `t()` constructor default-initialises an instance, including for a type
 with nested components. A scalar derived `parameter` initialised by a
@@ -242,8 +247,7 @@ allocatable scalar is deallocated. Dummy arguments borrow their storage and are
 never finalised; array finalisation and several `final` bindings on one type
 stay rejected. A statically declared `type(child_t)` receiver selects a local
 type-bound override in `type, extends(parent_t) :: child_t`, including default
-`PASS` and `NOPASS`; unresolved runtime `CLASS` dispatch remains outside this
-slice. A `select type` on a monomorphic
+`PASS` and `NOPASS`. A `select type` on a monomorphic
 declared-type selector - a `class(t)` scalar dummy or local whose dynamic type
 is only ever its declared type `t` - resolves statically: the `type is (t)` or
 `class is (t)` arm naming the declared type (else `class default`) is chosen at
