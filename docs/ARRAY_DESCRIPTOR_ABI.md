@@ -153,6 +153,14 @@ The descriptor owns the contiguous allocation and deallocation clears it;
 deep-copy assignment, finalization, `SOURCE=`/`MOLD=`, polymorphic extension
 sizes, and non-unit-bound element addressing remain separate conformance gates.
 
+The bounded direct-session owner path currently uses this canonical descriptor
+for standalone intrinsic integer, real, and logical allocatables of rank one
+through rank three, including allocatable dummies. Runtime allocation and
+deallocation, extent inquiries, element addressing, and supported whole-owner
+copy all read the descriptor's dimension records. Rank-four owners and
+derived allocatable components remain outside that path; their separate
+inline component descriptor is documented by the support contract.
+
 ## View lifetime and aliasing
 
 A section view is a descriptor whose `base` points into another descriptor's

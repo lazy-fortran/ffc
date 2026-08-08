@@ -40,6 +40,20 @@ changes also require matching updates to `RUNTIME_ABI.md`,
 `ARRAY_DESCRIPTOR_ABI.md`, and the standard/FortFront contract that defines
 the input semantics.
 
+## Intrinsic allocatable owner contract
+
+The direct LIRIC session supports standalone intrinsic integer, real (kind 4
+and kind 8), and logical allocatable owners of rank one through rank three in
+local and allocatable-dummy declarations. Runtime `allocate`/`deallocate`,
+`allocated`, `size(a)` and `size(a, dim)`, column-major element read/write,
+and dummy calls preserve the canonical descriptor and its three dimensions.
+Whole-owner assignment between separate runtime-shaped owners of the same
+supported kind reallocates the target and copies all elements. Scalar
+broadcast remains limited to the existing descriptor cases where the static
+extent is known. Rank four, derived allocatable components, aliases,
+unsupported kinds, pointer/target owners, and unsupported whole-component
+forms are explicit refusals.
+
 ## Intrinsic allocatable component contract
 
 The direct LIRIC session supports rank-one and bounded rank-two allocatable

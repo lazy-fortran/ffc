@@ -77,6 +77,14 @@ contains
             call get_identifier_name(arena, assoc%expr_index, sel_name, name_err)
             src_idx = resolve_symbol_at_node(context, assoc%expr_index, sel_name)
             if (src_idx > 0) then
+                if (context%symbols(src_idx)%is_allocatable .and. &
+                    context%symbols(src_idx)%array_rank > 0) then
+                    call unsupported_feature_error('associate allocatable selector', &
+                        get_node_line(arena, assoc%expr_index), &
+                        get_node_column(arena, assoc%expr_index), &
+                        'allocatable array aliases are not supported', error_msg)
+                    return
+                end if
                 call materialize_scalar_associate_source(context, src_idx, &
                     error_msg)
                 if (len_trim(error_msg) > 0) return
