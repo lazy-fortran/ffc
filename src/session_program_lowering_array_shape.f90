@@ -53,7 +53,7 @@ contains
     end function declaration_is_assumed_shape
 
     module function declaration_is_runtime_rank1(node, context) result(is_runtime)
-        ! A rank-1 or rank-2 explicit-shape array at least one of whose extents
+        ! A rank-1 through rank-4 explicit-shape array at least one of whose extents
         ! is a runtime integer expression (a dummy-argument value such as
         ! dimension(n)) rather than a compile-time constant. Allocatable and
         ! assumed-shape declarations are excluded; they have their own lowering
@@ -70,7 +70,7 @@ contains
         if (node%is_allocatable) return
         if (.not. allocated(node%dimension_indices)) return
         rank = size(node%dimension_indices)
-        if (rank < 1 .or. rank > 2) return
+        if (rank < 1 .or. rank > 4) return
         if (declaration_is_assumed_shape(node, context)) return
         ! Assumed-size dummies have an intentionally unknown trailing extent.
         ! They use the dedicated base-address path below; treating the bare
@@ -185,7 +185,7 @@ contains
         is_var = .false.
         if (.not. allocated(node%dimension_indices)) return
         if (size(node%dimension_indices) < 1 .or. &
-            size(node%dimension_indices) > 2) return
+            size(node%dimension_indices) > 4) return
         do d = 1, size(node%dimension_indices)
             if (bound_expr_references_variable(context%arena, &
                     node%dimension_indices(d), context)) is_var = .true.
@@ -194,7 +194,7 @@ contains
 
     module function declaration_is_runtime_local_array(node, context, value_kind) &
             result(is_local)
-        ! A rank-1 explicit-shape local automatic array whose extent is a runtime
+        ! A rank-1 through rank-4 explicit-shape local automatic array whose extent is a runtime
         ! expression and whose name is not already bound (not a dummy argument,
         ! function result, or COMMON member). Such a symbol owns dynamic storage
         ! allocated at its declaration; adjustable-array dummies keep their

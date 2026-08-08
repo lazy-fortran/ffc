@@ -364,12 +364,12 @@
         end if
     end subroutine emit_runtime_alloc_print_one
 
-    ! ----- Rank-1 local automatic arrays with a runtime element count -----
+    ! ----- Local automatic arrays with runtime extents -----
     ! integer :: a(n) / real :: a(0:n) inside a procedure, where n is a
     ! dummy-argument or host value only known at run time. Storage is a dynamic
     ! alloca; the compile-time lower bound stays on the symbol and the runtime
-    ! element count lives in runtime_dim_size(1). Element access reuses the
-    ! fixed-array GEP path (array_size 0 sentinel, harmless for rank-1); whole
+    ! element counts live in runtime_dim_size. Element access reuses the
+    ! descriptor path (array_size 0 sentinel); whole
     ! array print/assign and size()/sum() walk a genuine LIRIC loop.
 
     logical function runtime_local_array_kind_ok(value_kind) result(ok)
@@ -382,7 +382,7 @@
 
     subroutine runtime_array_shape(context, node, rank, lowers, extents_i32, &
                                    error_msg)
-        ! Per-dimension shape of a rank-1 or rank-2 automatic array. Each lower
+        ! Per-dimension shape of a rank-1 through rank-4 automatic array. Each lower
         ! bound must fold at compile time; each upper bound is evaluated once,
         ! here, so the extent is fixed on entry to the scope (F2018 8.5.8.2) and
         ! never re-read if the bound expression's variables change later.
@@ -403,8 +403,8 @@
             return
         end if
         rank = size(node%dimension_indices)
-        if (rank < 1 .or. rank > 2) then
-            error_msg = 'runtime-sized array supports rank 1 and rank 2 only'
+        if (rank < 1 .or. rank > 4) then
+            error_msg = 'runtime-sized array supports ranks 1 through 4 only'
             return
         end if
 
@@ -443,7 +443,7 @@
 
     subroutine define_runtime_array_symbol(context, node, name, value_kind, &
                                            error_msg)
-        ! Allocate dynamic storage for a rank-1 or rank-2 local automatic array
+        ! Allocate dynamic storage for a rank-1 through rank-4 local automatic array
         ! and describe it with one canonical array descriptor (#335). The
         ! descriptor is the stored shape of record: lower bound, extent, and
         ! contiguous column-major byte stride per dimension. The symbol's cached
@@ -456,7 +456,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index, rank, d
         integer :: lowers(ARRAY_MAX_RANK)
-        type(lr_operand_desc_t) :: extents_i32(2)
+        type(lr_operand_desc_t) :: extents_i32(ARRAY_MAX_RANK)
         type(lr_operand_desc_t) :: count_i32, count_i64, bytes, storage
         type(lr_operand_desc_t) :: product_i32
         type(lr_operand_desc_t) :: descriptor, extent_i64, extent_i32
@@ -678,8 +678,8 @@
                                                     src_sym, error_msg)
         ! Whole-array assignment into a runtime-shaped array. When src_sym is 0
         ! the loop broadcasts the already-lowered scalar src_op into every
-        ! element; otherwise it copies element-for-element from another rank-1
-        ! or rank-2 array src_sym of the same value kind.
+        ! element; otherwise it copies element-for-element from another runtime
+        ! array src_sym of the same value kind.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: dst_sym
         type(lr_operand_desc_t), intent(in) :: src_op
@@ -688,23 +688,26 @@
         type(lr_operand_desc_t) :: extent, total_extent, entry_idx, header_idx, &
                                     backedge_idx
         type(lr_operand_desc_t) :: condition, element, next_idx
+        integer :: d
         integer(c_int32_t) :: entry_block, header_block, body_block, &
                               latch_block, exit_block, idx_vreg
 
         extent = context%symbols(dst_sym)%runtime_dim_size(1)
-        if (context%symbols(dst_sym)%array_rank == 2) then
-            if (.not. context%symbols(dst_sym)%has_runtime_dim_size(2)) then
-                error_msg = 'runtime rank-2 array has no second extent'
+        if (context%symbols(dst_sym)%array_rank < 1 .or. &
+            context%symbols(dst_sym)%array_rank > 4) then
+            error_msg = 'runtime array assignment supports ranks 1 through 4 only'
+            return
+        end if
+        do d = 2, context%symbols(dst_sym)%array_rank
+            if (.not. context%symbols(dst_sym)%has_runtime_dim_size(d)) then
+                error_msg = 'runtime array is missing a runtime extent'
                 return
             end if
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
-                    context%symbols(dst_sym)%runtime_dim_size(2), total_extent, &
+                    context%symbols(dst_sym)%runtime_dim_size(d), total_extent, &
                     error_msg)) return
             extent = total_extent
-        else if (context%symbols(dst_sym)%array_rank /= 1) then
-            error_msg = 'runtime array assignment supports rank 1 and rank 2 only'
-            return
-        end if
+        end do
         entry_idx = i32_immediate(context%session, 0_c_int64_t)
         entry_block = context%current_block_id
         header_block = create_liric_block(context%session)
@@ -811,7 +814,7 @@
                                                     context, handled, error_msg)
         ! Whole-array assignment dispatch for a runtime-shaped array. Two forms
         ! are handled at run time: a scalar broadcast (b = expr) and a copy
-        ! from another rank-1 or rank-2 array of the same value kind. Anything else
+        ! from another runtime-shaped array of the same value kind. Anything else
         ! leaves handled false so the caller reports the existing diagnostic.
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
