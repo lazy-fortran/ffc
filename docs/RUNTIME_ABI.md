@@ -334,23 +334,25 @@ call-site argument to its true dummy position before checking whether that
 dummy needs a hidden extent, so an assumed-shape runtime-extent dummy reached
 through a type-bound call resolves the correct actual.
 
-### Genuine assumed-rank `RANK (1)` slice
+### Genuine assumed-rank `RANK (1)` / `RANK (2)` slice
 
 The narrow genuine assumed-rank boundary is descriptor-only and uses the
 canonical `array_descriptor_t` in `ARRAY_DESCRIPTOR_ABI.md`. For a contained
-scalar-element `REAL :: x(..)` dummy, a call with a whole rank-1 REAL actual
-passes one pointer to a borrowed 200-byte descriptor. The descriptor carries
-`rank=1`, the actual element size and REAL type code, and dimension-1
-`lower_bound=1`, runtime `extent`, and byte `stride`. There are no hidden rank
-or extent arguments and no bare data-pointer fallback.
+scalar-element `REAL :: x(..)` dummy, a call with a whole rank-1 or rank-2
+REAL actual passes one pointer to a borrowed 200-byte descriptor. The
+descriptor carries the actual rank, element size and REAL type code, and each
+active dimension's `lower_bound=1`, runtime `extent`, and byte `stride`. There
+are no hidden rank or extent arguments and no bare data-pointer fallback.
 
 The callee retains the descriptor pointer at entry. A single statically valid
-`RANK (1)` arm loads base, extent, and stride and then uses the ordinary rank-1
-runtime element/reduction path. The callee does not release or own the
-descriptor or its storage. `RANK DEFAULT`, `RANK (*)`, scalar or higher-rank
-actuals, dynamic shapes, sections/aliases, non-REAL elements, unsupported
-rank arms, and ownership are named lowering refusals; static-rank SELECT RANK
-continues to use its existing compile-time dispatch.
+matching `RANK (1)` or `RANK (2)` arm loads base and the active extents; rank 1
+also uses the descriptor stride, while rank 2 uses column-major linear element
+addressing (`i1 + (i2-1)*extent(1)`) with the element-size stride. The callee
+does not release or own the descriptor or its storage. `RANK DEFAULT`,
+`RANK (*)`, scalar or rank-three-and-higher actuals, dynamic shapes,
+sections/aliases (including pointers), non-REAL elements, unsupported or
+non-matching rank arms, and ownership are named lowering refusals;
+static-rank SELECT RANK continues to use its existing compile-time dispatch.
 
 ## Runtime Calls
 

@@ -250,10 +250,10 @@
                         call_arg_param_pos(i, sp), context) == VALUE_F32 .or. &
                       callee_dummy_assumed_rank_value_kind(arena, callee_name, &
                         call_arg_param_pos(i, sp), context) == VALUE_F64)) then
-                ! The narrow assumed-rank slice is a rank-1 REAL descriptor
-                ! boundary. Rank is checked from the actual before emitting the
-                ! descriptor; scalar, higher-rank, section, and alias forms do
-                ! not silently fall back to a base-pointer ABI.
+                ! The narrow assumed-rank slice is a rank-1/rank-2 REAL
+                ! descriptor boundary. Rank is checked from the actual before
+                ! emitting the descriptor; scalar, higher-rank, section, and
+                ! alias forms do not silently fall back to a base-pointer ABI.
                 if (.not. actual_is_whole_array(arena, arg_indices(i), context)) then
                     error_msg = 'unsupported assumed-rank actual in '//trim(callee_name)// &
                         ': only a whole array is supported; sections and aliases are refused'
@@ -262,6 +262,12 @@
                 assumed_rank_actual_symbol = assumed_shape_actual_symbol(arena, &
                     arg_indices(i), context)
                 if (assumed_rank_actual_symbol > 0) then
+                    if (context%symbols(assumed_rank_actual_symbol)%is_pointer .or. &
+                        context%symbols(assumed_rank_actual_symbol)%is_reference) then
+                        error_msg = 'unsupported assumed-rank actual in '//trim(callee_name)// &
+                            ': pointer and alias actuals are refused'
+                        return
+                    end if
                     if (context%symbols(assumed_rank_actual_symbol)%is_allocatable .or. &
                         context%symbols(assumed_rank_actual_symbol)%is_runtime_array) then
                         error_msg = 'unsupported assumed-rank actual in '//trim(callee_name)// &
@@ -269,13 +275,15 @@
                         return
                     end if
                 end if
-                if (assumed_shape_actual_rank(arena, arg_indices(i), context) /= 1) then
+                if (assumed_shape_actual_rank(arena, arg_indices(i), context) /= 1 .and. &
+                    assumed_shape_actual_rank(arena, arg_indices(i), context) /= 2) then
                     error_msg = 'unsupported assumed-rank actual in '//trim(callee_name)// &
-                        ': only a rank-1 whole REAL array is supported by RANK (1)'
+                        ': only a rank-1 or rank-2 whole REAL array is supported'
                     return
                 end if
                 call build_assumed_shape_descriptor(arena, arg_indices(i), &
-                    context, 1, callee_name, call_arg_param_pos(i, sp), &
+                    context, assumed_shape_actual_rank(arena, arg_indices(i), context), &
+                    callee_name, call_arg_param_pos(i, sp), &
                     args(i), error_msg, assumed_rank=.true.)
                 if (len_trim(error_msg) > 0) return
             else if (callee_dummy_assumed_shape_dims(arena, callee_name, &

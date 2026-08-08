@@ -506,7 +506,8 @@ contains
         type(lr_operand_desc_t) :: dummy_value
         integer(c_int32_t) :: arm_block
         integer(c_int32_t) :: next_check_block
-        logical :: terminated
+        logical :: terminated, actual_rank_ok
+        integer :: actual_rank
         integer, allocatable :: value_indices(:), body(:)
 
         captured = .false.
@@ -1180,18 +1181,20 @@ contains
         ! A concrete-rank selector has a statically known rank, so exactly one
         ! arm is ever live. Resolve that rank from the selector's declaration,
         ! then lower only the matching `rank (n)` arm (or `rank default`)
-        ! inline. Genuine assumed-rank `(..)` dummies would need a runtime rank
-        ! descriptor and are rejected with a clean diagnostic.
+        ! inline. Genuine assumed-rank `(..)` dummies use the canonical runtime
+        ! descriptor and currently admit exactly one REAL rank(1) or rank(2)
+        ! whole-array arm.
         type(ast_arena_t), intent(in) :: arena
         type(select_rank_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: sel_name
         integer :: sel_index, selector_rank, chosen_body_index
-        integer :: i, rank_value, rank_one_count
+        integer :: i, rank_value, rank_arm_count, selected_rank
         integer, allocatable :: body(:)
         type(lr_operand_desc_t) :: value
-        logical :: terminated
+        logical :: terminated, actual_rank_ok
+        integer :: actual_rank
 
         call set_empty(error_msg)
         if (node%selector_index <= 0 .or. &
@@ -1220,11 +1223,11 @@ contains
             end if
             if (node%default_index > 0) then
                 call unsupported_feature_error('select rank statement', node%line, &
-                    node%column, 'RANK DEFAULT is refused for the assumed-rank rank(1) slice', &
+                    node%column, 'RANK DEFAULT is refused for the assumed-rank rank(1)/rank(2) slice', &
                     error_msg)
                 return
             end if
-            rank_one_count = 0
+            rank_arm_count = 0
             chosen_body_index = 0
             if (allocated(node%rank_indices)) then
                 do i = 1, size(node%rank_indices)
@@ -1233,27 +1236,43 @@ contains
                     if (len_trim(error_msg) > 0) return
                     if (rank_value == -2) then
                         call unsupported_feature_error('select rank statement', node%line, &
-                            node%column, 'RANK (*) is refused for the assumed-rank rank(1) slice', &
+                            node%column, 'RANK (*) is refused for the assumed-rank rank(1)/rank(2) slice', &
                             error_msg)
                         return
                     end if
-                    if (rank_value /= 1) then
+                    if (rank_value /= 1 .and. rank_value /= 2) then
                         call unsupported_feature_error('select rank statement', node%line, &
-                            node%column, 'only one statically valid RANK (1) arm is supported', &
+                            node%column, 'only one statically valid RANK (1) or RANK (2) arm is supported', &
                             error_msg)
                         return
                     end if
-                    rank_one_count = rank_one_count + 1
+                    rank_arm_count = rank_arm_count + 1
+                    selected_rank = rank_value
                     chosen_body_index = node%rank_indices(i)
                 end do
             end if
-            if (rank_one_count /= 1) then
+            if (rank_arm_count /= 1) then
                 call unsupported_feature_error('select rank statement', node%line, &
-                    node%column, 'assumed-rank lowering requires exactly one RANK (1) arm', &
+                    node%column, 'assumed-rank lowering requires exactly one RANK (1) or RANK (2) arm', &
                     error_msg)
                 return
             end if
-            call bind_assumed_rank_rank1(context, sel_index, error_msg)
+            call resolve_assumed_rank(context, context%current_proc_name, sel_name, &
+                actual_rank, actual_rank_ok)
+            if (actual_rank_ok .and. actual_rank > 2) then
+                call unsupported_feature_error('select rank statement', node%line, &
+                    node%column, 'only a rank-1 or rank-2 whole REAL array is supported', &
+                    error_msg)
+                return
+            end if
+            if (actual_rank_ok .and. actual_rank > 0 .and. &
+                actual_rank /= selected_rank) then
+                call unsupported_feature_error('select rank statement', node%line, &
+                    node%column, 'RANK arm does not match the whole-array actual rank', &
+                    error_msg)
+                return
+            end if
+            call bind_assumed_rank_rankn(context, sel_index, selected_rank, error_msg)
             if (len_trim(error_msg) > 0) return
             call select_rank_block_body(arena, chosen_body_index, body)
             if (allocated(body)) call lower_statement_list(arena, body, context, &
@@ -1282,39 +1301,50 @@ contains
                                   error_msg)
     end subroutine lower_select_rank
 
-    subroutine bind_assumed_rank_rank1(context, sym_index, error_msg)
+    subroutine bind_assumed_rank_rankn(context, sym_index, selected_rank, error_msg)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: sym_index
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: descriptor, base, extent_i64, extent_i32, stride
+        integer, intent(in) :: selected_rank
+        type(lr_operand_desc_t) :: descriptor, base, extent_i64, extent_i32
+        integer :: dim
 
         call set_empty(error_msg)
         descriptor = context%symbols(sym_index)%runtime_descriptor_address
         if (.not. emit_ptr_load(context%session, descriptor, base, error_msg)) return
-        if (.not. emit_i64_load_at(context%session, descriptor, &
-                int(ARRAY_DESCRIPTOR_DIM_OFFSET + ARRAY_DIMENSION_EXTENT_OFFSET, &
-                    c_int64_t), extent_i64, error_msg)) return
-        if (.not. emit_liric_i64_to_i32(context%session, extent_i64, extent_i32, &
-                                       error_msg)) return
-        if (.not. emit_i64_load_at(context%session, descriptor, &
-                int(ARRAY_DESCRIPTOR_DIM_OFFSET + ARRAY_DIMENSION_STRIDE_OFFSET, &
-                    c_int64_t), stride, error_msg)) return
+        if (selected_rank < 1 .or. selected_rank > 2) then
+            error_msg = 'assumed-rank binding received an unsupported rank'
+            return
+        end if
         context%symbols(sym_index)%is_array = .true.
-        context%symbols(sym_index)%array_rank = 1
+        context%symbols(sym_index)%array_rank = selected_rank
         context%symbols(sym_index)%array_size = 0
         context%symbols(sym_index)%array_lower_bound = 1
         context%symbols(sym_index)%array_dim_sizes = 0
         context%symbols(sym_index)%array_dim_lowers = 0
-        context%symbols(sym_index)%array_dim_lowers(1) = 1
-        context%symbols(sym_index)%has_runtime_dim_size(1) = .true.
-        context%symbols(sym_index)%runtime_dim_size(1) = extent_i32
-        context%symbols(sym_index)%has_runtime_array_stride = .true.
-        context%symbols(sym_index)%runtime_array_stride_bytes = stride
+        do dim = 1, selected_rank
+            if (.not. emit_i64_load_at(context%session, descriptor, &
+                    int(ARRAY_DESCRIPTOR_DIM_OFFSET + (dim - 1)* &
+                        ARRAY_DIMENSION_BYTES + ARRAY_DIMENSION_EXTENT_OFFSET, &
+                        c_int64_t), extent_i64, error_msg)) return
+            if (.not. emit_liric_i64_to_i32(context%session, extent_i64, extent_i32, &
+                                           error_msg)) return
+            context%symbols(sym_index)%array_dim_lowers(dim) = 1
+            context%symbols(sym_index)%has_runtime_dim_size(dim) = .true.
+            context%symbols(sym_index)%runtime_dim_size(dim) = extent_i32
+        end do
+        if (selected_rank == 1) then
+            context%symbols(sym_index)%has_runtime_array_stride = .true.
+            if (.not. emit_i64_load_at(context%session, descriptor, &
+                    int(ARRAY_DESCRIPTOR_DIM_OFFSET + ARRAY_DIMENSION_STRIDE_OFFSET, &
+                        c_int64_t), extent_i64, error_msg)) return
+            context%symbols(sym_index)%runtime_array_stride_bytes = extent_i64
+        end if
         context%symbols(sym_index)%element_address = base
         context%symbols(sym_index)%address = base
         context%symbols(sym_index)%has_address = .true.
         context%symbols(sym_index)%is_reference = .true.
-    end subroutine bind_assumed_rank_rank1
+    end subroutine bind_assumed_rank_rankn
 
     subroutine select_rank_choose_body(arena, node, selector_rank, &
                                        chosen_body_index, error_msg)
