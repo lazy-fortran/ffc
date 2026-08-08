@@ -18,6 +18,7 @@ program test_session_allocatable_constructor
     if (.not. test_constructor_reassign()) all_passed = .false.
     if (.not. test_identifier_copy()) all_passed = .false.
     if (.not. test_lazy_209_array_operands()) all_passed = .false.
+    if (.not. test_runtime_rank2_descriptor_copy_oracle()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: allocatable constructor assignment lowers through LIRIC'
@@ -140,6 +141,74 @@ contains
         test_runtime_descriptor_copy_oracle = matches_gfortran( &
             source, 'runtime_descriptor_copy')
     end function test_runtime_descriptor_copy_oracle
+
+    logical function test_runtime_rank2_descriptor_copy_oracle()
+        ! Differentially compare rank-2 integer, real, and logical copies with
+        ! gfortran. Every source extent is runtime-only, each target changes
+        ! shape twice, and the final source mutation proves the target owns a
+        ! separate allocation rather than sharing the source data pointer.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer, allocatable :: ai(:,:), bi(:,:)'//new_line('a')// &
+            '  real, allocatable :: ar(:,:), br(:,:)'//new_line('a')// &
+            '  logical, allocatable :: al(:,:), bl(:,:)'//new_line('a')// &
+            '  integer :: m, n, i, j'//new_line('a')// &
+            '  m = 2'//new_line('a')// &
+            '  n = 3'//new_line('a')// &
+            '  allocate(bi(m,n), br(m,n), bl(m,n))'//new_line('a')// &
+            '  do j = 1, n'//new_line('a')// &
+            '    do i = 1, m'//new_line('a')// &
+            '      bi(i,j) = i * 10 + j'//new_line('a')// &
+            '      br(i,j) = i * 10.0 + j'//new_line('a')// &
+            '      bl(i,j) = mod(i + j, 2) == 0'//new_line('a')// &
+            '    end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            '  allocate(ai(1,1), ar(1,1), al(1,1))'//new_line('a')// &
+            '  al(1,1) = .false.'//new_line('a')// &
+            '  ai = bi'//new_line('a')// &
+            '  ar = br'//new_line('a')// &
+            '  al = bl'//new_line('a')// &
+            '  print *, allocated(ai), size(ai,1), size(ai,2), ai(1,1), ai(2,3)'// &
+            new_line('a')// &
+            '  print *, allocated(ar), size(ar,1), size(ar,2), ar(1,1), ar(2,3)'// &
+            new_line('a')// &
+            '  print *, allocated(al), size(al,1), size(al,2), al(1,1), al(2,3)'// &
+            new_line('a')// &
+            '  deallocate(bi, br, bl)'//new_line('a')// &
+            '  m = 3'//new_line('a')// &
+            '  n = 2'//new_line('a')// &
+            '  allocate(bi(m,n), br(m,n), bl(m,n))'//new_line('a')// &
+            '  do j = 1, n'//new_line('a')// &
+            '    do i = 1, m'//new_line('a')// &
+            '      bi(i,j) = 100 + i * 10 + j'//new_line('a')// &
+            '      br(i,j) = 100.0 + i * 10.0 + j'//new_line('a')// &
+            '      if (i + j == 2) then'//new_line('a')// &
+            '        bl(i,j) = .false.'//new_line('a')// &
+            '      else'//new_line('a')// &
+            '        bl(i,j) = .true.'//new_line('a')// &
+            '      end if'//new_line('a')// &
+            '    end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            '  ai = bi'//new_line('a')// &
+            '  ar = br'//new_line('a')// &
+            '  al = bl'//new_line('a')// &
+            '  print *, allocated(ai), size(ai,1), size(ai,2), ai(1,1), ai(3,2)'// &
+            new_line('a')// &
+            '  print *, allocated(ar), size(ar,1), size(ar,2), ar(1,1), ar(3,2)'// &
+            new_line('a')// &
+            '  print *, allocated(al), size(al,1), size(al,2), al(1,1), al(3,2)'// &
+            new_line('a')// &
+            '  bi(1,1) = -999'//new_line('a')// &
+            '  br(1,1) = -999.0'//new_line('a')// &
+            '  bl(1,1) = .not. bl(1,1)'//new_line('a')// &
+            '  print *, ai(1,1), bi(1,1)'//new_line('a')// &
+            '  print *, ar(1,1), br(1,1)'//new_line('a')// &
+            '  print *, al(1,1), bl(1,1)'//new_line('a')// &
+            'end program main'
+
+        test_runtime_rank2_descriptor_copy_oracle = matches_gfortran( &
+            source, 'runtime_rank2_descriptor_copy')
+    end function test_runtime_rank2_descriptor_copy_oracle
 
     logical function matches_gfortran(source, stem)
         character(len=*), intent(in) :: source, stem

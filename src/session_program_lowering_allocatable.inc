@@ -1165,6 +1165,39 @@
             context%symbols(symbol_index)%value_kind, 1, extents_i64, error_msg)
     end subroutine lower_allocate_i32_1d_operand
 
+    subroutine lower_allocate_i32_2d_operands(m_i32, n_i32, symbol_index, &
+                                              context, error_msg)
+        ! Runtime-shape counterpart of lower_allocate_i32_2d: m_i32 and n_i32
+        ! have already been read from an array descriptor, so no AST bound is
+        ! available to lower here.
+        type(lr_operand_desc_t), intent(in) :: m_i32, n_i32
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: m_i64, n_i64, total_i64
+        type(lr_operand_desc_t) :: data_ptr, descriptor
+        type(lr_operand_desc_t) :: extents_i64(2)
+
+        if (.not. emit_liric_i32_to_i64(context%session, m_i32, m_i64, &
+                error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, n_i32, n_i64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, m_i64, n_i64, &
+                total_i64, error_msg)) return
+        if (.not. emit_malloc(context%session, total_i64, data_ptr, error_msg, &
+                elem_size=i64_immediate(context%session, &
+                    allocatable_elem_size( &
+                        context%symbols(symbol_index)%value_kind)))) return
+
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_store(context%session, data_ptr, descriptor, &
+                error_msg)) return
+        extents_i64(1) = m_i64
+        extents_i64(2) = n_i64
+        call emit_alloc_desc_allocate_shape(context, descriptor, &
+            context%symbols(symbol_index)%value_kind, 2, extents_i64, error_msg)
+    end subroutine lower_allocate_i32_2d_operands
+
     subroutine lower_allocatable_constructor_assignment(arena, ctor, symbol_index, &
                                                        context, error_msg)
         ! a = [e1, e2, ...] where a is a 1-D allocatable of integer, real, or
@@ -1482,6 +1515,11 @@
         handled = .false.
         call set_empty(error_msg)
         if (.not. node_exists(arena, node%value_index)) return
+        if (context%symbols(target_sym)%array_rank == 2) then
+            call lower_allocatable_runtime_rank2_copy(arena, node, target_sym, &
+                context, handled, error_msg)
+            return
+        end if
         if (.not. is_identifier(arena, node%value_index)) return
         if (context%symbols(target_sym)%array_rank /= 1) return
         vk = context%symbols(target_sym)%value_kind
@@ -1568,6 +1606,171 @@
         handled = .true.
         call set_empty(error_msg)
     end subroutine lower_allocatable_runtime_whole_copy
+
+    subroutine lower_allocatable_runtime_rank2_copy(arena, node, target_sym, &
+                                                    context, handled, error_msg)
+        ! Copy a separate rank-2 intrinsic allocatable whose two extents are
+        ! available only in the RHS descriptor. The target is resized before a
+        ! bounded column-major loop copies the source. This intentionally does
+        ! not cover global descriptors, components, aliases, or unsupported
+        ! kinds; those continue through the existing diagnostic paths.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: target_sym
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source_name
+        integer :: source_sym, vk
+        type(lr_operand_desc_t) :: extent1, extent2, descriptor, data_ptr
+        type(lr_operand_desc_t) :: source_data, target_data, idx64, byte_offset
+        type(lr_operand_desc_t) :: source_addr, target_addr
+        type(lr_operand_desc_t) :: entry_j, header_j, backedge_j, next_j
+        type(lr_operand_desc_t) :: entry_i, header_i, backedge_i, next_i
+        type(lr_operand_desc_t) :: column_offset, linear_index, value, condition
+        type(lr_operand_desc_t) :: one
+        integer(c_int32_t) :: outer_entry, outer_header, outer_body, outer_latch
+        integer(c_int32_t) :: outer_exit, inner_header, inner_body
+        integer(c_int32_t) :: i_vreg, j_vreg
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node%value_index)) return
+        if (is_identifier(arena, node%value_index)) then
+            call get_identifier_name(arena, node%value_index, source_name, &
+                                     error_msg)
+        else
+            select type (rhs => arena%entries(node%value_index)%node)
+            type is (call_or_subscript_node)
+                if (.not. allocated(rhs%name)) then
+                    return
+                end if
+                if (allocated(rhs%arg_indices)) then
+                    if (size(rhs%arg_indices) /= 0) then
+                        return
+                    end if
+                end if
+                source_name = rhs%name
+            class default
+                return
+            end select
+        end if
+        if (len_trim(error_msg) > 0) return
+
+        vk = context%symbols(target_sym)%value_kind
+        if (vk /= VALUE_I32 .and. vk /= VALUE_F32 .and. &
+            vk /= VALUE_F64 .and. vk /= VALUE_LOGICAL) return
+        if (context%symbols(target_sym)%allocatable_descriptor_address%kind == &
+            LR_OP_KIND_GLOBAL) return
+
+        source_sym = find_symbol_compat(context, source_name)
+        if (source_sym <= 0) return
+        if (.not. context%symbols(source_sym)%is_allocatable) return
+        if (context%symbols(source_sym)%array_rank /= 2) return
+        if (context%symbols(source_sym)%value_kind /= vk) return
+        if (context%symbols(source_sym)%allocatable_static_size > 0) return
+        if (source_sym == target_sym) return
+        if (context%symbols(source_sym)%allocatable_descriptor_address%kind == &
+            LR_OP_KIND_GLOBAL) return
+
+        call allocatable_descriptor_extent_i32(context, source_sym, 1, extent1, &
+                                               error_msg)
+        if (len_trim(error_msg) > 0) return
+        call allocatable_descriptor_extent_i32(context, source_sym, 2, extent2, &
+                                               error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        descriptor = context%symbols(target_sym)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
+            return
+        if (.not. emit_free(context%session, data_ptr, error_msg)) return
+        call lower_allocate_i32_2d_operands(extent1, extent2, target_sym, &
+                                             context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(target_sym)%allocatable_static_size = 0
+
+        one = i32_immediate(context%session, 1_c_int64_t)
+        entry_j = i32_immediate(context%session, 0_c_int64_t)
+        outer_entry = context%current_block_id
+        outer_header = create_liric_block(context%session)
+        outer_body = create_liric_block(context%session)
+        outer_latch = create_liric_block(context%session)
+        outer_exit = create_liric_block(context%session)
+        inner_header = create_liric_block(context%session)
+        inner_body = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, outer_header, error_msg)) return
+
+        if (.not. enter_liric_block(context, outer_header, error_msg)) return
+        j_vreg = reserve_i32_vreg(context%session)
+        if (j_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve the rank-2 column loop vreg'
+            return
+        end if
+        backedge_j = i32_vreg(context%session, j_vreg)
+        if (.not. emit_liric_i32_phi(context%session, entry_j, outer_entry, &
+                backedge_j, outer_latch, header_j, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_j, &
+                extent2, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, outer_body, &
+                outer_exit, error_msg)) return
+
+        if (.not. enter_liric_block(context, outer_body, error_msg)) return
+        entry_i = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_liric_br(context%session, inner_header, error_msg)) return
+
+        if (.not. enter_liric_block(context, inner_header, error_msg)) return
+        i_vreg = reserve_i32_vreg(context%session)
+        if (i_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve the rank-2 row loop vreg'
+            return
+        end if
+        backedge_i = i32_vreg(context%session, i_vreg)
+        if (.not. emit_liric_i32_phi(context%session, entry_i, outer_body, &
+                backedge_i, inner_body, header_i, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_i, &
+                extent1, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, inner_body, &
+                outer_latch, error_msg)) return
+
+        if (.not. enter_liric_block(context, inner_body, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, header_j, extent1, &
+                column_offset, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, header_i, &
+                column_offset, linear_index, error_msg)) return
+        if (.not. emit_ptr_load(context%session, &
+                context%symbols(source_sym)%allocatable_descriptor_address, &
+                source_data, error_msg)) return
+        if (.not. emit_ptr_load(context%session, &
+                context%symbols(target_sym)%allocatable_descriptor_address, &
+                target_data, error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, linear_index, idx64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, idx64, &
+                i64_immediate(context%session, allocatable_elem_size(vk)), &
+                byte_offset, error_msg)) return
+        if (.not. emit_ptr_offset_dyn(context%session, source_data, byte_offset, &
+                source_addr, error_msg)) return
+        if (.not. emit_allocatable_element_load(context, vk, source_addr, value, &
+                error_msg)) return
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_offset_dyn(context%session, target_data, byte_offset, &
+                target_addr, error_msg)) return
+        if (.not. emit_allocatable_element_store(context, vk, value, target_addr, &
+                error_msg)) return
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_i, one, &
+                i_vreg, next_i, error_msg)) return
+        if (.not. emit_liric_br(context%session, inner_header, error_msg)) return
+
+        if (.not. enter_liric_block(context, outer_latch, error_msg)) return
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_j, one, &
+                j_vreg, next_j, error_msg)) return
+        if (.not. emit_liric_br(context%session, outer_header, error_msg)) return
+
+        if (.not. enter_liric_block(context, outer_exit, error_msg)) return
+        handled = .true.
+        call set_empty(error_msg)
+    end subroutine lower_allocatable_runtime_rank2_copy
 
     subroutine lower_allocatable_scalar_broadcast(arena, value_index, &
                                                   symbol_index, context, error_msg)

@@ -122,11 +122,16 @@ emits a kind-typed load or store. No alloc/free happens inside element loops:
 
 Whole-array constructor assignment (`a = [e1, e2, ...]`) is supported for 1-D
 integer, real, and logical allocatables: it frees the old storage, reallocates
-for the constructor's element count, and stores each element. Whole-array print
-(`print *, a`) is supported when the most recent allocation extent is a
-compile-time constant; the print is unrolled over that extent. A runtime-only
-extent leaves whole-array print unsupported. Rank-2 allocatables remain
-integer-only. Only single-variable, default-lower-bound `allocate`/`deallocate`
+for the constructor's element count, and stores each element. Whole-array copy
+from a separate rank-2 intrinsic allocatable (`a = b`) is also supported for
+integer, real, and logical elements when both extents are runtime descriptor
+values: the target is freed and reallocated, then a bounded column-major loop
+copies all elements. Whole-array print (`print *, a`) is supported when the
+most recent allocation extent is a compile-time constant; the print is
+unrolled over that extent. A runtime-only extent leaves whole-array print
+unsupported. Rank-2 allocatable expressions, components, aliases, global
+descriptors, unsupported kinds, and higher-rank whole-array copies remain
+unsupported. Only single-variable, default-lower-bound `allocate`/`deallocate`
 are supported.
 
 - Procedure reference arguments use LIRIC `alloca`/`load`/`store` slots at the

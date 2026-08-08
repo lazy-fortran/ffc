@@ -75,6 +75,18 @@ FortFront #2974). FortFront's nested `ASSOCIATE` owner binding is corrected at
 
 ## Supported now
 
+### Runtime-descriptor rank-2 allocatable copy
+
+Direct LIRIC/session lowering supports `a = b` between separate local rank-2
+intrinsic allocatables of default `integer`, `real`, or `logical` kind when
+the source shape is available only in its runtime descriptor. The target is
+reallocated to both source extents and copied with a bounded column-major
+loop. The focused differential oracle checks allocation state, both extents,
+values across two shape changes, and non-aliasing after source mutation.
+Rank-1 runtime-descriptor copy behavior is preserved. Components, aliases,
+global mutable state, unsupported kinds, and ranks above two remain cleanly
+unsupported and retain their existing diagnostics.
+
 | Area | Supported contract |
 | --- | --- |
 | Input | Standard Fortran source parsed by FortFront's compiler-facing API. Lazy Fortran and Infer-mode inputs are accepted only when FortFront produces the same supported semantic constructs. In lazy mode, variables without explicit declarations are resolved from FortFront's `inferred_type`: `integer`/`real`/`logical` and array-element kinds are seeded as symbols so assignment targets, DO indices, READ targets, and array identifiers lower without a "was not declared" error. Explicit declarations remain authoritative: an inferred seed never overwrites a name found in a `declaration_node` or a USE-imported module variable. Lazy mode also applies the Lazy Fortran dialect defaults (#438): a kind-less `real` is `real(8)`, and a dummy argument declared without an explicit `INTENT` is `INTENT(IN)`, so redefining it is a compile-time error. Both defaults are driven by the input mode recorded in the lowering context; a standard Fortran source keeps the processor default real kind and the language rule that only an explicit `INTENT(IN)` protects a dummy. |

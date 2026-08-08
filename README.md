@@ -71,6 +71,9 @@ and rank-1 scalar `maxloc`/`minloc` (optional `dim=1` and `mask`); scalar
 element read and write on an allocated 1-D or 2-D integer, real, or
 logical allocatable (`a(i)`, `a(i,j)`); whole-array assignment from an array
 constructor to a 1-D allocatable with auto-reallocation (`a = [e1, e2, ...]`);
+whole-array copy between separate rank-2 integer, real, or logical allocatables
+(`a = b`) with both runtime descriptor extents, target reallocation, and a
+bounded column-major copy loop;
 whole-array assignment from a general elementwise expression to a 1-D
 allocatable already allocated to a compile-time-constant extent
 (`a = b + c`, `a = a * 3`); whole-array `print`, `size(a)`, and integer
