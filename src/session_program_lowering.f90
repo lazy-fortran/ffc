@@ -4750,13 +4750,15 @@ contains
                 value_kind /= VALUE_I64 .and. value_kind /= VALUE_I8 .and. &
                 value_kind /= VALUE_I16 .and. value_kind /= VALUE_C4 .and. &
                 value_kind /= VALUE_C8) then
-                call unsupported_feature_error('array declaration', node%line, &
-                    node%column, &
-                    'ffc direct-session lowering only '// &
-                    'supports integer, real, and '// &
-                    'logical arrays', &
-                    error_msg)
-                return
+                if (.not. (value_kind == VALUE_CLASS_STAR .and. &
+                           declaration_is_assumed_shape(node, context))) then
+                    call unsupported_feature_error('array declaration', node%line, &
+                        node%column, &
+                        'ffc direct-session lowering only '// &
+                        'supports integer, real, and logical arrays', &
+                        error_msg)
+                    return
+                end if
             end if
             if (node%is_allocatable) then
                 call lower_allocatable_declaration(node, context, error_msg, &

@@ -325,7 +325,9 @@
         integer :: component_type, component_index
         integer(c_int64_t) :: element_bytes
         integer(c_int32_t) :: flags
+        integer(c_int32_t) :: class_star_type_id
         logical :: is_component_projection, has_dummy_lowers, is_empty_actual
+        logical :: is_class_star_dummy
         character(len=32) :: rank_text, actual_rank_text
         character(len=:), allocatable :: dummy_type_name
         integer :: dummy_type_index
@@ -357,6 +359,10 @@
             if (len_trim(error_msg) > 0) return
         end if
         if (.not. has_dummy_lowers) dummy_lowers(1:rank) = 1
+
+        is_class_star_dummy = callee_dummy_is_class_star(arena, callee_name, &
+                                                         param_pos)
+        class_star_type_id = 0_c_int32_t
 
         is_empty_actual = assumed_shape_empty_constructor(arena, node_index)
         symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
@@ -400,6 +406,14 @@
                 if (len_trim(dummy_type_name) > 0) dummy_type_index = &
                     find_derived_type(context, dummy_type_name)
             end if
+        end if
+        if (is_class_star_dummy) then
+            if (value_kind /= VALUE_I32) then
+                error_msg = 'class(*) assumed-shape lowering currently supports '// &
+                    'only integer whole-array actuals'
+                return
+            end if
+            class_star_type_id = int(TYPE_ID_INTEGER, c_int32_t)
         end if
         if (is_empty_actual) then
             base = null_ptr_operand(context)
@@ -452,6 +466,11 @@
         call store_descriptor_i32(context, 0_c_int32_t, descriptor, &
             int(ARRAY_DESCRIPTOR_RESERVED_OFFSET, c_int64_t), error_msg)
         if (len_trim(error_msg) > 0) return
+        if (is_class_star_dummy) then
+            call store_descriptor_i32(context, class_star_type_id, descriptor, &
+                int(ARRAY_DESCRIPTOR_RESERVED_OFFSET, c_int64_t), error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (dummy_type_index > 0) then
             ! For a CLASS(t) derived-array dummy, carry the actual dynamic type
             ! in the otherwise-unused header word.  The callee binds this word
@@ -572,6 +591,16 @@
             call bind_polymorphic_array_element_stride(arena, context, &
                 callee_name, i, sym_index, descriptor, error_msg)
             if (len_trim(error_msg) > 0) return
+            if (callee_dummy_is_class_star(arena, callee_name, i)) then
+                ! Reuse the scalar SELECT TYPE descriptor fields while the
+                ! declaration path below binds this symbol as an array view.
+                context%symbols(sym_index)%value_kind = VALUE_CLASS_STAR
+                context%symbols(sym_index)%deferred_data = descriptor
+                if (.not. emit_ptr_offset(context%session, descriptor, &
+                        int(ARRAY_DESCRIPTOR_RESERVED_OFFSET, c_int64_t), &
+                        context%symbols(sym_index)%deferred_length, error_msg)) &
+                    return
+            end if
             do dim = 1, rank
                 if (.not. emit_i64_load_at(context%session, descriptor, &
                         assumed_shape_dim_field_offset(dim, &

@@ -895,7 +895,8 @@ contains
                 context%current_block_terminated = .false.
                 call restore_symbols(context, baseline, baseline_count)
                 call lower_select_type_arm(arena, guard_indices(g), &
-                    assoc_name, data_ptr, context, terminated, error_msg)
+                    assoc_name, data_ptr, context, terminated, error_msg, &
+                    sel_index)
                 if (len_trim(error_msg) > 0) return
                 call select_type_capture_arm(context, baseline, baseline_count, &
                     terminated, results(nresults + 1), captured)
@@ -1105,7 +1106,7 @@ contains
     end subroutine select_type_guard_kind
 
     subroutine lower_select_type_arm(arena, guard_index, assoc_name, data_ptr, &
-                                     context, terminated, error_msg)
+                                     context, terminated, error_msg, sel_index)
         ! Bind the associate name to the selector's concrete typed value (loaded
         ! from the boxed data pointer), then lower the arm body.
         type(ast_arena_t), intent(in) :: arena
@@ -1115,33 +1116,60 @@ contains
         type(lowering_context_t), intent(inout) :: context
         logical, intent(out) :: terminated
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in) :: sel_index
         integer :: value_kind, idx
         type(lr_operand_desc_t) :: typed_value, value
         integer, allocatable :: body(:)
+        logical :: selector_is_array
 
         terminated = .false.
         call select_type_guard_kind(arena, guard_index, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (value_kind == VALUE_F64) then
+        selector_is_array = context%symbols(sel_index)%is_array
+        idx = find_symbol_compat(context, assoc_name)
+        if (selector_is_array) then
+            ! SELECT TYPE on class(*) assumed-shape keeps the descriptor-backed
+            ! array storage and shape, narrowing only its element kind. The
+            ! scalar class(*) path below must not load the first element.
+            if (idx <= 0) then
+                call grow_symbols(context)
+                idx = context%symbol_count + 1
+                context%symbol_count = idx
+            end if
+            context%symbols(idx) = context%symbols(sel_index)
+            context%symbols(idx)%name = trim(assoc_name)
+            context%symbols(idx)%value_kind = value_kind
+            context%symbols(idx)%is_class_pointer = .false.
+            context%symbols(idx)%is_polymorphic = .false.
+            context%symbols(idx)%has_dynamic_type_address = .false.
+            context%symbols(idx)%element_address = data_ptr
+            context%symbols(idx)%address = data_ptr
+            context%symbols(idx)%has_address = .true.
+            context%symbols(idx)%is_reference = .true.
+        else if (value_kind == VALUE_F64) then
             if (.not. emit_liric_f64_load(context%session, data_ptr, &
+                                          typed_value, error_msg)) return
+        else if (value_kind == VALUE_F32) then
+            if (.not. emit_liric_f32_load(context%session, data_ptr, &
                                           typed_value, error_msg)) return
         else
             if (.not. emit_i32_load(context%session, data_ptr, typed_value, &
                                     error_msg)) return
         end if
-        idx = find_symbol_compat(context, assoc_name)
-        if (idx <= 0) then
+        if (.not. selector_is_array .and. idx <= 0) then
             call grow_symbols(context)
             idx = context%symbol_count + 1
             context%symbol_count = idx
         end if
-        context%symbols(idx)%name = trim(assoc_name)
-        context%symbols(idx)%value_kind = value_kind
-        context%symbols(idx)%value = typed_value
-        context%symbols(idx)%has_address = .false.
-        context%symbols(idx)%is_reference = .false.
-        context%symbols(idx)%is_derived = .false.
-        context%symbols(idx)%is_deferred_character = .false.
+        if (.not. selector_is_array) then
+            context%symbols(idx)%name = trim(assoc_name)
+            context%symbols(idx)%value_kind = value_kind
+            context%symbols(idx)%value = typed_value
+            context%symbols(idx)%has_address = .false.
+            context%symbols(idx)%is_reference = .false.
+            context%symbols(idx)%is_derived = .false.
+            context%symbols(idx)%is_deferred_character = .false.
+        end if
 
         call select_type_guard_body(arena, guard_index, body)
         call lower_statement_list(arena, body, context, value, terminated, &
