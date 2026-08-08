@@ -3490,7 +3490,8 @@
         block
             logical :: handled
             call lower_alloc_array_component_size(arena, array_index, &
-                                                  context, value, handled, error_msg)
+                                                  context, value, handled, error_msg, &
+                                                  dim_index)
             if (handled .or. len_trim(error_msg) > 0) return
             call lower_fixed_char_component_size(arena, array_index, dim_index, &
                                                  context, value, handled, error_msg)

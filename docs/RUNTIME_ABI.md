@@ -111,8 +111,14 @@ an allocatable actual and the dummy it binds to agree on extents, on
 column-major order, and on element addresses by construction rather than by
 two representations happening to match.
 
-Allocatable **components** of a derived type still use their own inline
-`{data, extent}` record and are not part of this migration.
+Allocatable **components** of a derived type use an inline descriptor owned by
+the containing instance. Intrinsic integer, real, and logical components of
+rank one or two store `{data, extent1[, extent2]}` (16 or 24 bytes); the data
+pointer is null until allocation and `size`/`allocated`/element access and
+deallocation use the stored extents. This component descriptor is separate
+from the canonical standalone array descriptor described above. Whole
+component assignment, passing a rank-2 component as an actual, aliases,
+unsupported kinds, and rank greater than two remain deliberate diagnostics.
 
 Element access on an allocated 1-D allocatable is supported as an rvalue and an
 assignment target. `a(i)` loads the base pointer and dimension 1's lower bound
@@ -562,7 +568,7 @@ a line-oriented subset of TOML, with no source locations or comments.
 [module]
 name = "shapes"
 ffc_version = "0.1.0"
-fmod_schema = 11
+fmod_schema = 12
 
 [[parameter]]
 name = "max_pts"
@@ -578,13 +584,15 @@ components = [
 ```
 
 - `[module]` carries the module name, the emitting `ffc` version, and the
-  mandatory `fmod_schema`. Writers emit schema 11. Readers accept schema 11
-  and the read-only legacy schema 10. They reject missing and unknown schema
+  mandatory `fmod_schema`. Writers emit schema 12. Readers accept schema 12,
+  schema 11, and the read-only legacy schema 10. They reject missing and unknown schema
   values with a request to recompile the module.
 - Each `[[parameter]]` is a named constant: `name`, `kind` (the normalised
   scalar type token), and the literal `value`.
 - Each `[[derived_type]]` is a type definition with its `components`, each a
-  `{ name, kind }` pair.
+  `{ name, kind }` pair. Allocatable array components additionally record
+  `alloc_rank` (1 or 2); schema 11 components without that field are read as
+  rank one for compatibility.
 - Each `[[variable]]` records a module variable's Fortran `name`, scalar `kind`,
   and optional mangled `c_name`.
 - Each `[[procedure]]` records an exportable module procedure's `name`, result

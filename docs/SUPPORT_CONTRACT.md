@@ -40,6 +40,17 @@ changes also require matching updates to `RUNTIME_ABI.md`,
 `ARRAY_DESCRIPTOR_ABI.md`, and the standard/FortFront contract that defines
 the input semantics.
 
+## Intrinsic allocatable component contract
+
+The direct LIRIC session supports rank-one and bounded rank-two allocatable
+components of intrinsic integer, real, and logical type. Their component-owned
+descriptors carry the data pointer and runtime extents; allocation,
+`allocated`, `size` (with an optional dimension), column-major element
+read/write, and deallocation are covered by the independent gfortran oracle.
+Whole-component assignment, passing a rank-two component as an actual,
+aliases, unsupported kinds, and rank greater than two are explicit refusals,
+not partial support claims.
+
 ## FORALL evaluation contract
 
 For fixed-size intrinsic array-element assignments, the direct session lowerer

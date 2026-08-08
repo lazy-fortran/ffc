@@ -478,11 +478,15 @@ module session_program_lowering_types
         ! address, intrinsic assignment of the parent copies it, so the
         ! association travels with the object and never the pointee storage.
         logical, allocatable :: component_is_pointer(:)
-        ! True for a rank-1 allocatable array component (integer/real/logical).
-        ! Such a component stores an inline 16-byte descriptor (four i32
-        ! slots): an 8-byte data pointer at byte 0 and an i64 element extent
-        ! at byte 8. A null data pointer marks it unallocated.
+        ! True for a bounded-rank allocatable array component
+        ! (integer/real/logical). Such a component stores an inline descriptor
+        ! with an 8-byte data pointer followed by one i64 extent per dimension.
+        ! A null data pointer marks it unallocated.
         logical, allocatable :: component_is_alloc_array(:)
+        ! Declared rank of an allocatable array component (1 or 2); zero for
+        ! scalar and non-allocatable components. This is separate from
+        ! component_dim1, which describes fixed-size component storage.
+        integer, allocatable :: component_alloc_rank(:)
         ! Declared character length of a VALUE_CHARACTER component (0 for
         ! every other kind). Scalar character components keep their historical
         ! slot count in component_array_size; fixed character arrays keep their

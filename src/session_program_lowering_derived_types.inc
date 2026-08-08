@@ -714,6 +714,8 @@
             deallocate(context%derived_types(type_index)%component_is_pointer)
         if (allocated(context%derived_types(type_index)%component_is_alloc_array)) &
             deallocate(context%derived_types(type_index)%component_is_alloc_array)
+        if (allocated(context%derived_types(type_index)%component_alloc_rank)) &
+            deallocate(context%derived_types(type_index)%component_alloc_rank)
         if (allocated(context%derived_types(type_index)%component_char_length)) &
             deallocate(context%derived_types(type_index)%component_char_length)
         if (allocated(context%derived_types(type_index)%component_dim1)) &
@@ -1010,6 +1012,7 @@
                     is_allocatable=parent%component_is_allocatable(c), &
                     comp_char_length=parent%component_char_length(c), &
                     is_alloc_array=parent%component_is_alloc_array(c), &
+                    alloc_rank=parent%component_alloc_rank(c), &
                     comp_dim1=parent%component_dim1(c), &
                     is_pointer=parent%component_is_pointer(c))
                 if (len_trim(error_msg) > 0) return
@@ -1272,17 +1275,16 @@ subroutine collect_component_declaration(component_index, parent_line, &
                     comp_allocatable = .false.
                 end select
             end if
-            ! A rank-1 allocatable array component of intrinsic type stores an
-            ! inline 16-byte descriptor (data pointer + i64 extent). Character
-            ! elements use the same descriptor layout; their fixed element
-            ! length remains metadata until character component element access
-            ! is lowered. Higher ranks, pointer, and c_ptr element types stay
-            ! unsupported and fall through to the fixed-size array path, which
-            ! declines them.
+            ! A rank-1/rank-2 allocatable array component of intrinsic type
+            ! stores an inline descriptor (data pointer + one i64 extent per
+            ! dimension). Character elements use the same descriptor layout;
+            ! their fixed element length remains metadata until character
+            ! component element access is lowered. Higher ranks, pointer, and
+            ! c_ptr element types stay unsupported.
             comp_alloc_array = component%is_allocatable .and. &
                                component%is_array .and. &
                                .not. component%is_pointer .and. &
-                               component_alloc_array_rank_one(component)
+                               component_alloc_array_rank_bounded(component)
             if (comp_alloc_array) then
                 select case (value_kind)
                 case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL, &
@@ -1290,6 +1292,14 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 case default
                     comp_alloc_array = .false.
                 end select
+            end if
+            if (component%is_allocatable .and. component%is_array .and. &
+                .not. comp_alloc_array) then
+                call unsupported_feature_error('allocatable array component', &
+                    component%line, component%column, &
+                    'only integer, real, and logical allocatable array '// &
+                    'components of rank 1 or 2 are supported', error_msg)
+                return
             end if
             ! A component default initialiser must be a compile-time integer.
             has_default = .false.
@@ -1356,6 +1366,9 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                                comp_dim1=merge(array_size, 0, &
                                                                fixed_char_array), &
                                                is_alloc_array=comp_alloc_array, &
+                                               alloc_rank=merge( &
+                                                   component_alloc_array_rank(component), &
+                                                   0, comp_alloc_array), &
                                                is_pointer=comp_pointer)
                     if (len_trim(error_msg) > 0) return
                 end do
@@ -1369,6 +1382,9 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                            comp_dim1=merge(array_size, 0, &
                                                            fixed_char_array), &
                                            is_alloc_array=comp_alloc_array, &
+                                           alloc_rank=merge( &
+                                               component_alloc_array_rank(component), &
+                                               0, comp_alloc_array), &
                                            is_pointer=comp_pointer)
             else
                 error_msg = 'derived type component declaration did not expose a name'
@@ -1548,13 +1564,14 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 call add_derived_component(context, type_index, &
                     component%var_names(i), component%line, component%column, &
                     .false., 0_c_int64_t, 1, VALUE_DERIVED, error_msg, &
-                    elem_type_index, is_alloc_array=.true.)
+                    elem_type_index, is_alloc_array=.true., alloc_rank=1)
                 if (len_trim(error_msg) > 0) return
             end do
         else if (allocated(component%var_name)) then
             call add_derived_component(context, type_index, component%var_name, &
                 component%line, component%column, .false., 0_c_int64_t, 1, &
-                VALUE_DERIVED, error_msg, elem_type_index, is_alloc_array=.true.)
+                    VALUE_DERIVED, error_msg, elem_type_index, &
+                    is_alloc_array=.true., alloc_rank=1)
         else
             error_msg = 'derived type component declaration did not expose a name'
             return
@@ -1646,6 +1663,15 @@ subroutine collect_component_declaration(component_index, parent_line, &
             call set_empty(error_msg)
             return
         end if
+        if (component%is_allocatable .and. component%is_array) then
+            if (.not. component_alloc_array_rank_bounded(component)) then
+                call unsupported_feature_error('derived type component', &
+                    component%line, component%column, &
+                    'only rank-1 and rank-2 intrinsic allocatable components '// &
+                    'are supported', error_msg)
+                return
+            end if
+        end if
         ! Accept scalar integer (incl. interop kinds and c_ptr), real (f32/f64),
         ! logical, and fixed-length character components. Numeric/logical
         ! components occupy whole 4-byte slots (f64 spans two, the rest one); a
@@ -1655,6 +1681,17 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                   component%column, comp_kind, error_msg, &
                                   context)
         if (len_trim(error_msg) > 0) return
+        if (component%is_allocatable .and. component%is_array) then
+            select case (comp_kind)
+            case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+            case default
+                call unsupported_feature_error('allocatable array component', &
+                    component%line, component%column, &
+                    'only integer, real, and logical allocatable array '// &
+                    'components of rank 1 or 2 are supported', error_msg)
+                return
+            end select
+        end if
         select case (comp_kind)
         case (VALUE_I32, VALUE_I64, VALUE_C_PTR)
             ! Scalar and fixed-size array components are both supported.
@@ -1831,6 +1868,25 @@ subroutine collect_component_declaration(component_index, parent_line, &
         is_rank_one = size(component%dimension_indices) == 1
     end function component_alloc_array_rank_one
 
+    integer function component_alloc_array_rank(component) result(rank)
+        ! Declared rank of an allocatable array component. Zero means that the
+        ! declaration is not an allocatable array or uses an unsupported rank.
+        type(declaration_node), intent(in) :: component
+
+        rank = 0
+        if (.not. component%is_allocatable .or. .not. component%is_array) return
+        if (.not. allocated(component%dimension_indices)) return
+        if (size(component%dimension_indices) < 1 .or. &
+            size(component%dimension_indices) > 2) return
+        rank = size(component%dimension_indices)
+    end function component_alloc_array_rank
+
+    logical function component_alloc_array_rank_bounded(component) result(is_bounded)
+        type(declaration_node), intent(in) :: component
+
+        is_bounded = component_alloc_array_rank(component) >= 1
+    end function component_alloc_array_rank_bounded
+
     subroutine component_array_count(component, context, array_size, error_msg)
         ! Compile-time element count of an array component (literal or
         ! parameter bound). Only a default lower bound of 1 is assumed.
@@ -1856,7 +1912,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                      has_default, default_value, array_size, &
                                      value_kind, error_msg, comp_type_index, &
                                      is_allocatable, comp_char_length, &
-                                     is_alloc_array, comp_dim1, is_pointer)
+                                     is_alloc_array, alloc_rank, comp_dim1, &
+                                     is_pointer)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
         character(len=*), intent(in) :: name
@@ -1873,6 +1930,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
         logical, intent(in), optional :: is_allocatable
         ! True for a rank-1 allocatable array component (inline descriptor).
         logical, intent(in), optional :: is_alloc_array
+        integer, intent(in), optional :: alloc_rank
         ! True for a scalar data-pointer component (inline target address).
         logical, intent(in), optional :: is_pointer
         ! Declared length of a VALUE_CHARACTER component; 0 (or absent) for
@@ -1916,6 +1974,10 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (present(is_alloc_array)) &
             context%derived_types(type_index)%component_is_alloc_array( &
                 component_index) = is_alloc_array
+        context%derived_types(type_index)%component_alloc_rank(component_index) = 0
+        if (present(alloc_rank)) &
+            context%derived_types(type_index)%component_alloc_rank(component_index) = &
+                alloc_rank
         context%derived_types(type_index)%component_is_pointer(component_index) = &
             .false.
         if (present(is_pointer)) &
@@ -1959,6 +2021,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 deallocate(context%derived_types(type_index)%component_is_allocatable)
             if (allocated(context%derived_types(type_index)%component_is_alloc_array)) &
                 deallocate(context%derived_types(type_index)%component_is_alloc_array)
+            if (allocated(context%derived_types(type_index)%component_alloc_rank)) &
+                deallocate(context%derived_types(type_index)%component_alloc_rank)
             if (allocated(context%derived_types(type_index)%component_is_pointer)) &
                 deallocate(context%derived_types(type_index)%component_is_pointer)
             if (allocated(context%derived_types(type_index)%component_char_length)) &
@@ -1973,6 +2037,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             allocate(context%derived_types(type_index)%component_type_index(8))
             allocate(context%derived_types(type_index)%component_is_allocatable(8))
             allocate(context%derived_types(type_index)%component_is_alloc_array(8))
+            allocate(context%derived_types(type_index)%component_alloc_rank(8))
             allocate(context%derived_types(type_index)%component_is_pointer(8))
             allocate(context%derived_types(type_index)%component_char_length(8))
             allocate(context%derived_types(type_index)%component_dim1(8))
@@ -1983,6 +2048,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             context%derived_types(type_index)%component_type_index = 0
             context%derived_types(type_index)%component_is_allocatable = .false.
             context%derived_types(type_index)%component_is_alloc_array = .false.
+            context%derived_types(type_index)%component_alloc_rank = 0
             context%derived_types(type_index)%component_is_pointer = .false.
             context%derived_types(type_index)%component_char_length = 0
             context%derived_types(type_index)%component_dim1 = 0
@@ -2004,6 +2070,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             integer, allocatable :: old_ti(:)
             logical, allocatable :: old_ia(:)
             logical, allocatable :: old_iaa(:)
+            integer, allocatable :: old_ar(:)
             logical, allocatable :: old_ip(:)
             integer, allocatable :: old_cl(:)
             integer, allocatable :: old_d1(:)
@@ -2015,6 +2082,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 old_ti = dt%component_type_index
                 old_ia = dt%component_is_allocatable
                 old_iaa = dt%component_is_alloc_array
+                old_ar = dt%component_alloc_rank
                 old_ip = dt%component_is_pointer
                 old_cl = dt%component_char_length
                 old_d1 = dt%component_dim1
@@ -2025,6 +2093,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 deallocate(dt%component_type_index)
                 deallocate(dt%component_is_allocatable)
                 deallocate(dt%component_is_alloc_array)
+                deallocate(dt%component_alloc_rank)
                 deallocate(dt%component_is_pointer)
                 deallocate(dt%component_char_length)
                 deallocate(dt%component_dim1)
@@ -2035,6 +2104,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 allocate(dt%component_type_index(new_size))
                 allocate(dt%component_is_allocatable(new_size))
                 allocate(dt%component_is_alloc_array(new_size))
+                allocate(dt%component_alloc_rank(new_size))
                 allocate(dt%component_is_pointer(new_size))
                 allocate(dt%component_char_length(new_size))
                 allocate(dt%component_dim1(new_size))
@@ -2045,6 +2115,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 dt%component_type_index = 0
                 dt%component_is_allocatable = .false.
                 dt%component_is_alloc_array = .false.
+                dt%component_alloc_rank = 0
                 dt%component_is_pointer = .false.
                 dt%component_char_length = 0
                 dt%component_dim1 = 0
@@ -2055,6 +2126,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 dt%component_type_index(1:old_size) = old_ti
                 dt%component_is_allocatable(1:old_size) = old_ia
                 dt%component_is_alloc_array(1:old_size) = old_iaa
+                dt%component_alloc_rank(1:old_size) = old_ar
                 dt%component_is_pointer(1:old_size) = old_ip
                 dt%component_char_length(1:old_size) = old_cl
                 dt%component_dim1(1:old_size) = old_d1

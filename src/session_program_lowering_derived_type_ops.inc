@@ -35,8 +35,9 @@
     end subroutine component_default_words
 
     integer function component_slot_width(context, type_index, comp_index)
-        ! i32 slots one element of a component occupies: an allocatable component
-        ! holds an 8-byte data pointer (two slots); f64 spans two 4-byte slots;
+        ! i32 slots one element of a component occupies: an allocatable array
+        ! descriptor holds an 8-byte data pointer plus one 8-byte extent per
+        ! dimension; f64 spans two 4-byte slots;
         ! every other supported scalar kind fits in one. A fixed character array
         ! stores one declared character value per element, so its width is the
         ! packed byte-storage span rather than one scalar slot.
@@ -46,7 +47,8 @@
 
         component_slot_width = 1
         if (component_is_alloc_array(context, type_index, comp_index)) then
-            component_slot_width = 4
+            component_slot_width = 2 + 2 * component_alloc_rank_at(context, &
+                type_index, comp_index)
             return
         end if
         ! A deferred-length allocatable character component carries the
@@ -99,7 +101,7 @@
     end function nested_element_count
 
     logical function component_is_alloc_array(context, type_index, comp_index)
-        ! True for a rank-1 allocatable array component (inline descriptor).
+        ! True for a bounded-rank allocatable array component (inline descriptor).
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         integer, intent(in) :: comp_index
@@ -110,6 +112,21 @@
         component_is_alloc_array = &
             context%derived_types(type_index)%component_is_alloc_array(comp_index)
     end function component_is_alloc_array
+
+    integer function component_alloc_rank_at(context, type_index, comp_index) &
+            result(rank)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index, comp_index
+
+        rank = 0
+        if (type_index <= 0 .or. type_index > context%derived_type_count) return
+        if (.not. allocated(context%derived_types(type_index)% &
+                            component_alloc_rank)) return
+        if (comp_index < 1 .or. comp_index > size(context%derived_types(type_index)% &
+                                                  component_alloc_rank)) return
+        rank = context%derived_types(type_index)%component_alloc_rank(comp_index)
+        if (rank < 1 .or. rank > 2) rank = 0
+    end function component_alloc_rank_at
 
     logical function component_is_allocatable(context, type_index, comp_index)
         ! True for a scalar allocatable component (descriptor-in-struct pointer).
@@ -275,12 +292,14 @@
             nested = context%derived_types(type_index)%component_type_index(c)
             if (component_is_alloc_array(context, type_index, c)) then
                 ! Intrinsic and derived allocatable array components both hold an
-                ! inline 16-byte (four-slot) descriptor; null it so the fresh
-                ! instance reads as unallocated. A derived-element array carries a
+                ! inline descriptor; null it so the fresh instance reads as
+                ! unallocated. A derived-element array carries a
                 ! nonzero component_type_index, so this check precedes the nested
                 ! recursion below.
                 call null_allocatable_component_slots(context, symbol_index, &
-                                                      outer_slots, abs_slot, 4, &
+                                                      outer_slots, abs_slot, &
+                                                      component_slot_width(context, &
+                                                          type_index, c), &
                                                       error_msg)
                 if (len_trim(error_msg) > 0) return
                 cycle
@@ -1306,6 +1325,10 @@
                                    type_index, component_index, comp_name, error_msg)
         if (len_trim(error_msg) > 0) return
         if (component_is_alloc_array(context, type_index, component_index)) then
+            if (component_alloc_rank_at(context, type_index, component_index) /= 1) then
+                error_msg = 'single-index access does not match rank-2 component'
+                return
+            end if
             if (present(comp_kind)) &
                 comp_kind = component_kind(context, type_index, component_index)
             if (component_kind(context, type_index, component_index) == &
@@ -1410,18 +1433,74 @@
         call set_empty(error_msg)
     end subroutine alloc_array_component_element_address
 
+    subroutine alloc_array_component_element_address_2d(arena, access_index, &
+            sub_index1, sub_index2, context, comp_kind, addr, error_msg)
+        ! Runtime element address of obj%comp(i,j) for a rank-2 intrinsic
+        ! allocatable component. The descriptor stores the leading extent at
+        ! byte 8; indices are one-based and linearise in column-major order.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index, sub_index1, sub_index2
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: comp_kind
+        type(lr_operand_desc_t), intent(out) :: addr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: desc_addr, data_ptr
+        type(lr_operand_desc_t) :: idx1, idx2, zero1, zero2
+        type(lr_operand_desc_t) :: idx1_i64, idx2_i64, extent1
+        type(lr_operand_desc_t) :: column_offset, linear_index, byte_offset
+
+        call alloc_array_component_descriptor(arena, access_index, context, &
+                                              desc_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_load(context%session, desc_addr, data_ptr, error_msg)) &
+            return
+        call lower_i32_expression(arena, sub_index1, context, idx1, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_i32_expression(arena, sub_index2, context, idx2, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, idx1, &
+                i32_immediate(context%session, 1_c_int64_t), zero1, error_msg)) &
+            return
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, idx2, &
+                i32_immediate(context%session, 1_c_int64_t), zero2, error_msg)) &
+            return
+        if (.not. emit_liric_i32_to_i64(context%session, zero1, idx1_i64, &
+                error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, zero2, idx2_i64, &
+                error_msg)) return
+        if (.not. emit_i64_load_at(context%session, desc_addr, 8_c_int64_t, &
+                extent1, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, idx2_i64, extent1, &
+                column_offset, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, idx1_i64, &
+                column_offset, linear_index, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, linear_index, &
+                i64_immediate(context%session, &
+                    int(allocatable_elem_size(comp_kind), c_int64_t)), &
+                byte_offset, error_msg)) return
+        if (.not. emit_ptr_offset_dyn(context%session, data_ptr, byte_offset, &
+                addr, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine alloc_array_component_element_address_2d
+
     subroutine lower_alloc_array_component_size(arena, arg_index, context, value, &
-                                                handled, error_msg)
-        ! size(obj%comp) for a rank-1 allocatable array component: load the i64
-        ! element extent from descriptor byte 8 and narrow to i32. Leaves handled
-        ! .false. for any other argument.
+                                                handled, error_msg, dim_index)
+        ! size(obj%comp[,dim]) for a rank-1/rank-2 intrinsic allocatable array
+        ! component. The descriptor stores extents at byte 8, 16, ...; without
+        ! DIM the extents are multiplied. Leaves handled .false. for any other
+        ! argument.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: arg_index
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: desc_addr, extent_i64
+        integer, intent(in), optional :: dim_index
+        type(lr_operand_desc_t) :: desc_addr, extent_i64, extent2_i64, total_i64
+        type(lr_operand_desc_t) :: product_i64
+        integer :: symbol_index, type_index, component_index, rank
+        integer(c_int64_t) :: dim_value
+        character(len=:), allocatable :: component_name
 
         handled = .false.
         call set_empty(error_msg)
@@ -1429,11 +1508,62 @@
         select type (arg => arena%entries(arg_index)%node)
         type is (component_access_node)
             if (.not. component_access_is_alloc_array(arena, arg, context)) return
+            call resolve_component_ref(arena, arg_index, context, symbol_index, &
+                                       type_index, component_index, component_name, &
+                                       error_msg)
+            if (len_trim(error_msg) > 0) return
+            rank = component_alloc_rank_at(context, type_index, component_index)
+            if (rank < 1 .or. rank > 2) return
             call alloc_array_component_descriptor(arena, arg_index, context, &
                                                   desc_addr, error_msg)
             if (len_trim(error_msg) > 0) return
+            if (present(dim_index)) then
+                if (dim_index > 0) then
+                    call eval_i32_constant(arena, dim_index, context, dim_value, &
+                                           error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (dim_value < 1_c_int64_t .or. &
+                            dim_value > int(rank, c_int64_t)) then
+                        error_msg = 'size dim out of range for allocatable component: '// &
+                            trim(component_name)
+                        return
+                    end if
+                else
+                    dim_value = 1_c_int64_t
+                end if
+            else
+                dim_value = 1_c_int64_t
+            end if
             if (.not. emit_i64_load_at(context%session, desc_addr, 8_c_int64_t, &
                     extent_i64, error_msg)) return
+            if (present(dim_index)) then
+                if (dim_index > 0) then
+                    if (dim_value == 2_c_int64_t) then
+                        if (.not. emit_i64_load_at(context%session, desc_addr, &
+                                16_c_int64_t, extent_i64, error_msg)) return
+                    end if
+                else
+                    total_i64 = extent_i64
+                    if (rank == 2) then
+                        if (.not. emit_i64_load_at(context%session, desc_addr, &
+                                16_c_int64_t, extent2_i64, error_msg)) return
+                        if (.not. emit_i64_binary(context%session, LR_OP_MUL, &
+                                total_i64, extent2_i64, product_i64, error_msg)) return
+                        total_i64 = product_i64
+                    end if
+                    extent_i64 = total_i64
+                end if
+            else
+                total_i64 = extent_i64
+                if (rank == 2) then
+                    if (.not. emit_i64_load_at(context%session, desc_addr, &
+                            16_c_int64_t, extent2_i64, error_msg)) return
+                    if (.not. emit_i64_binary(context%session, LR_OP_MUL, total_i64, &
+                            extent2_i64, product_i64, error_msg)) return
+                    total_i64 = product_i64
+                end if
+                extent_i64 = total_i64
+            end if
             if (.not. emit_liric_i64_to_i32(context%session, extent_i64, value, &
                     error_msg)) return
             handled = .true.
@@ -1790,17 +1920,45 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value, addr
-        integer :: comp_kind
+        integer :: comp_kind, base_type, comp_index
 
         if (.not. allocated(target%arg_indices) .or. &
-            size(target%arg_indices) /= 1) then
+            (size(target%arg_indices) /= 1 .and. &
+             size(target%arg_indices) /= 2)) then
             call unsupported_feature_error('derived component element', &
-                node%line, node%column, 'only single-index array component '// &
+                node%line, node%column, 'only rank-1 and rank-2 array component '// &
                 'access is supported', error_msg)
             return
         end if
-        call derived_component_element_address(arena, target%base_expr_index, &
-            target%arg_indices(1), context, addr, error_msg, comp_kind)
+        if (size(target%arg_indices) == 2) then
+            select type (base => arena%entries(target%base_expr_index)%node)
+            type is (component_access_node)
+                if (.not. component_access_is_alloc_array(arena, base, context)) then
+                    error_msg = 'rank-2 component element access requires a rank-2 '// &
+                                'intrinsic allocatable component'
+                    return
+                end if
+                base_type = component_base_type_index(arena, base%base_expr_index, &
+                                                      context)
+                comp_index = 0
+                if (base_type > 0) comp_index = find_derived_component(context, &
+                    base_type, base%component_name)
+                if (component_alloc_rank_at(context, base_type, comp_index) /= 2) then
+                    error_msg = 'rank-2 subscript does not match component rank'
+                    return
+                end if
+                comp_kind = derived_component_access_kind(arena, base, context)
+                call alloc_array_component_element_address_2d(arena, &
+                    target%base_expr_index, target%arg_indices(1), &
+                    target%arg_indices(2), context, comp_kind, addr, error_msg)
+            class default
+                error_msg = 'rank-2 component element access requires obj%component'
+                return
+            end select
+        else
+            call derived_component_element_address(arena, target%base_expr_index, &
+                target%arg_indices(1), context, addr, error_msg, comp_kind)
+        end if
         if (len_trim(error_msg) > 0) return
         call lower_component_rhs_value(arena, node%value_index, comp_kind, &
                                        context, value, error_msg)
@@ -2394,17 +2552,44 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: addr
-        integer :: comp_kind
+        integer :: comp_kind, base_type, comp_index
 
         if (.not. allocated(node%arg_indices) .or. &
-            size(node%arg_indices) /= 1) then
+            (size(node%arg_indices) /= 1 .and. size(node%arg_indices) /= 2)) then
             call unsupported_feature_error('derived component element', &
-                node%line, node%column, 'only single-index array component '// &
+                node%line, node%column, 'only rank-1 and rank-2 array component '// &
                 'access is supported', error_msg)
             return
         end if
-        call derived_component_element_address(arena, node%base_expr_index, &
-            node%arg_indices(1), context, addr, error_msg, comp_kind)
+        if (size(node%arg_indices) == 2) then
+            select type (base => arena%entries(node%base_expr_index)%node)
+            type is (component_access_node)
+                if (.not. component_access_is_alloc_array(arena, base, context)) then
+                    error_msg = 'rank-2 component element access requires a rank-2 '// &
+                                'intrinsic allocatable component'
+                    return
+                end if
+                base_type = component_base_type_index(arena, base%base_expr_index, &
+                                                      context)
+                comp_index = 0
+                if (base_type > 0) comp_index = find_derived_component(context, &
+                    base_type, base%component_name)
+                if (component_alloc_rank_at(context, base_type, comp_index) /= 2) then
+                    error_msg = 'rank-2 subscript does not match component rank'
+                    return
+                end if
+                comp_kind = derived_component_access_kind(arena, base, context)
+                call alloc_array_component_element_address_2d(arena, &
+                    node%base_expr_index, node%arg_indices(1), &
+                    node%arg_indices(2), context, comp_kind, addr, error_msg)
+            class default
+                error_msg = 'rank-2 component element access requires obj%component'
+                return
+            end select
+        else
+            call derived_component_element_address(arena, node%base_expr_index, &
+                node%arg_indices(1), context, addr, error_msg, comp_kind)
+        end if
         if (len_trim(error_msg) > 0) return
         call emit_typed_component_load(context, comp_kind, addr, value, error_msg)
     end subroutine lower_derived_component_element_load
@@ -2943,31 +3128,33 @@
 
     subroutine lower_allocate_array_component(arena, target_index, context, &
                                               handled, error_msg)
-        ! allocate(obj%comp(n)) for a rank-1 allocatable array component: malloc
-        ! n * elem_size bytes, store the data pointer at descriptor byte 0 and the
-        ! i64 element extent at byte 8. Leaves handled .false. for any other
-        ! target so the caller keeps its own paths.
+        ! allocate(obj%comp(n)) or allocate(obj%comp(m,n)) for a bounded-rank
+        ! allocatable array component: malloc the runtime-sized data block and
+        ! store one i64 extent per dimension after the data pointer. Leaves
+        ! handled .false. for any other target so the caller keeps its own paths.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: target_index
         type(lowering_context_t), intent(inout) :: context
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: desc_addr, data_ptr, n_i32, n_i64, bytes_i64
-        type(lr_operand_desc_t) :: lower_i32, upper_i32, difference_i32
-        integer :: comp_kind, base_type, comp_index, inner_bytes
-        integer :: component_access_index, shape_index
+        type(lr_operand_desc_t) :: n2_i32, n2_i64, total_i64
+        integer :: comp_kind, base_type, comp_index, inner_bytes, comp_rank
+        integer :: component_access_index, shape_index, shape_index2
 
         handled = .false.
         call set_empty(error_msg)
         if (.not. node_exists(arena, target_index)) return
         inner_bytes = 0
+        shape_index2 = 0
         select type (target => arena%entries(target_index)%node)
         type is (call_or_subscript_node)
             if (target%base_expr_index <= 0) return
             if (.not. allocated(target%arg_indices)) return
-            if (size(target%arg_indices) /= 1) return
+            if (size(target%arg_indices) < 1 .or. size(target%arg_indices) > 2) return
             component_access_index = target%base_expr_index
             shape_index = target%arg_indices(1)
+            if (size(target%arg_indices) == 2) shape_index2 = target%arg_indices(2)
         type is (array_slice_node)
             if (target%array_index <= 0 .or. target%num_dimensions /= 1) return
             component_access_index = target%array_index
@@ -2992,8 +3179,26 @@
                 if (base_type > 0) then
                     comp_index = find_derived_component(context, base_type, &
                                                         base%component_name)
-                    if (comp_index > 0) inner_bytes = &
-                        alloc_derived_inner_bytes(context, base_type, comp_index)
+                    if (comp_index > 0) then
+                        comp_rank = component_alloc_rank_at(context, base_type, &
+                                                            comp_index)
+                        inner_bytes = alloc_derived_inner_bytes(context, base_type, &
+                                                                comp_index)
+                    else
+                        comp_rank = 0
+                    end if
+                else
+                    comp_rank = 0
+                end if
+                if (comp_rank < 1 .or. comp_rank > 2) then
+                    error_msg = 'allocatable array component has unsupported rank'
+                    return
+                end if
+                if ((comp_rank == 1 .and. shape_index2 > 0) .or. &
+                    (comp_rank == 2 .and. shape_index2 <= 0)) then
+                    error_msg = 'allocate shape rank does not match allocatable '// &
+                                'component rank'
+                    return
                 end if
             class default
                 return
@@ -3002,54 +3207,32 @@
         call alloc_array_component_descriptor(arena, component_access_index, &
                                               context, desc_addr, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. node_exists(arena, shape_index)) return
-        select type (shape => arena%entries(shape_index)%node)
-        type is (range_expression_node)
-            lower_i32 = i32_immediate(context%session, 1_c_int64_t)
-            if (shape%start_index > 0) then
-                call lower_i32_expression(arena, shape%start_index, context, &
-                                          lower_i32, error_msg)
-                if (len_trim(error_msg) > 0) return
-            end if
-            if (shape%end_index <= 0) return
-            call lower_i32_expression(arena, shape%end_index, context, upper_i32, &
-                                      error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_i32, &
-                    lower_i32, difference_i32, error_msg)) return
-            if (.not. emit_i32_binary(context%session, LR_OP_ADD, difference_i32, &
-                    i32_immediate(context%session, 1_c_int64_t), n_i32, &
-                    error_msg)) return
-        type is (array_bounds_node)
-            lower_i32 = i32_immediate(context%session, 1_c_int64_t)
-            if (shape%lower_bound_index > 0) then
-                call lower_i32_expression(arena, shape%lower_bound_index, context, &
-                                          lower_i32, error_msg)
-                if (len_trim(error_msg) > 0) return
-            end if
-            if (shape%upper_bound_index <= 0) return
-            call lower_i32_expression(arena, shape%upper_bound_index, context, &
-                                      upper_i32, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_i32, &
-                    lower_i32, difference_i32, error_msg)) return
-            if (.not. emit_i32_binary(context%session, LR_OP_ADD, difference_i32, &
-                    i32_immediate(context%session, 1_c_int64_t), n_i32, &
-                    error_msg)) return
-        class default
-            call lower_i32_expression(arena, shape_index, context, n_i32, error_msg)
-            if (len_trim(error_msg) > 0) return
-        end select
+        call lower_alloc_component_shape_extent(arena, shape_index, context, n_i32, &
+                                                error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_i32_to_i64(context%session, n_i32, n_i64, &
                 error_msg)) return
+        n2_i32 = i32_immediate(context%session, 1_c_int64_t)
+        n2_i64 = i64_immediate(context%session, 1_c_int64_t)
+        if (comp_rank == 2) then
+            call lower_alloc_component_shape_extent(arena, shape_index2, context, &
+                                                    n2_i32, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_i64(context%session, n2_i32, n2_i64, &
+                    error_msg)) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, n_i64, n2_i64, &
+                    total_i64, error_msg)) return
+        else
+            total_i64 = n_i64
+        end if
         if (inner_bytes > 0) then
             ! Allocatable array of a derived element type: zero-initialise so
             ! every element's inline component descriptors start unallocated.
-            if (.not. emit_calloc(context%session, n_i64, &
+            if (.not. emit_calloc(context%session, total_i64, &
                     i64_immediate(context%session, &
                         int(inner_bytes, c_int64_t)), data_ptr, error_msg)) return
         else
-            if (.not. emit_i64_binary(context%session, LR_OP_MUL, n_i64, &
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, total_i64, &
                     i64_immediate(context%session, &
                         allocatable_elem_size(comp_kind)), bytes_i64, &
                     error_msg)) return
@@ -3060,8 +3243,73 @@
                                  error_msg)) return
         if (.not. emit_i64_store_at(context%session, n_i64, desc_addr, &
                 8_c_int64_t, error_msg)) return
+        if (comp_rank == 2) then
+            if (.not. emit_i64_store_at(context%session, n2_i64, desc_addr, &
+                    16_c_int64_t, error_msg)) return
+        end if
         handled = .true.
     end subroutine lower_allocate_array_component
+
+    subroutine lower_alloc_component_shape_extent(arena, shape_index, context, &
+                                                   extent, error_msg)
+        ! Lower one allocate shape item. Explicit scalar extents and the
+        ! existing lower:upper forms are accepted; the result is the number of
+        ! elements in that dimension.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: shape_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: extent
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lower, upper, difference
+
+        if (.not. node_exists(arena, shape_index)) then
+            error_msg = 'allocatable component shape is not an AST node'
+            return
+        end if
+        select type (shape => arena%entries(shape_index)%node)
+        type is (range_expression_node)
+            lower = i32_immediate(context%session, 1_c_int64_t)
+            if (shape%start_index > 0) then
+                call lower_i32_expression(arena, shape%start_index, context, &
+                                          lower, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            if (shape%end_index <= 0) then
+                error_msg = 'allocatable component shape has no upper bound'
+                return
+            end if
+            call lower_i32_expression(arena, shape%end_index, context, upper, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper, lower, &
+                    difference, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, difference, &
+                    i32_immediate(context%session, 1_c_int64_t), extent, &
+                    error_msg)) return
+        type is (array_bounds_node)
+            lower = i32_immediate(context%session, 1_c_int64_t)
+            if (shape%lower_bound_index > 0) then
+                call lower_i32_expression(arena, shape%lower_bound_index, context, &
+                                          lower, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            if (shape%upper_bound_index <= 0) then
+                error_msg = 'allocatable component shape has no upper bound'
+                return
+            end if
+            call lower_i32_expression(arena, shape%upper_bound_index, context, &
+                                      upper, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper, lower, &
+                    difference, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, difference, &
+                    i32_immediate(context%session, 1_c_int64_t), extent, &
+                    error_msg)) return
+        class default
+            call lower_i32_expression(arena, shape_index, context, extent, &
+                                      error_msg)
+        end select
+    end subroutine lower_alloc_component_shape_extent
 
     subroutine lower_alloc_array_component_assignment(arena, node, target, &
                                                       context, error_msg)
@@ -3079,6 +3327,21 @@
         type(lr_operand_desc_t) :: desc_addr, data_ptr, elem_val
         logical :: from_ctor
 
+        block
+            integer :: base_type, comp_index
+            base_type = component_base_type_index(arena, target%base_expr_index, &
+                                                   context)
+            comp_index = 0
+            if (base_type > 0) comp_index = find_derived_component(context, &
+                base_type, target%component_name)
+            if (component_alloc_rank_at(context, base_type, comp_index) /= 1) then
+                call unsupported_feature_error('allocatable array component '// &
+                    'assignment', target%line, target%column, &
+                    'whole-component assignment supports rank-1 components only', &
+                    error_msg)
+                return
+            end if
+        end block
         comp_kind = derived_component_access_kind(arena, target, context)
         if (comp_kind == VALUE_DERIVED) then
             call lower_alloc_derived_array_component_assignment(arena, node, target, &

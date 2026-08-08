@@ -196,6 +196,10 @@ changing descriptor bytes or hidden arguments;
 `test_session_array_shape_module_compiler` compares the emitted rank-2 shape
 and element observations with gfortran.
 
-Allocatable **components** of a derived type keep their own inline
-`{data, extent}` record for now; that representation is not part of this
-contract yet. Coarray codimensions are outside this descriptor.
+Allocatable **components** of a derived type keep an inline component-owned
+descriptor `{data, extent1[, extent2]}` rather than the canonical standalone
+descriptor. Intrinsic integer, real, and logical rank-one/rank-two components
+use it for allocation, `allocated`, `size`, element access, and deallocation;
+whole-component assignment, rank-two aliases/actual arguments, unsupported
+kinds, and higher ranks remain outside this contract. Coarray codimensions are
+outside this descriptor.

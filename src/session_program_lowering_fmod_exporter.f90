@@ -1416,6 +1416,8 @@ contains
                 comp%char_length = context%derived_types(type_index)% &
                                    component_char_length(k)
                 comp%dim1 = context%derived_types(type_index)%component_dim1(k)
+                comp%alloc_rank = context%derived_types(type_index)% &
+                                  component_alloc_rank(k)
                 comp%is_allocatable = context%derived_types(type_index)% &
                                       component_is_allocatable(k)
                 comp%is_pointer = context%derived_types(type_index)% &

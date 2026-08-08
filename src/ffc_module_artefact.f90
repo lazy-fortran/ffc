@@ -23,9 +23,11 @@ module ffc_module_artefact
     ! The .fmod schema this ffc writes and the newest schema it can read.
     ! Schema 10 remains readable because its records are structurally
     ! compatible; schema 11 adds the optional specific-target list for generic
-    ! type-bound bindings. Writers always emit the newest schema.
-    integer, parameter, public :: FMOD_SCHEMA_VERSION = 11
+    ! type-bound bindings and schema 12 records the rank of allocatable array
+    ! components. Writers always emit the newest schema.
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 12
     integer, parameter :: FMOD_LEGACY_SCHEMA_VERSION = 10
+    integer, parameter :: FMOD_PREVIOUS_SCHEMA_VERSION = 11
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -57,6 +59,8 @@ module ffc_module_artefact
         integer :: char_length = 0
         ! First-dimension extent of a rank-2 fixed-size component; 0 otherwise.
         integer :: dim1 = 0
+        ! Declared rank of an allocatable array component; 0 otherwise.
+        integer :: alloc_rank = 0
         logical :: is_allocatable = .false.
         logical :: is_pointer = .false.
         logical :: is_alloc_array = .false.
@@ -500,10 +504,12 @@ contains
         ! a missing field means it predates the versioned schema, while schema
         ! 10 is explicitly retained for backwards-compatible reads (#397).
         if (schema /= FMOD_SCHEMA_VERSION .and. &
+            schema /= FMOD_PREVIOUS_SCHEMA_VERSION .and. &
             schema /= FMOD_LEGACY_SCHEMA_VERSION) then
             error_msg = 'unsupported .fmod schema version'//schema_text(schema)// &
                 ' in '//trim(path)//' (this ffc reads schema versions '// &
                 int_text(FMOD_LEGACY_SCHEMA_VERSION)//' and '// &
+                int_text(FMOD_PREVIOUS_SCHEMA_VERSION)//' and '// &
                 int_text(FMOD_SCHEMA_VERSION)//'): recompile the module'
         end if
     end subroutine read_fmod
@@ -572,6 +578,7 @@ contains
             ', slot_offset = '//int_text(comp%slot_offset)// &
             ', char_length = '//int_text(comp%char_length)// &
             ', dim1 = '//int_text(comp%dim1)// &
+            ', alloc_rank = '//int_text(comp%alloc_rank)// &
             ', allocatable = '//bool_text(comp%is_allocatable)// &
             ', pointer = '//bool_text(comp%is_pointer)// &
             ', alloc_array = '//bool_text(comp%is_alloc_array)//' },'
@@ -670,6 +677,9 @@ contains
         comp%is_allocatable = integer_field(line, 'allocatable', 0) /= 0
         comp%is_pointer = integer_field(line, 'pointer', 0) /= 0
         comp%is_alloc_array = integer_field(line, 'alloc_array', 0) /= 0
+        comp%alloc_rank = integer_field(line, 'alloc_rank', 0)
+        if (comp%is_alloc_array .and. comp%alloc_rank == 0) &
+            comp%alloc_rank = 1
     end subroutine parse_component_line
 
     function quoted_field(line, key) result(out)

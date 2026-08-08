@@ -507,6 +507,8 @@
                     is_allocatable=comp%is_allocatable, &
                     comp_char_length=comp%char_length, &
                     is_alloc_array=comp%is_alloc_array, &
+                    alloc_rank=merge(max(1, comp%alloc_rank), 0, &
+                                     comp%is_alloc_array), &
                     is_pointer=comp%is_pointer)
                 if (len_trim(error_msg) > 0) then
                     context%derived_type_count = type_index_new - 1

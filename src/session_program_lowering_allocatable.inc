@@ -3268,6 +3268,22 @@
                     if (.not. emit_i64_store_at(context%session, &
                             i64_immediate(context%session, 0_c_int64_t), &
                             slot_address, 8_c_int64_t, error_msg)) return
+                    if (is_alloc_array) then
+                        block
+                            integer :: base_type, comp_index
+                            base_type = component_base_type_index(arena, &
+                                target%base_expr_index, context)
+                            comp_index = 0
+                            if (base_type > 0) comp_index = find_derived_component( &
+                                context, base_type, target%component_name)
+                            if (component_alloc_rank_at(context, base_type, &
+                                    comp_index) == 2) then
+                                if (.not. emit_i64_store_at(context%session, &
+                                        i64_immediate(context%session, 0_c_int64_t), &
+                                        slot_address, 16_c_int64_t, error_msg)) return
+                            end if
+                        end block
+                    end if
                 end if
                 handled = .true.
             end block

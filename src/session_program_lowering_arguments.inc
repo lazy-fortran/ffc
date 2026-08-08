@@ -157,6 +157,12 @@
                 if (len_trim(error_msg) > 0) return
                 cycle
             end if
+            if (actual_is_rank2_allocatable_component(arena, arg_indices(i), &
+                                                      context)) then
+                error_msg = 'passing a rank-2 allocatable component as an actual '// &
+                            'argument is not supported by the direct LIRIC session'
+                return
+            end if
             call check_scalar_actual_compatibility(arena, arg_indices(i), context, &
                 callee_name, call_arg_param_pos(i, sp), error_msg)
             if (len_trim(error_msg) > 0) return
@@ -334,6 +340,28 @@
                 component_access_is_alloc_array(arena, node, context)
         end select
     end function actual_is_allocatable_component
+
+    logical function actual_is_rank2_allocatable_component(arena, node_index, &
+                                                           context)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: base_type, component_index
+
+        actual_is_rank2_allocatable_component = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (component_access_node)
+            if (.not. component_access_is_alloc_array(arena, node, context)) return
+            base_type = component_base_type_index(arena, node%base_expr_index, &
+                                                  context)
+            component_index = 0
+            if (base_type > 0) component_index = find_derived_component(context, &
+                base_type, node%component_name)
+            actual_is_rank2_allocatable_component = &
+                component_alloc_rank_at(context, base_type, component_index) == 2
+        end select
+    end function actual_is_rank2_allocatable_component
 
     recursive logical function actual_is_array_expression(arena, node_index, context) &
             result(is_array)

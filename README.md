@@ -216,12 +216,15 @@ inline (data pointer plus i64 length) and starts unallocated; assignment
 allocates to the right-hand side length and deep-copies the bytes, reading,
 `len`, comparison, concatenation, and `print` follow the current length, a
 whole-derived copy (`y = x`) gives the destination its own buffer, and
-`deallocate(x%s)` frees the owned data once and clears the descriptor. A rank-1 allocatable array component of intrinsic numeric or logical
-type (`integer, allocatable :: v(:)`) holds an inline 16-byte descriptor (data
-pointer plus i64 element extent) that starts null; `allocate(x%v(n))` with a
-runtime extent, element read/write `x%v(i)`, `allocated(x%v)`, `size(x%v)`, and
-`deallocate(x%v)` manage it (whole-component assignment, whole-component reads,
-and passing the component as an actual argument stay unsupported). A rank-1
+`deallocate(x%s)` frees the owned data once and clears the descriptor. A rank-1 or rank-2 allocatable array component of intrinsic integer, real, or
+logical type (`integer, allocatable :: v(:,:)`) holds an inline descriptor
+(data pointer plus one i64 extent per dimension; 16 or 24 bytes) that starts
+null. `allocate(x%v(n))` and `allocate(x%v(m,n))` accept runtime extents;
+element read/write, `allocated(x%v)`, `size(x%v)` (including
+`size(x%v,dim)`), and `deallocate(x%v)` manage it. Rank-2 indexing is
+column-major and uses the stored leading extent. Whole-component assignment,
+whole-component reads, passing the component as an actual argument, aliases,
+unsupported kinds, and higher-rank components stay explicitly unsupported. A rank-1
 allocatable array of a derived element type (`type(inner), allocatable :: c(:)`)
 holds the same inline 16-byte descriptor; `allocate(x%c(n))` `calloc`s n
 zero-initialised inner instances (so each element's own allocatable component
