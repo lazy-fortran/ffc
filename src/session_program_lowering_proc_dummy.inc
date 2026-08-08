@@ -187,6 +187,44 @@
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_f64_proc_ptr_call
 
+    subroutine lower_f32_proc_ptr_call(arena, node, context, value, error_msg)
+        ! Indirect default-real function call through a procedure pointer.
+        ! Only a same-unit real(4) target reaches this path; unresolved and
+        ! other-kind procedure pointers remain explicit unsupported calls.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: callee_ptr
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+        integer :: idx
+        character(len=:), allocatable :: callee_name
+
+        idx = find_symbol_compat(context, node%name)
+        call resolve_proc_pointer_callee_name(arena, node%name, callee_name)
+        if (.not. is_contained_f32_function(context, callee_name)) then
+            error_msg = 'procedure pointer call result is unsupported or ambiguous: '// &
+                        trim(node%name)
+            return
+        end if
+        if (.not. emit_ptr_load(context%session, context%symbols(idx)%address, &
+                                callee_ptr, error_msg)) return
+        if (allocated(node%arg_indices)) then
+            call prepare_reference_args(arena, node%arg_indices, context, &
+                                        VALUE_F32, callee_name, args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            allocate (args(0))
+            allocate (copyback_indices(0))
+        end if
+        if (.not. emit_f32_indirect_call(context%session, callee_ptr, args, &
+                                         value, error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_f32_proc_ptr_call
+
     ! ---------------------------------------------------------------------
     ! Intrinsics passed as actual arguments.
     !

@@ -77,7 +77,7 @@ module liric_session_bindings
         emit_i32_call, emit_i64_call, emit_ptr_call, emit_void_call, &
         emit_c_i32_call, emit_c_i64_call, emit_c_f32_call, emit_c_f64_call, &
         emit_c_void_call, emit_c_aggregate_call, &
-        emit_i32_indirect_call, emit_f64_indirect_call, &
+        emit_i32_indirect_call, emit_f32_indirect_call, emit_f64_indirect_call, &
         emit_void_indirect_call
 
     interface
@@ -1398,6 +1398,51 @@ contains
         call set_empty(error_msg)
         emit_i32_indirect_call = .true.
     end function emit_i32_indirect_call
+
+    logical function emit_f32_indirect_call(session, callee_ptr, args, result, &
+            error_msg)
+        ! Indirect f32 call: callee_ptr is a loaded function pointer (ptr vreg).
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: callee_ptr
+        type(lr_operand_desc_t), intent(in) :: args(:)
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), target :: operands(9)
+        type(lr_inst_desc_t) :: inst
+        type(lr_error_t) :: error
+        integer(c_int32_t) :: vreg
+        integer :: i
+
+        emit_f32_indirect_call = .false.
+        if (.not. require_open_session(session, error_msg)) return
+        if (size(args) > 8) then
+            error_msg = 'indirect real(4) call has too many arguments'
+            return
+        end if
+        operands(1) = callee_ptr
+        do i = 1, size(args)
+            operands(i + 1) = args(i)
+        end do
+        inst%op = LR_OP_CALL
+        inst%typ = lr_type_f32_s(session%handle)
+        inst%dest = 0_c_int32_t
+        inst%operands = c_loc(operands)
+        inst%num_operands = int(size(args) + 1, c_int32_t)
+        inst%indices = c_null_ptr
+        inst%num_indices = 0_c_int32_t
+        inst%align = 0_c_int32_t
+        inst%icmp_pred = 0_c_int
+        inst%fcmp_pred = 0_c_int
+        inst%call_external_abi = c_false
+        inst%call_vararg = c_false
+        inst%call_fixed_args = 0_c_int32_t
+        call clear_liric_error(error)
+        vreg = lr_session_emit(session%handle, inst, error)
+        if (.not. status_ok(error%code, error, error_msg)) return
+        result = f32_vreg(session, vreg)
+        call set_empty(error_msg)
+        emit_f32_indirect_call = .true.
+    end function emit_f32_indirect_call
 
     logical function emit_f64_indirect_call(session, callee_ptr, args, result, &
             error_msg)

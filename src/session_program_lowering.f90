@@ -78,7 +78,7 @@ module session_program_lowering_impl
         emit_i32_call, emit_i64_call, emit_ptr_call, &
         emit_c_i32_call, emit_c_i64_call, emit_c_f32_call, emit_c_f64_call, &
         emit_c_void_call, emit_c_aggregate_call, &
-        emit_i32_indirect_call, &
+        emit_i32_indirect_call, emit_f32_indirect_call, &
         emit_f64_indirect_call, &
         emit_void_indirect_call, &
         liric_session_create, lr_session_config_t, &
@@ -528,6 +528,7 @@ module session_program_lowering_impl
     public :: begin_loop_exit_tracking, end_loop_exit_tracking
     public :: merge_loop_exit_values
     public :: is_contained_i32_function, is_proc_pointer_call
+    public :: resolve_proc_pointer_callee_name
     public :: is_statement_function_call, is_type_bound_method_call
     public :: lower_array_locate_intrinsic, lower_array_reduction_intrinsic
     public :: lower_array_size_intrinsic, lower_command_argument_count

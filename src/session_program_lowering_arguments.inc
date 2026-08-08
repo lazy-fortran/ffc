@@ -1839,7 +1839,7 @@ recursive integer function expression_value_kind(arena, node_index, context, &
         integer :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: call_arg_ranks(MAX_PROC_ARGS)
         integer :: external_index
-        character(len=:), allocatable :: id_name, id_err
+        character(len=:), allocatable :: id_name, id_err, callee_name
 
         value_kind = default_kind
         if (.not. node_exists(arena, node_index)) return
@@ -1905,6 +1905,12 @@ recursive integer function expression_value_kind(arena, node_index, context, &
                     value_kind = VALUE_F64
                 else if (is_contained_logical_function(context, node%name)) then
                     value_kind = VALUE_LOGICAL
+                else if (is_proc_pointer_call(context, node%name)) then
+                    call resolve_proc_pointer_callee_name(arena, node%name, &
+                                                         callee_name)
+                    if (is_contained_f32_function(context, callee_name)) then
+                        value_kind = VALUE_F32
+                    end if
                 else
                     external_index = external_procedure_index(context, node%name)
                     if (external_index > 0) then

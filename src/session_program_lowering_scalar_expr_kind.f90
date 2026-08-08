@@ -64,6 +64,7 @@ contains
         integer :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: call_arg_ranks(MAX_PROC_ARGS)
         integer :: external_index
+        character(len=:), allocatable :: callee_name
 
         vk = SCALAR_REAL_NONE
 
@@ -136,6 +137,18 @@ contains
         end if
         if (is_contained_f32_function(context, node%name)) then
             vk = VALUE_F32
+            return
+        end if
+
+        ! A typed scalar procedure pointer keeps the result kind of its
+        ! same-unit target.  Resolve only the default-real case here; other
+        ! procedure-pointer result kinds remain unsupported until their own
+        ! lowering path is proven safe.
+        if (is_proc_pointer_call(context, node%name)) then
+            call resolve_proc_pointer_callee_name(arena, node%name, callee_name)
+            if (is_contained_f32_function(context, callee_name)) then
+                vk = VALUE_F32
+            end if
             return
         end if
 

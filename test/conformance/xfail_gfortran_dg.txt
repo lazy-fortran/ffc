@@ -1606,7 +1606,6 @@ proc_ptr_19.f90 # owner=lazy-fortran/ffc#452; reason=lower scalar data-pointer a
 proc_ptr_20.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 proc_ptr_22.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 proc_ptr_23.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
-proc_ptr_25.f90 # owner=lazy-fortran/ffc#448; reason=lower same-unit scalar procedure calls
 proc_ptr_26.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 proc_ptr_27.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 proc_ptr_29.f90 # owner=lazy-fortran/ffc#328; reason=resolve same-unit USE export identity
