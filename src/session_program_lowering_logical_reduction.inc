@@ -605,6 +605,7 @@
         integer :: sym, left, right, line, column, opcode, source_vk
         logical :: array_real_call
         type(lr_operand_desc_t) :: lhs, rhs, re_value, im_value, promoted
+        type(lr_operand_desc_t) :: operand, zero, cond, true_val, false_val
         integer :: complex_vk
 
         call set_empty(error_msg)
@@ -711,6 +712,23 @@
             call get_binary_op_info(arena, idx, op, left, right, line, column, err)
             if (len_trim(err) > 0) then
                 error_msg = err
+                return
+            end if
+            if (trim(adjustl(lowercase_text(op))) == '.not.' .or. &
+                trim(adjustl(lowercase_text(op))) == 'not') then
+                ! Unary .NOT. is represented as a binary AST node with an
+                ! invalid left index.  Lower its real operand and materialize
+                ! the inverse as a normalized i32 logical value.
+                call lower_mask_expression_element(arena, right, compare_vk, &
+                    linear_index, context, operand, error_msg)
+                if (len_trim(error_msg) > 0) return
+                zero = i32_immediate(context%session, 0_c_int64_t)
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, &
+                        operand, zero, cond, error_msg)) return
+                true_val = i32_immediate(context%session, 0_c_int64_t)
+                false_val = i32_immediate(context%session, 1_c_int64_t)
+                call select_value(context, cond, true_val, false_val, value, &
+                                  error_msg)
                 return
             end if
             call lower_mask_expression_element(arena, left, compare_vk, linear_index, &

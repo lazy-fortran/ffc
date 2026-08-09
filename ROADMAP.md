@@ -248,6 +248,33 @@ oracle is part of the current test inventory. The similarly named branch
 `bc80407` is a stale duplicate based on the pre-merge head and must not be
 merged again: it conflicts because those changes are already in main.
 
+### Bounded GNU logical-not reduction slice (2026-08-09)
+
+The smallest remaining failure in `test_session_whole_array_not_compiler` was
+the valid array reduction `any(.not. a)`, where `a` is a fixed-size logical
+array. The rank-1 and rank-2 whole-array assignment cases in the same fixture
+already passed; before this fix the reduction stopped with
+`array mask expression is not supported`.
+
+The bounded lowering change handles the unary `.not.` AST form inside the
+elementwise reduction evaluator. It lowers the right operand at the current
+linear index, compares it with zero, and selects normalized false/true i32
+values. No array descriptor or calling convention changes are needed. The
+focused GNU reproduction and result are:
+
+~~~text
+LIBRARY_PATH=/mnt/storage/code/lazy-fortran/liric/build \
+FO_CACHE_DIR=/var/tmp/ert/ffc-logical-not-fix-cache \
+fo test test_session_whole_array_not_compiler
+~~~
+
+The independent API/compiler oracle is
+`test_session_logical_not_reduction_oracle_compiler`. It lowers the minimal
+`any(.not. a), any(a)` program through the FFC API, compiles the same source
+with gfortran, and diffs both outputs. The focused GNU run built 456/456
+units and passed both the regression and differential-oracle targets. This is
+focused GNU evidence only; aggregate FFC and NVHPC green are not claimed.
+
 PR #699 (bounded rank-1 deep-copy assignment) merged as `b0b7775`, and PR
 #700 (typed integer lowering extraction) merged as `cc91e32`. Their focused
 local behavioral gates are recorded below; the aggregate corpus remains

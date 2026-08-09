@@ -321,6 +321,11 @@ and a `do` loop bound by `size(a, d)`. `sum(a)`, `product(a)`, `maxval(a)`, and
 `minval(a)` use a genuine runtime loop over default integer, `real`, and
 `real(8)` elements. Scalar `any(a)` and `all(a)` over a logical mask use the
 same loop and normalise each element to a logical 0/1 before OR/AND reduction.
+A whole-array logical mask expression may also contain unary `.not.` (for
+example, `any(.not. a)`); lowering evaluates the selected element and
+materializes its inverse as the same normalized i32 logical value before the
+reduction. This is an expression-lowering rule only and does not add a
+descriptor field, hidden argument, or alternate calling convention.
 A rank-3 runtime-extent assumed-shape dummy is admitted for scalar
 `sum(a)`, `maxval(a)`, `minval(a)`, `count(a)`, `any(a)`, and `all(a)`; rank-4
 runtime-extent dummies admit the same scalar reductions, and the loop

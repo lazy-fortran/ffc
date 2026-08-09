@@ -152,6 +152,27 @@ checked with Valgrind by `expect_no_leaks`. Its focused run passed 1/1 with
 result from this GNU evidence; the known full-NVHPC timeout is not part of
 this slice.
 
+### GNU logical-not reduction check
+
+The smallest current GNU reproduction for the whole-array logical reduction
+boundary is `any(.not. a)` with a fixed-size logical array. The existing
+regression target also covers whole-array assignment and scalar broadcasts:
+
+~~~bash
+LIBRARY_PATH=/mnt/storage/code/lazy-fortran/liric/build \
+FO_CACHE_DIR=/var/tmp/ert/ffc-logical-not-fix-cache \
+fo test test_session_whole_array_not_compiler
+~~~
+
+Unary `.not.` is represented in the AST with only a right operand. The
+reduction lowering must evaluate that operand for each element and normalize
+the inverse to the i32 logical ABI (`0` false, nonzero true). The independent
+compiler/API oracle is
+`test_session_logical_not_reduction_oracle_compiler`; it compiles the same
+minimal program through FFC and gfortran and compares their executable
+outputs. The 2026-08-09 focused GNU run built 456/456 units and passed both
+targets. This does not establish aggregate or NVHPC green status.
+
 ### Attributing failures from parallel test runs
 
 Do not attribute a broad parallel `fo test` failure to the newest lowering
