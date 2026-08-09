@@ -97,6 +97,36 @@ gfortran differential check. A timeout while compiling the large
 `session_program_lowering` unit is a toolchain-duration observation, not a
 passing full-lane result.
 
+### GNU runtime-length character result check
+
+The smallest reproducer for the bounded runtime-character-result ownership
+slice is already present in
+test/test_session_character_function_result_compiler.f90: a contained make(k)
+returns character(len=k) and the caller assigns r = make(4). Before the fix,
+GNU main 3a6cc46 reproduced corrupted ffc output instead of gfortran's ZZZZ;
+the exact captured run is
+/var/tmp/ert/ffc-current-test_session_character_function_result_compiler.log.
+That log also contains Valgrind invalid reads from the same ownership error.
+
+The compiler path must recognize a contained character result as a descriptor
+transfer before the generic character-expression classifier. The focused
+behavioral oracle is test/test_session_runtime_character_result_compiler.f90:
+it asserts the returned length and bytes in the executable, explicitly
+deallocates the deferred result, and independently runs the executable under
+Valgrind. Verify it with a distinct cache:
+
+~~~bash
+LIBRARY_PATH=/mnt/storage/code/lazy-fortran/liric/build \
+FO_CACHE_DIR=/var/tmp/ert/ffc-runtime-char-focused-cache \
+fo test test_session_runtime_character_result_compiler
+~~~
+
+The 2026-08-09 GNU result was a complete 456/456-unit build and 1/1 focused
+test pass. The larger character-result test remains a useful aggregate
+diagnostic but still has unrelated runtime-length-expression,
+nested-concatenation, and print-temporary failures; do not turn those into
+expected passes or claim the full GNU aggregate green.
+
 ### Attributing failures from parallel test runs
 
 Do not attribute a broad parallel `fo test` failure to the newest lowering

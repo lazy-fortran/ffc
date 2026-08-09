@@ -487,6 +487,16 @@ length  : i64   current length in bytes, 0 when unallocated
   caller. Because a local never owns heap memory, no `free` is emitted at
   scope exit and an unallocated descriptor is never freed.
 
+For the current contained character-result path, the canonical
+CHARACTER_DESCRIPTOR_ABI record is passed as a hidden leading result argument.
+When a result uses heap storage, the callee marks that record as
+CHARACTER_STORAGE_OWNED and the caller adopts the record for a deferred
+destination. Statement cleanup must not release an adopted result; a temporary
+that is only printed, concatenated, or copied into a fixed-width destination
+remains statement-owned and is released after its last use. This transfer is
+covered by test_session_runtime_character_result_compiler, including an
+explicit deallocate and an independent Valgrind check.
+
 ## Derived-type info
 
 Each `type ... end type` definition emits a compile-time constant describing

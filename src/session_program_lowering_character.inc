@@ -552,13 +552,13 @@
             return
         end if
 
-       ! Check for deferred character function call result or trim() result
+       ! A contained character result is a transferred descriptor, not an
+       ! ordinary character expression temporary. Handle it before the broad
+       ! character-expression classifier below: that classifier also reports
+       ! contained calls so they can be used by print/len/concatenation, but
+       ! assignment to a deferred destination must adopt the returned storage
+       ! instead of rebinding to it and releasing it at statement end.
         if (context%symbols(symbol_index)%is_deferred_character) then
-            if (is_char_expr_call(arena, node%value_index, context)) then
-                call lower_deferred_trim_assignment(arena, node%value_index, &
-                    context, symbol_index, error_msg)
-                return
-            end if
             if (node_exists(arena, node%value_index)) then
                 select type (val => arena%entries(node%value_index)%node)
                 type is (call_or_subscript_node)
@@ -572,6 +572,11 @@
                         end if
                     end if
                 end select
+            end if
+            if (is_char_expr_call(arena, node%value_index, context)) then
+                call lower_deferred_trim_assignment(arena, node%value_index, &
+                    context, symbol_index, error_msg)
+                return
             end if
         end if
 

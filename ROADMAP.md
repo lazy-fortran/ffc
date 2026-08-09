@@ -142,6 +142,44 @@ FFC build reached 451/457 units without a diagnostic from this repair, but the
 host's 600-second wall clock expired while NVHPC compiled the large
 `session_program_lowering` unit; no aggregate NVHPC PASS is claimed.
 
+### Bounded GNU runtime-character-result slice (2026-08-09)
+
+The latest reproducible GNU aggregate evidence is
+/var/tmp/ert/ffc-31142048669-failed.log (failure names:
+/var/tmp/ert/ffc-31142048669-failed.log.names). It includes the broader
+test_session_character_function_result_compiler cluster, but the smallest
+existing fixture is its character(len=k) :: s contained function:
+r = make(4), followed by s = repeat("Z", k). On FFC main at 3a6cc46,
+
+~~~text
+LIBRARY_PATH=/mnt/storage/code/lazy-fortran/liric/build \
+FO_CACHE_DIR=/var/tmp/ert/ffc-current-focus-cache \
+fo test test_session_character_function_result_compiler
+~~~
+
+reproduced a GNU differential mismatch (ffc emitted corrupted bytes where
+gfortran emitted ZZZZ) and the same test's Valgrind oracle reported invalid
+reads. The cause was a lowering-order error: the broad is_char_expr_call
+classifier routed a contained character result through ordinary temporary
+rebinding before the descriptor-adoption path, so statement cleanup released
+the callee-owned heap block still referenced by the deferred caller. The
+bounded fix routes contained results to lower_deferred_char_result_call first.
+
+The independent focused oracle is test_session_runtime_character_result_compiler:
+its executable checks both LEN(r)==4 and r=="ZZZZ", deallocates r, and then runs
+an independent Valgrind no-invalid-read/no-leak check. After the fix, the fresh
+GNU check
+
+~~~text
+LIBRARY_PATH=/mnt/storage/code/lazy-fortran/liric/build \
+FO_CACHE_DIR=/var/tmp/ert/ffc-runtime-char-focused-cache \
+fo test test_session_runtime_character_result_compiler
+~~~
+
+builds 456/456 units and passes 1/1 test. The broader character-result test
+still reports separate LEN(name)+7, nested-concatenation, and print-temporary
+failures; those are not silently reclassified as fixed by this slice.
+
 ### Bounded runtime extrema slice (2026-08-09)
 
 The post-PRODUCT runtime-reduction tranche now lowers scalar `maxval` and

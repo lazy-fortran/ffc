@@ -38,6 +38,9 @@ program test_session_character_function_result_compiler
         '  character(len=:), allocatable :: r'//new_line('a')// &
         '  r = make(4)'//new_line('a')// &
         '  print *, r'//new_line('a')// &
+        '  if (len(r) /= 4) stop 11'//new_line('a')// &
+        '  if (r /= "ZZZZ") stop 12'//new_line('a')// &
+        '  deallocate(r)'//new_line('a')// &
         'contains'//new_line('a')// &
         '  function make(k) result(s)'//new_line('a')// &
         '    integer, intent(in) :: k'//new_line('a')// &
