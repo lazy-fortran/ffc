@@ -176,9 +176,49 @@ FO_CACHE_DIR=/var/tmp/ert/ffc-runtime-char-focused-cache \
 fo test test_session_runtime_character_result_compiler
 ~~~
 
-builds 456/456 units and passes 1/1 test. The broader character-result test
-still reports separate LEN(name)+7, nested-concatenation, and print-temporary
-failures; those are not silently reclassified as fixed by this slice.
+builds 456/456 units and passes 1/1 test. At that earlier checkpoint the
+broader character-result test still reported separate LEN(name)+7,
+nested-concatenation, and print-temporary failures. Those failures are the
+next bounded slice recorded below.
+
+### Bounded GNU character-result expression slice (2026-08-09)
+
+On current main d74a188, which includes the ownership fix above, the next
+exact GNU reproduction was:
+
+~~~text
+LIBRARY_PATH=/mnt/storage/code/lazy-fortran/liric/build \
+FO_CACHE_DIR=/var/tmp/ert/ffc-next-char-result-cache \
+fo test test_session_character_function_result_compiler
+~~~
+
+The build completed 456/456 units, then the compiler/oracle failed with
+`len_expr_of_dummy` (`ffc: Hello, A`; gfortran: `Hello, Ada`),
+`fixed_dest_truncates` (`ffc: Hello, B`; gfortran: `Hello, Bob`), and
+`nested_concat_result` (garbage bytes with `len=5`; gfortran: `abcde`). Its
+`expect_no_leaks` print-temporary case also reported Valgrind invalid reads
+and uninitialized bytes. The bounded cause was ordering: `is_char_expr_call`
+also recognizes `//` through `is_character_concat_actual`, so its generic
+deferred-character path ran before the explicit deferred concatenation path.
+
+The fix leaves contained-result transfer first, then dispatches deferred
+binary concatenation before the broad character-expression classifier. This
+keeps the destination sizing and ownership path selected by `//` without
+changing the already-passed runtime target. The aggregate now passes with:
+
+~~~text
+LIBRARY_PATH=/mnt/storage/code/lazy-fortran/liric/build \
+FO_CACHE_DIR=/var/tmp/ert/ffc-order-isolated-cache \
+fo test test_session_character_function_result_compiler
+~~~
+
+The independent API/compiler oracle is
+`test_session_runtime_length_expression_character_result_compiler`. Its
+emitted program checks `LEN(r)==10`, exact `Hello, Ada` bytes, and explicit
+deallocation; `expect_no_leaks` independently checks the process under
+Valgrind. With the cache `/var/tmp/ert/ffc-runtime-length-oracle-cache-2`,
+it completed 456/456 and passed 1/1. No full-NVHPC run is claimed; its known
+timeout remains outside this bounded GNU slice.
 
 ### Bounded runtime extrema slice (2026-08-09)
 

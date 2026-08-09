@@ -122,10 +122,35 @@ fo test test_session_runtime_character_result_compiler
 ~~~
 
 The 2026-08-09 GNU result was a complete 456/456-unit build and 1/1 focused
-test pass. The larger character-result test remains a useful aggregate
-diagnostic but still has unrelated runtime-length-expression,
-nested-concatenation, and print-temporary failures; do not turn those into
-expected passes or claim the full GNU aggregate green.
+test pass. At that checkpoint the larger character-result test still had
+runtime-length-expression, nested-concatenation, and print-temporary
+failures. The next exact reproduction on d74a188 was:
+
+~~~text
+LIBRARY_PATH=/mnt/storage/code/lazy-fortran/liric/build \
+FO_CACHE_DIR=/var/tmp/ert/ffc-next-char-result-cache \
+fo test test_session_character_function_result_compiler
+~~~
+
+It built 456/456 and reported `len_expr_of_dummy` as `Hello, A` instead of
+gfortran's `Hello, Ada`, `fixed_dest_truncates` as `Hello, B` instead of
+`Hello, Bob`, and garbage bytes for `nested_concat_result` instead of
+`abcde`; the print-temporary leak oracle also reported invalid reads and
+uninitialized bytes. `is_char_expr_call` recognizes `//`, so its generic
+deferred-character branch was selected before deferred concatenation could
+compute the result length and transfer ownership. The fix orders the
+explicit concatenation dispatch first while preserving contained-result
+transfer first.
+
+The repaired aggregate passed 456/456 build and 1/1 test using
+`/var/tmp/ert/ffc-order-isolated-cache`. The added
+`test_session_runtime_length_expression_character_result_compiler` is the
+independent API/compiler oracle: its executable asserts `LEN(r)==10` and the
+exact returned bytes `Hello, Ada`, deallocates the result, and is separately
+checked with Valgrind by `expect_no_leaks`. Its focused run passed 1/1 with
+`/var/tmp/ert/ffc-runtime-length-oracle-cache-2`. Do not infer a full-NVHPC
+result from this GNU evidence; the known full-NVHPC timeout is not part of
+this slice.
 
 ### Attributing failures from parallel test runs
 

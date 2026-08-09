@@ -573,11 +573,6 @@
                     end if
                 end select
             end if
-            if (is_char_expr_call(arena, node%value_index, context)) then
-                call lower_deferred_trim_assignment(arena, node%value_index, &
-                    context, symbol_index, error_msg)
-                return
-            end if
         end if
 
         ! A fixed-length scalar may receive the result of a character-returning
@@ -642,6 +637,17 @@
                 ! source {data, len} into the target descriptor (str = other).
                 call lower_deferred_identifier_assignment(arena, &
                     node%value_index, context, symbol_index, error_msg)
+                return
+            end if
+        end if
+
+        ! Character intrinsics are handled after binary concatenation: the
+        ! generic character-expression classifier also recognizes // and would
+        ! otherwise bypass the deferred destination's length/ownership path.
+        if (context%symbols(symbol_index)%is_deferred_character) then
+            if (is_char_expr_call(arena, node%value_index, context)) then
+                call lower_deferred_trim_assignment(arena, node%value_index, &
+                    context, symbol_index, error_msg)
                 return
             end if
         end if

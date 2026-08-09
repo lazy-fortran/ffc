@@ -497,6 +497,17 @@ remains statement-owned and is released after its last use. This transfer is
 covered by test_session_runtime_character_result_compiler, including an
 explicit deallocate and an independent Valgrind check.
 
+Deferred character assignment has an additional lowering-order contract. A
+contained character-result transfer must remain first, and an explicit
+deferred `//` assignment must be dispatched before the broad character
+expression classifier: that classifier also recognizes concatenation through
+`is_character_concat_actual`. Otherwise a runtime-length expression such as
+`character(len=len(name)+7) :: s; s = "Hello, " // name` is materialized by
+the generic path before the destination length and ownership path can run.
+The compiler/API oracle
+`test_session_runtime_length_expression_character_result_compiler` checks
+both the exact `LEN`/bytes and independent Valgrind ownership behavior.
+
 ## Derived-type info
 
 Each `type ... end type` definition emits a compile-time constant describing
