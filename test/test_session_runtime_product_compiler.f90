@@ -1,7 +1,7 @@
 program test_session_runtime_product_compiler
     ! Runtime automatic and assumed-shape arrays have no compile-time extent to
-    ! unroll.  PRODUCT must still walk their complete contiguous storage; a
-    ! valid rank-3 case remains a precise refusal at this bounded boundary.
+    ! unroll. PRODUCT must still walk their complete contiguous storage through
+    ! rank three; unsupported rank, element-kind, and DIM forms stay precise.
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
@@ -11,29 +11,47 @@ program test_session_runtime_product_compiler
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
-        '  integer, allocatable :: input(:,:)'//new_line('a')// &
-        '  integer :: i, j'//new_line('a')// &
-        '  allocate(input(2,3))'//new_line('a')// &
-        '  do j = 1, 3'//new_line('a')// &
-        '    do i = 1, 2'//new_line('a')// &
-        '      input(i,j) = i + j'//new_line('a')// &
+        '  integer, allocatable :: input(:,:,:)'//new_line('a')// &
+        '  real, allocatable :: real_input(:,:,:)'//new_line('a')// &
+        '  integer :: i, j, k'//new_line('a')// &
+        '  allocate(input(2,2,2))'//new_line('a')// &
+        '  allocate(real_input(2,2,2))'//new_line('a')// &
+        '  do j = 1, 2'//new_line('a')// &
+        '    do k = 1, 2'//new_line('a')// &
+        '      do i = 1, 2'//new_line('a')// &
+        '        input(i,k,j) = i + j + k'//new_line('a')// &
+        '        real_input(i,k,j) = real(i + j + k)'//new_line('a')// &
+        '      end do'//new_line('a')// &
         '    end do'//new_line('a')// &
         '  end do'//new_line('a')// &
         '  call consume(input)'//new_line('a')// &
-        '  call automatic(4)'//new_line('a')// &
+        '  call consume_real(real_input)'//new_line('a')// &
+        '  call automatic(2,2,2)'//new_line('a')// &
+        '  call automatic_real(2,2,2)'//new_line('a')// &
         '  call automatic64(3)'//new_line('a')// &
         '  deallocate(input)'//new_line('a')// &
+        '  deallocate(real_input)'//new_line('a')// &
         'contains'//new_line('a')// &
         '  subroutine consume(values)'//new_line('a')// &
-        '    integer, intent(in) :: values(:,:)'//new_line('a')// &
+        '    integer, intent(in) :: values(:,:,:)'//new_line('a')// &
         '    print *, product(values)'//new_line('a')// &
         '  end subroutine consume'//new_line('a')// &
-        '  subroutine automatic(n)'//new_line('a')// &
-        '    integer, intent(in) :: n'//new_line('a')// &
-        '    real :: values(n)'//new_line('a')// &
-        '    values = 2.0'//new_line('a')// &
+        '  subroutine consume_real(values)'//new_line('a')// &
+        '    real, intent(in) :: values(:,:,:)'//new_line('a')// &
+        '    print *, product(values)'//new_line('a')// &
+        '  end subroutine consume_real'//new_line('a')// &
+        '  subroutine automatic(n,m,k)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k'//new_line('a')// &
+        '    integer :: values(n,m,k)'//new_line('a')// &
+        '    values = 2'//new_line('a')// &
         '    print *, product(values)'//new_line('a')// &
         '  end subroutine automatic'//new_line('a')// &
+        '  subroutine automatic_real(n,m,k)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k'//new_line('a')// &
+        '    real :: values(n,m,k)'//new_line('a')// &
+        '    values = 2.0'//new_line('a')// &
+        '    print *, product(values)'//new_line('a')// &
+        '  end subroutine automatic_real'//new_line('a')// &
         '  subroutine automatic64(n)'//new_line('a')// &
         '    integer, intent(in) :: n'//new_line('a')// &
         '    real(8) :: values(n)'//new_line('a')// &
@@ -42,15 +60,40 @@ program test_session_runtime_product_compiler
         '  end subroutine automatic64'//new_line('a')// &
         'end program main'
 
-    character(len=*), parameter :: rank3_source = &
+    character(len=*), parameter :: rank4_source = &
         'program main'//new_line('a')// &
-        '  call work(2, 2, 2)'//new_line('a')// &
+        '  call work(2, 2, 2, 2)'//new_line('a')// &
         'contains'//new_line('a')// &
-        '  subroutine work(n, m, k)'//new_line('a')// &
-        '    integer, intent(in) :: n, m, k'//new_line('a')// &
-        '    integer :: values(n,m,k)'//new_line('a')// &
+        '  subroutine work(n, m, k, l)'//new_line('a')// &
+        '    integer, intent(in) :: n, m, k, l'//new_line('a')// &
+        '    integer :: values(n,m,k,l)'//new_line('a')// &
         '    values = 2'//new_line('a')// &
         '    print *, product(values)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: kind_source = &
+        'program main'//new_line('a')// &
+        '  integer(kind=8), allocatable :: actual(:,:,:)'//new_line('a')// &
+        '  allocate(actual(2,2,2))'//new_line('a')// &
+        '  actual(1,1,1) = 2_8'//new_line('a')// &
+        '  call work(actual)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(values)'//new_line('a')// &
+        '    integer(kind=8), intent(in) :: values(:,:,:)'//new_line('a')// &
+        '    print *, product(values)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: dim_source = &
+        'program main'//new_line('a')// &
+        '  call work(2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(n)'//new_line('a')// &
+        '    integer, intent(in) :: n'//new_line('a')// &
+        '    integer :: values(n)'//new_line('a')// &
+        '    values = 2'//new_line('a')// &
+        '    print *, product(values, 1)'//new_line('a')// &
         '  end subroutine work'//new_line('a')// &
         'end program main'
 
@@ -58,9 +101,15 @@ program test_session_runtime_product_compiler
 
     print *, '=== direct session runtime product compiler test ==='
     all_passed = matches_gfortran(source)
-    if (.not. test_rank3_refusal(rank3_source)) all_passed = .false.
+    if (.not. test_rank4_refusal(rank4_source)) all_passed = .false.
+    if (.not. test_refusal(kind_source, &
+            'product over runtime-extent arrays supports default integer, real, and real(8) elements only', &
+            '/var/tmp/ert/ffc_runtime_product_kind')) all_passed = .false.
+    if (.not. test_refusal(dim_source, &
+            'product requires exactly one array argument', &
+            '/var/tmp/ert/ffc_runtime_product_dim')) all_passed = .false.
     if (.not. all_passed) stop 1
-    print *, 'PASS: runtime product matches gfortran and rank-3 remains refused'
+    print *, 'PASS: runtime PRODUCT matches gfortran; unsupported rank/kind/DIM refused'
 
 contains
 
@@ -135,10 +184,10 @@ contains
         ok = .true.
     end function matches_gfortran
 
-    logical function test_rank3_refusal(program_source) result(ok)
+    logical function test_rank4_refusal(program_source) result(ok)
         character(len=*), intent(in) :: program_source
         character(len=*), parameter :: base = &
-            '/var/tmp/ert/ffc_runtime_product_rank3_refusal'
+            '/var/tmp/ert/ffc_runtime_product_rank4_refusal'
         character(len=*), parameter :: src = base//'.f90'
         character(len=*), parameter :: ref = base//'.gfortran'
         character(len=*), parameter :: exe = base//'.ffc'
@@ -152,7 +201,7 @@ contains
         call execute_command_line('gfortran -w '//src//' -o '//ref, &
             exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL: gfortran rejected valid rank-3 product fixture'
+            print *, 'FAIL: gfortran rejected valid rank-4 product refusal fixture'
             call execute_command_line('rm -f '//src//' '//ref//' '//exe)
             return
         end if
@@ -160,16 +209,49 @@ contains
         call compile_to_exe(program_source, exe, error_msg)
         call execute_command_line('rm -f '//src//' '//ref//' '//exe)
         if (len_trim(error_msg) == 0) then
-            print *, 'FAIL: rank-3 runtime product lowered without a diagnostic'
+            print *, 'FAIL: rank-4 runtime product lowered without a diagnostic'
             return
         end if
         if (index(error_msg, &
-            'product over runtime-extent arrays supports rank-1 and rank-2 only') == 0) then
-            print *, 'FAIL: rank-3 product refusal diagnostic changed: ', &
+            'product over runtime-extent arrays supports rank-1 through rank-3 only') == 0) then
+            print *, 'FAIL: rank-4 product refusal diagnostic changed: ', &
                 trim(error_msg)
             return
         end if
         ok = .true.
-    end function test_rank3_refusal
+    end function test_rank4_refusal
+
+    logical function test_refusal(program_source, expected, base) result(ok)
+        character(len=*), intent(in) :: program_source, expected, base
+        character(len=:), allocatable :: error_msg, src, ref, exe
+        integer :: unit, exit_stat
+
+        ok = .false.
+        src = base//'.f90'
+        ref = base//'.gfortran'
+        exe = base//'.ffc'
+        open (newunit=unit, file=src, status='replace', action='write')
+        write (unit, '(A)') program_source
+        close (unit)
+        call execute_command_line('gfortran -w '//src//' -o '//ref, &
+                                  exitstat=exit_stat)
+        if (exit_stat /= 0) then
+            print *, 'FAIL: gfortran rejected valid PRODUCT refusal fixture'
+            call execute_command_line('rm -f '//src//' '//ref//' '//exe)
+            return
+        end if
+
+        call compile_to_exe(program_source, exe, error_msg)
+        call execute_command_line('rm -f '//src//' '//ref//' '//exe)
+        if (len_trim(error_msg) == 0) then
+            print *, 'FAIL: unsupported PRODUCT form lowered without a diagnostic'
+            return
+        end if
+        if (index(error_msg, expected) == 0) then
+            print *, 'FAIL: PRODUCT refusal diagnostic changed: ', trim(error_msg)
+            return
+        end if
+        ok = .true.
+    end function test_refusal
 
 end program test_session_runtime_product_compiler

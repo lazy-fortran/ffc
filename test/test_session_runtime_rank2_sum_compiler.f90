@@ -1,12 +1,10 @@
 program test_session_runtime_rank2_sum_compiler
-    ! Runtime rank-2 reductions must walk the complete contiguous descriptor,
-    ! not only the leading dimension.  The positive case compares ffc with an
-    ! independently compiled gfortran executable; the rank-3 case is a valid
-    ! Fortran program that remains outside this bounded lowering contract.
+    ! Runtime reductions must walk the complete contiguous descriptor, not only
+    ! the leading dimension. The positive rank-2 and rank-3 cases compare ffc
+    ! with independently compiled gfortran executables.
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
-    use ffc_test_support, only: compile_to_exe
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
 
@@ -41,23 +39,31 @@ program test_session_runtime_rank2_sum_compiler
 
     character(len=*), parameter :: rank3_source = &
         'program main'//new_line('a')// &
-        '  call work(2, 2, 2)'//new_line('a')// &
+        '  integer, allocatable :: values(:,:,:)'//new_line('a')// &
+        '  allocate(values(2,2,2))'//new_line('a')// &
+        '  values = 3'//new_line('a')// &
+        '  call consume(values)'//new_line('a')// &
+        '  call automatic(2,2,2)'//new_line('a')// &
         'contains'//new_line('a')// &
-        '  subroutine work(n, m, k)'//new_line('a')// &
-        '    integer, intent(in) :: n, m, k'//new_line('a')// &
-        '    integer :: a(n,m,k)'//new_line('a')// &
-        '    a = 1'//new_line('a')// &
+        '  subroutine consume(a)'//new_line('a')// &
+        '    integer, intent(in) :: a(:,:,:)'//new_line('a')// &
         '    print *, sum(a)'//new_line('a')// &
-        '  end subroutine work'//new_line('a')// &
+        '  end subroutine consume'//new_line('a')// &
+        '  subroutine automatic(n,m,k)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k'//new_line('a')// &
+        '    integer :: a(n,m,k)'//new_line('a')// &
+        '    a = 2'//new_line('a')// &
+        '    print *, sum(a)'//new_line('a')// &
+        '  end subroutine automatic'//new_line('a')// &
         'end program main'
 
     logical :: all_passed
 
-    print *, '=== direct session runtime rank-2 sum compiler test ==='
+    print *, '=== direct session runtime rank-2/rank-3 sum compiler test ==='
     all_passed = matches_gfortran(source)
-    if (.not. test_rank3_refusal(rank3_source)) all_passed = .false.
+    if (.not. matches_gfortran(rank3_source)) all_passed = .false.
     if (.not. all_passed) stop 1
-    print *, 'PASS: runtime rank-2 sum matches gfortran and rank-3 remains refused'
+    print *, 'PASS: runtime rank-2 and rank-3 sum match gfortran'
 
 contains
 
@@ -84,7 +90,7 @@ contains
         call compile_frontend_from_string(program_source, frontend_result, &
                                            options)
         if (.not. frontend_result%success()) then
-            print *, 'FAIL: FortFront rejected runtime rank-2 sum source: ', &
+            print *, 'FAIL: FortFront rejected runtime sum source: ', &
                 trim(frontend_result%diagnostic_text)
             return
         end if
@@ -93,7 +99,7 @@ contains
                                         frontend_result%root_index, exe, &
                                         error_msg)
         if (len_trim(error_msg) > 0) then
-            print *, 'FAIL: ffc runtime rank-2 sum lowering failed: ', &
+            print *, 'FAIL: ffc runtime sum lowering failed: ', &
                 trim(error_msg)
             return
         end if
@@ -104,25 +110,25 @@ contains
         call execute_command_line('gfortran -w '//src//' -o '//ref, &
                                   exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL: gfortran rejected runtime rank-2 sum source'
+            print *, 'FAIL: gfortran rejected runtime sum source'
             return
         end if
 
         call execute_command_line(exe//' > '//ffc_out, exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL: ffc runtime rank-2 sum executable failed'
+            print *, 'FAIL: ffc runtime sum executable failed'
             return
         end if
         call execute_command_line(ref//' > '//ref_out, exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL: gfortran runtime rank-2 sum executable failed'
+            print *, 'FAIL: gfortran runtime sum executable failed'
             return
         end if
         call execute_command_line('diff '//ffc_out//' '//ref_out// &
                                   ' > /dev/null 2>&1', &
                                   exitstat=diff_status)
         if (diff_status /= 0) then
-            print *, 'FAIL: ffc runtime rank-2 sum differs from gfortran'
+            print *, 'FAIL: ffc runtime sum differs from gfortran'
             call execute_command_line('diff '//ffc_out//' '//ref_out)
             return
         end if
@@ -131,41 +137,5 @@ contains
                                   ffc_out//' '//ref_out)
         ok = .true.
     end function matches_gfortran
-
-    logical function test_rank3_refusal(program_source) result(ok)
-        character(len=*), intent(in) :: program_source
-        character(len=*), parameter :: base = &
-            '/var/tmp/ert/ffc_runtime_rank3_sum_refusal'
-        character(len=*), parameter :: src = base//'.f90'
-        character(len=*), parameter :: ref = base//'.gfortran'
-        character(len=*), parameter :: exe = base//'.ffc'
-        character(len=:), allocatable :: error_msg
-        integer :: unit, exit_stat
-
-        ok = .false.
-        open (newunit=unit, file=src, status='replace', action='write')
-        write (unit, '(A)') program_source
-        close (unit)
-        call execute_command_line('gfortran -w '//src//' -o '//ref, &
-                                  exitstat=exit_stat)
-        if (exit_stat /= 0) then
-            print *, 'FAIL: gfortran rejected valid rank-3 refusal fixture'
-            call execute_command_line('rm -f '//src//' '//ref//' '//exe)
-            return
-        end if
-
-        call compile_to_exe(program_source, exe, error_msg)
-        call execute_command_line('rm -f '//src//' '//ref//' '//exe)
-        if (len_trim(error_msg) == 0) then
-            print *, 'FAIL: rank-3 runtime sum lowered without a diagnostic'
-            return
-        end if
-        if (index(error_msg, &
-                  'sum over runtime-extent arrays supports rank-1 and rank-2 only') == 0) then
-            print *, 'FAIL: rank-3 refusal diagnostic changed: ', trim(error_msg)
-            return
-        end if
-        ok = .true.
-    end function test_rank3_refusal
 
 end program test_session_runtime_rank2_sum_compiler

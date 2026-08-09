@@ -701,14 +701,7 @@
 
         value_kind = context%symbols(source_index)%value_kind
         if (context%symbols(source_index)%array_rank < 1 .or. &
-            context%symbols(source_index)%array_rank > 3 .or. &
-            (context%symbols(source_index)%array_rank == 3 .and. &
-             trim(reduction_name) /= 'sum' .and. &
-             trim(reduction_name) /= 'count' .and. &
-             trim(reduction_name) /= 'maxval' .and. &
-             trim(reduction_name) /= 'minval' .and. &
-             trim(reduction_name) /= 'any' .and. &
-             trim(reduction_name) /= 'all')) then
+            context%symbols(source_index)%array_rank > 3) then
             error_msg = trim(reduction_name)// &
                 ' over runtime-extent arrays supports rank-1 through rank-3 only'
             return
