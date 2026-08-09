@@ -84,8 +84,16 @@ program test_session_runtime_extreme_compiler
 
     character(len=*), parameter :: rank4_sum_source = &
         'program main'//new_line('a')// &
+        '  integer, allocatable :: actual(:,:,:,:)'//new_line('a')// &
+        '  allocate(actual(2, 2, 2, 2))'//new_line('a')// &
+        '  actual = 2'//new_line('a')// &
+        '  call consume(actual)'//new_line('a')// &
         '  call work(2, 2, 2, 2)'//new_line('a')// &
         'contains'//new_line('a')// &
+        '  subroutine consume(values)'//new_line('a')// &
+        '    integer, intent(in) :: values(:,:,:,:)'//new_line('a')// &
+        '    print *, sum(values)'//new_line('a')// &
+        '  end subroutine consume'//new_line('a')// &
         '  subroutine work(n, m, k, l)'//new_line('a')// &
         '    integer, intent(in) :: n, m, k, l'//new_line('a')// &
         '    integer :: values(n,m,k,l)'//new_line('a')// &
@@ -94,13 +102,13 @@ program test_session_runtime_extreme_compiler
         '  end subroutine work'//new_line('a')// &
         'end program main'
 
-    character(len=*), parameter :: rank3_product_source = &
+    character(len=*), parameter :: rank5_product_source = &
         'program main'//new_line('a')// &
-        '  call work(2, 2, 2)'//new_line('a')// &
+        '  call work(2, 2, 2, 2, 2)'//new_line('a')// &
         'contains'//new_line('a')// &
-        '  subroutine work(n, m, k)'//new_line('a')// &
-        '    integer, intent(in) :: n, m, k'//new_line('a')// &
-        '    integer :: values(n,m,k)'//new_line('a')// &
+        '  subroutine work(n, m, k, l, q)'//new_line('a')// &
+        '    integer, intent(in) :: n, m, k, l, q'//new_line('a')// &
+        '    integer :: values(n,m,k,l,q)'//new_line('a')// &
         '    print *, product(values)'//new_line('a')// &
         '  end subroutine work'//new_line('a')// &
         'end program main'
@@ -173,11 +181,10 @@ program test_session_runtime_extreme_compiler
         all_passed = .false.
     if (.not. matches_gfortran(rank3_source, 'rank3')) &
         all_passed = .false.
-    if (.not. test_runtime_refusal(rank4_sum_source, 'sum_rank4', &
-        'sum over runtime-extent arrays supports rank-1 through rank-3 only')) &
+    if (.not. matches_gfortran(rank4_sum_source, 'rank4_sum')) &
         all_passed = .false.
-    if (.not. test_runtime_refusal(rank3_product_source, 'product_rank3', &
-        'product over runtime-extent arrays supports rank-1 and rank-2 only')) &
+    if (.not. test_runtime_refusal(rank5_product_source, 'product_rank5', &
+        'runtime-sized array supports ranks 1 through 4 only')) &
         all_passed = .false.
     if (.not. test_runtime_refusal(rank3_kind_source, 'sum_kind', &
         'sum over runtime-extent arrays supports default integer, real, and real(8) elements only')) &
@@ -188,11 +195,10 @@ program test_session_runtime_extreme_compiler
     if (.not. test_runtime_refusal(rank4_max_source, 'maxval', &
         'maxval over runtime-extent arrays supports rank-1 through rank-3 only')) &
         all_passed = .false.
-    if (.not. test_runtime_refusal(rank3_assumed_count_source, 'count', &
-        'count over runtime-extent arrays supports rank-1 and rank-2 only')) &
+    if (.not. matches_gfortran(rank3_assumed_count_source, 'count_rank3')) &
         all_passed = .false.
     if (.not. all_passed) stop 1
-    print *, 'PASS: runtime reductions match gfortran through rank-3 SUM'
+    print *, 'PASS: runtime reductions match gfortran through rank-4 SUM/PRODUCT'
 
 contains
 

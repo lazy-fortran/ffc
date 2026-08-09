@@ -35,7 +35,7 @@ sized by a
 runtime bound (`integer :: a(n)` or `real :: a(0:n)` inside a procedure, where
 `n` is a dummy, host, or COMMON value the compiler cannot fold), covering
 element read/write, whole-array scalar broadcast, scalar `sum` over integer or
-real elements through rank 3, scalar `product` over rank 1 through rank 3, and
+real elements through rank 4, scalar `product` over rank 1 through rank 4, and
 scalar `maxval`/`minval` over integer or real elements through rank 3, plus scalar `count` over logical masks (automatic and
 assumed-shape ranks 1 through 3), through the runtime descriptor;
 runtime-bounded
@@ -116,17 +116,17 @@ global storage, aliases, and ownership are refused. The actual may also be a con
 rank-1 array section with compile-time bounds -- a stride-1 slice `a(2:4)` or a
 whole column `m(:,j)` (integer, `real`, `real(8)`) -- whose extent folds from
 the section and whose first-element address binds the dummy in place. A rank-1
-through rank-3 assumed-shape dummy of a
+through rank-4 assumed-shape dummy of a
 subroutine also accepts an allocatable actual of runtime-only extent:
-the per-dimension extents travel as hidden arguments, so `size(a)`,
+the per-dimension extents travel in the canonical array descriptor, so `size(a)`,
 `size(a, dim)`, `ubound(a, dim)`, element read/write (rank-2 uses the runtime
 leading extent as the column-major stride), a `do` loop bound by
-`size(a, dim)`, and scalar `sum(a)`/`maxval(a)`/`minval(a)` over default
+`size(a, dim)`, and scalar `sum(a)`/`product(a)` over default
 integer, `real`, or `real(8)` elements all work against the caller's runtime
-allocation through rank 3; scalar `product(a)` also works through rank 3. Scalar
+allocation through rank 4. Scalar `maxval(a)`/`minval(a)` remain supported through rank 3. Scalar
 `count(a)`/`any(a)`/`all(a)` also work for bare logical masks through rank 3
 for both automatic arrays and assumed-shape dummies. Array-expression masks,
-DIM/MASK forms, and rank four or higher remain explicit refusals. An
+DIM/MASK forms, rank-4 non-SUM/PRODUCT reductions, and rank five or higher remain explicit refusals. An
 assumed-size dummy
 (`a(*)`, `a(n1, ..., *)`, dummy arguments only) folds its leading dimensions
 at compile time and binds to the actual's base address, so element read/write

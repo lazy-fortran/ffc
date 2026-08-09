@@ -299,24 +299,19 @@ compile time.
 
 ### Assumed-shape runtime extent (W2)
 
-A rank-1, rank-2, or rank-3 assumed-shape dummy (`a(:)`, `a(:,:)`, or `a(:,:,:)`) whose actual has no
-compile-time-foldable shape (an allocatable actual) carries its per-dimension
-extents as hidden `i64` arguments, passed by reference like every other scalar
-reference argument: the caller allocates an `i64` stack slot per extent, stores
-the extent, and passes the slot's address. The hidden arguments are appended
-after all of the subroutine's visible pointer parameters, `rank` per such dummy
-(one for a rank-1 dummy, two for a rank-2 dummy, in dimension order), and dummies
-are taken in declaration order. The callee loads and truncates each to `i32`
-once at entry and reuses those values everywhere the dummy's extents are needed.
-The extents come from the actual's descriptor bounds in dimension order; rank-3
-arguments carry the third dimension through the same descriptor fields as the
-first two.
+A rank-1, rank-2, rank-3, or rank-4 assumed-shape dummy (`a(:)`, `a(:,:)`,
+`a(:,:,:)`, or `a(:,:,:,:)`) whose actual has no compile-time-foldable shape
+(an allocatable or runtime automatic actual) is passed through one borrowed
+200-byte canonical array descriptor. The descriptor carries the base address,
+rank, per-dimension lower bounds, extents, and byte strides; the callee loads
+the active extents once at entry and reuses them for runtime addressing and
+reductions. No hidden extent arguments are appended.
 
 The existing whole-arena compile-time fold (a whole-array actual with a
 literal or caller-scope-parameter extent) stays the fast path: it is tried
-first, and only a dummy for which that fold fails gets hidden parameters, so
-an already-working compile-time-resolved assumed-shape dummy keeps its
-original signature and no hidden arguments.
+first, and only a dummy for which that fold fails takes the descriptor-driven
+runtime path. The visible procedure signature remains one descriptor pointer
+for each assumed-shape dummy in either case.
 
 This slice covers, for a rank-1 or rank-2 runtime-extent dummy: `size(a)`
 (no `dim`; rank-2 returns the product of both runtime extents), `size(a, d)`
@@ -329,8 +324,9 @@ same loop and normalise each element to a logical 0/1 before OR/AND reduction.
 A rank-3 runtime-extent assumed-shape dummy is admitted for scalar
 `sum(a)`, `maxval(a)`, `minval(a)`, `count(a)`, `any(a)`, and `all(a)`; the loop
 multiplies all three descriptor extents before traversing contiguous
-column-major storage. Rank-3 `product` and other rank-3 whole-array operations
-retain their existing refusals. Function (not subroutine) dummies, array-section and
+column-major storage. Rank-4 `sum(a)` and `product(a)` use the same descriptor
+loop; rank-4 `maxval`/`minval` and logical reductions retain their rank-3
+boundary. Function (not subroutine) dummies, array-section and
 array-constructor actuals, and rank-2 whole-array
 operations (`print a`, `a = b`, `matmul`, `transpose`) are not yet covered and
 keep the pre-existing "assumed-shape dummy extent must come from a
