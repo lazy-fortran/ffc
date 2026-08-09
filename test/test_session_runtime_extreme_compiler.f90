@@ -1,9 +1,9 @@
 program test_session_runtime_extreme_compiler
     ! Runtime reductions over descriptor-backed arrays must traverse the
     ! complete contiguous storage. The positive fixtures are compared with an
-    ! independently compiled gfortran executable across rank-3 automatic and
-    ! assumed-shape dummies; unsupported rank/kind/form combinations retain
-    ! precise diagnostics.
+    ! independently compiled gfortran executable across rank-3 and rank-4
+    ! automatic and assumed-shape dummies; unsupported rank/kind/form
+    ! combinations retain precise diagnostics.
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
@@ -102,6 +102,73 @@ program test_session_runtime_extreme_compiler
         '  end subroutine work'//new_line('a')// &
         'end program main'
 
+    character(len=*), parameter :: rank4_extreme_source = &
+        'program main'//new_line('a')// &
+        '  integer, allocatable :: actual(:,:,:,:)'//new_line('a')// &
+        '  real, allocatable :: real_actual(:,:,:,:)'//new_line('a')// &
+        '  real(8), allocatable :: double_actual(:,:,:,:)'//new_line('a')// &
+        '  allocate(actual(2,2,2,2), real_actual(2,2,2,2), '// &
+        'double_actual(2,2,2,2))'//new_line('a')// &
+        '  actual = 2'//new_line('a')// &
+        '  actual(2,1,2,2) = -12'//new_line('a')// &
+        '  actual(1,2,1,1) = 17'//new_line('a')// &
+        '  real_actual = 2.0'//new_line('a')// &
+        '  real_actual(2,1,2,2) = -9.0'//new_line('a')// &
+        '  real_actual(1,2,1,1) = 8.0'//new_line('a')// &
+        '  double_actual = 3.0d0'//new_line('a')// &
+        '  double_actual(2,1,2,2) = -11.0d0'//new_line('a')// &
+        '  double_actual(1,2,1,1) = 13.0d0'//new_line('a')// &
+        '  call consume(actual)'//new_line('a')// &
+        '  call consume_real(real_actual)'//new_line('a')// &
+        '  call consume_double(double_actual)'//new_line('a')// &
+        '  call automatic(2,2,2,2)'//new_line('a')// &
+        '  call automatic_real(2,2,2,2)'//new_line('a')// &
+        '  call automatic_double(2,2,2,2)'//new_line('a')// &
+        '  call empty4(0)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine consume(values)'//new_line('a')// &
+        '    integer, intent(in) :: values(:,:,:,:)'//new_line('a')// &
+        '    print *, maxval(values), minval(values)'//new_line('a')// &
+        '  end subroutine consume'//new_line('a')// &
+        '  subroutine consume_real(values)'//new_line('a')// &
+        '    real, intent(in) :: values(:,:,:,:)'//new_line('a')// &
+        '    print *, maxval(values), minval(values)'//new_line('a')// &
+        '  end subroutine consume_real'//new_line('a')// &
+        '  subroutine consume_double(values)'//new_line('a')// &
+        '    real(8), intent(in) :: values(:,:,:,:)'//new_line('a')// &
+        '    print *, maxval(values), minval(values)'//new_line('a')// &
+        '  end subroutine consume_double'//new_line('a')// &
+        '  subroutine automatic(n,m,k,l)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k,l'//new_line('a')// &
+        '    integer :: values(n,m,k,l)'//new_line('a')// &
+        '    values = 2'//new_line('a')// &
+        '    values(2,1,2,2) = -10'//new_line('a')// &
+        '    values(1,2,1,1) = 19'//new_line('a')// &
+        '    print *, maxval(values), minval(values)'//new_line('a')// &
+        '  end subroutine automatic'//new_line('a')// &
+        '  subroutine automatic_real(n,m,k,l)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k,l'//new_line('a')// &
+        '    real :: values(n,m,k,l)'//new_line('a')// &
+        '    values = 2.0'//new_line('a')// &
+        '    values(2,1,2,2) = -7.0'//new_line('a')// &
+        '    values(1,2,1,1) = 6.0'//new_line('a')// &
+        '    print *, maxval(values), minval(values)'//new_line('a')// &
+        '  end subroutine automatic_real'//new_line('a')// &
+        '  subroutine automatic_double(n,m,k,l)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k,l'//new_line('a')// &
+        '    real(8) :: values(n,m,k,l)'//new_line('a')// &
+        '    values = 3.0d0'//new_line('a')// &
+        '    values(2,1,2,2) = -5.0d0'//new_line('a')// &
+        '    values(1,2,1,1) = 14.0d0'//new_line('a')// &
+        '    print *, maxval(values), minval(values)'//new_line('a')// &
+        '  end subroutine automatic_double'//new_line('a')// &
+        '  subroutine empty4(n)'//new_line('a')// &
+        '    integer, intent(in) :: n'//new_line('a')// &
+        '    integer :: values(n,2,2,2)'//new_line('a')// &
+        '    print *, maxval(values), minval(values)'//new_line('a')// &
+        '  end subroutine empty4'//new_line('a')// &
+        'end program main'
+
     character(len=*), parameter :: rank5_product_source = &
         'program main'//new_line('a')// &
         '  call work(2, 2, 2, 2, 2)'//new_line('a')// &
@@ -113,15 +180,27 @@ program test_session_runtime_extreme_compiler
         '  end subroutine work'//new_line('a')// &
         'end program main'
 
-    character(len=*), parameter :: rank3_kind_source = &
+    character(len=*), parameter :: rank4_kind_source = &
         'program main'//new_line('a')// &
-        '  integer(8), allocatable :: actual(:,:,:)'//new_line('a')// &
-        '  allocate(actual(2,2,2))'//new_line('a')// &
+        '  integer(8), allocatable :: actual(:,:,:,:)'//new_line('a')// &
+        '  allocate(actual(2,2,2,2))'//new_line('a')// &
         '  call work(actual)'//new_line('a')// &
         'contains'//new_line('a')// &
         '  subroutine work(values)'//new_line('a')// &
-        '    integer(8), intent(in) :: values(:,:,:)'//new_line('a')// &
-        '    print *, sum(values)'//new_line('a')// &
+        '    integer(8), intent(in) :: values(:,:,:,:)'//new_line('a')// &
+        '    print *, maxval(values)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: rank4_min_kind_source = &
+        'program main'//new_line('a')// &
+        '  integer(8), allocatable :: actual(:,:,:,:)'//new_line('a')// &
+        '  allocate(actual(2,2,2,2))'//new_line('a')// &
+        '  call work(actual)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(values)'//new_line('a')// &
+        '    integer(8), intent(in) :: values(:,:,:,:)'//new_line('a')// &
+        '    print *, minval(values)'//new_line('a')// &
         '  end subroutine work'//new_line('a')// &
         'end program main'
 
@@ -137,15 +216,51 @@ program test_session_runtime_extreme_compiler
         '  end subroutine work'//new_line('a')// &
         'end program main'
 
-    character(len=*), parameter :: rank4_max_source = &
+    character(len=*), parameter :: rank4_max_dim_source = &
         'program main'//new_line('a')// &
-        '  call work(2, 2, 2, 2)'//new_line('a')// &
+        '  call work(2,2,2,2)'//new_line('a')// &
         'contains'//new_line('a')// &
-        '  subroutine work(n, m, k, l)'//new_line('a')// &
-        '    integer, intent(in) :: n, m, k, l'//new_line('a')// &
+        '  subroutine work(n,m,k,l)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k,l'//new_line('a')// &
         '    real :: values(n,m,k,l)'//new_line('a')// &
         '    values = 2.0'//new_line('a')// &
+        '    print *, maxval(values, 1)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: rank4_min_dim_source = &
+        'program main'//new_line('a')// &
+        '  call work(2,2,2,2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(n,m,k,l)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k,l'//new_line('a')// &
+        '    real :: values(n,m,k,l)'//new_line('a')// &
+        '    values = 2.0'//new_line('a')// &
+        '    print *, minval(values, 1)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: rank5_max_source = &
+        'program main'//new_line('a')// &
+        '  call work(2, 2, 2, 2, 2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(n, m, k, l, q)'//new_line('a')// &
+        '    integer, intent(in) :: n, m, k, l, q'//new_line('a')// &
+        '    real :: values(n,m,k,l,q)'//new_line('a')// &
+        '    values = 2.0'//new_line('a')// &
         '    print *, maxval(values)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: rank5_min_source = &
+        'program main'//new_line('a')// &
+        '  call work(2,2,2,2,2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(n,m,k,l,q)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k,l,q'//new_line('a')// &
+        '    real :: values(n,m,k,l,q)'//new_line('a')// &
+        '    values = 2.0'//new_line('a')// &
+        '    print *, minval(values)'//new_line('a')// &
         '  end subroutine work'//new_line('a')// &
         'end program main'
 
@@ -183,22 +298,36 @@ program test_session_runtime_extreme_compiler
         all_passed = .false.
     if (.not. matches_gfortran(rank4_sum_source, 'rank4_sum')) &
         all_passed = .false.
+    if (.not. matches_gfortran(rank4_extreme_source, 'rank4_extreme')) &
+        all_passed = .false.
     if (.not. test_runtime_refusal(rank5_product_source, 'product_rank5', &
         'runtime-sized array supports ranks 1 through 4 only')) &
         all_passed = .false.
-    if (.not. test_runtime_refusal(rank3_kind_source, 'sum_kind', &
-        'sum over runtime-extent arrays supports default integer, real, and real(8) elements only')) &
+    if (.not. test_runtime_refusal(rank5_max_source, 'maxval_rank5', &
+        'runtime-sized array supports ranks 1 through 4 only')) &
+        all_passed = .false.
+    if (.not. test_runtime_refusal(rank5_min_source, 'minval_rank5', &
+        'runtime-sized array supports ranks 1 through 4 only')) &
+        all_passed = .false.
+    if (.not. test_runtime_refusal(rank4_kind_source, 'maxval_kind', &
+        'maxval over runtime-extent arrays supports default integer, real, and real(8) elements only')) &
+        all_passed = .false.
+    if (.not. test_runtime_refusal(rank4_min_kind_source, 'minval_kind', &
+        'minval over runtime-extent arrays supports default integer, real, and real(8) elements only')) &
         all_passed = .false.
     if (.not. test_runtime_refusal(rank3_form_source, 'sum_form', &
         'sum requires exactly one array argument')) &
         all_passed = .false.
-    if (.not. test_runtime_refusal(rank4_max_source, 'maxval', &
-        'maxval over runtime-extent arrays supports rank-1 through rank-3 only')) &
+    if (.not. test_runtime_refusal(rank4_max_dim_source, 'maxval_dim', &
+        'maxval requires exactly one array argument')) &
+        all_passed = .false.
+    if (.not. test_runtime_refusal(rank4_min_dim_source, 'minval_dim', &
+        'minval requires exactly one array argument')) &
         all_passed = .false.
     if (.not. matches_gfortran(rank3_assumed_count_source, 'count_rank3')) &
         all_passed = .false.
     if (.not. all_passed) stop 1
-    print *, 'PASS: runtime reductions match gfortran through rank-4 SUM/PRODUCT'
+    print *, 'PASS: runtime MAXVAL/MINVAL match gfortran through rank four; rank/kind/DIM boundaries refused'
 
 contains
 

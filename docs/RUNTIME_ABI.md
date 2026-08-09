@@ -325,8 +325,9 @@ A rank-3 runtime-extent assumed-shape dummy is admitted for scalar
 `sum(a)`, `maxval(a)`, `minval(a)`, `count(a)`, `any(a)`, and `all(a)`; the loop
 multiplies all three descriptor extents before traversing contiguous
 column-major storage. Rank-4 `sum(a)` and `product(a)` use the same descriptor
-loop; rank-4 `maxval`/`minval` and logical reductions retain their rank-3
-boundary. Function (not subroutine) dummies, array-section and
+loop, as do rank-4 `maxval(a)` and `minval(a)` for numeric elements; logical
+reductions retain their rank-3 boundary. Function (not subroutine) dummies,
+array-section and
 array-constructor actuals, and rank-2 whole-array
 operations (`print a`, `a = b`, `matmul`, `transpose`) are not yet covered and
 keep the pre-existing "assumed-shape dummy extent must come from a
