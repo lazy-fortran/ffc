@@ -12,11 +12,16 @@ program test_session_runtime_count_compiler
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
-        '  logical, allocatable :: mask(:,:)'//new_line('a')// &
+        '  logical, allocatable :: mask(:,:), mask3(:,:,:)'//new_line('a')// &
         '  allocate(mask(2,3))'//new_line('a')// &
+        '  allocate(mask3(2,2,3))'//new_line('a')// &
         '  mask = .false.'//new_line('a')// &
+        '  mask3 = .false.'//new_line('a')// &
         '  mask(1,1) = .true.'//new_line('a')// &
         '  mask(2,3) = .true.'//new_line('a')// &
+        '  mask3(1,1,1) = .true.'//new_line('a')// &
+        '  mask3(2,2,3) = .true.'//new_line('a')// &
+        '  call consume_rank3(mask3)'//new_line('a')// &
         '  call consume(mask)'//new_line('a')// &
         '  call automatic(5)'//new_line('a')// &
         '  call automatic_rank3(2,3,2)'//new_line('a')// &
@@ -25,6 +30,10 @@ program test_session_runtime_count_compiler
         '    logical, intent(in) :: a(:,:)'//new_line('a')// &
         '    print *, count(a)'//new_line('a')// &
         '  end subroutine consume'//new_line('a')// &
+        '  subroutine consume_rank3(a)'//new_line('a')// &
+        '    logical, intent(in) :: a(:,:,:)'//new_line('a')// &
+        '    print *, count(a)'//new_line('a')// &
+        '  end subroutine consume_rank3'//new_line('a')// &
         '  subroutine automatic(n)'//new_line('a')// &
         '    integer, intent(in) :: n'//new_line('a')// &
         '    logical :: a(n)'//new_line('a')// &
@@ -56,13 +65,43 @@ program test_session_runtime_count_compiler
         '  end subroutine work'//new_line('a')// &
         'end program main'
 
+    character(len=*), parameter :: dim_source = &
+        'program main'//new_line('a')// &
+        '  call work(2,2,2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(n,m,k)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k'//new_line('a')// &
+        '    logical :: a(n,m,k)'//new_line('a')// &
+        '    a = .true.'//new_line('a')// &
+        '    print *, count(a,1)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: kind_source = &
+        'program main'//new_line('a')// &
+        '  call work(2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(n)'//new_line('a')// &
+        '    integer, intent(in) :: n'//new_line('a')// &
+        '    logical :: a(n)'//new_line('a')// &
+        '    a = .true.'//new_line('a')// &
+        '    print *, count(a,kind=8)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
     logical :: all_passed
 
     print *, '=== direct session runtime count compiler test ==='
     all_passed = matches_gfortran(source)
     if (.not. test_rank4_refusal(rank4_source)) all_passed = .false.
+    if (.not. test_refusal(dim_source, &
+            'count requires exactly one logical array argument; DIM and KIND forms are not supported', &
+            '/var/tmp/ert/ffc_runtime_count_dim')) all_passed = .false.
+    if (.not. test_refusal(kind_source, &
+            'count requires exactly one logical array argument; DIM and KIND forms are not supported', &
+            '/var/tmp/ert/ffc_runtime_count_kind')) all_passed = .false.
     if (.not. all_passed) stop 1
-    print *, 'PASS: runtime count matches gfortran and rank-4 remains refused'
+    print *, 'PASS: runtime COUNT matches gfortran; unsupported ranks/forms refused'
 
 contains
 
@@ -171,5 +210,39 @@ contains
         end if
         ok = .true.
     end function test_rank4_refusal
+
+    logical function test_refusal(program_source, expected, base) result(ok)
+        character(len=*), intent(in) :: program_source, expected, base
+        character(len=:), allocatable :: error_msg
+        character(len=:), allocatable :: src, ref, exe
+        integer :: unit, exit_stat
+
+        ok = .false.
+        src = base//'.f90'
+        ref = base//'.gfortran'
+        exe = base//'.ffc'
+        open (newunit=unit, file=src, status='replace', action='write')
+        write (unit, '(A)') program_source
+        close (unit)
+        call execute_command_line('gfortran -w '//src//' -o '//ref, &
+                                  exitstat=exit_stat)
+        if (exit_stat /= 0) then
+            print *, 'FAIL: gfortran rejected valid COUNT refusal fixture'
+            call execute_command_line('rm -f '//src//' '//ref//' '//exe)
+            return
+        end if
+
+        call compile_to_exe(program_source, exe, error_msg)
+        call execute_command_line('rm -f '//src//' '//ref//' '//exe)
+        if (len_trim(error_msg) == 0) then
+            print *, 'FAIL: unsupported COUNT form lowered without a diagnostic'
+            return
+        end if
+        if (index(error_msg, expected) == 0) then
+            print *, 'FAIL: COUNT refusal diagnostic changed: ', trim(error_msg)
+            return
+        end if
+        ok = .true.
+    end function test_refusal
 
 end program test_session_runtime_count_compiler

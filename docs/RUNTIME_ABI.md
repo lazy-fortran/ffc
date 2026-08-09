@@ -327,10 +327,10 @@ and a `do` loop bound by `size(a, d)`. `sum(a)`, `product(a)`, `maxval(a)`, and
 `real(8)` elements. Scalar `any(a)` and `all(a)` over a logical mask use the
 same loop and normalise each element to a logical 0/1 before OR/AND reduction.
 A rank-3 runtime-extent assumed-shape dummy is admitted for scalar
-`sum(a)`, `maxval(a)`, `minval(a)`, `any(a)`, and `all(a)`; the loop multiplies
-all three descriptor extents before traversing contiguous column-major storage.
-Rank-3 `product`, `count`, and other rank-3 whole-array operations retain their
-existing refusals. Function (not subroutine) dummies, array-section and
+`sum(a)`, `maxval(a)`, `minval(a)`, `count(a)`, `any(a)`, and `all(a)`; the loop
+multiplies all three descriptor extents before traversing contiguous
+column-major storage. Rank-3 `product` and other rank-3 whole-array operations
+retain their existing refusals. Function (not subroutine) dummies, array-section and
 array-constructor actuals, and rank-2 whole-array
 operations (`print a`, `a = b`, `matmul`, `transpose`) are not yet covered and
 keep the pre-existing "assumed-shape dummy extent must come from a

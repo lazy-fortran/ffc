@@ -322,8 +322,8 @@ contains
         logical :: array_on_left
         type(lr_operand_desc_t) :: elem, total, next_total
 
-        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 1) then
-            error_msg = 'count requires one logical array argument'
+        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+            error_msg = 'count requires exactly one logical array argument; DIM and KIND forms are not supported'
             return
         end if
 
@@ -372,17 +372,9 @@ contains
             error_msg = 'count requires a logical mask: '//trim(mask_name)
             return
         end if
-        ! Runtime-shaped logical automatic arrays need the same descriptor-aware
-        ! counted loop as numeric reductions.  Keep the existing rank-three
-        ! automatic-only COUNT boundary: rank-three assumed-shape descriptors
-        ! are admitted for MAXVAL/MINVAL, not for this unrelated reduction.
+        ! Runtime-shaped logical automatic arrays and assumed-shape dummies use
+        ! the same descriptor-aware counted loop as numeric reductions.
         if (context%symbols(sym)%has_runtime_dim_size(1)) then
-            if (context%symbols(sym)%array_rank > 2 .and. &
-                context%symbols(sym)%is_assumed_shape_dummy) then
-                error_msg = 'count over runtime-extent arrays supports rank-1 '// &
-                    'and rank-2 only'
-                return
-            end if
             call lower_runtime_reduction(context, sym, 'count', value, error_msg)
             return
         end if
