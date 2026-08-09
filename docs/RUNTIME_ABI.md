@@ -324,10 +324,12 @@ and `ubound(a, d)` for each dimension, element read and write `a(i)` / `a(i, j)`
 (rank-2 column-major addressing uses the runtime leading extent as the stride),
 and a `do` loop bound by `size(a, d)`. `sum(a)`, `product(a)`, `maxval(a)`, and
 `minval(a)` use a genuine runtime loop over default integer, `real`, and
-`real(8)` elements. A rank-3 runtime-extent assumed-shape dummy is admitted for
-scalar `maxval(a)` and `minval(a)`; the loop multiplies all three descriptor
-extents before traversing contiguous column-major storage. Rank-3 `sum`,
-`product`, and `count`, plus other rank-3 whole-array operations, retain their
+`real(8)` elements. Scalar `any(a)` and `all(a)` over a logical mask use the
+same loop and normalise each element to a logical 0/1 before OR/AND reduction.
+A rank-3 runtime-extent assumed-shape dummy is admitted for scalar
+`sum(a)`, `maxval(a)`, `minval(a)`, `any(a)`, and `all(a)`; the loop multiplies
+all three descriptor extents before traversing contiguous column-major storage.
+Rank-3 `product`, `count`, and other rank-3 whole-array operations retain their
 existing refusals. Function (not subroutine) dummies, array-section and
 array-constructor actuals, and rank-2 whole-array
 operations (`print a`, `a = b`, `matmul`, `transpose`) are not yet covered and

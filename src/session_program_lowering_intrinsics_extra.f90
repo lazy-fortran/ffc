@@ -413,8 +413,12 @@ contains
         logical :: array_on_left
         type(lr_operand_desc_t) :: elem, acc, next_acc
 
-        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 1) then
-            error_msg = 'any requires one logical array argument'
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'any requires exactly one logical array argument; DIM and MASK forms are not supported'
+            return
+        end if
+        if (size(node%arg_indices) /= 1) then
+            error_msg = 'any requires exactly one logical array argument; DIM and MASK forms are not supported'
             return
         end if
 
@@ -429,6 +433,12 @@ contains
             scalar_index, array_on_left, source_op, &
             error_msg)
         if (len_trim(error_msg) > 0) return
+        if (sym > 0) then
+            if (context%symbols(sym)%has_runtime_dim_size(1)) then
+                error_msg = 'any over runtime-extent array comparisons is not supported'
+                return
+            end if
+        end if
         ! OR all 0/1 mask elements: nonzero iff any is .true.
         if (sym > 0) then
             array_size = context%symbols(sym)%array_size
@@ -458,6 +468,14 @@ contains
             error_msg = 'any requires an array argument: '//trim(mask_name)
             return
         end if
+        if (context%symbols(sym)%value_kind /= VALUE_LOGICAL) then
+            error_msg = 'any requires a logical mask: '//trim(mask_name)
+            return
+        end if
+        if (context%symbols(sym)%has_runtime_dim_size(1)) then
+            call lower_runtime_reduction(context, sym, 'any', value, error_msg)
+            return
+        end if
         array_size = context%symbols(sym)%array_size
         acc = i32_immediate(context%session, 0_c_int64_t)
         do i = 0, array_size - 1
@@ -485,8 +503,12 @@ contains
         logical :: array_on_left
         type(lr_operand_desc_t) :: elem, acc, next_acc, cond
 
-        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 1) then
-            error_msg = 'all requires one logical array argument'
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'all requires exactly one logical array argument; DIM and MASK forms are not supported'
+            return
+        end if
+        if (size(node%arg_indices) /= 1) then
+            error_msg = 'all requires exactly one logical array argument; DIM and MASK forms are not supported'
             return
         end if
 
@@ -501,6 +523,12 @@ contains
             scalar_index, array_on_left, source_op, &
             error_msg)
         if (len_trim(error_msg) > 0) return
+        if (sym > 0) then
+            if (context%symbols(sym)%has_runtime_dim_size(1)) then
+                error_msg = 'all over runtime-extent array comparisons is not supported'
+                return
+            end if
+        end if
         ! Normalise each mask element to 0/1, AND them: 1 iff all are .true.
         if (sym > 0) then
             array_size = context%symbols(sym)%array_size
@@ -531,6 +559,14 @@ contains
         end if
         if (.not. context%symbols(sym)%is_array) then
             error_msg = 'all requires an array argument: '//trim(mask_name)
+            return
+        end if
+        if (context%symbols(sym)%value_kind /= VALUE_LOGICAL) then
+            error_msg = 'all requires a logical mask: '//trim(mask_name)
+            return
+        end if
+        if (context%symbols(sym)%has_runtime_dim_size(1)) then
+            call lower_runtime_reduction(context, sym, 'all', value, error_msg)
             return
         end if
         ! Normalise each element to 0/1 via (elem /= 0), AND them.

@@ -123,8 +123,10 @@ the per-dimension extents travel as hidden arguments, so `size(a)`,
 leading extent as the column-major stride), a `do` loop bound by
 `size(a, dim)`, and scalar `sum(a)`/`maxval(a)`/`minval(a)` over default
 integer, `real`, or `real(8)` elements all work against the caller's runtime
-allocation through rank 3; scalar `product(a)` remains rank 1-2. Scalar `count(a)` also works for logical masks, through
-rank 3 for automatic arrays and through rank 2 for assumed-shape dummies. An
+allocation through rank 3; scalar `product(a)` remains rank 1-2. Scalar
+`count(a)`/`any(a)`/`all(a)` also work for bare logical masks through rank 3
+for both automatic arrays and assumed-shape dummies. Array-expression masks,
+DIM/MASK forms, and rank four or higher remain explicit refusals. An
 assumed-size dummy
 (`a(*)`, `a(n1, ..., *)`, dummy arguments only) folds its leading dimensions
 at compile time and binds to the actual's base address, so element read/write

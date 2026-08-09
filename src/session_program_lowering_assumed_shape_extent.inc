@@ -493,8 +493,11 @@
             else if (trim(reduction_name) == 'maxval') then
                 identity = liric_f32_immediate(context%session, &
                                                -huge(0.0_c_float))
-            else if (trim(reduction_name) == 'count') then
+            else if (trim(reduction_name) == 'count' .or. &
+                     trim(reduction_name) == 'any') then
                 identity = i32_immediate(context%session, 0_c_int64_t)
+            else if (trim(reduction_name) == 'all') then
+                identity = i32_immediate(context%session, 1_c_int64_t)
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -514,8 +517,11 @@
             else if (trim(reduction_name) == 'maxval') then
                 identity = liric_f64_immediate(context%session, &
                                                -huge(0.0_c_double))
-            else if (trim(reduction_name) == 'count') then
+            else if (trim(reduction_name) == 'count' .or. &
+                     trim(reduction_name) == 'any') then
                 identity = i32_immediate(context%session, 0_c_int64_t)
+            else if (trim(reduction_name) == 'all') then
+                identity = i32_immediate(context%session, 1_c_int64_t)
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -532,8 +538,11 @@
                 identity = i32_immediate(context%session, 2147483647_c_int64_t)
             else if (trim(reduction_name) == 'maxval') then
                 identity = i32_immediate(context%session, -2147483648_c_int64_t)
-            else if (trim(reduction_name) == 'count') then
+            else if (trim(reduction_name) == 'count' .or. &
+                     trim(reduction_name) == 'any') then
                 identity = i32_immediate(context%session, 0_c_int64_t)
+            else if (trim(reduction_name) == 'all') then
+                identity = i32_immediate(context%session, 1_c_int64_t)
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -625,6 +634,18 @@
                         condition, error_msg)) return
                 if (.not. emit_i32_binary(context%session, LR_OP_ADD, current, &
                         condition, updated, error_msg)) return
+            else if (trim(reduction_name) == 'any' .or. &
+                     trim(reduction_name) == 'all') then
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, &
+                        element, i32_immediate(context%session, 0_c_int64_t), &
+                        condition, error_msg)) return
+                if (trim(reduction_name) == 'any') then
+                    if (.not. emit_i32_binary(context%session, LR_OP_OR, current, &
+                            condition, updated, error_msg)) return
+                else
+                    if (.not. emit_i32_binary(context%session, LR_OP_AND, current, &
+                            condition, updated, error_msg)) return
+                end if
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -658,8 +679,9 @@
 
     subroutine lower_runtime_reduction(context, source_index, reduction_name, &
                                        value, error_msg)
-        ! Runtime reductions through SUM, PRODUCT, MAXVAL, MINVAL, and COUNT
-        ! admit rank-3 runtime arrays: all of these cases walk one genuine LIRIC
+        ! Runtime reductions through SUM, PRODUCT, MAXVAL, MINVAL, COUNT, ANY,
+        ! and ALL admit rank-3 runtime arrays: all of these cases walk one genuine
+        ! LIRIC loop over the contiguous column-major element count.
         ! loop over the contiguous column-major element count. The loop
         ! counter uses the reserved-backedge-vreg PHI technique of a counted DO;
         ! the accumulator lives in a stack slot so the element kinds share one
@@ -684,7 +706,9 @@
              trim(reduction_name) /= 'sum' .and. &
              trim(reduction_name) /= 'count' .and. &
              trim(reduction_name) /= 'maxval' .and. &
-             trim(reduction_name) /= 'minval')) then
+             trim(reduction_name) /= 'minval' .and. &
+             trim(reduction_name) /= 'any' .and. &
+             trim(reduction_name) /= 'all')) then
             error_msg = trim(reduction_name)// &
                 ' over runtime-extent arrays supports rank-1 through rank-3 only'
             return
