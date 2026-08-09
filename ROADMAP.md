@@ -106,6 +106,42 @@ function-result behavioral oracles pass. The aggregate `fo test` gate remains
 red on existing unrelated corpus and runtime clusters, so this is a build and
 regression repair rather than a release-green claim.
 
+### NVHPC 26.5 submodule/API audit (2026-08-09)
+
+The documented downstream NVHPC execution-lane failures remain distinct from
+this FFC compiler-boundary issue. FortFront's current focused gate and FortAD's
+generated-source gate are not changed by this audit; the former provides
+semantic inputs and the latter still has target-level NVHPC runtime allocator
+failures. The `fo` handoff at `ba35fe4` already classifies child crashes as
+target failures and selects dependency objects by compiler-profile directory.
+Its NVHPC `test_check` fixture remains a known compiler-hang boundary, not an
+FFC result.
+
+On FFC `main` before this repair (`2f6cc37`),
+`FO_FC=nvfortran FO_JOBS=1 LIBRARY_PATH=... fo test
+test_session_runtime_norm2_compiler` reproduced two compile diagnostics in the
+memory-binding submodules: `liric_session_memory_bindings_i8_i16.f90`
+reported `NVFORTRAN-F-0141` on the i8 result constructor, while
+`liric_session_memory_bindings_tail.f90` reported `NVFORTRAN-S-1056` followed
+by `NVFORTRAN-F-0141` for `global_operand`. GNU accepted the same source.
+NVHPC 26.5 does not bind these submodule `MODULE PROCEDURE` bodies when the
+interface has both a `liric_session_t` derived dummy and a derived
+`lr_operand_desc_t` result. The fix spells the five affected result
+constructors out as full `module function` definitions while preserving the
+parent interfaces and ABI. No compiler flag or runtime behavior is changed.
+
+The focused regression oracle is
+`test/test_liric_memory_submodule_api.f90`: it creates a real LIRIC session,
+constructs i8 and i16 operands through the public API, and checks payloads and
+type handles. It passes with both GNU and NVHPC 26.5. A fresh scratch-module
+compile of the parent plus all three memory submodules also returns zero from
+NVHPC 26.5 (only its 63-character submodule-name warnings remain). The
+existing independent gfortran differential
+`test_session_integer_kind_i8_i16_compiler` passes under GNU. A complete NVHPC
+FFC build reached 451/457 units without a diagnostic from this repair, but the
+host's 600-second wall clock expired while NVHPC compiled the large
+`session_program_lowering` unit; no aggregate NVHPC PASS is claimed.
+
 ### Bounded runtime extrema slice (2026-08-09)
 
 The post-PRODUCT runtime-reduction tranche now lowers scalar `maxval` and

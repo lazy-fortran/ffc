@@ -1,23 +1,33 @@
 submodule (liric_session_memory_bindings) liric_session_memory_bindings_i8_i16
 contains
 
-    module procedure i8_vreg_op
+    ! NVHPC 26.5 does not bind a submodule MODULE PROCEDURE when its
+    ! interface has both a liric_session_t dummy and a derived result.  Keep
+    ! the parent interface as the contract, but spell out these five result
+    ! constructors so GNU and NVHPC agree on the procedure identity.
+    module function i8_vreg_op(session, vreg) result(operand)
         use liric_session_bindings, only: lr_type_i8_s
+        type(liric_session_t), intent(in) :: session
+        integer(c_int32_t), intent(in) :: vreg
+        type(lr_operand_desc_t) :: operand
 
         operand%kind = LR_OP_KIND_VREG
         operand%payload = int(vreg, c_int64_t)
         operand%typ = lr_type_i8_s(session%handle)
         operand%global_offset = 0_c_int64_t
-    end procedure i8_vreg_op
+    end function i8_vreg_op
 
-    module procedure i8_immediate
+    module function i8_immediate(session, value) result(operand)
         use liric_session_bindings, only: lr_type_i8_s
+        type(liric_session_t), intent(in) :: session
+        integer(c_int64_t), intent(in) :: value
+        type(lr_operand_desc_t) :: operand
 
         operand%kind = LR_OP_KIND_IMM_I64
         operand%payload = value
         operand%typ = lr_type_i8_s(session%handle)
         operand%global_offset = 0_c_int64_t
-    end procedure i8_immediate
+    end function i8_immediate
 
     module procedure emit_i8_alloca
         use liric_session_bindings, only: lr_type_i8_s
@@ -91,23 +101,29 @@ contains
         emit_i8_binary = .true.
     end procedure emit_i8_binary
 
-    module procedure i16_vreg_op
+    module function i16_vreg_op(session, vreg) result(operand)
         use liric_session_bindings, only: lr_type_i16_s
+        type(liric_session_t), intent(in) :: session
+        integer(c_int32_t), intent(in) :: vreg
+        type(lr_operand_desc_t) :: operand
 
         operand%kind = LR_OP_KIND_VREG
         operand%payload = int(vreg, c_int64_t)
         operand%typ = lr_type_i16_s(session%handle)
         operand%global_offset = 0_c_int64_t
-    end procedure i16_vreg_op
+    end function i16_vreg_op
 
-    module procedure i16_immediate
+    module function i16_immediate(session, value) result(operand)
         use liric_session_bindings, only: lr_type_i16_s
+        type(liric_session_t), intent(in) :: session
+        integer(c_int64_t), intent(in) :: value
+        type(lr_operand_desc_t) :: operand
 
         operand%kind = LR_OP_KIND_IMM_I64
         operand%payload = value
         operand%typ = lr_type_i16_s(session%handle)
         operand%global_offset = 0_c_int64_t
-    end procedure i16_immediate
+    end function i16_immediate
 
     module procedure emit_i16_alloca
         use liric_session_bindings, only: lr_type_i16_s
@@ -182,4 +198,3 @@ contains
     end procedure emit_i16_binary
 
 end submodule liric_session_memory_bindings_i8_i16
-

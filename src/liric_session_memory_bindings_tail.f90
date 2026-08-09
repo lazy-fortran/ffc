@@ -138,13 +138,17 @@ contains
         vreg = emit_store_typed(handle, value, address, error)
     end procedure emit_store_ptr
 
-    module procedure global_operand
+    module function global_operand(session, id, typ) result(operand)
+        type(liric_session_t), intent(in) :: session
+        integer(c_int32_t), intent(in) :: id
+        type(c_ptr), intent(in) :: typ
+        type(lr_operand_desc_t) :: operand
 
         operand%kind = LR_OP_KIND_GLOBAL
         operand%payload = int(id, c_int64_t)
         operand%typ = typ
         operand%global_offset = 0_c_int64_t
-    end procedure global_operand
+    end function global_operand
 
     module procedure emit_memcpy_call
         type(lr_operand_desc_t), target :: operands(9)

@@ -83,6 +83,20 @@ LIBRARY_PATH=/path/to/liric/build fo test          # full suite
 LIBRARY_PATH=/path/to/liric/build fo test test_session_empty_program_compiler
 ```
 
+### NVHPC 26.5 submodule check
+
+The narrow-integer memory bindings have a focused public-API oracle in
+`test/test_liric_memory_submodule_api.f90`. It creates a LIRIC session and
+checks the i8/i16 operand payloads and type handles, so a compile-only check
+cannot hide an ABI mismatch. For the NVHPC lane, compile the memory parent and
+its three submodules into a fresh module directory before running the oracle;
+do not reuse GNU `.mod` or `.smod` files. NVHPC 26.5 emits a warning for the
+long submodule name, but the compile and API executable must both return zero.
+The existing `test_session_integer_kind_i8_i16_compiler` adds an independent
+gfortran differential check. A timeout while compiling the large
+`session_program_lowering` unit is a toolchain-duration observation, not a
+passing full-lane result.
+
 ### Attributing failures from parallel test runs
 
 Do not attribute a broad parallel `fo test` failure to the newest lowering
