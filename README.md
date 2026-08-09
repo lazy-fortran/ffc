@@ -34,17 +34,17 @@ whole-array copy, elemental `+`/`-`/`*`, whole-array `print`, `lbound`,
 sized by a
 runtime bound (`integer :: a(n)` or `real :: a(0:n)` inside a procedure, where
 `n` is a dummy, host, or COMMON value the compiler cannot fold), covering
-element read/write, whole-array scalar broadcast, scalar `sum`/`product` over
-rank 1 and rank 2, and scalar `maxval`/`minval` over integer or real elements
-through rank 3, plus scalar `count` over logical masks (automatic ranks 1
+element read/write, whole-array scalar broadcast, scalar `sum` over integer or
+real elements through rank 3, scalar `product` over rank 1 and rank 2, and
+scalar `maxval`/`minval` over integer or real elements through rank 3, plus scalar `count` over logical masks (automatic ranks 1
 through 3 and assumed-shape ranks 1 through 2), through the runtime descriptor;
 runtime-bounded
 scalar section assignment also supports rank-1
 through rank-4 sections with multiple retained dimensions (for example
 `a(2:n,1:m) = value`), using live bounds and column-major coordinates;
 array-valued RHS forms and unsupported noncontiguous or ambiguous sections
-remain explicit refusals. Rank-1 and rank-2 additionally support `size` and
-`sum` (integer or real), while rank-1 also supports `lbound`/`ubound`,
+remain explicit refusals. Rank-1 and rank-2 additionally support `size`, while
+rank-1 also supports `lbound`/`ubound`,
 whole-array `print`, and whole-array copy over a runtime
 loop; fixed-size
 rank-1 and
@@ -116,15 +116,14 @@ global storage, aliases, and ownership are refused. The actual may also be a con
 rank-1 array section with compile-time bounds -- a stride-1 slice `a(2:4)` or a
 whole column `m(:,j)` (integer, `real`, `real(8)`) -- whose extent folds from
 the section and whose first-element address binds the dummy in place. A rank-1
-or rank-2 assumed-shape dummy of a
+through rank-3 assumed-shape dummy of a
 subroutine also accepts an allocatable actual of runtime-only extent:
 the per-dimension extents travel as hidden arguments, so `size(a)`,
 `size(a, dim)`, `ubound(a, dim)`, element read/write (rank-2 uses the runtime
 leading extent as the column-major stride), a `do` loop bound by
-`size(a, dim)`, and scalar `sum(a)`/`product(a)`/`maxval(a)`/`minval(a)` over
-default integer, `real`, or `real(8)` elements all work against the caller's
-runtime allocation; a rank-3 assumed-shape dummy additionally supports
-`maxval(a)`/`minval(a)`. Scalar `count(a)` also works for logical masks, through
+`size(a, dim)`, and scalar `sum(a)`/`maxval(a)`/`minval(a)` over default
+integer, `real`, or `real(8)` elements all work against the caller's runtime
+allocation through rank 3; scalar `product(a)` remains rank 1-2. Scalar `count(a)` also works for logical masks, through
 rank 3 for automatic arrays and through rank 2 for assumed-shape dummies. An
 assumed-size dummy
 (`a(*)`, `a(n1, ..., *)`, dummy arguments only) folds its leading dimensions

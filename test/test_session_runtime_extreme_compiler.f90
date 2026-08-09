@@ -1,8 +1,8 @@
 program test_session_runtime_extreme_compiler
-    ! MAXVAL and MINVAL over runtime descriptor-backed arrays must traverse the
-    ! complete contiguous storage.  The positive fixture is compared with an
+    ! Runtime reductions over descriptor-backed arrays must traverse the
+    ! complete contiguous storage. The positive fixtures are compared with an
     ! independently compiled gfortran executable across rank-3 automatic and
-    ! assumed-shape dummies; unsupported rank/reduction combinations retain
+    ! assumed-shape dummies; unsupported rank/kind/form combinations retain
     ! precise diagnostics.
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
@@ -70,27 +70,62 @@ program test_session_runtime_extreme_compiler
         'contains'//new_line('a')// &
         '  subroutine consume(values)'//new_line('a')// &
         '    integer, intent(in) :: values(:,:,:)'//new_line('a')// &
-        '    print *, maxval(values), minval(values)'//new_line('a')// &
+        '    print *, maxval(values), minval(values), sum(values)'//new_line('a')// &
         '  end subroutine consume'//new_line('a')// &
         '  subroutine automatic(n, m, k)'//new_line('a')// &
         '    integer, intent(in) :: n, m, k'//new_line('a')// &
-        '    real(8) :: values(n,m,k)'//new_line('a')// &
-        '    values = 3.0d0'//new_line('a')// &
-        '    values(2,1,2) = -9.0d0'//new_line('a')// &
-        '    values(1,2,1) = 8.0d0'//new_line('a')// &
-        '    print *, maxval(values), minval(values)'//new_line('a')// &
+        '    real :: values(n,m,k)'//new_line('a')// &
+        '    values = 3.0'//new_line('a')// &
+        '    values(2,1,2) = -9.0'//new_line('a')// &
+        '    values(1,2,1) = 8.0'//new_line('a')// &
+        '    print *, maxval(values), minval(values), sum(values)'//new_line('a')// &
         '  end subroutine automatic'//new_line('a')// &
         'end program main'
 
-    character(len=*), parameter :: rank3_sum_source = &
+    character(len=*), parameter :: rank4_sum_source = &
+        'program main'//new_line('a')// &
+        '  call work(2, 2, 2, 2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(n, m, k, l)'//new_line('a')// &
+        '    integer, intent(in) :: n, m, k, l'//new_line('a')// &
+        '    integer :: values(n,m,k,l)'//new_line('a')// &
+        '    values = 2'//new_line('a')// &
+        '    print *, sum(values)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: rank3_product_source = &
         'program main'//new_line('a')// &
         '  call work(2, 2, 2)'//new_line('a')// &
         'contains'//new_line('a')// &
         '  subroutine work(n, m, k)'//new_line('a')// &
         '    integer, intent(in) :: n, m, k'//new_line('a')// &
         '    integer :: values(n,m,k)'//new_line('a')// &
-        '    values = 2'//new_line('a')// &
+        '    print *, product(values)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: rank3_kind_source = &
+        'program main'//new_line('a')// &
+        '  integer(8), allocatable :: actual(:,:,:)'//new_line('a')// &
+        '  allocate(actual(2,2,2))'//new_line('a')// &
+        '  call work(actual)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(values)'//new_line('a')// &
+        '    integer(8), intent(in) :: values(:,:,:)'//new_line('a')// &
         '    print *, sum(values)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: rank3_form_source = &
+        'program main'//new_line('a')// &
+        '  call work(2, 2, 2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(n, m, k)'//new_line('a')// &
+        '    integer, intent(in) :: n, m, k'//new_line('a')// &
+        '    real :: values(n,m,k)'//new_line('a')// &
+        '    values = 2.0'//new_line('a')// &
+        '    print *, sum(values, 1)'//new_line('a')// &
         '  end subroutine work'//new_line('a')// &
         'end program main'
 
@@ -132,14 +167,23 @@ program test_session_runtime_extreme_compiler
 
     logical :: all_passed
 
-    print *, '=== direct session runtime maxval/minval compiler test ==='
+    print *, '=== direct session runtime reduction compiler test ==='
     all_passed = matches_gfortran(source, 'filled')
     if (.not. matches_gfortran(empty_source, 'empty')) &
         all_passed = .false.
     if (.not. matches_gfortran(rank3_source, 'rank3')) &
         all_passed = .false.
-    if (.not. test_runtime_refusal(rank3_sum_source, 'sum', &
-        'sum over runtime-extent arrays supports rank-1 and rank-2 only')) &
+    if (.not. test_runtime_refusal(rank4_sum_source, 'sum_rank4', &
+        'sum over runtime-extent arrays supports rank-1 through rank-3 only')) &
+        all_passed = .false.
+    if (.not. test_runtime_refusal(rank3_product_source, 'product_rank3', &
+        'product over runtime-extent arrays supports rank-1 and rank-2 only')) &
+        all_passed = .false.
+    if (.not. test_runtime_refusal(rank3_kind_source, 'sum_kind', &
+        'sum over runtime-extent arrays supports default integer, real, and real(8) elements only')) &
+        all_passed = .false.
+    if (.not. test_runtime_refusal(rank3_form_source, 'sum_form', &
+        'sum requires exactly one array argument')) &
         all_passed = .false.
     if (.not. test_runtime_refusal(rank4_max_source, 'maxval', &
         'maxval over runtime-extent arrays supports rank-1 through rank-3 only')) &
@@ -148,7 +192,7 @@ program test_session_runtime_extreme_compiler
         'count over runtime-extent arrays supports rank-1 and rank-2 only')) &
         all_passed = .false.
     if (.not. all_passed) stop 1
-    print *, 'PASS: runtime maxval/minval match gfortran through rank 3'
+    print *, 'PASS: runtime reductions match gfortran through rank-3 SUM'
 
 contains
 

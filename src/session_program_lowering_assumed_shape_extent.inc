@@ -658,7 +658,7 @@
 
     subroutine lower_runtime_reduction(context, source_index, reduction_name, &
                                        value, error_msg)
-        ! Runtime sum/product remains rank-1/rank-2. MAXVAL/MINVAL and COUNT
+        ! Runtime reductions through SUM, PRODUCT, MAXVAL, MINVAL, and COUNT
         ! admit rank-3 runtime arrays: all of these cases walk one genuine LIRIC
         ! loop over the contiguous column-major element count. The loop
         ! counter uses the reserved-backedge-vreg PHI technique of a counted DO;
@@ -681,20 +681,12 @@
         if (context%symbols(source_index)%array_rank < 1 .or. &
             context%symbols(source_index)%array_rank > 3 .or. &
             (context%symbols(source_index)%array_rank == 3 .and. &
+             trim(reduction_name) /= 'sum' .and. &
              trim(reduction_name) /= 'count' .and. &
              trim(reduction_name) /= 'maxval' .and. &
              trim(reduction_name) /= 'minval')) then
-            if (trim(reduction_name) == 'count') then
-                error_msg = trim(reduction_name)// &
-                    ' over runtime-extent arrays supports rank-1 through rank-3 only'
-            else if (trim(reduction_name) == 'maxval' .or. &
-                     trim(reduction_name) == 'minval') then
-                error_msg = trim(reduction_name)// &
-                    ' over runtime-extent arrays supports rank-1 through rank-3 only'
-            else
-                error_msg = trim(reduction_name)// &
-                    ' over runtime-extent arrays supports rank-1 and rank-2 only'
-            end if
+            error_msg = trim(reduction_name)// &
+                ' over runtime-extent arrays supports rank-1 through rank-3 only'
             return
         end if
         extent = context%symbols(source_index)%runtime_dim_size(1)

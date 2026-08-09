@@ -3812,13 +3812,15 @@
                             [VALUE_I32, VALUE_F32, VALUE_F64])) then
                         if (context%symbols(source_index)%array_rank <= 2 .or. &
                             (context%symbols(source_index)%array_rank == 3 .and. &
-                             (trim(reduction_name) == 'maxval' .or. &
+                             (trim(reduction_name) == 'sum' .or. &
+                              trim(reduction_name) == 'maxval' .or. &
                               trim(reduction_name) == 'minval'))) then
                             call lower_runtime_reduction(context, source_index, &
                                 trim(reduction_name), value, error_msg)
                             return
                         end if
-                        if (trim(reduction_name) == 'maxval' .or. &
+                        if (trim(reduction_name) == 'sum' .or. &
+                            trim(reduction_name) == 'maxval' .or. &
                             trim(reduction_name) == 'minval') then
                             error_msg = trim(reduction_name)// &
                                 ' over runtime-extent arrays supports rank-1 '// &
@@ -3831,9 +3833,18 @@
                         return
                     end if
                 end if
-                error_msg = trim(reduction_name)//' over a runtime-extent '// &
-                            'assumed-shape dummy supports integer and real '// &
-                            'sum, product, maxval, and minval only'
+                if (trim(reduction_name) == 'sum' .or. &
+                    trim(reduction_name) == 'product' .or. &
+                    trim(reduction_name) == 'maxval' .or. &
+                    trim(reduction_name) == 'minval') then
+                    error_msg = trim(reduction_name)// &
+                        ' over runtime-extent arrays supports default integer, '// &
+                        'real, and real(8) elements only'
+                else
+                    error_msg = trim(reduction_name)//' over runtime-extent arrays '// &
+                                'supports integer and real sum, product, maxval, '// &
+                                'and minval only'
+                end if
                 return
             end if
             array_size = context%symbols(source_index)%array_size
