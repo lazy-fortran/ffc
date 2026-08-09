@@ -368,6 +368,18 @@ contains
             error_msg = 'count requires an array argument: '//trim(mask_name)
             return
         end if
+        if (context%symbols(sym)%value_kind /= VALUE_LOGICAL) then
+            error_msg = 'count requires a logical mask: '//trim(mask_name)
+            return
+        end if
+        ! Runtime-shaped logical dummies and automatic arrays need the same
+        ! descriptor-aware counted loop as numeric reductions.  Keep the
+        ! bounded implementation to rank one and two until dimension-wise
+        ! runtime reduction has an explicit shape plan.
+        if (context%symbols(sym)%has_runtime_dim_size(1)) then
+            call lower_runtime_reduction(context, sym, 'count', value, error_msg)
+            return
+        end if
         array_size = context%symbols(sym)%array_size
         total = i32_immediate(context%session, 0_c_int64_t)
         do i = 0, array_size - 1

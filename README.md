@@ -35,8 +35,8 @@ sized by a
 runtime bound (`integer :: a(n)` or `real :: a(0:n)` inside a procedure, where
 `n` is a dummy, host, or COMMON value the compiler cannot fold), covering
 element read/write, whole-array scalar broadcast, and scalar `sum`, `product`,
-`maxval`, and `minval` over integer or real elements through the runtime
-descriptor; runtime-bounded
+`maxval`, and `minval` over integer or real elements, plus scalar `count` over
+logical masks, through the runtime descriptor; runtime-bounded
 scalar section assignment also supports rank-1
 through rank-4 sections with multiple retained dimensions (for example
 `a(2:n,1:m) = value`), using live bounds and column-major coordinates;

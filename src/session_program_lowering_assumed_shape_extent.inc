@@ -493,6 +493,8 @@
             else if (trim(reduction_name) == 'maxval') then
                 identity = liric_f32_immediate(context%session, &
                                                -huge(0.0_c_float))
+            else if (trim(reduction_name) == 'count') then
+                identity = i32_immediate(context%session, 0_c_int64_t)
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -512,6 +514,8 @@
             else if (trim(reduction_name) == 'maxval') then
                 identity = liric_f64_immediate(context%session, &
                                                -huge(0.0_c_double))
+            else if (trim(reduction_name) == 'count') then
+                identity = i32_immediate(context%session, 0_c_int64_t)
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -528,6 +532,8 @@
                 identity = i32_immediate(context%session, 2147483647_c_int64_t)
             else if (trim(reduction_name) == 'maxval') then
                 identity = i32_immediate(context%session, -2147483648_c_int64_t)
+            else if (trim(reduction_name) == 'count') then
+                identity = i32_immediate(context%session, 0_c_int64_t)
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -613,6 +619,12 @@
                                   error_msg)
                 if (len_trim(error_msg) > 0) return
                 updated = selected
+            else if (trim(reduction_name) == 'count') then
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, &
+                        element, i32_immediate(context%session, 0_c_int64_t), &
+                        condition, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, current, &
+                        condition, updated, error_msg)) return
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
