@@ -1,8 +1,8 @@
 program test_session_runtime_count_compiler
     ! COUNT over a runtime-shaped logical mask must walk all descriptor elements
-    ! for rank one through rank three.  The positive fixture is compared with
-    ! an independently compiled gfortran executable; rank four remains a
-    ! precise bounded lowering refusal.
+    ! through rank four. The positive fixture is compared with an independently
+    ! compiled gfortran executable; rank five, DIM, and KIND remain precise
+    ! lowering refusals.
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
@@ -12,19 +12,25 @@ program test_session_runtime_count_compiler
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
-        '  logical, allocatable :: mask(:,:), mask3(:,:,:)'//new_line('a')// &
+        '  logical, allocatable :: mask(:,:), mask3(:,:,:), mask4(:,:,:,:)'//new_line('a')// &
         '  allocate(mask(2,3))'//new_line('a')// &
         '  allocate(mask3(2,2,3))'//new_line('a')// &
+        '  allocate(mask4(2,2,2,2))'//new_line('a')// &
         '  mask = .false.'//new_line('a')// &
         '  mask3 = .false.'//new_line('a')// &
+        '  mask4 = .false.'//new_line('a')// &
         '  mask(1,1) = .true.'//new_line('a')// &
         '  mask(2,3) = .true.'//new_line('a')// &
         '  mask3(1,1,1) = .true.'//new_line('a')// &
         '  mask3(2,2,3) = .true.'//new_line('a')// &
+        '  mask4(1,1,1,1) = .true.'//new_line('a')// &
+        '  mask4(2,2,2,2) = .true.'//new_line('a')// &
         '  call consume_rank3(mask3)'//new_line('a')// &
+        '  call consume_rank4(mask4)'//new_line('a')// &
         '  call consume(mask)'//new_line('a')// &
         '  call automatic(5)'//new_line('a')// &
         '  call automatic_rank3(2,3,2)'//new_line('a')// &
+        '  call automatic_rank4(2,2,2,2)'//new_line('a')// &
         'contains'//new_line('a')// &
         '  subroutine consume(a)'//new_line('a')// &
         '    logical, intent(in) :: a(:,:)'//new_line('a')// &
@@ -34,6 +40,10 @@ program test_session_runtime_count_compiler
         '    logical, intent(in) :: a(:,:,:)'//new_line('a')// &
         '    print *, count(a)'//new_line('a')// &
         '  end subroutine consume_rank3'//new_line('a')// &
+        '  subroutine consume_rank4(a)'//new_line('a')// &
+        '    logical, intent(in) :: a(:,:,:,:)'//new_line('a')// &
+        '    print *, count(a)'//new_line('a')// &
+        '  end subroutine consume_rank4'//new_line('a')// &
         '  subroutine automatic(n)'//new_line('a')// &
         '    integer, intent(in) :: n'//new_line('a')// &
         '    logical :: a(n)'//new_line('a')// &
@@ -51,15 +61,23 @@ program test_session_runtime_count_compiler
         '    a(1,2,1) = .true.'//new_line('a')// &
         '    print *, count(a)'//new_line('a')// &
         '  end subroutine automatic_rank3'//new_line('a')// &
-        'end program main'
-
-    character(len=*), parameter :: rank4_source = &
-        'program main'//new_line('a')// &
-        '  call work(2,2,2,2)'//new_line('a')// &
-        'contains'//new_line('a')// &
-        '  subroutine work(n,m,k,l)'//new_line('a')// &
+        '  subroutine automatic_rank4(n,m,k,l)'//new_line('a')// &
         '    integer, intent(in) :: n,m,k,l'//new_line('a')// &
         '    logical :: a(n,m,k,l)'//new_line('a')// &
+        '    a = .false.'//new_line('a')// &
+        '    a(1,1,1,1) = .true.'//new_line('a')// &
+        '    a(n,m,k,l) = .true.'//new_line('a')// &
+        '    print *, count(a)'//new_line('a')// &
+        '  end subroutine automatic_rank4'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: rank5_source = &
+        'program main'//new_line('a')// &
+        '  call work(2,2,2,2,2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(n,m,k,l,p)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k,l,p'//new_line('a')// &
+        '    logical :: a(n,m,k,l,p)'//new_line('a')// &
         '    a = .true.'//new_line('a')// &
         '    print *, count(a)'//new_line('a')// &
         '  end subroutine work'//new_line('a')// &
@@ -93,7 +111,7 @@ program test_session_runtime_count_compiler
 
     print *, '=== direct session runtime count compiler test ==='
     all_passed = matches_gfortran(source)
-    if (.not. test_rank4_refusal(rank4_source)) all_passed = .false.
+    if (.not. test_rank5_refusal(rank5_source)) all_passed = .false.
     if (.not. test_refusal(dim_source, &
             'count requires exactly one logical array argument; DIM and KIND forms are not supported', &
             '/var/tmp/ert/ffc_runtime_count_dim')) all_passed = .false.
@@ -174,10 +192,10 @@ contains
         ok = .true.
     end function matches_gfortran
 
-    logical function test_rank4_refusal(program_source) result(ok)
+    logical function test_rank5_refusal(program_source) result(ok)
         character(len=*), intent(in) :: program_source
         character(len=*), parameter :: base = &
-            '/var/tmp/ert/ffc_runtime_count_rank4_refusal'
+            '/var/tmp/ert/ffc_runtime_count_rank5_refusal'
         character(len=*), parameter :: src = base//'.f90'
         character(len=*), parameter :: ref = base//'.gfortran'
         character(len=*), parameter :: exe = base//'.ffc'
@@ -191,7 +209,7 @@ contains
         call execute_command_line('gfortran -w '//src//' -o '//ref, &
                                   exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL: gfortran rejected valid rank-4 count fixture'
+            print *, 'FAIL: gfortran rejected valid rank-5 count refusal fixture'
             call execute_command_line('rm -f '//src//' '//ref//' '//exe)
             return
         end if
@@ -199,17 +217,17 @@ contains
         call compile_to_exe(program_source, exe, error_msg)
         call execute_command_line('rm -f '//src//' '//ref//' '//exe)
         if (len_trim(error_msg) == 0) then
-            print *, 'FAIL: rank-4 runtime count lowered without a diagnostic'
+            print *, 'FAIL: rank-5 runtime count lowered without a diagnostic'
             return
         end if
         if (index(error_msg, &
-            'count over runtime-extent arrays supports rank-1 through rank-3 only') == 0) then
-            print *, 'FAIL: rank-4 count refusal diagnostic changed: ', &
+            'runtime-sized array supports ranks 1 through 4 only') == 0) then
+            print *, 'FAIL: rank-5 count refusal diagnostic changed: ', &
                 trim(error_msg)
             return
         end if
         ok = .true.
-    end function test_rank4_refusal
+    end function test_rank5_refusal
 
     logical function test_refusal(program_source, expected, base) result(ok)
         character(len=*), intent(in) :: program_source, expected, base

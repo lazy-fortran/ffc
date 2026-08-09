@@ -1,7 +1,8 @@
 program test_session_runtime_any_all_compiler
     ! Scalar ANY/ALL over a bare logical runtime array must walk every element
-    ! for both automatic arrays and assumed-shape dummies.  The positive case
-    ! is compared with an independently compiled gfortran executable.
+    ! for automatic arrays and assumed-shape dummies through rank four. The
+    ! positive case is compared with an independently compiled gfortran
+    ! executable; rank five and DIM remain precise refusals.
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
@@ -11,18 +12,27 @@ program test_session_runtime_any_all_compiler
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
-        '  logical, allocatable :: mask(:,:,:)'//new_line('a')// &
+        '  logical, allocatable :: mask(:,:,:), mask4(:,:,:,:)'//new_line('a')// &
         '  allocate(mask(2,3,2))'//new_line('a')// &
+        '  allocate(mask4(2,2,2,2))'//new_line('a')// &
         '  mask = .false.'//new_line('a')// &
+        '  mask4 = .false.'//new_line('a')// &
         '  mask(1,1,1) = .true.'//new_line('a')// &
         '  mask(2,3,2) = .true.'//new_line('a')// &
+        '  mask4(2,2,2,2) = .true.'//new_line('a')// &
         '  call consume(mask)'//new_line('a')// &
+        '  call consume_rank4(mask4)'//new_line('a')// &
         '  call automatic(2,3,2)'//new_line('a')// &
+        '  call automatic_rank4(2,2,2,2)'//new_line('a')// &
         'contains'//new_line('a')// &
         '  subroutine consume(a)'//new_line('a')// &
         '    logical, intent(in) :: a(:,:,:)'//new_line('a')// &
         '    print *, any(a), all(a)'//new_line('a')// &
         '  end subroutine consume'//new_line('a')// &
+        '  subroutine consume_rank4(a)'//new_line('a')// &
+        '    logical, intent(in) :: a(:,:,:,:)'//new_line('a')// &
+        '    print *, any(a), all(a)'//new_line('a')// &
+        '  end subroutine consume_rank4'//new_line('a')// &
         '  subroutine automatic(n,m,k)'//new_line('a')// &
         '    integer, intent(in) :: n,m,k'//new_line('a')// &
         '    logical :: a(n,m,k)'//new_line('a')// &
@@ -30,15 +40,22 @@ program test_session_runtime_any_all_compiler
         '    a(1,1,1) = .false.'//new_line('a')// &
         '    print *, any(a), all(a)'//new_line('a')// &
         '  end subroutine automatic'//new_line('a')// &
-        'end program main'
-
-    character(len=*), parameter :: rank4_source = &
-        'program main'//new_line('a')// &
-        '  call work(2,2,2,2)'//new_line('a')// &
-        'contains'//new_line('a')// &
-        '  subroutine work(n,m,k,l)'//new_line('a')// &
+        '  subroutine automatic_rank4(n,m,k,l)'//new_line('a')// &
         '    integer, intent(in) :: n,m,k,l'//new_line('a')// &
         '    logical :: a(n,m,k,l)'//new_line('a')// &
+        '    a = .true.'//new_line('a')// &
+        '    a(1,1,1,1) = .false.'//new_line('a')// &
+        '    print *, any(a), all(a)'//new_line('a')// &
+        '  end subroutine automatic_rank4'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: rank5_source = &
+        'program main'//new_line('a')// &
+        '  call work(2,2,2,2,2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(n,m,k,l,p)'//new_line('a')// &
+        '    integer, intent(in) :: n,m,k,l,p'//new_line('a')// &
+        '    logical :: a(n,m,k,l,p)'//new_line('a')// &
         '    a = .true.'//new_line('a')// &
         '    print *, any(a)'//new_line('a')// &
         '  end subroutine work'//new_line('a')// &
@@ -60,9 +77,9 @@ program test_session_runtime_any_all_compiler
 
     print *, '=== direct session runtime any/all compiler test ==='
     all_passed = matches_gfortran(source)
-    if (.not. test_refusal(rank4_source, &
-            'any over runtime-extent arrays supports rank-1 through rank-3 only', &
-            '/var/tmp/ert/ffc_runtime_any_rank4')) all_passed = .false.
+    if (.not. test_refusal(rank5_source, &
+            'runtime-sized array supports ranks 1 through 4 only', &
+            '/var/tmp/ert/ffc_runtime_any_rank5')) all_passed = .false.
     if (.not. test_refusal(dim_source, &
             'any requires exactly one logical array argument; DIM and MASK forms are not supported', &
             '/var/tmp/ert/ffc_runtime_any_dim')) all_passed = .false.

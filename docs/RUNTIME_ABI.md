@@ -322,11 +322,13 @@ and a `do` loop bound by `size(a, d)`. `sum(a)`, `product(a)`, `maxval(a)`, and
 `real(8)` elements. Scalar `any(a)` and `all(a)` over a logical mask use the
 same loop and normalise each element to a logical 0/1 before OR/AND reduction.
 A rank-3 runtime-extent assumed-shape dummy is admitted for scalar
-`sum(a)`, `maxval(a)`, `minval(a)`, `count(a)`, `any(a)`, and `all(a)`; the loop
+`sum(a)`, `maxval(a)`, `minval(a)`, `count(a)`, `any(a)`, and `all(a)`; rank-4
+runtime-extent dummies admit the same scalar reductions, and the loop
 multiplies all three descriptor extents before traversing contiguous
 column-major storage. Rank-4 `sum(a)` and `product(a)` use the same descriptor
 loop, as do rank-4 `maxval(a)` and `minval(a)` for numeric elements; logical
-reductions retain their rank-3 boundary. Function (not subroutine) dummies,
+reductions use the same rank-4 descriptor loop and normalize each logical
+element before accumulating. Function (not subroutine) dummies,
 array-section and
 array-constructor actuals, and rank-2 whole-array
 operations (`print a`, `a = b`, `matmul`, `transpose`) are not yet covered and

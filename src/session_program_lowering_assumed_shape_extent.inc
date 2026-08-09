@@ -679,8 +679,8 @@
 
     subroutine lower_runtime_reduction(context, source_index, reduction_name, &
                                        value, error_msg)
-        ! Runtime numeric reductions admit rank-4 runtime arrays; logical
-        ! reductions retain their rank-3 boundary. Every admitted case walks
+        ! Runtime reductions admit rank-4 runtime arrays, including logical
+        ! reductions. Every admitted case walks
         ! one genuine LIRIC loop over the contiguous column-major count. The loop
         ! counter uses the reserved-backedge-vreg PHI technique of a counted DO;
         ! the accumulator lives in a stack slot so the element kinds share one
@@ -703,15 +703,6 @@
             context%symbols(source_index)%array_rank > 4) then
             error_msg = trim(reduction_name)// &
                 ' over runtime-extent arrays supports rank-1 through rank-4 only'
-            return
-        end if
-        if (context%symbols(source_index)%array_rank == 4 .and. &
-            trim(reduction_name) /= 'sum' .and. &
-            trim(reduction_name) /= 'product' .and. &
-            trim(reduction_name) /= 'maxval' .and. &
-            trim(reduction_name) /= 'minval') then
-            error_msg = trim(reduction_name)// &
-                ' over runtime-extent arrays supports rank-1 through rank-3 only'
             return
         end if
         extent = context%symbols(source_index)%runtime_dim_size(1)
