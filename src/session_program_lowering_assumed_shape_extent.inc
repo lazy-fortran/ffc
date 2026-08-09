@@ -4,7 +4,7 @@
 
     integer function dummy_assumed_shape_rank(arena, body_indices, param_name) &
             result(rank)
-        ! Rank (1 or 2) of a rank-1/rank-2 assumed-shape dummy named param_name,
+        ! Rank (1 through 3) of a rank-1/rank-2/rank-3 assumed-shape dummy named param_name,
         ! or 0 when param_name is not such a dummy. Every dimension must be a
         ! bare colon (:) for the dummy to qualify as fully assumed-shape.
         type(ast_arena_t), intent(in) :: arena
@@ -23,7 +23,7 @@
                 if (decl%is_allocatable) cycle
                 if (.not. allocated(decl%dimension_indices)) cycle
                 dim_count = size(decl%dimension_indices)
-                if (dim_count < 1 .or. dim_count > 2) cycle
+                if (dim_count < 1 .or. dim_count > 3) cycle
                 all_colon = .true.
                 do d = 1, dim_count
                     if (.not. dim_is_assumed_shape(arena, &
@@ -146,7 +146,7 @@
     integer function callee_dummy_assumed_shape_dims(arena, callee_name, &
                                                       param_pos) result(rank)
         ! Rank (1 or 2) of callee_name's param_pos-th dummy when it is a
-        ! rank-1/rank-2 assumed-shape array, otherwise 0. Only a subroutine
+        ! rank-1/rank-2/rank-3 assumed-shape array, otherwise 0. Only a subroutine
         ! callee is inspected (the runtime-extent ABI slice).
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: callee_name
@@ -658,9 +658,9 @@
 
     subroutine lower_runtime_reduction(context, source_index, reduction_name, &
                                        value, error_msg)
-        ! Runtime sum/product/maxval/minval remains rank-1/rank-2. COUNT also
-        ! admits rank-3 automatic masks: all of these cases walk one genuine
-        ! LIRIC loop over the contiguous column-major element count. The loop
+        ! Runtime sum/product remains rank-1/rank-2. MAXVAL/MINVAL and COUNT
+        ! admit rank-3 runtime arrays: all of these cases walk one genuine LIRIC
+        ! loop over the contiguous column-major element count. The loop
         ! counter uses the reserved-backedge-vreg PHI technique of a counted DO;
         ! the accumulator lives in a stack slot so the element kinds share one
         ! loop shape.
@@ -679,11 +679,16 @@
 
         value_kind = context%symbols(source_index)%value_kind
         if (context%symbols(source_index)%array_rank < 1 .or. &
-            (context%symbols(source_index)%array_rank > 2 .and. &
-             trim(reduction_name) /= 'count') .or. &
-            (context%symbols(source_index)%array_rank > 3 .and. &
-             trim(reduction_name) == 'count')) then
+            context%symbols(source_index)%array_rank > 3 .or. &
+            (context%symbols(source_index)%array_rank == 3 .and. &
+             trim(reduction_name) /= 'count' .and. &
+             trim(reduction_name) /= 'maxval' .and. &
+             trim(reduction_name) /= 'minval')) then
             if (trim(reduction_name) == 'count') then
+                error_msg = trim(reduction_name)// &
+                    ' over runtime-extent arrays supports rank-1 through rank-3 only'
+            else if (trim(reduction_name) == 'maxval' .or. &
+                     trim(reduction_name) == 'minval') then
                 error_msg = trim(reduction_name)// &
                     ' over runtime-extent arrays supports rank-1 through rank-3 only'
             else

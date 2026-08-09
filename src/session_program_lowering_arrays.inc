@@ -262,7 +262,7 @@
 
     subroutine lower_assumed_shape_declaration(node, context, value_kind, &
                                                error_msg)
-        ! Bind an assumed-shape dummy a(:) (or a(:,:)) to its parameter base and
+        ! Bind an assumed-shape dummy a(:), a(:,:), or a(:,:,:) to its parameter base and
         ! to the caller-derived extent, then reuse the fixed-array machinery for
         ! element access, size(), and whole-array operations.
         type(declaration_node), intent(in) :: node
@@ -274,9 +274,9 @@
         dim_count = 0
         if (allocated(node%dimension_indices)) &
             dim_count = size(node%dimension_indices)
-        if (dim_count < 1 .or. dim_count > 2) then
+        if (dim_count < 1 .or. dim_count > 3) then
             call unsupported_feature_error('assumed-shape array', node%line, &
-                node%column, 'direct LIRIC session supports rank-1 and rank-2 '// &
+                node%column, 'direct LIRIC session supports rank-1 through rank-3 '// &
                 'assumed-shape dummies', error_msg)
             return
         end if
@@ -3810,14 +3810,24 @@
                     trim(reduction_name) == 'minval') then
                     if (any(context%symbols(source_index)%value_kind == &
                             [VALUE_I32, VALUE_F32, VALUE_F64])) then
-                        if (context%symbols(source_index)%array_rank <= 2) then
+                        if (context%symbols(source_index)%array_rank <= 2 .or. &
+                            (context%symbols(source_index)%array_rank == 3 .and. &
+                             (trim(reduction_name) == 'maxval' .or. &
+                              trim(reduction_name) == 'minval'))) then
                             call lower_runtime_reduction(context, source_index, &
                                 trim(reduction_name), value, error_msg)
                             return
                         end if
-                        error_msg = trim(reduction_name)// &
-                            ' over runtime-extent arrays supports rank-1 and '// &
-                            'rank-2 only'
+                        if (trim(reduction_name) == 'maxval' .or. &
+                            trim(reduction_name) == 'minval') then
+                            error_msg = trim(reduction_name)// &
+                                ' over runtime-extent arrays supports rank-1 '// &
+                                'through rank-3 only'
+                        else
+                            error_msg = trim(reduction_name)// &
+                                ' over runtime-extent arrays supports rank-1 and '// &
+                                'rank-2 only'
+                        end if
                         return
                     end if
                 end if

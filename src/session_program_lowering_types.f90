@@ -305,6 +305,10 @@ module session_program_lowering_types
         ! the 0 sentinel. Whole-array print/assign and size()/sum() walk a
         ! genuine LIRIC loop over runtime_dim_size(1) instead of unrolling.
         logical :: is_runtime_array = .false.
+        ! True for an assumed-shape dummy bound through the canonical descriptor.
+        ! Runtime reductions use this to keep intrinsic-specific rank boundaries
+        ! precise when the descriptor ABI itself admits a higher rank.
+        logical :: is_assumed_shape_dummy = .false.
         ! Canonical array descriptor backing a runtime-sized automatic array
         ! (#335). It is the stored shape of record: base address, element size
         ! and type, rank, flags, and per-dimension lower bound, extent, and byte

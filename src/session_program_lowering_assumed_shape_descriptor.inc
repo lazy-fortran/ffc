@@ -1,5 +1,5 @@
-    ! Assumed-shape dummy ABI (#334). A rank-1 or rank-2 assumed-shape dummy
-    ! `a(:)` / `a(:,:)` is bound through exactly one canonical array descriptor
+    ! Assumed-shape dummy ABI (#334). A rank-1 through rank-3 assumed-shape dummy
+    ! `a(:)` / `a(:,:)` / `a(:,:,:)` is bound through exactly one canonical array descriptor
     ! (`ffc_array_descriptor`, `docs/ARRAY_DESCRIPTOR_ABI.md`). The caller
     ! materializes a descriptor for the actual and passes its address in the
     ! dummy's single visible parameter slot. No hidden extent arguments are
@@ -543,7 +543,7 @@
     subroutine bind_assumed_shape_descriptor_params(arena, param_indices, &
                                                     context, callee_name, &
                                                     error_msg)
-        ! Callee entry: every rank-1/rank-2 assumed-shape dummy's visible
+        ! Callee entry: every rank-1/rank-2/rank-3 assumed-shape dummy's visible
         ! parameter is a descriptor pointer. Replace the symbol's parameter
         ! address with the descriptor's base address and cache each dimension's
         ! extent, so element addressing and SIZE read the descriptor and nothing
@@ -571,6 +571,7 @@
                 error_msg = 'assumed-shape dummy was not registered: '//trim(name)
                 return
             end if
+            context%symbols(sym_index)%is_assumed_shape_dummy = .true.
             descriptor = context%symbols(sym_index)%address
             if (callee_dummy_assumed_shape_optional(arena, callee_name, i)) then
                 ! An absent OPTIONAL dummy receives a null descriptor pointer,

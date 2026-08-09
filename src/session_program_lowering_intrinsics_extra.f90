@@ -372,12 +372,17 @@ contains
             error_msg = 'count requires a logical mask: '//trim(mask_name)
             return
         end if
-        ! Runtime-shaped logical dummies and automatic arrays need the same
-        ! descriptor-aware counted loop as numeric reductions.  COUNT extends
-        ! that bounded path through rank three for automatic masks; assumed-
-        ! shape binding itself remains limited to the established rank-one and
-        ! rank-two contract.
+        ! Runtime-shaped logical automatic arrays need the same descriptor-aware
+        ! counted loop as numeric reductions.  Keep the existing rank-three
+        ! automatic-only COUNT boundary: rank-three assumed-shape descriptors
+        ! are admitted for MAXVAL/MINVAL, not for this unrelated reduction.
         if (context%symbols(sym)%has_runtime_dim_size(1)) then
+            if (context%symbols(sym)%array_rank > 2 .and. &
+                context%symbols(sym)%is_assumed_shape_dummy) then
+                error_msg = 'count over runtime-extent arrays supports rank-1 '// &
+                    'and rank-2 only'
+                return
+            end if
             call lower_runtime_reduction(context, sym, 'count', value, error_msg)
             return
         end if

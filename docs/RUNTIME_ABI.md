@@ -299,7 +299,7 @@ compile time.
 
 ### Assumed-shape runtime extent (W2)
 
-A rank-1 or rank-2 assumed-shape dummy (`a(:)` or `a(:,:)`) whose actual has no
+A rank-1, rank-2, or rank-3 assumed-shape dummy (`a(:)`, `a(:,:)`, or `a(:,:,:)`) whose actual has no
 compile-time-foldable shape (an allocatable actual) carries its per-dimension
 extents as hidden `i64` arguments, passed by reference like every other scalar
 reference argument: the caller allocates an `i64` stack slot per extent, stores
@@ -308,8 +308,9 @@ after all of the subroutine's visible pointer parameters, `rank` per such dummy
 (one for a rank-1 dummy, two for a rank-2 dummy, in dimension order), and dummies
 are taken in declaration order. The callee loads and truncates each to `i32`
 once at entry and reuses those values everywhere the dummy's extents are needed.
-The rank-2 extents come from the actual's descriptor bounds: dimension 1 from
-offsets (8, 16), dimension 2 from offsets (24, 32).
+The extents come from the actual's descriptor bounds in dimension order; rank-3
+arguments carry the third dimension through the same descriptor fields as the
+first two.
 
 The existing whole-arena compile-time fold (a whole-array actual with a
 literal or caller-scope-parameter extent) stays the fast path: it is tried
@@ -323,7 +324,11 @@ and `ubound(a, d)` for each dimension, element read and write `a(i)` / `a(i, j)`
 (rank-2 column-major addressing uses the runtime leading extent as the stride),
 and a `do` loop bound by `size(a, d)`. `sum(a)`, `product(a)`, `maxval(a)`, and
 `minval(a)` use a genuine runtime loop over default integer, `real`, and
-`real(8)` elements. Function (not subroutine) dummies, array-section and
+`real(8)` elements. A rank-3 runtime-extent assumed-shape dummy is admitted for
+scalar `maxval(a)` and `minval(a)`; the loop multiplies all three descriptor
+extents before traversing contiguous column-major storage. Rank-3 `sum`,
+`product`, and `count`, plus other rank-3 whole-array operations, retain their
+existing refusals. Function (not subroutine) dummies, array-section and
 array-constructor actuals, and rank-2 whole-array
 operations (`print a`, `a = b`, `matmul`, `transpose`) are not yet covered and
 keep the pre-existing "assumed-shape dummy extent must come from a

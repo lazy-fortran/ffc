@@ -1,8 +1,9 @@
 program test_session_runtime_extreme_compiler
     ! MAXVAL and MINVAL over runtime descriptor-backed arrays must traverse the
     ! complete contiguous storage.  The positive fixture is compared with an
-    ! independently compiled gfortran executable; rank-3 automatic arrays stay
-    ! outside this bounded runtime-reduction contract with a precise diagnostic.
+    ! independently compiled gfortran executable across rank-3 automatic and
+    ! assumed-shape dummies; unsupported rank/reduction combinations retain
+    ! precise diagnostics.
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
@@ -52,7 +53,36 @@ program test_session_runtime_extreme_compiler
         '  end subroutine automatic64'//new_line('a')// &
         'end program main'
 
-    character(len=*), parameter :: rank3_max_source = &
+    character(len=*), parameter :: rank3_source = &
+        'program main'//new_line('a')// &
+        '  integer, allocatable :: actual(:,:,:)'//new_line('a')// &
+        '  integer :: i, j, k'//new_line('a')// &
+        '  allocate(actual(2,3,2))'//new_line('a')// &
+        '  do k = 1, 2'//new_line('a')// &
+        '    do j = 1, 3'//new_line('a')// &
+        '      do i = 1, 2'//new_line('a')// &
+        '        actual(i,j,k) = 100*k + 10*j + i'//new_line('a')// &
+        '      end do'//new_line('a')// &
+        '    end do'//new_line('a')// &
+        '  end do'//new_line('a')// &
+        '  call consume(actual)'//new_line('a')// &
+        '  call automatic(2, 2, 2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine consume(values)'//new_line('a')// &
+        '    integer, intent(in) :: values(:,:,:)'//new_line('a')// &
+        '    print *, maxval(values), minval(values)'//new_line('a')// &
+        '  end subroutine consume'//new_line('a')// &
+        '  subroutine automatic(n, m, k)'//new_line('a')// &
+        '    integer, intent(in) :: n, m, k'//new_line('a')// &
+        '    real(8) :: values(n,m,k)'//new_line('a')// &
+        '    values = 3.0d0'//new_line('a')// &
+        '    values(2,1,2) = -9.0d0'//new_line('a')// &
+        '    values(1,2,1) = 8.0d0'//new_line('a')// &
+        '    print *, maxval(values), minval(values)'//new_line('a')// &
+        '  end subroutine automatic'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: rank3_sum_source = &
         'program main'//new_line('a')// &
         '  call work(2, 2, 2)'//new_line('a')// &
         'contains'//new_line('a')// &
@@ -60,19 +90,32 @@ program test_session_runtime_extreme_compiler
         '    integer, intent(in) :: n, m, k'//new_line('a')// &
         '    integer :: values(n,m,k)'//new_line('a')// &
         '    values = 2'//new_line('a')// &
+        '    print *, sum(values)'//new_line('a')// &
+        '  end subroutine work'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: rank4_max_source = &
+        'program main'//new_line('a')// &
+        '  call work(2, 2, 2, 2)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  subroutine work(n, m, k, l)'//new_line('a')// &
+        '    integer, intent(in) :: n, m, k, l'//new_line('a')// &
+        '    real :: values(n,m,k,l)'//new_line('a')// &
+        '    values = 2.0'//new_line('a')// &
         '    print *, maxval(values)'//new_line('a')// &
         '  end subroutine work'//new_line('a')// &
         'end program main'
 
-    character(len=*), parameter :: rank3_min_source = &
+    character(len=*), parameter :: rank3_assumed_count_source = &
         'program main'//new_line('a')// &
-        '  call work(2, 2, 2)'//new_line('a')// &
+        '  logical, allocatable :: mask(:,:,:)'//new_line('a')// &
+        '  allocate(mask(2,2,2))'//new_line('a')// &
+        '  mask = .false.'//new_line('a')// &
+        '  call work(mask)'//new_line('a')// &
         'contains'//new_line('a')// &
-        '  subroutine work(n, m, k)'//new_line('a')// &
-        '    integer, intent(in) :: n, m, k'//new_line('a')// &
-        '    integer :: values(n,m,k)'//new_line('a')// &
-        '    values = 2'//new_line('a')// &
-        '    print *, minval(values)'//new_line('a')// &
+        '  subroutine work(values)'//new_line('a')// &
+        '    logical, intent(in) :: values(:,:,:)'//new_line('a')// &
+        '    print *, count(values)'//new_line('a')// &
         '  end subroutine work'//new_line('a')// &
         'end program main'
 
@@ -93,12 +136,19 @@ program test_session_runtime_extreme_compiler
     all_passed = matches_gfortran(source, 'filled')
     if (.not. matches_gfortran(empty_source, 'empty')) &
         all_passed = .false.
-    if (.not. test_rank3_refusal(rank3_max_source, 'maxval')) &
+    if (.not. matches_gfortran(rank3_source, 'rank3')) &
         all_passed = .false.
-    if (.not. test_rank3_refusal(rank3_min_source, 'minval')) &
+    if (.not. test_runtime_refusal(rank3_sum_source, 'sum', &
+        'sum over runtime-extent arrays supports rank-1 and rank-2 only')) &
+        all_passed = .false.
+    if (.not. test_runtime_refusal(rank4_max_source, 'maxval', &
+        'maxval over runtime-extent arrays supports rank-1 through rank-3 only')) &
+        all_passed = .false.
+    if (.not. test_runtime_refusal(rank3_assumed_count_source, 'count', &
+        'count over runtime-extent arrays supports rank-1 and rank-2 only')) &
         all_passed = .false.
     if (.not. all_passed) stop 1
-    print *, 'PASS: runtime maxval/minval match gfortran and rank-3 remains refused'
+    print *, 'PASS: runtime maxval/minval match gfortran through rank 3'
 
 contains
 
@@ -142,7 +192,7 @@ contains
         write (unit, '(A)') program_source
         close (unit)
         call execute_command_line('gfortran -w '//src//' -o '//ref, &
-                                  exitstat=exit_stat)
+            exitstat=exit_stat)
         if (exit_stat /= 0) then
             print *, 'FAIL: gfortran rejected runtime maxval/minval source'
             return
@@ -159,8 +209,8 @@ contains
             return
         end if
         call execute_command_line('diff '//ffc_out//' '//ref_out// &
-                                  ' > /dev/null 2>&1', &
-                                  exitstat=diff_status)
+            ' > /dev/null 2>&1', &
+            exitstat=diff_status)
         if (diff_status /= 0) then
             print *, 'FAIL: ffc runtime maxval/minval differs from gfortran'
             call execute_command_line('diff '//ffc_out//' '//ref_out)
@@ -168,18 +218,20 @@ contains
         end if
 
         call execute_command_line('rm -f '//src//' '//exe//' '//ref//' '// &
-                                  ffc_out//' '//ref_out)
+            ffc_out//' '//ref_out)
         ok = .true.
     end function matches_gfortran
 
-    logical function test_rank3_refusal(program_source, intrinsic_name) result(ok)
+    logical function test_runtime_refusal(program_source, intrinsic_name, &
+            expected_message) result(ok)
         character(len=*), intent(in) :: program_source, intrinsic_name
+        character(len=*), intent(in) :: expected_message
         character(len=:), allocatable :: error_msg
         character(len=:), allocatable :: base, src, ref, exe
         integer :: unit, exit_stat
 
         ok = .false.
-        base = '/var/tmp/ert/ffc_runtime_extreme_rank3_'//trim(intrinsic_name)
+        base = '/var/tmp/ert/ffc_runtime_extreme_refusal_'//trim(intrinsic_name)
         src = base//'.f90'
         ref = base//'.gfortran'
         exe = base//'.ffc'
@@ -187,7 +239,7 @@ contains
         write (unit, '(A)') program_source
         close (unit)
         call execute_command_line('gfortran -w '//src//' -o '//ref, &
-                                  exitstat=exit_stat)
+            exitstat=exit_stat)
         if (exit_stat /= 0) then
             print *, 'FAIL: gfortran rejected valid rank-3 '//trim(intrinsic_name)// &
                 ' refusal fixture'
@@ -198,17 +250,16 @@ contains
         call compile_to_exe(program_source, exe, error_msg)
         call execute_command_line('rm -f '//src//' '//ref//' '//exe)
         if (len_trim(error_msg) == 0) then
-            print *, 'FAIL: rank-3 runtime '//trim(intrinsic_name)// &
+            print *, 'FAIL: refused runtime '//trim(intrinsic_name)// &
                 ' lowered without a diagnostic'
             return
         end if
-        if (index(error_msg, trim(intrinsic_name)// &
-                  ' over runtime-extent arrays supports rank-1 and rank-2 only') == 0) then
-            print *, 'FAIL: rank-3 '//trim(intrinsic_name)// &
+        if (index(error_msg, trim(expected_message)) == 0) then
+            print *, 'FAIL: runtime '//trim(intrinsic_name)// &
                 ' refusal diagnostic changed: ', trim(error_msg)
             return
         end if
         ok = .true.
-    end function test_rank3_refusal
+    end function test_runtime_refusal
 
 end program test_session_runtime_extreme_compiler
