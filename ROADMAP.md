@@ -119,14 +119,14 @@ array-valued-RHS boundary is unchanged and was not part of this tranche.
 
 ### Bounded runtime logical-count slice (2026-08-09)
 
-The next runtime-reduction step lowers scalar `count(mask)` for rank-1 and
-rank-2 logical automatic arrays and assumed-shape dummies. It reuses the
-descriptor extent product and counted column-major loop, normalising each
-logical element before adding it to the integer result. The independent
-`test_session_runtime_count_compiler` oracle compares both runtime shapes
-with gfortran and checks a precise rank-3 refusal. Runtime `any`/`all`,
-dimension-wise runtime reductions, and array-valued runtime section RHS forms
-remain separate boundaries.
+This runtime-reduction step lowers scalar `count(mask)` for rank-1 through
+rank-3 logical automatic arrays and rank-1/rank-2 assumed-shape dummies. It
+reuses the descriptor extent product and counted column-major loop, normalising
+each logical element before adding it to the integer result. The independent
+`test_session_runtime_count_compiler` oracle compares the supported runtime
+shapes with gfortran and checks a precise rank-4 refusal. Runtime `any`/`all`,
+rank-3 assumed-shape logical masks, dimension-wise runtime reductions, and
+array-valued runtime section RHS forms remain separate boundaries.
 
 The allocatable-derived-array slice is already present on current main through
 `0aa7a6f` and the follow-up deep-copy repair `b0b7775`; its focused compiler

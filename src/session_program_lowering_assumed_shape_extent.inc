@@ -658,13 +658,12 @@
 
     subroutine lower_runtime_reduction(context, source_index, reduction_name, &
                                        value, error_msg)
-        ! sum/product/maxval/minval(a) over a rank-1 or rank-2 array whose extent is known only
-        ! at run time (an assumed-shape dummy or automatic array): there is no
-        ! compile-time array_size to unroll over, so walk a genuine LIRIC loop
-        ! over the contiguous column-major element count. The loop counter uses
-        ! the reserved-backedge-vreg PHI technique of a counted DO; the
-        ! accumulator lives in a stack slot so integer and real element kinds
-        ! share one loop shape.
+        ! Runtime sum/product/maxval/minval remains rank-1/rank-2. COUNT also
+        ! admits rank-3 automatic masks: all of these cases walk one genuine
+        ! LIRIC loop over the contiguous column-major element count. The loop
+        ! counter uses the reserved-backedge-vreg PHI technique of a counted DO;
+        ! the accumulator lives in a stack slot so the element kinds share one
+        ! loop shape.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: source_index
         character(len=*), intent(in) :: reduction_name
@@ -676,27 +675,39 @@
         integer(c_int32_t) :: entry_block, header_block, body_block, &
                               latch_block, exit_block
         integer(c_int32_t) :: idx_vreg
-        integer :: value_kind
+        integer :: value_kind, dim
 
         value_kind = context%symbols(source_index)%value_kind
         if (context%symbols(source_index)%array_rank < 1 .or. &
-            context%symbols(source_index)%array_rank > 2) then
-            error_msg = trim(reduction_name)// &
-                ' over runtime-extent arrays supports rank-1 and rank-2 only'
+            (context%symbols(source_index)%array_rank > 2 .and. &
+             trim(reduction_name) /= 'count') .or. &
+            (context%symbols(source_index)%array_rank > 3 .and. &
+             trim(reduction_name) == 'count')) then
+            if (trim(reduction_name) == 'count') then
+                error_msg = trim(reduction_name)// &
+                    ' over runtime-extent arrays supports rank-1 through rank-3 only'
+            else
+                error_msg = trim(reduction_name)// &
+                    ' over runtime-extent arrays supports rank-1 and rank-2 only'
+            end if
             return
         end if
         extent = context%symbols(source_index)%runtime_dim_size(1)
-        if (context%symbols(source_index)%array_rank == 2) then
-            if (.not. context%symbols(source_index)%has_runtime_dim_size(2)) then
-                error_msg = trim(reduction_name)// &
-                    ' is missing the second array extent'
+        do dim = 2, context%symbols(source_index)%array_rank
+            if (.not. context%symbols(source_index)%has_runtime_dim_size(dim)) then
+                if (dim == 2) then
+                    error_msg = trim(reduction_name)// &
+                        ' is missing the second array extent'
+                else
+                    error_msg = trim(reduction_name)//' is missing an array extent'
+                end if
                 return
             end if
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
-                    context%symbols(source_index)%runtime_dim_size(2), &
+                    context%symbols(source_index)%runtime_dim_size(dim), &
                     next_extent, error_msg)) return
             extent = next_extent
-        end if
+        end do
 
         call runtime_reduction_accumulator_slot(context, value_kind, &
             reduction_name, accumulator, zero, error_msg)

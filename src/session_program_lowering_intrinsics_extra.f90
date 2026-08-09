@@ -373,9 +373,10 @@ contains
             return
         end if
         ! Runtime-shaped logical dummies and automatic arrays need the same
-        ! descriptor-aware counted loop as numeric reductions.  Keep the
-        ! bounded implementation to rank one and two until dimension-wise
-        ! runtime reduction has an explicit shape plan.
+        ! descriptor-aware counted loop as numeric reductions.  COUNT extends
+        ! that bounded path through rank three for automatic masks; assumed-
+        ! shape binding itself remains limited to the established rank-one and
+        ! rank-two contract.
         if (context%symbols(sym)%has_runtime_dim_size(1)) then
             call lower_runtime_reduction(context, sym, 'count', value, error_msg)
             return

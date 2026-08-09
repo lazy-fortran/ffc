@@ -36,7 +36,8 @@ runtime bound (`integer :: a(n)` or `real :: a(0:n)` inside a procedure, where
 `n` is a dummy, host, or COMMON value the compiler cannot fold), covering
 element read/write, whole-array scalar broadcast, and scalar `sum`, `product`,
 `maxval`, and `minval` over integer or real elements, plus scalar `count` over
-logical masks, through the runtime descriptor; runtime-bounded
+logical masks (automatic ranks 1 through 3 and assumed-shape ranks 1 through
+2), through the runtime descriptor; runtime-bounded
 scalar section assignment also supports rank-1
 through rank-4 sections with multiple retained dimensions (for example
 `a(2:n,1:m) = value`), using live bounds and column-major coordinates;
@@ -121,7 +122,9 @@ the per-dimension extents travel as hidden arguments, so `size(a)`,
 leading extent as the column-major stride), a `do` loop bound by
 `size(a, dim)`, and scalar `sum(a)`/`product(a)`/`maxval(a)`/`minval(a)` over
 default integer, `real`, or `real(8)` elements all work against the caller's
-runtime allocation. An assumed-size dummy
+runtime allocation. Scalar `count(a)` also works for logical masks, through
+rank 3 for automatic arrays and through rank 2 for assumed-shape dummies. An
+assumed-size dummy
 (`a(*)`, `a(n1, ..., *)`, dummy arguments only) folds its leading dimensions
 at compile time and binds to the actual's base address, so element read/write
 and `lbound(a, dim)` work; the trailing dimension carries no extent, so
