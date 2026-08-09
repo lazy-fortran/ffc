@@ -65,7 +65,8 @@ contains
             return
         end select
         if (.not. allocated(node%arg_indices)) return
-        if (size(node%arg_indices) /= 1) return
+        if (size(node%arg_indices) /= 1 .and. &
+            trim(node%name) /= 'norm2') return
         if (node_exists(arena, node%arg_indices(1))) then
             ! sum(a(lo:hi)) and friends: the section reduces over its base
             ! array's element kind, so gate on that base's value kind.

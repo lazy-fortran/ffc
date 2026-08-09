@@ -483,7 +483,8 @@
         case (VALUE_F32)
             if (.not. emit_liric_f32_alloca(context%session, slot, error_msg)) &
                 return
-            if (trim(reduction_name) == 'sum') then
+            if (trim(reduction_name) == 'sum' .or. &
+                trim(reduction_name) == 'norm2') then
                 identity = liric_f32_immediate(context%session, 0.0_c_float)
             else if (trim(reduction_name) == 'product') then
                 identity = liric_f32_immediate(context%session, 1.0_c_float)
@@ -507,7 +508,8 @@
         case (VALUE_F64)
             if (.not. emit_liric_f64_alloca(context%session, slot, error_msg)) &
                 return
-            if (trim(reduction_name) == 'sum') then
+            if (trim(reduction_name) == 'sum' .or. &
+                trim(reduction_name) == 'norm2') then
                 identity = liric_f64_immediate(context%session, 0.0_c_double)
             else if (trim(reduction_name) == 'product') then
                 identity = liric_f64_immediate(context%session, 1.0_c_double)
@@ -575,6 +577,11 @@
             else if (trim(reduction_name) == 'product') then
                 if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, &
                         current, element, updated, error_msg)) return
+            else if (trim(reduction_name) == 'norm2') then
+                if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, &
+                        element, element, selected, error_msg)) return
+                if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, &
+                        current, selected, updated, error_msg)) return
             else if (trim(reduction_name) == 'minval' .or. &
                      trim(reduction_name) == 'maxval') then
                 if (.not. emit_liric_f32_call(context%session, &
@@ -595,6 +602,11 @@
             else if (trim(reduction_name) == 'product') then
                 if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, &
                         current, element, updated, error_msg)) return
+            else if (trim(reduction_name) == 'norm2') then
+                if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, &
+                        element, element, selected, error_msg)) return
+                if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, &
+                        current, selected, updated, error_msg)) return
             else if (trim(reduction_name) == 'minval' .or. &
                      trim(reduction_name) == 'maxval') then
                 if (.not. emit_liric_f64_call(context%session, &
@@ -656,20 +668,33 @@
         call set_empty(error_msg)
     end subroutine runtime_reduction_accumulate
 
-    subroutine runtime_sum_result(context, value_kind, slot, value, error_msg)
+    subroutine runtime_sum_result(context, value_kind, reduction_name, slot, &
+                                  value, error_msg)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: value_kind
+        character(len=*), intent(in) :: reduction_name
         type(lr_operand_desc_t), intent(in) :: slot
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: root
 
         select case (value_kind)
         case (VALUE_F32)
             if (.not. emit_liric_f32_load(context%session, slot, value, &
                                           error_msg)) return
+            if (trim(reduction_name) == 'norm2') then
+                if (.not. emit_liric_f32_call(context%session, 'sqrtf', [value], &
+                                              root, error_msg)) return
+                value = root
+            end if
         case (VALUE_F64)
             if (.not. emit_liric_f64_load(context%session, slot, value, &
                                           error_msg)) return
+            if (trim(reduction_name) == 'norm2') then
+                if (.not. emit_liric_f64_call(context%session, 'sqrt', [value], &
+                                              root, error_msg)) return
+                value = root
+            end if
         case default
             if (.not. emit_i32_load(context%session, slot, value, error_msg)) &
                 return
@@ -699,6 +724,12 @@
         integer :: value_kind, dim
 
         value_kind = context%symbols(source_index)%value_kind
+        if (trim(reduction_name) == 'norm2' .and. &
+            value_kind /= VALUE_F32 .and. value_kind /= VALUE_F64) then
+            error_msg = 'norm2 over runtime-extent arrays supports real and '// &
+                        'real(8) elements only'
+            return
+        end if
         if (context%symbols(source_index)%array_rank < 1 .or. &
             context%symbols(source_index)%array_rank > 4) then
             error_msg = trim(reduction_name)// &
@@ -782,5 +813,6 @@
         if (.not. set_liric_block(context%session, exit_block, error_msg)) return
         context%current_block_id = exit_block
         context%current_block_terminated = .false.
-        call runtime_sum_result(context, value_kind, accumulator, value, error_msg)
+        call runtime_sum_result(context, value_kind, reduction_name, accumulator, &
+                                value, error_msg)
     end subroutine lower_runtime_reduction

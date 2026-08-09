@@ -324,7 +324,7 @@ same loop and normalise each element to a logical 0/1 before OR/AND reduction.
 A rank-3 runtime-extent assumed-shape dummy is admitted for scalar
 `sum(a)`, `maxval(a)`, `minval(a)`, `count(a)`, `any(a)`, and `all(a)`; rank-4
 runtime-extent dummies admit the same scalar reductions, and the loop
-multiplies all three descriptor extents before traversing contiguous
+multiplies all active descriptor extents before traversing contiguous
 column-major storage. Rank-4 `sum(a)` and `product(a)` use the same descriptor
 loop, as do rank-4 `maxval(a)` and `minval(a)` for numeric elements; logical
 reductions use the same rank-4 descriptor loop and normalize each logical
@@ -335,6 +335,13 @@ operations (`print a`, `a = b`, `matmul`, `transpose`) are not yet covered and
 keep the pre-existing "assumed-shape dummy extent must come from a
 whole-array actual of compile-time size" diagnostic (or the relevant
 whole-array diagnostic).
+
+Scalar `norm2(a)` also admits rank-1 through rank-4 runtime automatic arrays
+and assumed-shape real dummies. It walks the contiguous descriptor-backed
+elements with a runtime loop, accumulates the sum of squares, and applies the
+matching `sqrtf`/`sqrt` operation. The supported form is scalar `norm2(a)`;
+DIM/KIND forms, integer and logical elements, and rank five or higher remain
+explicit refusals.
 
 `call obj%method(args)` (a type-bound subroutine call) inserts the passed-object
 receiver ahead of the explicit `args` at the callee's passed-object dummy

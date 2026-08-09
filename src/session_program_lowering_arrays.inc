@@ -3698,7 +3698,12 @@
         integer(c_int) :: predicate
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
-            error_msg = trim(reduction_name)//' requires exactly one array argument'
+            if (trim(reduction_name) == 'norm2') then
+                error_msg = 'norm2 supports exactly one real array argument; '// &
+                            'DIM and KIND forms are not supported'
+            else
+                error_msg = trim(reduction_name)//' requires exactly one array argument'
+            end if
             return
         end if
 
@@ -3804,6 +3809,23 @@
             ! descriptor has a runtime-only extent and no compile-time
             ! array_size to unroll over; walk a genuine loop instead.
             if (context%symbols(source_index)%has_runtime_dim_size(1)) then
+                if (trim(reduction_name) == 'norm2') then
+                    if (context%symbols(source_index)%value_kind == VALUE_F32 .or. &
+                        context%symbols(source_index)%value_kind == VALUE_F64) then
+                        if (context%symbols(source_index)%array_rank <= 4) then
+                            call lower_runtime_reduction(context, source_index, &
+                                trim(reduction_name), value, error_msg)
+                            return
+                        end if
+                        error_msg = trim(reduction_name)// &
+                            ' over runtime-extent arrays supports rank-1 '// &
+                            'through rank-4 only'
+                        return
+                    end if
+                    error_msg = 'norm2 over runtime-extent arrays supports real '// &
+                                'and real(8) elements only'
+                    return
+                end if
                 if (trim(reduction_name) == 'sum' .or. &
                     trim(reduction_name) == 'product' .or. &
                     trim(reduction_name) == 'maxval' .or. &
