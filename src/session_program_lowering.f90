@@ -562,6 +562,19 @@ module session_program_lowering_impl
     public :: ensure_array_shapes_match, lower_array_section_element_from_info
     public :: real_opcode, reduction_combine, reduction_identity
     public :: reduction_is_mask_valued, reduction_operation
+    ! Intrinsic-extra, complex, select, and associate submodules call these
+    ! host lowering helpers.  Keep them externally linkable on GCC 14, where
+    ! private ancestor procedures can otherwise receive local linkage in a
+    ! cold submodule build.
+    public :: alloc_array_component_descriptor, complex_array_element_addresses
+    public :: component_alloc_rank_at, contained_array_result_info
+    public :: contained_function_kind, derived_component_access_kind_at
+    public :: emit_or_add1, is_integer_operand, load_alloc_component_element
+    public :: load_complex_array_element, lower_external_complex_call
+    public :: lower_f32_intrinsic_arg, lower_f64_intrinsic_arg
+    public :: lower_runtime_reduction, require_intrinsic_arg_count
+    public :: resolve_assumed_rank, try_array_mask_reduction
+    public :: try_general_mask_reduction
     public :: unsupported_array_subscript, unsupported_intrinsic_error
     public :: unsupported_feature_error
     ! Assumed-rank, derived-component, complex-array, intrinsic-argument, and

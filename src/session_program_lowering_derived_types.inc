@@ -568,12 +568,20 @@
         is_finalizable = .false.
         if (.not. context%symbols(symbol_index)%is_derived) return
         if (context%symbols(symbol_index)%is_dummy_argument) return
-        if (context%symbols(symbol_index)%is_array) return
         ! A pointer names storage it does not own.
         if (context%symbols(symbol_index)%is_pointer) return
+        if (context%symbols(symbol_index)%is_array) then
+            ! An allocatable derived array owns storage only while its
+            ! descriptor data pointer is non-null.  Whether it is currently
+            ! allocated is checked at runtime when the finalizer runs, so the
+            ! scope-exit path emits the call unconditionally and guards on the
+            ! descriptor (#643 / #403).
+            if (.not. context%symbols(symbol_index)%is_allocatable) return
+        end if
         ! An allocatable owns storage only while it is allocated; a moved-from
         ! or deallocated value has already lost its address.
-        if (context%symbols(symbol_index)%is_allocatable) then
+        if (context%symbols(symbol_index)%is_allocatable .and. &
+            context%symbols(symbol_index)%array_rank == 0) then
             if (.not. context%symbols(symbol_index)%has_address) return
         end if
         if (symbol_has_global_storage(context%symbols(symbol_index))) return
@@ -607,6 +615,110 @@
         call set_empty(error_msg)
     end subroutine emit_scalar_finalizer_call
 
+    subroutine emit_array_finalizer_call(context, symbol_index, error_msg)
+        ! Finalize every element of an allocated rank-1/rank-2 derived
+        ! allocatable array by calling the type's scalar FINAL procedure once
+        ! on each element's storage address, before the block is released.
+        ! An unallocated descriptor (null data pointer) is a no-op, matching
+        ! `deallocate` on an unallocated entity (#643 / #403).
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr
+        type(lr_operand_desc_t) :: extent1, extent2, count64, element_bytes
+        type(lr_operand_desc_t) :: index64, byte_offset, element_addr
+        type(lr_operand_desc_t) :: entry_index, header_index, next_index
+        type(lr_operand_desc_t) :: condition, extent32
+        type(lr_operand_desc_t) :: args(1)
+        character(len=:), allocatable :: final_name
+        integer(c_int32_t) :: entry_block, header_block, body_block
+        integer(c_int32_t) :: latch_block, exit_block, index_vreg
+        integer :: type_index, rank, slots
+
+        call set_empty(error_msg)
+        type_index = context%symbols(symbol_index)%derived_type_index
+        if (type_index <= 0) return
+        if (type_index > context%derived_type_count) return
+        final_name = trim(context%derived_types(type_index)%final_proc_name)
+        if (len_trim(final_name) == 0) return
+        rank = context%symbols(symbol_index)%array_rank
+        if (rank < 1 .or. rank > 2) return
+
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, &
+                                error_msg)) return
+        call emit_alloc_desc_load_extent(context, descriptor, 1, extent1, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (rank == 2) then
+            call emit_alloc_desc_load_extent(context, descriptor, 2, extent2, &
+                                             error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, extent1, &
+                    extent2, count64, error_msg)) return
+        else
+            count64 = extent1
+        end if
+        slots = total_component_slots(context, type_index)
+        if (slots <= 0) return
+        element_bytes = i64_immediate(context%session, &
+            int(slots, c_int64_t) * 4_c_int64_t)
+        if (.not. emit_liric_i64_to_i32(context%session, count64, extent32, &
+                                        error_msg)) return
+
+        entry_block = context%current_block_id
+        header_block = create_liric_block(context%session)
+        body_block = create_liric_block(context%session)
+        latch_block = create_liric_block(context%session)
+        exit_block = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, header_block, error_msg)) return
+        context%current_block_id = header_block
+        context%current_block_terminated = .false.
+
+        entry_index = i32_immediate(context%session, 0_c_int64_t)
+        index_vreg = reserve_i32_vreg(context%session)
+        if (index_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve a derived array finalizer index'
+            return
+        end if
+        index64 = i32_vreg(context%session, index_vreg)
+        if (.not. emit_liric_i32_phi(context%session, entry_index, entry_block, &
+                index64, latch_block, header_index, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_index, &
+                extent32, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, body_block, &
+                                    exit_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, body_block, error_msg)) return
+        context%current_block_id = body_block
+        context%current_block_terminated = .false.
+        if (.not. emit_liric_i32_to_i64(context%session, header_index, index64, &
+                                        error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_MUL, index64, &
+                element_bytes, byte_offset, error_msg)) return
+        if (.not. emit_ptr_offset_dyn(context%session, data_ptr, byte_offset, &
+                                      element_addr, error_msg)) return
+        args(1) = element_addr
+        if (.not. emit_call_with_optional_padding(context, &
+                call_emit_name(context%arena, final_name, context), args, &
+                error_msg)) return
+        if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+        context%current_block_id = latch_block
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_index, &
+                i32_immediate(context%session, 1_c_int64_t), index_vreg, &
+                next_index, error_msg)) return
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, exit_block, error_msg)) return
+        context%current_block_id = exit_block
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine emit_array_finalizer_call
+
     subroutine emit_scope_exit_finalizers(context, error_msg)
         ! End of a procedure's execution finalizes each owned local derived
         ! value once, in reverse declaration order (#403).
@@ -617,7 +729,11 @@
         call set_empty(error_msg)
         do i = context%symbol_count, 1, -1
             if (.not. symbol_is_scope_finalizable(context, i)) cycle
-            call emit_scalar_finalizer_call(context, i, error_msg)
+            if (context%symbols(i)%is_array) then
+                call emit_array_finalizer_call(context, i, error_msg)
+            else
+                call emit_scalar_finalizer_call(context, i, error_msg)
+            end if
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine emit_scope_exit_finalizers
