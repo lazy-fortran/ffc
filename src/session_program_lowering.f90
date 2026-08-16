@@ -365,7 +365,7 @@ module session_program_lowering_impl
     use ffc_character_descriptor, only: CHARACTER_STORAGE_STATIC, &
         CHARACTER_STORAGE_STACK, CHARACTER_STORAGE_OWNED
     implicit none
-    private
+    public
     public :: lower_program_to_liric_exe
     public :: lower_program_to_liric_object
 
