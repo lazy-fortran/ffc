@@ -559,11 +559,26 @@ module session_program_lowering_impl
     public :: alloc_array_result_info, alloc_array_result_static_size
     public :: allocatable_descriptor_extent_i32, emit_allocatable_element_load
     public :: enter_liric_block, load_array_element_at_operand
-    public :: lower_array_section_element_from_info
+    public :: ensure_array_shapes_match, lower_array_section_element_from_info
     public :: real_opcode, reduction_combine, reduction_identity
     public :: reduction_is_mask_valued, reduction_operation
     public :: unsupported_array_subscript, unsupported_intrinsic_error
     public :: unsupported_feature_error
+    ! Assumed-rank, derived-component, complex-array, intrinsic-argument, and
+    ! reduction helpers referenced by descendant submodules that were added to
+    ! host includes after the initial GCC-14 visibility pass.  A private
+    ! ancestor procedure receives local linkage even when a submodule calls it,
+    ! so keep these implementation entry points explicit and externally
+    ! linkable.
+    public :: component_alloc_rank_at, alloc_array_component_descriptor
+    public :: load_alloc_component_element, derived_component_access_kind_at
+    public :: load_complex_array_element, complex_array_element_addresses
+    public :: lower_external_complex_call, contained_array_result_info
+    public :: contained_function_kind, is_integer_operand
+    public :: lower_f32_intrinsic_arg, lower_f64_intrinsic_arg
+    public :: require_intrinsic_arg_count, resolve_assumed_rank
+    public :: emit_or_add1, lower_runtime_reduction
+    public :: try_array_mask_reduction, try_general_mask_reduction
 
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from

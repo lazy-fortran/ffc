@@ -1,5 +1,5 @@
 program test_session_where_compiler
-    use ffc_test_support, only: expect_output
+    use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
 
     logical :: all_passed
@@ -11,6 +11,7 @@ program test_session_where_compiler
     if (.not. test_where_masked_assignment()) all_passed = .false.
     if (.not. test_where_elsewhere()) all_passed = .false.
     if (.not. test_where_overlapping_section()) all_passed = .false.
+    if (.not. test_where_shape_mismatch_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: WHERE lowers through direct LIRIC'
@@ -90,4 +91,21 @@ contains
             '/tmp/ffc_where_overlapping_section_test')
     end function test_where_overlapping_section
 
+    logical function test_where_shape_mismatch_diagnostic() result(ok)
+        ! A WHERE mask must conform to the target array: it is evaluated at
+        ! the same linear elements. A mask of a different extent is a
+        ! conformability error and must be rejected at lowering time with a
+        ! diagnostic, not silently read out of bounds.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(4), m(3)'//new_line('a')// &
+            '  m = 1'//new_line('a')// &
+            '  where (m == 1) a = 5'//new_line('a')// &
+            'end program main'
+
+        ok = expect_error_contains(source, 'conforming shapes', &
+            '/tmp/ffc_where_shape_mismatch_test')
+    end function test_where_shape_mismatch_diagnostic
+
 end program test_session_where_compiler
+
