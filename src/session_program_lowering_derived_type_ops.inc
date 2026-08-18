@@ -2397,8 +2397,21 @@
             else
                 k = k + 1
                 if (allocated(arg_indices)) then
-                    actual_kinds(i) = expression_value_kind(arena, &
-                        arg_indices(k), context, VALUE_I32)
+                    if (is_real_literal(arena, arg_indices(k))) then
+                        ! Generic resolution uses the source literal kind. An
+                        ! unsuffixed real literal is default REAL (F32), not
+                        ! the F64 fallback used by expression lowering when no
+                        ! dummy-kind hint has been selected yet.
+                        if (scalar_real_expr_kind(arena, arg_indices(k), context) &
+                            == VALUE_F32) then
+                            actual_kinds(i) = VALUE_F32
+                        else
+                            actual_kinds(i) = VALUE_F64
+                        end if
+                    else
+                        actual_kinds(i) = expression_value_kind(arena, &
+                            arg_indices(k), context, VALUE_I32)
+                    end if
                     actual_ranks(i) = expression_value_rank(arena, &
                         arg_indices(k), context)
                 end if

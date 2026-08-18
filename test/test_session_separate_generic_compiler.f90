@@ -56,6 +56,7 @@ program test_session_separate_generic_compiler
     if (.not. test_no_matching_rank_is_diagnosed()) all_passed = .false.
     if (.not. test_rank_only_specifics_share_one_generic()) all_passed = .false.
     if (.not. test_assumed_shape_rank_specifics_accepted()) all_passed = .false.
+    if (.not. test_transitive_typebound_generic_reexport()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: separate-compilation generic interface'
@@ -160,9 +161,9 @@ contains
         ok = .false.
         call make_scratch_dir('fmod415_resolve', dir)
         separate_status = run_separate_compilation(dir, rank_module_source, &
-                                                   program_source)
+            program_source)
         same_status = run_same_unit_compilation(dir, rank_module_source, &
-                                                program_source)
+            program_source)
         if (same_status /= 142) then
             print *, 'FAIL: same-unit generic resolution status ', same_status
             call show_log(dir)
@@ -199,9 +200,9 @@ contains
         ok = .false.
         call make_scratch_dir('fmod415_nomatch', dir)
         separate_status = run_separate_compilation(dir, rank_module_source, &
-                                                   program_source)
+            program_source)
         same_status = run_same_unit_compilation(dir, rank_module_source, &
-                                                program_source)
+            program_source)
         if (same_status /= 92) then
             print *, 'FAIL: same-unit rank mismatch was accepted, status ', &
                 same_status
@@ -243,9 +244,9 @@ contains
         ok = .false.
         call make_scratch_dir('ffc595_rank_only', dir)
         same_status = run_same_unit_compilation(dir, rank_module_source, &
-                                                program_source)
+            program_source)
         separate_status = run_separate_compilation(dir, rank_module_source, &
-                                                   program_source)
+            program_source)
         if (same_status /= 111) then
             print *, 'FAIL: same-unit rank-only generic status ', same_status
             call show_log(dir)
@@ -298,7 +299,7 @@ contains
         ok = .false.
         call make_scratch_dir('ffc595_assumed', dir)
         same_status = run_same_unit_compilation(dir, module_source, &
-                                                program_source)
+            program_source)
         if (same_status /= 103) then
             print *, 'FAIL: assumed-shape rank specifics status ', same_status
             call show_log(dir)
@@ -307,6 +308,136 @@ contains
         call remove_scratch_dir(dir)
         ok = .true.
     end function test_assumed_shape_rank_specifics_accepted
+
+    logical function test_transitive_typebound_generic_reexport() result(ok)
+        ! A type-bound generic survives two module boundaries: the defining
+        ! module is compiled first, a public bridge module re-exports the
+        ! derived type, and the user sees only the bridge .fmod.  The two
+        ! generic specifics must still resolve to the defining module's
+        ! procedures (#447, modules33/modules34).
+        character(len=:), allocatable :: dir
+        integer :: ffc_status, gfortran_status
+        character(len=*), parameter :: base_source = &
+            'module fmod447_base'//new_line('a')// &
+            '    implicit none'//new_line('a')// &
+            '    type :: box_t'//new_line('a')// &
+            '        integer :: value'//new_line('a')// &
+            '    contains'//new_line('a')// &
+            '        generic :: set => set_int, set_real'//new_line('a')// &
+            '        procedure :: set_int'//new_line('a')// &
+            '        procedure :: set_real'//new_line('a')// &
+            '    end type box_t'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '    subroutine set_int(self, value)'//new_line('a')// &
+            '        class(box_t), intent(inout) :: self'//new_line('a')// &
+            '        integer, intent(in) :: value'//new_line('a')// &
+            '        self%value = self%value + value'//new_line('a')// &
+            '    end subroutine set_int'//new_line('a')// &
+            '    subroutine set_real(self, value)'//new_line('a')// &
+            '        class(box_t), intent(inout) :: self'//new_line('a')// &
+            '        real, intent(in) :: value'//new_line('a')// &
+            '        self%value = self%value + int(value)'//new_line('a')// &
+            '    end subroutine set_real'//new_line('a')// &
+            'end module fmod447_base'
+        character(len=*), parameter :: bridge_source = &
+            'module fmod447_bridge'//new_line('a')// &
+            '    use fmod447_base, only: box_t'//new_line('a')// &
+            '    implicit none'//new_line('a')// &
+            '    public :: box_t'//new_line('a')// &
+            'end module fmod447_bridge'
+        character(len=*), parameter :: program_source = &
+            'program main'//new_line('a')// &
+            '    use fmod447_bridge, only: box_t'//new_line('a')// &
+            '    implicit none'//new_line('a')// &
+            '    type(box_t) :: box'//new_line('a')// &
+            '    box%value = 0'//new_line('a')// &
+            '    call box%set(4)'//new_line('a')// &
+            '    call box%set(2.5)'//new_line('a')// &
+            '    if (box%value /= 6) error stop 1'//new_line('a')// &
+            '    print *, box%value'//new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call make_scratch_dir('fmod447_typebound', dir)
+        ffc_status = run_transitive_typebound_compilation(dir, base_source, &
+            bridge_source, &
+            program_source)
+        gfortran_status = run_gfortran_transitive_compilation(dir, base_source, &
+            bridge_source, &
+            program_source)
+        if (gfortran_status /= 0) then
+            print *, 'FAIL: gfortran oracle failed for transitive type-bound generic'
+            call show_log(dir)
+            return
+        end if
+        if (ffc_status /= gfortran_status) then
+            print *, 'FAIL: transitive type-bound status ', ffc_status, &
+                ' differs from gfortran ', gfortran_status
+            call show_log(dir)
+            return
+        end if
+        if (.not. files_equal(dir//'/ffc.out', dir//'/gfortran.out')) then
+            print *, 'FAIL: transitive type-bound output differs from gfortran'
+            call show_log(dir)
+            return
+        end if
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_transitive_typebound_generic_reexport
+
+    integer function run_transitive_typebound_compilation(dir, base_source, &
+            bridge_source, &
+            program_source) result(status)
+        character(len=*), intent(in) :: dir, base_source, bridge_source
+        character(len=*), intent(in) :: program_source
+        integer :: exit_stat, cmd_stat
+
+        status = 90
+        if (.not. write_file(dir//'/base.f90', base_source)) return
+        if (.not. write_file(dir//'/bridge.f90', bridge_source)) return
+        if (.not. write_file(dir//'/program.f90', program_source)) return
+        call execute_command_line( &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
+            'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
+            'cd '//dir//' || exit 90; '// &
+            '"$exe" -c base.f90 -o base.o >log 2>&1 || exit 91; '// &
+            '"$exe" -c bridge.f90 -o bridge.o >>log 2>&1 || exit 92; '// &
+            '"$exe" program.f90 bridge.o base.o -o ffc >log 2>&1 || exit 93; '// &
+            './ffc >ffc.out 2>&1; exit $?'//"'", &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) return
+        status = exit_stat
+    end function run_transitive_typebound_compilation
+
+    integer function run_gfortran_transitive_compilation(dir, base_source, &
+            bridge_source, &
+            program_source) result(status)
+        character(len=*), intent(in) :: dir, base_source, bridge_source
+        character(len=*), intent(in) :: program_source
+        integer :: exit_stat, cmd_stat
+
+        status = 90
+        if (.not. write_file(dir//'/gbase.f90', base_source)) return
+        if (.not. write_file(dir//'/gbridge.f90', bridge_source)) return
+        if (.not. write_file(dir//'/gprogram.f90', program_source)) return
+        call execute_command_line( &
+            'sh -c ''cd '//dir//' || exit 90; '// &
+            'gfortran -std=f2018 -w gbase.f90 gbridge.f90 gprogram.f90 '// &
+            '-o gfortran >gfortran.log 2>&1 || exit 91; '// &
+            './gfortran >gfortran.out 2>&1; exit $?''', &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) return
+        status = exit_stat
+    end function run_gfortran_transitive_compilation
+
+    logical function files_equal(left, right) result(equal)
+        character(len=*), intent(in) :: left, right
+        integer :: exit_stat, cmd_stat
+
+        call execute_command_line('diff -u '//left//' '//right, &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        equal = cmd_stat == 0 .and. exit_stat == 0
+    end function files_equal
 
     integer function run_separate_compilation(dir, mod_source, prog_source) &
             result(status)
@@ -346,7 +477,7 @@ contains
 
         status = 90
         if (.not. write_file(dir//'/same.f90', mod_source//new_line('a')// &
-                             prog_source)) return
+            prog_source)) return
         call execute_command_line( &
             "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
             'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &

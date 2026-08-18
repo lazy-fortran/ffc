@@ -694,6 +694,19 @@
         call class_dummy_declared_type_index(context, arena, impl_name, position, &
                                              declared_index)
         if (declared_index <= 0) then
+            ! A separately compiled type-bound target has no procedure AST in
+            ! the caller's arena, but its fmod entry is the canonical class
+            ! passed-object ABI. Reconstruct the borrowed descriptor from the
+            ! actual's declared type instead of passing raw storage to a
+            ! class(box_t) dummy.
+            if (external_procedure_index(context, trim(impl_name)) > 0) then
+                declared_index = context%symbols(symbol_index)%derived_type_index
+                if (declared_index > 0) then
+                    call build_class_scalar_descriptor(context, symbol_index, &
+                        declared_index, argument, error_msg)
+                    return
+                end if
+            end if
             argument = context%symbols(symbol_index)%element_address
             call set_empty(error_msg)
             return
