@@ -1665,6 +1665,19 @@
                     error_msg = trim(conversion%name)//' requires one argument'
                     return
                 end if
+                if (is_contained_f32_function(context, conversion%name) .or. &
+                    is_contained_f64_function(context, conversion%name)) then
+                    error_msg = 'kind argument is not a literal or named entity'
+                    return
+                end if
+                k = expression_value_kind(arena, conversion%arg_indices(1), &
+                                          context, VALUE_I32)
+                if (k /= VALUE_I8 .and. k /= VALUE_I16 .and. &
+                    k /= VALUE_I32 .and. k /= VALUE_I64) then
+                    error_msg = trim(conversion%name)// &
+                        ' argument must be INTEGER'
+                    return
+                end if
                 if (same_name(conversion%name, 'float')) then
                     constant_value = 4_c_int64_t
                 else

@@ -716,13 +716,15 @@
         end if
 
         if (same_name(call_name, 'float') .and. &
-            .not. is_contained_f32_function(context, call_name)) then
+            .not. is_contained_f32_function(context, call_name) .and. &
+            .not. is_contained_f64_function(context, call_name)) then
             call lower_legacy_integer_conversion(arena, node, context, .false., &
                                                  value, error_msg)
             return
         end if
         if (same_name(call_name, 'dfloat') .and. &
-            .not. is_contained_f32_function(context, call_name)) then
+            .not. is_contained_f32_function(context, call_name) .and. &
+            .not. is_contained_f64_function(context, call_name)) then
             block
                 type(lr_operand_desc_t) :: wide_value
                 call lower_legacy_integer_conversion(arena, node, context, .true., &
@@ -1025,6 +1027,7 @@
         end if
 
         if (same_name(call_name, 'float') .and. &
+            .not. is_contained_f32_function(context, call_name) .and. &
             .not. is_contained_f64_function(context, call_name)) then
             block
                 type(lr_operand_desc_t) :: narrow_value
@@ -1037,6 +1040,7 @@
             return
         end if
         if (same_name(call_name, 'dfloat') .and. &
+            .not. is_contained_f32_function(context, call_name) .and. &
             .not. is_contained_f64_function(context, call_name)) then
             call lower_legacy_integer_conversion(arena, node, context, .true., &
                                                  value, error_msg)

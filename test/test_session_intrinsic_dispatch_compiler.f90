@@ -9,6 +9,7 @@ program test_session_intrinsic_dispatch_compiler
     if (.not. test_legacy_integer_conversions()) ok = .false.
     if (.not. test_legacy_conversion_arity()) ok = .false.
     if (.not. test_legacy_conversion_type()) ok = .false.
+    if (.not. test_legacy_conversion_kind_type()) ok = .false.
     if (.not. test_legacy_conversion_shadowing()) ok = .false.
     if (.not. test_real_kind8_of_complex4()) ok = .false.
     if (.not. test_real_kind4_of_complex8()) ok = .false.
@@ -111,8 +112,29 @@ contains
             '/tmp/ffc_probe_legacy_conversion_type')
     end function test_legacy_conversion_type
 
+    logical function test_legacy_conversion_kind_type()
+        character(len=*), parameter :: float_source = &
+            'program main'//new_line('a')// &
+            '  integer :: k'//new_line('a')// &
+            '  k = kind(float(1.5))'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: dfloat_source = &
+            'program main'//new_line('a')// &
+            '  integer :: k'//new_line('a')// &
+            '  k = kind(dfloat(1.5))'//new_line('a')// &
+            'end program main'
+
+        test_legacy_conversion_kind_type = expect_error_contains( &
+            float_source, 'argument must be INTEGER', &
+            '/tmp/ffc_probe_legacy_kind_float_type')
+        if (.not. test_legacy_conversion_kind_type) return
+        test_legacy_conversion_kind_type = expect_error_contains( &
+            dfloat_source, 'argument must be INTEGER', &
+            '/tmp/ffc_probe_legacy_kind_dfloat_type')
+    end function test_legacy_conversion_kind_type
+
     logical function test_legacy_conversion_shadowing()
-        test_legacy_conversion_shadowing = expect_output( &
+        character(len=*), parameter :: f32_float = &
             'program main'//new_line('a')// &
             '  real :: x'//new_line('a')// &
             '  x = float(3)'//new_line('a')// &
@@ -122,9 +144,56 @@ contains
             '    integer :: i'//new_line('a')// &
             '    float = 7.0'//new_line('a')// &
             '  end function float'//new_line('a')// &
-            'end program main', &
-            '   7.00000000    '//new_line('a'), &
-            '/tmp/ffc_probe_legacy_conversion_shadowing')
+            'end program main'
+        character(len=*), parameter :: f64_float = &
+            'program main'//new_line('a')// &
+            '  real(8) :: x'//new_line('a')// &
+            '  x = float(3)'//new_line('a')// &
+            '  print *, x'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  real(8) function float(i)'//new_line('a')// &
+            '    integer :: i'//new_line('a')// &
+            '    float = 8.0d0'//new_line('a')// &
+            '  end function float'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: f32_dfloat = &
+            'program main'//new_line('a')// &
+            '  real :: x'//new_line('a')// &
+            '  x = dfloat(3)'//new_line('a')// &
+            '  print *, x'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  real function dfloat(i)'//new_line('a')// &
+            '    integer :: i'//new_line('a')// &
+            '    dfloat = 9.0'//new_line('a')// &
+            '  end function dfloat'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: f64_dfloat = &
+            'program main'//new_line('a')// &
+            '  real(8) :: x'//new_line('a')// &
+            '  x = dfloat(3)'//new_line('a')// &
+            '  print *, x'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  real(8) function dfloat(i)'//new_line('a')// &
+            '    integer :: i'//new_line('a')// &
+            '    dfloat = 10.0d0'//new_line('a')// &
+            '  end function dfloat'//new_line('a')// &
+            'end program main'
+
+        test_legacy_conversion_shadowing = expect_output( &
+            f32_float, '   7.00000000    '//new_line('a'), &
+            '/tmp/ffc_probe_legacy_shadow_f32_float')
+        if (.not. test_legacy_conversion_shadowing) return
+        test_legacy_conversion_shadowing = expect_output( &
+            f64_float, '   8.0000000000000000     '//new_line('a'), &
+            '/tmp/ffc_probe_legacy_shadow_f64_float')
+        if (.not. test_legacy_conversion_shadowing) return
+        test_legacy_conversion_shadowing = expect_output( &
+            f32_dfloat, '   9.00000000    '//new_line('a'), &
+            '/tmp/ffc_probe_legacy_shadow_f32_dfloat')
+        if (.not. test_legacy_conversion_shadowing) return
+        test_legacy_conversion_shadowing = expect_output( &
+            f64_dfloat, '   10.000000000000000     '//new_line('a'), &
+            '/tmp/ffc_probe_legacy_shadow_f64_dfloat')
     end function test_legacy_conversion_shadowing
 
     logical function test_real_kind8_of_complex4()
