@@ -368,17 +368,6 @@ module session_program_lowering_impl
     private
     public :: lower_program_to_liric_exe
     public :: lower_program_to_liric_object
-    ! Descendant submodules need these host helpers to retain external linkage
-    ! on GCC 14. Keep the module private and export only this ABI surface.
-    public :: alloc_array_component_descriptor, complex_array_element_addresses
-    public :: component_alloc_rank_at, contained_array_result_info
-    public :: contained_function_kind, derived_component_access_kind_at
-    public :: emit_or_add1, is_integer_operand, load_alloc_component_element
-    public :: load_complex_array_element, lower_external_complex_call
-    public :: lower_f32_intrinsic_arg, lower_f64_intrinsic_arg
-    public :: lower_runtime_reduction, require_intrinsic_arg_count
-    public :: resolve_assumed_rank, try_array_mask_reduction
-    public :: try_general_mask_reduction
 
     ! Procedures shared with descendant implementation units. GCC 14 gives a
     ! private ancestor procedure local linkage even when a submodule calls it.
