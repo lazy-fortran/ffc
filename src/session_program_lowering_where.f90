@@ -279,7 +279,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: bin_op
         integer :: bin_left, bin_right, bin_line, bin_col
-        integer :: mask_symbol
+        integer :: mask_symbol, other_symbol
 
         call set_empty(error_msg)
         if (.not. is_binary_op(arena, mask_index)) return
@@ -287,12 +287,16 @@ contains
                                 bin_line, bin_col, error_msg)
         if (len_trim(error_msg) > 0) return
         mask_symbol = where_array_operand_symbol(arena, bin_left, context)
-        if (mask_symbol <= 0) then
-            mask_symbol = where_array_operand_symbol(arena, bin_right, context)
+        other_symbol = where_array_operand_symbol(arena, bin_right, context)
+        if (mask_symbol > 0) then
+            call ensure_array_shapes_match(context, target_symbol, mask_symbol, &
+                                           error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
-        if (mask_symbol <= 0) return
-        call ensure_array_shapes_match(context, target_symbol, mask_symbol, &
-                                       error_msg)
+        if (other_symbol > 0 .and. other_symbol /= mask_symbol) then
+            call ensure_array_shapes_match(context, target_symbol, other_symbol, &
+                                           error_msg)
+        end if
     end subroutine where_mask_shape_check
 
     subroutine lower_where_mask_conjunction(arena, masks, linear_index, &

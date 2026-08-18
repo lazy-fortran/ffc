@@ -12,6 +12,7 @@ program test_session_where_compiler
     if (.not. test_where_elsewhere()) all_passed = .false.
     if (.not. test_where_overlapping_section()) all_passed = .false.
     if (.not. test_where_shape_mismatch_diagnostic()) all_passed = .false.
+    if (.not. test_where_array_mask_shape_mismatch_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: WHERE lowers through direct LIRIC'
@@ -107,5 +108,19 @@ contains
             '/tmp/ffc_where_shape_mismatch_test')
     end function test_where_shape_mismatch_diagnostic
 
-end program test_session_where_compiler
+    logical function test_where_array_mask_shape_mismatch_diagnostic() result(ok)
+        ! Both array operands of a comparison must conform to the WHERE target;
+        ! checking only the left operand can otherwise read past the right one.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(4), left_mask(4), right_mask(3)'//new_line('a')// &
+            '  left_mask = 1'//new_line('a')// &
+            '  right_mask = 1'//new_line('a')// &
+            '  where (left_mask == right_mask) a = 5'//new_line('a')// &
+            'end program main'
 
+        ok = expect_error_contains(source, 'conforming shapes', &
+            '/tmp/ffc_where_array_mask_shape_mismatch_test')
+    end function test_where_array_mask_shape_mismatch_diagnostic
+
+end program test_session_where_compiler

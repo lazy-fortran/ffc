@@ -122,18 +122,21 @@ jobs:
         working-directory: ffc
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
+          LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
         run: fpm build
 
       - name: Run ffc tests
         working-directory: ffc
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
+          LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
         run: fpm test
 
       - name: Run pinned corpus buckets
         working-directory: ffc
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
+          LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
           FFC_LFORTRAN_DIR: ${{ github.workspace }}/lfortran
           FFC_GFORTRAN_DG_DIR: ${{ github.workspace }}/gcc/gcc/testsuite/gfortran.dg
         run: |
@@ -151,6 +154,7 @@ jobs:
         working-directory: ffc
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
+          LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
         run: |
           set -euo pipefail
           # `fo lint` exits 1 on any finding, so capture the report first and
