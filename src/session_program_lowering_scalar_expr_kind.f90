@@ -112,6 +112,23 @@ contains
             return
         end if
 
+        ! Legacy conversion spellings have fixed result kinds: FLOAT returns
+        ! default real and DFLOAT returns double precision. Keep them out of
+        ! the generic REAL(KIND=) inference so the call is lowered by the
+        ! matching width-specific path.
+        if (same_name(node%name, 'float') .and. &
+            .not. is_contained_f32_function(context, node%name) .and. &
+            .not. is_contained_f64_function(context, node%name)) then
+            vk = VALUE_F32
+            return
+        end if
+        if (same_name(node%name, 'dfloat') .and. &
+            .not. is_contained_f32_function(context, node%name) .and. &
+            .not. is_contained_f64_function(context, node%name)) then
+            vk = VALUE_F64
+            return
+        end if
+
         ! Legacy double-precision intrinsics are not part of the generic f64
         ! intrinsic table, but their result kind is fixed by the spelling.
         if (same_name(node%name, 'dabs') .or. &

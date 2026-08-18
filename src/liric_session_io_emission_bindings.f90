@@ -37,11 +37,13 @@ module liric_session_io_emission_bindings
     logical(c_bool), parameter :: c_true = .true.
 
     public :: emit_liric_f32_binary
+    public :: emit_liric_integer_to_f32
     public :: emit_liric_i32_to_f32
     public :: emit_liric_f32_to_i32
     public :: emit_liric_f32_to_f64
     public :: emit_liric_f64_to_f32
     public :: emit_liric_f64_binary
+    public :: emit_liric_integer_to_f64
     public :: emit_liric_i32_to_f64
     public :: emit_liric_i32_to_i8
     public :: emit_liric_i32_to_i16
@@ -749,10 +751,21 @@ contains
         type(lr_operand_desc_t), intent(in) :: source
         type(lr_operand_desc_t), intent(out) :: result
         character(len=:), allocatable, intent(out) :: error_msg
+
+        emit_liric_i32_to_f32 = emit_liric_integer_to_f32( &
+            session, source, result, error_msg)
+    end function emit_liric_i32_to_f32
+
+    logical function emit_liric_integer_to_f32(session, source, result, error_msg)
+        !! Convert any signed integer operand width to f32.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: source
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         integer(c_int32_t) :: vreg
 
-        emit_liric_i32_to_f32 = .false.
+        emit_liric_integer_to_f32 = .false.
         if (.not. require_open_session(session, error_msg)) return
 
         vreg = emit_cast_f32(session%handle, LR_OP_SITOFP, source, error)
@@ -763,8 +776,8 @@ contains
         result%typ = lr_type_f32_s(session%handle)
         result%global_offset = 0_c_int64_t
         call set_empty(error_msg)
-        emit_liric_i32_to_f32 = .true.
-    end function emit_liric_i32_to_f32
+        emit_liric_integer_to_f32 = .true.
+    end function emit_liric_integer_to_f32
 
     logical function emit_liric_f32_to_i32(session, source, result, error_msg)
         type(liric_session_t), intent(inout) :: session
@@ -859,10 +872,21 @@ contains
         type(lr_operand_desc_t), intent(in) :: source
         type(lr_operand_desc_t), intent(out) :: result
         character(len=:), allocatable, intent(out) :: error_msg
+
+        emit_liric_i32_to_f64 = emit_liric_integer_to_f64( &
+            session, source, result, error_msg)
+    end function emit_liric_i32_to_f64
+
+    logical function emit_liric_integer_to_f64(session, source, result, error_msg)
+        !! Convert any signed integer operand width to f64.
+        type(liric_session_t), intent(inout) :: session
+        type(lr_operand_desc_t), intent(in) :: source
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_error_t) :: error
         integer(c_int32_t) :: vreg
 
-        emit_liric_i32_to_f64 = .false.
+        emit_liric_integer_to_f64 = .false.
         if (.not. require_open_session(session, error_msg)) return
 
         vreg = emit_cast_f64(session%handle, LR_OP_SITOFP, source, error)
@@ -873,8 +897,8 @@ contains
         result%typ = lr_type_f64_s(session%handle)
         result%global_offset = 0_c_int64_t
         call set_empty(error_msg)
-        emit_liric_i32_to_f64 = .true.
-    end function emit_liric_i32_to_f64
+        emit_liric_integer_to_f64 = .true.
+    end function emit_liric_integer_to_f64
 
     logical function emit_liric_f64_to_i32(session, source, result, error_msg)
         type(liric_session_t), intent(inout) :: session

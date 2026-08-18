@@ -1658,6 +1658,21 @@
         ! therefore fold the nested call without lowering a runtime value.
         select type (conversion => arena%entries(arg_index)%node)
         type is (call_or_subscript_node)
+            if (same_name(conversion%name, 'float') .or. &
+                same_name(conversion%name, 'dfloat')) then
+                if (.not. allocated(conversion%arg_indices) .or. &
+                    size(conversion%arg_indices) /= 1) then
+                    error_msg = trim(conversion%name)//' requires one argument'
+                    return
+                end if
+                if (same_name(conversion%name, 'float')) then
+                    constant_value = 4_c_int64_t
+                else
+                    constant_value = 8_c_int64_t
+                end if
+                call set_empty(error_msg)
+                return
+            end if
             if (same_name(conversion%name, 'logical')) then
                 constant_value = 4_c_int64_t
                 if (.not. allocated(conversion%arg_indices) .or. &

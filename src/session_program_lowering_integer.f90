@@ -6,6 +6,7 @@ contains
     integer(c_int64_t) :: literal_value
     type(lr_operand_desc_t) :: lhs
     type(lr_operand_desc_t) :: rhs
+    type(lr_operand_desc_t) :: narrow_value
     integer :: opcode
     integer :: symbol_index
     character(len=:), allocatable :: bin_op
@@ -127,11 +128,38 @@ contains
                 'subscript', error_msg)
             return
         end if
-        if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+        select case (context%symbols(symbol_index)%value_kind)
+        case (VALUE_I8)
+            call lower_i8_expression(arena, node_index, context, value, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i8_to_i32(context%session, value, narrow_value, &
+                error_msg)) return
+            value = narrow_value
+            return
+        case (VALUE_I16)
+            call lower_i16_expression(arena, node_index, context, value, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i16_to_i32(context%session, value, narrow_value, &
+                error_msg)) return
+            value = narrow_value
+            return
+        case (VALUE_I64)
+            call lower_i64_expression(arena, node_index, context, value, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i64_to_i32(context%session, value, narrow_value, &
+                error_msg)) return
+            value = narrow_value
+            return
+        case (VALUE_I32)
+            continue
+        case default
             error_msg = 'integer expression used non-integer identifier: '// &
                 trim(id_name)
             return
-        end if
+        end select
         if (context%symbols(symbol_index)%has_address .and. &
             context%symbols(symbol_index)%is_reference) then
             if (.not. emit_i32_load(context%session,  &

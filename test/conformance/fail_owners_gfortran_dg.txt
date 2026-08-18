@@ -26,7 +26,6 @@ contiguous_12.f90 # owner=lazy-fortran/fortfront#2951; reason=reject duplicate o
 deferred_character_20.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 deferred_type_param_8.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 derived_function_interface_1.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
-dfloat_1.f90 # owner=lazy-fortran/ffc#453; reason=owns typed scalar conversion intrinsics and result kinds
 dummy_derived_typed.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 dummy_optional_arg.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
 dummy_procedure_10.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
@@ -36,7 +35,6 @@ elemental_result_1.f90 # owner=lazy-fortran/fortfront#2951; reason=enforce PURE 
 empty_derived_type_2.f90 # owner=lazy-fortran/ffc#581; reason=enforce derived-type definition constraints
 empty_label_typedecl.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 entry_18.f90 # owner=lazy-fortran/ffc#456; reason=owns preregistration and lowering of ENTRY names and shared bodies
-float_1.f90 # owner=lazy-fortran/ffc#453; reason=owns typed scalar conversion intrinsics and result kinds
 hollerith.f90 # scope=legacy; reason=deleted Hollerith storage and FORMAT extension
 hollerith2.f90 # scope=legacy; reason=deleted Hollerith named-constant extension
 hollerith_to_char_parameter_2.f90 # scope=legacy; reason=deleted Hollerith named-constant extension
@@ -52,7 +50,6 @@ iostat_2.f90 # owner=lazy-fortran/ffc#628; reason=owns nonzero status for invali
 logical_comp.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 module_equivalence_6.f90 # owner=lazy-fortran/ffc#540; reason=fold named constants in EQUIVALENCE
 module_procedure_4.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
-modulo_1.f90 # owner=lazy-fortran/ffc#453; reason=owns typed intrinsic arguments, validation, and result kind
 move_alloc_9.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 mvbits_8.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 namelist_use.f90 # owner=lazy-fortran/ffc#628; reason=owns scalar NAMELIST groups and omitted/order-independent member conversion
