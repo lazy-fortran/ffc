@@ -976,6 +976,10 @@ contains
                         context%symbols(i)%has_dynamic_type_address .neqv. &
                         baseline(i)%has_dynamic_type_address
                 end if
+                if (.not. binding_changed) then
+                    binding_changed = context%symbols(i)%has_address .neqv. &
+                        baseline(i)%has_address
+                end if
             end if
             if (binding_changed) &
                 context%symbols(i) = baseline(i)
