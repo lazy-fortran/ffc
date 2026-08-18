@@ -954,6 +954,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: node_type
         logical :: enum_handled
+        type(lr_operand_desc_t) :: exit_args(1)
         context%current_block_terminated = .false.
         value = i32_immediate(context%session, 0_c_int64_t)
         if (.not. node_exists(arena, node_index)) then
@@ -1100,7 +1101,8 @@
                     ! stop terminates the whole program. From a contained
                     ! procedure, call libc exit() rather than returning the
                     ! code (which would only return from the procedure).
-                    if (.not. emit_void_call(context%session, 'exit', [value], &
+                    exit_args(1) = value
+                    if (.not. emit_void_call(context%session, 'exit', exit_args, &
                                              error_msg)) return
                     if (context%in_internal_subroutine) then
                         if (.not. emit_ret_void(context%session, error_msg)) return
@@ -1124,7 +1126,8 @@
                 ! at top level return the code.
                 if (context%in_internal_function .or. &
                     context%in_internal_subroutine) then
-                    if (.not. emit_void_call(context%session, 'exit', [value], &
+                    exit_args(1) = value
+                    if (.not. emit_void_call(context%session, 'exit', exit_args, &
                                              error_msg)) return
                     if (context%in_internal_subroutine) then
                         if (.not. emit_ret_void(context%session, error_msg)) return

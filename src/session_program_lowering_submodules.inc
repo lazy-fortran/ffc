@@ -516,8 +516,8 @@
             iface_fn => get_node_as_function_def(arena, iface_index)
             if (.not. associated(iface_fn)) return
             merged_fn = iface_fn
-            merged_fn%body_indices = concat_indices(iface_fn%body_indices, &
-                                                    body_source)
+            call concat_indices(iface_fn%body_indices, body_source, &
+                                merged_fn%body_indices)
             found = .true.
             is_function = .true.
         else if (node_type == 'subroutine_def_node' .or. &
@@ -525,29 +525,28 @@
             iface_sb => get_node_as_subroutine_def(arena, iface_index)
             if (.not. associated(iface_sb)) return
             merged_sb = iface_sb
-            merged_sb%body_indices = concat_indices(iface_sb%body_indices, &
-                                                    body_source)
+            call concat_indices(iface_sb%body_indices, body_source, &
+                                merged_sb%body_indices)
             found = .true.
             is_function = .false.
         end if
     end subroutine build_separate_module_procedure
 
-    function concat_indices(head, tail) result(joined)
+    subroutine concat_indices(head, tail, joined)
         ! Concatenate two optionally-unallocated arena index lists.
         integer, allocatable, intent(in) :: head(:)
         integer, allocatable, intent(in) :: tail(:)
-        integer, allocatable :: joined(:)
+        integer, allocatable, intent(out) :: joined(:)
+        integer :: head_size, tail_size
 
-        if (allocated(head) .and. allocated(tail)) then
-            joined = [head, tail]
-        else if (allocated(head)) then
-            joined = head
-        else if (allocated(tail)) then
-            joined = tail
-        else
-            allocate(joined(0))
-        end if
-    end function concat_indices
+        head_size = 0
+        tail_size = 0
+        if (allocated(head)) head_size = size(head)
+        if (allocated(tail)) tail_size = size(tail)
+        allocate (joined(head_size + tail_size))
+        if (head_size > 0) joined(1:head_size) = head
+        if (tail_size > 0) joined(head_size + 1:head_size + tail_size) = tail
+    end subroutine concat_indices
 
     integer function find_module_interface_procedure(arena, parent_module, name) &
             result(iface_index)

@@ -545,6 +545,7 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: arg, re_val, im_val
+        type(lr_operand_desc_t) :: call_args(2)
         type(lr_operand_desc_t) :: condition
         type(lr_operand_desc_t) :: negative
         type(lr_operand_desc_t) :: zero
@@ -555,8 +556,10 @@
             call eval_c4_rhs(arena, node%arg_indices(1), context, re_val, &
                              im_val, error_msg)
             if (len_trim(error_msg) > 0) return
+            call_args(1) = re_val
+            call_args(2) = im_val
             if (.not. emit_liric_f32_call(context%session, 'hypotf', &
-                    [re_val, im_val], value, error_msg)) return
+                    call_args, value, error_msg)) return
             return
         end if
 
@@ -933,6 +936,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: arg
         type(lr_operand_desc_t) :: rounded
+        type(lr_operand_desc_t) :: call_args(1)
 
         if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
         call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, arg, &
@@ -942,7 +946,8 @@
         ! int(x) truncates toward zero, which fptosi already does directly.
         ! nint/floor/ceiling apply the libm rounding first, then convert.
         if (len_trim(libm_name) > 0) then
-            if (.not. emit_liric_f64_call(context%session, libm_name, [arg], &
+            call_args(1) = arg
+            if (.not. emit_liric_f64_call(context%session, libm_name, call_args, &
                                           rounded, error_msg)) return
         else
             rounded = arg
@@ -961,6 +966,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: arg
         type(lr_operand_desc_t) :: rounded
+        type(lr_operand_desc_t) :: call_args(1)
 
         if (.not. require_intrinsic_arg_count(node, 1, 2, error_msg)) return
         call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, arg, &
@@ -968,7 +974,8 @@
         if (len_trim(error_msg) > 0) return
 
         if (len_trim(libm_name) > 0) then
-            if (.not. emit_liric_f64_call(context%session, libm_name, [arg], &
+            call_args(1) = arg
+            if (.not. emit_liric_f64_call(context%session, libm_name, call_args, &
                                           rounded, error_msg)) return
         else
             rounded = arg
@@ -984,6 +991,7 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: arg, re_val, im_val
+        type(lr_operand_desc_t) :: call_args(2)
         type(lr_operand_desc_t) :: condition
         type(lr_operand_desc_t) :: negative
         type(lr_operand_desc_t) :: zero
@@ -994,8 +1002,10 @@
             call eval_c8_rhs(arena, node%arg_indices(1), context, re_val, &
                              im_val, error_msg)
             if (len_trim(error_msg) > 0) return
+            call_args(1) = re_val
+            call_args(2) = im_val
             if (.not. emit_liric_f64_call(context%session, 'hypot', &
-                    [re_val, im_val], value, error_msg)) return
+                    call_args, value, error_msg)) return
             return
         end if
 
@@ -1596,6 +1606,7 @@
         type(lr_operand_desc_t), intent(in) :: elem
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: next, cond
+        type(lr_operand_desc_t) :: call_args(2)
 
         call set_empty(error_msg)
         if (reduction_is_mask_valued(op)) then
@@ -1633,13 +1644,17 @@
         case (DIM_REDUCE_MIN, DIM_REDUCE_MAX)
             select case (vk)
             case (VALUE_F32)
+                call_args(1) = acc
+                call_args(2) = elem
                 if (.not. emit_liric_f32_call(context%session, &
                         merge('fminf', 'fmaxf', op == DIM_REDUCE_MIN), &
-                        [acc, elem], next, error_msg)) return
+                        call_args, next, error_msg)) return
             case (VALUE_F64)
+                call_args(1) = acc
+                call_args(2) = elem
                 if (.not. emit_liric_f64_call(context%session, &
                         merge('fmin', 'fmax', op == DIM_REDUCE_MIN), &
-                        [acc, elem], next, error_msg)) return
+                        call_args, next, error_msg)) return
             case default
                 if (.not. emit_liric_i32_icmp(context%session, &
                         merge(LR_CMP_SLT, LR_CMP_SGT, op == DIM_REDUCE_MIN), &

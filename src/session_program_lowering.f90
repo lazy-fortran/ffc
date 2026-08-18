@@ -5948,6 +5948,7 @@ contains
         character(len=:), allocatable :: specific
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
+        integer :: assignment_indices(2)
 
         handled = .false.
         call set_empty(error_msg)
@@ -5957,7 +5958,9 @@ contains
         slot = find_operator(context, '=', left_kind, right_kind, .true.)
         if (slot == 0) return
         specific = operator_specific_name(context, slot)
-        call prepare_reference_args(arena, [node%target_index, node%value_index], &
+        assignment_indices(1) = node%target_index
+        assignment_indices(2) = node%value_index
+        call prepare_reference_args(arena, assignment_indices, &
             context, VALUE_I32, specific, args, &
             copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -6301,6 +6304,7 @@ contains
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: status
+        type(lr_operand_desc_t) :: exit_args(1)
         call set_empty(error_msg)
         if (allocated(arg_indices)) then
             if (size(arg_indices) > 0) then
@@ -6313,7 +6317,8 @@ contains
         else
             status = i32_immediate(context%session, 0_c_int64_t)
         end if
-        if (.not. emit_void_call(context%session, 'exit', [status], error_msg)) &
+        exit_args(1) = status
+        if (.not. emit_void_call(context%session, 'exit', exit_args, error_msg)) &
             return
     end subroutine lower_exit_intrinsic
 
@@ -6388,6 +6393,7 @@ contains
         type(lr_operand_desc_t) :: value, address
         character(len=:), allocatable :: kw_name
         integer :: kw_value, symbol_index
+        integer :: size_arg_indices(1)
 
         call set_empty(error_msg)
         if (size(arg_indices) == 0) then
@@ -6400,7 +6406,8 @@ contains
         end if
         call reshape_keyword_arg(arena, arg_indices(1), kw_name, kw_value)
         if (kw_name == 'size') then
-            call intrinsic_out_scalar(arena, [kw_value], context, 'random_seed', &
+            size_arg_indices(1) = kw_value
+            call intrinsic_out_scalar(arena, size_arg_indices, context, 'random_seed', &
                 VALUE_I32, symbol_index, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_random_seed_size(context%session, value, error_msg)) return

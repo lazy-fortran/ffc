@@ -1689,9 +1689,9 @@
                 end if
             end if
             if (sym <= 0) then
-                elements = [elements, flat(i)]
-                source_symbols = [source_symbols, 0]
-                source_offsets = [source_offsets, 0]
+                call append_integer_element(elements, flat(i))
+                call append_integer_element(source_symbols, 0)
+                call append_integer_element(source_offsets, 0)
                 cycle
             end if
             extent = effective_array_extent(context, sym)
@@ -1700,9 +1700,9 @@
                 return
             end if
             do j = 0, extent - 1
-                elements = [elements, flat(i)]
-                source_symbols = [source_symbols, sym]
-                source_offsets = [source_offsets, j]
+                call append_integer_element(elements, flat(i))
+                call append_integer_element(source_symbols, sym)
+                call append_integer_element(source_offsets, j)
             end do
         end do
         call set_empty(error_msg)

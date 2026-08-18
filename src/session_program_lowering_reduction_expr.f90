@@ -225,6 +225,7 @@ contains
         integer :: sym, left, right, line, column, opcode
         character(len=:), allocatable :: name, err
         type(lr_operand_desc_t) :: lhs, rhs
+        type(lr_operand_desc_t) :: call_args(2)
 
         call set_empty(error_msg)
         if (.not. node_exists(arena, node_index)) then
@@ -258,10 +259,14 @@ contains
                 if (len_trim(error_msg) > 0) return
             end select
             if (vk == VALUE_F32) then
-                if (.not. emit_liric_f32_call(context%session, 'fabsf', [lhs], &
+                call_args(1) = lhs
+                if (.not. emit_liric_f32_call(context%session, 'fabsf', &
+                        call_args(1:1), &
                         value, error_msg)) return
             else if (vk == VALUE_F64) then
-                if (.not. emit_liric_f64_call(context%session, 'fabs', [lhs], &
+                call_args(1) = lhs
+                if (.not. emit_liric_f64_call(context%session, 'fabs', &
+                        call_args(1:1), &
                         value, error_msg)) return
             else
                 error_msg = 'ABS reduction expression requires a real array'
@@ -285,11 +290,13 @@ contains
             context, rhs, error_msg)
         if (len_trim(error_msg) > 0) return
         if (trim(op) == '**') then
+            call_args(1) = lhs
+            call_args(2) = rhs
             if (vk == VALUE_F32) then
-                if (.not. emit_liric_f32_call(context%session, 'powf', [lhs, rhs], &
+                if (.not. emit_liric_f32_call(context%session, 'powf', call_args, &
                         value, error_msg)) return
             else if (vk == VALUE_F64) then
-                if (.not. emit_liric_f64_call(context%session, 'pow', [lhs, rhs], &
+                if (.not. emit_liric_f64_call(context%session, 'pow', call_args, &
                         value, error_msg)) return
             else
                 call lower_i32_pow(arena, right, line, column, context, lhs, value, &
@@ -417,6 +424,7 @@ contains
         character(len=:), allocatable :: id_name, bin_op
         integer :: sym, bin_left, bin_right, bin_line, bin_col, opcode
         type(lr_operand_desc_t) :: lhs, rhs
+        type(lr_operand_desc_t) :: call_args(2)
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'reduction expression index does not reference an AST node'
@@ -470,12 +478,14 @@ contains
                                                  vk, context, rhs, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (trim(bin_op) == '**') then
+                    call_args(1) = lhs
+                    call_args(2) = rhs
                     if (vk == VALUE_F32) then
                         if (.not. emit_liric_f32_call(context%session, 'powf', &
-                                [lhs, rhs], value, error_msg)) return
+                                call_args, value, error_msg)) return
                     else
                         if (.not. emit_liric_f64_call(context%session, 'pow', &
-                                [lhs, rhs], value, error_msg)) return
+                                call_args, value, error_msg)) return
                     end if
                     return
                 end if
@@ -801,12 +811,14 @@ contains
         type(lr_operand_desc_t), intent(in) :: arg
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: call_args(1)
 
+        call_args(1) = arg
         if (vk == VALUE_F32) then
-            norm2_libm = emit_liric_f32_call(context%session, name32, [arg], &
+            norm2_libm = emit_liric_f32_call(context%session, name32, call_args, &
                                              value, error_msg)
         else
-            norm2_libm = emit_liric_f64_call(context%session, name64, [arg], &
+            norm2_libm = emit_liric_f64_call(context%session, name64, call_args, &
                                              value, error_msg)
         end if
     end function norm2_libm

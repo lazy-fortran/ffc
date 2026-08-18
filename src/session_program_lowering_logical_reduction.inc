@@ -547,6 +547,7 @@
             if (side%apply_complex_abs .or. side%component == 1) then
                 block
                     type(lr_operand_desc_t) :: re_value, im_value
+                    type(lr_operand_desc_t) :: call_args(2)
                     integer :: complex_vk
                     complex_vk = merge(VALUE_C4, VALUE_C8, side%vk == VALUE_F32)
                     call load_complex_array_linear_element(context, side%sym, i, &
@@ -555,11 +556,15 @@
                     if (side%component == 1) then
                         raw = im_value
                     else if (side%vk == VALUE_F32) then
+                        call_args(1) = re_value
+                        call_args(2) = im_value
                         if (.not. emit_liric_f32_call(context%session, 'hypotf', &
-                                [re_value, im_value], raw, error_msg)) return
+                                call_args, raw, error_msg)) return
                     else
+                        call_args(1) = re_value
+                        call_args(2) = im_value
                         if (.not. emit_liric_f64_call(context%session, 'hypot', &
-                                [re_value, im_value], raw, error_msg)) return
+                                call_args, raw, error_msg)) return
                     end if
                     value = raw
                     if (side%apply_abs) call mask_real_abs(context, compare_vk, &
@@ -614,6 +619,7 @@
         logical :: array_real_call
         type(lr_operand_desc_t) :: lhs, rhs, re_value, im_value, promoted
         type(lr_operand_desc_t) :: operand, zero, cond, true_val, false_val
+        type(lr_operand_desc_t) :: call_args(2)
         integer :: complex_vk
 
         call set_empty(error_msg)
@@ -681,9 +687,11 @@
                         linear_index, context, complex_vk, re_value, im_value, &
                         error_msg)
                     if (len_trim(error_msg) > 0) return
+                    call_args(1) = re_value
+                    call_args(2) = im_value
                     if (complex_vk == VALUE_C4) then
                         if (.not. emit_liric_f32_call(context%session, 'hypotf', &
-                                [re_value, im_value], value, error_msg)) return
+                                call_args, value, error_msg)) return
                         if (compare_vk == VALUE_F64) then
                             if (.not. emit_liric_f32_to_f64(context%session, value, &
                                     promoted, error_msg)) return
@@ -691,7 +699,7 @@
                         end if
                     else
                         if (.not. emit_liric_f64_call(context%session, 'hypot', &
-                                [re_value, im_value], value, error_msg)) return
+                                call_args, value, error_msg)) return
                     end if
                     return
                 else if (same_name(node%name, 'aimag')) then
@@ -746,12 +754,14 @@
                 context, rhs, error_msg)
             if (len_trim(error_msg) > 0) return
             if (trim(op) == '**') then
+                call_args(1) = lhs
+                call_args(2) = rhs
                 if (compare_vk == VALUE_F32) then
                     if (.not. emit_liric_f32_call(context%session, 'powf', &
-                            [lhs, rhs], value, error_msg)) return
+                            call_args, value, error_msg)) return
                 else
                     if (.not. emit_liric_f64_call(context%session, 'pow', &
-                            [lhs, rhs], value, error_msg)) return
+                            call_args, value, error_msg)) return
                 end if
                 return
             end if

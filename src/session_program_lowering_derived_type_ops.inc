@@ -24,7 +24,8 @@
         end if
         raw = context%derived_types(type_index)%component_default_value(comp_index)
         if (value_kind == VALUE_F64) then
-            halves = transfer(raw, halves)
+            halves(1) = transfer(raw, halves(1))
+            halves(2) = transfer(ishft(raw, -32), halves(2))
             allocate (words(2))
             words(1) = int(halves(1), c_int64_t)
             words(2) = int(halves(2), c_int64_t)

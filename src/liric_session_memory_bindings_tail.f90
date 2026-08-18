@@ -5,7 +5,8 @@ contains
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
 
-        operands = [lhs, rhs]
+        operands(1) = lhs
+        operands(2) = rhs
 
         inst%op = opcode
         inst%typ = lhs%typ
@@ -30,7 +31,8 @@ contains
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
 
-        operands = [lhs, rhs]
+        operands(1) = lhs
+        operands(2) = rhs
 
         inst%op = opcode
         inst%typ = lhs%typ
@@ -89,7 +91,8 @@ contains
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
 
-        operands = [lhs, rhs]
+        operands(1) = lhs
+        operands(2) = rhs
 
         inst%op = opcode
         inst%typ = lr_type_i64_s(handle)
@@ -406,7 +409,8 @@ contains
         else
             element_type = lr_type_f32_s(session%handle)
         end if
-        fields = [element_type, element_type]
+        fields(1) = element_type
+        fields(2) = element_type
         aggregate_type = lr_type_struct_s(session%handle, c_loc(fields), &
                                           2_c_int32_t, c_false)
         if (.not. c_associated(aggregate_type)) then
@@ -462,7 +466,8 @@ contains
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
 
-        operands = [value, address]
+        operands(1) = value
+        operands(2) = address
 
         inst%op = LR_OP_STORE
         inst%typ = c_null_ptr

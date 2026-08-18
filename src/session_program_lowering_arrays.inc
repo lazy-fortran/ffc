@@ -344,7 +344,7 @@
         integer, intent(in) :: dim_count
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: extents(4), lowers(4), total, i, index
+        integer :: extents(4), lowers(4), runtime_extents(4), total, i, index
         logical :: ok
 
         if (.not. allocated(context%current_proc_name)) then
@@ -397,10 +397,11 @@
         index = find_symbol_compat(context, name)
         if (index > 0) then
             if (all(context%symbols(index)%has_runtime_dim_size(1:dim_count))) then
+                runtime_extents(1:dim_count) = 0
                 call define_declared_array_symbol(context, node, name, 1, 0, &
                                                   value_kind, error_msg, &
-                                                  assumed_extents=spread(0, 1, &
-                                                                     dim_count), &
+                                                  assumed_extents= &
+                                                  runtime_extents(1:dim_count), &
                                                   assumed_lowers=lowers(1:dim_count))
                 if (len_trim(error_msg) > 0) return
                 ! A rank-1 dummy with no constant shape has no compile-time
@@ -2750,7 +2751,7 @@
         call set_empty(error_msg)
         do i = 1, size(indices)
             if (.not. node_exists(arena, indices(i))) then
-                flat = [flat, indices(i)]
+                call append_integer_element(flat, indices(i))
                 cycle
             end if
             select type (child => arena%entries(indices(i))%node)
@@ -2768,10 +2769,23 @@
                     if (len_trim(error_msg) > 0) return
                 end if
             class default
-                flat = [flat, indices(i)]
+                call append_integer_element(flat, indices(i))
             end select
         end do
     end subroutine flatten_constructor_elements
+
+    subroutine append_integer_element(values, value)
+        integer, allocatable, intent(inout) :: values(:)
+        integer, intent(in) :: value
+        integer, allocatable :: grown(:)
+        integer :: n
+
+        n = size(values)
+        allocate (grown(n + 1))
+        if (n > 0) grown(1:n) = values
+        grown(n + 1) = value
+        call move_alloc(grown, values)
+    end subroutine append_integer_element
 
     subroutine expand_implied_do_constructor(arena, ctor, symbol_index, context, &
                                              error_msg)
@@ -2952,7 +2966,8 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(array_literal_node) :: wrapper
 
-        wrapper%element_indices = [loop_index]
+        allocate (wrapper%element_indices(1))
+        wrapper%element_indices(1) = loop_index
         call expand_implied_do_into_slot(arena, wrapper, symbol_index, slot, &
                                          context, error_msg)
     end subroutine expand_implied_do_inner_loop

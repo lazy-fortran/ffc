@@ -51,7 +51,8 @@
             if (allocated(idn%object_indices)) then
                 objects = idn%object_indices
             else if (idn%expr_index > 0) then
-                objects = [idn%expr_index]
+                allocate (objects(1))
+                objects(1) = idn%expr_index
             else
                 return
             end if

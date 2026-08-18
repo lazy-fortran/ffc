@@ -261,6 +261,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: fmt_id
         type(lr_operand_desc_t) :: blanks_ptr, strcat_result
+        type(lr_operand_desc_t) :: strcat_args(2)
         character(len=64) :: fmt_name
         character(len=:), allocatable :: blanks
         integer :: i
@@ -278,8 +279,10 @@
                                          blanks, fmt_id, error_msg)
         if (len_trim(error_msg) > 0) return
         blanks_ptr = printf_format_ptr(context%session, fmt_id)
+        strcat_args(1) = dest_tmp
+        strcat_args(2) = blanks_ptr
         if (.not. emit_ptr_call(context%session, 'strcat', &
-                                [dest_tmp, blanks_ptr], strcat_result, &
+                                strcat_args, strcat_result, &
                                 error_msg)) return
         call set_empty(error_msg)
     end subroutine append_internal_blanks
@@ -296,6 +299,7 @@
         type(lr_operand_desc_t), intent(in) :: dest_tmp
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value, value_f64, field, strcat_result
+        type(lr_operand_desc_t) :: strcat_args(2)
 
         if (scalar_real_expr_kind(arena, node_index, context) == VALUE_F32) then
             call lower_f32_expression(arena, node_index, context, value, error_msg)
@@ -313,7 +317,9 @@
         if (.not. emit_e_en_format_call(context%session, value, 0, precision, &
                                         width, field, error_msg, &
                                         exp_digits=exponent_digits)) return
-        if (.not. emit_ptr_call(context%session, 'strcat', [dest_tmp, field], &
+        strcat_args(1) = dest_tmp
+        strcat_args(2) = field
+        if (.not. emit_ptr_call(context%session, 'strcat', strcat_args, &
                                 strcat_result, error_msg)) return
         call set_empty(error_msg)
     end subroutine append_internal_e_field
@@ -331,6 +337,7 @@
         integer(c_int32_t) :: fmt_id
         type(lr_operand_desc_t) :: fmt_ptr, scratch, value, data_ptr, length
         type(lr_operand_desc_t) :: args(4), strcat_result
+        type(lr_operand_desc_t) :: strcat_args(2)
         character(len=64) :: fmt_name
 
         call set_empty(error_msg)
@@ -362,8 +369,10 @@
         end if
         if (.not. emit_snprintf(context%session, args, error_msg)) return
 
+        strcat_args(1) = dest_tmp
+        strcat_args(2) = scratch
         if (.not. emit_ptr_call(context%session, 'strcat', &
-                                [dest_tmp, scratch], strcat_result, error_msg)) &
+                                strcat_args, strcat_result, error_msg)) &
             return
         call set_empty(error_msg)
     end subroutine append_internal_ia_field

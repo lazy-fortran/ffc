@@ -211,6 +211,7 @@
         character(len=64) :: path_name, mode_name
         type(lr_operand_desc_t) :: path_ptr, mode_ptr, fp, is_open
         type(lr_operand_desc_t) :: args(2)
+        type(lr_operand_desc_t) :: single_arg(1)
         type(lr_operand_desc_t) :: size_value
         integer(c_int32_t) :: close_block, false_block, done_block
         integer :: sym
@@ -262,7 +263,8 @@
 
             if (.not. set_liric_block(context%session, close_block, &
                                       error_msg)) return
-            if (.not. emit_void_call(context%session, 'fclose', [fp], &
+            single_arg(1) = fp
+            if (.not. emit_void_call(context%session, 'fclose', single_arg, &
                                      error_msg)) return
             call assign_i32_to_symbol(context, sym, &
                 i32_immediate(context%session, 1_c_int64_t), error_msg)
@@ -287,8 +289,9 @@
         end if
 
         if (len_trim(size_var) > 0) then
+            single_arg(1) = path_ptr
             if (.not. emit_i64_call(context%session, '_ffc_inquire_file_size', &
-                                    [path_ptr], size_value, error_msg)) return
+                                    single_arg, size_value, error_msg)) return
             call store_inquire_size(context, node, size_var, size_value, &
                                     error_msg)
             if (len_trim(error_msg) > 0) return

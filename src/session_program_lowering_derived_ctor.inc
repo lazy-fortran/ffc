@@ -185,6 +185,7 @@
         type(lr_operand_desc_t) :: source_desc, target_desc
         type(lr_operand_desc_t) :: source_data, old_target_data, target_data
         type(lr_operand_desc_t) :: extent64, lower64, extent32
+        type(lr_operand_desc_t) :: shape_extents(1), shape_lowers(1)
         type(lr_operand_desc_t) :: element_bytes, index64, byte_offset
         type(lr_operand_desc_t) :: source_element, target_element
         type(lr_operand_desc_t) :: entry_index, header_index, next_index
@@ -252,8 +253,10 @@
         if (.not. emit_ptr_store(context%session, target_data, target_desc, &
                                  error_msg)) return
         context%symbols(target_index)%element_address = target_data
+        shape_extents(1) = extent64
+        shape_lowers(1) = lower64
         call emit_alloc_desc_allocate_shape(context, target_desc, VALUE_DERIVED, 1, &
-            [extent64], error_msg, lowers_i64=[lower64], &
+            shape_extents, error_msg, lowers_i64=shape_lowers, &
             element_bytes=int(slots, c_int64_t) * 4_c_int64_t)
         if (len_trim(error_msg) > 0) return
 

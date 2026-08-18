@@ -16,6 +16,7 @@ contains
         type(where_stmt_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        integer :: masks(1)
 
         call set_empty(error_msg)
         if (node%mask_expr_index <= 0) then
@@ -26,8 +27,8 @@ contains
             error_msg = 'WHERE statement requires an assignment'
             return
         end if
-        call lower_where_masked_assignment(arena, node%assignment_index, &
-                                           [node%mask_expr_index], &
+        masks(1) = node%mask_expr_index
+        call lower_where_masked_assignment(arena, node%assignment_index, masks, &
                                            context, error_msg)
     end subroutine lower_where_stmt
 
@@ -94,7 +95,7 @@ contains
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer, allocatable :: nested_masks(:)
-        integer :: i
+        integer :: i, mask_count
 
         call set_empty(error_msg)
         if (.not. node_exists(arena, stmt_index)) then
@@ -115,7 +116,10 @@ contains
                     'nested WHERE', error_msg)
                 return
             end if
-            nested_masks = [masks, stmt%mask_expr_index]
+            mask_count = size(masks)
+            allocate (nested_masks(mask_count + 1))
+            if (mask_count > 0) nested_masks(1:mask_count) = masks
+            nested_masks(mask_count + 1) = stmt%mask_expr_index
             if (allocated(stmt%where_body_indices)) then
                 do i = 1, size(stmt%where_body_indices)
                     call lower_where_body_statement(arena, &
@@ -129,7 +133,10 @@ contains
                 error_msg = 'nested WHERE statement is incomplete'
                 return
             end if
-            nested_masks = [masks, stmt%mask_expr_index]
+            mask_count = size(masks)
+            allocate (nested_masks(mask_count + 1))
+            if (mask_count > 0) nested_masks(1:mask_count) = masks
+            nested_masks(mask_count + 1) = stmt%mask_expr_index
             call lower_where_masked_assignment(arena, stmt%assignment_index, &
                                                nested_masks, context, error_msg)
         type is (assignment_node)
@@ -185,9 +192,11 @@ contains
         integer, intent(in) :: mask_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        integer :: complement_masks(1)
 
+        complement_masks(1) = mask_index
         call lower_where_selected_assignment(arena, assign_index, &
-                                             [mask_index], .true., context, &
+                                             complement_masks, .true., context, &
                                              error_msg)
     end subroutine lower_where_complement_assignment
 
