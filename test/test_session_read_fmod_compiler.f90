@@ -702,9 +702,10 @@ contains
     end function test_fmod_intent_out_rejects_literal
 
     logical function test_fmod_schema_version_is_checked() result(ok)
-        ! Schema 10 is a supported read-only legacy format; schema 11 is what
-        ! write_fmod emits. Unknown and unversioned artefacts remain rejected
-        ! instead of being silently misread (#397).
+        ! Schema 10 is a supported read-only legacy format; schemas 11-13 are
+        ! compatibility points for prior writers, and schema 14 is current.
+        ! Unknown and unversioned artefacts remain rejected instead of being
+        ! silently misread (#397).
         character(len=*), parameter :: dir = '/tmp/ffc_fmod397_schema'
         character(len=*), parameter :: legacy_path = dir//'/legacy.fmod'
         character(len=*), parameter :: source = &
@@ -786,6 +787,34 @@ contains
         if (trim(legacy_info%derived_types(1)%bindings(1)%specific_names) /= &
             'operate_impl') then
             print *, 'FAIL: schema-10 binding target fallback was not set'
+            return
+        end if
+        if (trim(legacy_info%derived_types(1)%canonical_name) /= 'widget') then
+            print *, 'FAIL: schema-10 canonical identity fallback was not set'
+            return
+        end if
+
+        ! The three immediately preceding schemas remain readable even though
+        ! schema 14 adds canonical derived-type provenance.
+        call execute_command_line("sed -i 's/^fmod_schema = 10/fmod_schema = 13/' "// &
+            legacy_path)
+        call read_fmod(legacy_path, legacy_info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: schema-13 .fmod was rejected: ', trim(error_msg)
+            return
+        end if
+        call execute_command_line("sed -i 's/^fmod_schema = 13/fmod_schema = 12/' "// &
+            legacy_path)
+        call read_fmod(legacy_path, legacy_info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: schema-12 .fmod was rejected: ', trim(error_msg)
+            return
+        end if
+        call execute_command_line("sed -i 's/^fmod_schema = 12/fmod_schema = 11/' "// &
+            legacy_path)
+        call read_fmod(legacy_path, legacy_info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: schema-11 .fmod was rejected: ', trim(error_msg)
             return
         end if
 

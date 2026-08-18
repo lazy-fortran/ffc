@@ -1512,6 +1512,7 @@ contains
 
         call set_empty(error_msg)
         dtype%name = ''
+        dtype%canonical_name = ''
         dtype%parent_name = ''
         if (.not. is_derived_type_node(arena, node_index)) then
             error_msg = 'module derived-type export is not a derived type'
@@ -1541,12 +1542,14 @@ contains
 
         call set_empty(error_msg)
         dtype%name = ''
+        dtype%canonical_name = ''
         dtype%parent_name = ''
         if (type_index <= 0 .or. type_index > context%derived_type_count) then
             error_msg = 'invalid derived type context index for .fmod export'
             return
         end if
         dtype%name = trim(context%derived_types(type_index)%name)
+        dtype%canonical_name = trim(context%derived_types(type_index)%name)
         dtype%parent_name = trim(context%derived_types(type_index)%parent_name)
         allocate (dtype%components( &
             context%derived_types(type_index)%component_count))

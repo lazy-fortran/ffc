@@ -312,16 +312,21 @@ contains
     logical function test_transitive_typebound_generic_reexport() result(ok)
         ! A type-bound generic survives two module boundaries: the defining
         ! module is compiled first, a public bridge module re-exports the
-        ! derived type, and the user sees only the bridge .fmod.  The two
-        ! generic specifics must still resolve to the defining module's
-        ! procedures (#447, modules33/modules34).
+        ! derived type, and the user sees the bridge .fmod plus the original
+        ! defining .fmod. The two generic specifics must still resolve to the
+        ! defining module's procedures, and the re-exported child must retain
+        ! compatibility with its imported parent (#447, modules33/modules34).
         character(len=:), allocatable :: dir
         integer :: ffc_status, gfortran_status
         character(len=*), parameter :: base_source = &
             'module fmod447_base'//new_line('a')// &
             '    implicit none'//new_line('a')// &
-            '    type :: box_t'//new_line('a')// &
+            '    type :: parent_t'//new_line('a')// &
             '        integer :: value'//new_line('a')// &
+            '    contains'//new_line('a')// &
+            '        procedure :: observe'//new_line('a')// &
+            '    end type parent_t'//new_line('a')// &
+            '    type, extends(parent_t) :: box_t'//new_line('a')// &
             '    contains'//new_line('a')// &
             '        generic :: set => set_int, set_real'//new_line('a')// &
             '        procedure :: set_int'//new_line('a')// &
@@ -338,22 +343,36 @@ contains
             '        real, intent(in) :: value'//new_line('a')// &
             '        self%value = self%value + int(value)'//new_line('a')// &
             '    end subroutine set_real'//new_line('a')// &
+            '    subroutine observe(self, result)'//new_line('a')// &
+            '        class(parent_t), intent(in) :: self'//new_line('a')// &
+            '        integer, intent(out) :: result'//new_line('a')// &
+            '        result = self%value'//new_line('a')// &
+            '    end subroutine observe'//new_line('a')// &
             'end module fmod447_base'
         character(len=*), parameter :: bridge_source = &
             'module fmod447_bridge'//new_line('a')// &
-            '    use fmod447_base, only: alias_t => box_t'//new_line('a')// &
+            '    use fmod447_base, only: alias_t => box_t, parent_t'//new_line('a')// &
             '    implicit none'//new_line('a')// &
-            '    public :: alias_t'//new_line('a')// &
+            '    public :: alias_t, parent_t'//new_line('a')// &
             'end module fmod447_bridge'
         character(len=*), parameter :: program_source = &
             'program main'//new_line('a')// &
             '    use fmod447_bridge, only: alias_t'//new_line('a')// &
+            '    use fmod447_base, only: box_t'//new_line('a')// &
             '    implicit none'//new_line('a')// &
+            '    integer :: observed'//new_line('a')// &
             '    type(alias_t) :: box'//new_line('a')// &
+            '    type(box_t) :: canonical_box'//new_line('a')// &
             '    box%value = 0'//new_line('a')// &
             '    call box%set(4)'//new_line('a')// &
             '    call box%set(2.5)'//new_line('a')// &
-            '    if (box%value /= 6) error stop 1'//new_line('a')// &
+            '    call box%observe(observed)'//new_line('a')// &
+            '    if (box%value /= 6 .or. observed /= 6) error stop 1'// &
+            new_line('a')// &
+            '    canonical_box%value = 0'//new_line('a')// &
+            '    call canonical_box%set(6)'//new_line('a')// &
+            '    call canonical_box%observe(observed)'//new_line('a')// &
+            '    if (observed /= 6) error stop 2'//new_line('a')// &
             '    print *, box%value'//new_line('a')// &
             'end program main'
 

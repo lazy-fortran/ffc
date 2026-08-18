@@ -642,7 +642,7 @@ a line-oriented subset of TOML, with no source locations or comments.
 [module]
 name = "shapes"
 ffc_version = "0.1.0"
-fmod_schema = 12
+fmod_schema = 14
 
 [[parameter]]
 name = "max_pts"
@@ -651,6 +651,7 @@ value = 10
 
 [[derived_type]]
 name = "point_t"
+canonical_name = "point_t"
 components = [
     { name = "x", kind = "integer" },
     { name = "y", kind = "integer" },
@@ -658,13 +659,15 @@ components = [
 ```
 
 - `[module]` carries the module name, the emitting `ffc` version, and the
-  mandatory `fmod_schema`. Writers emit schema 12. Readers accept schema 12,
-  schema 11, and the read-only legacy schema 10. They reject missing and unknown schema
-  values with a request to recompile the module.
+  mandatory `fmod_schema`. Writers emit schema 14. Readers accept schemas 14,
+  13, 12, 11, and the read-only legacy schema 10. They reject missing and
+  unknown schema values with a request to recompile the module.
 - Each `[[parameter]]` is a named constant: `name`, `kind` (the normalised
   scalar type token), and the literal `value`.
 - Each `[[derived_type]]` is a type definition with its `components`, each a
-  `{ name, kind }` pair. Allocatable array components additionally record
+  `{ name, kind }` pair. `canonical_name` identifies the defining type when a
+  public module re-exports it under a local alias; local declarations set it
+  equal to `name`. Allocatable array components additionally record
   `alloc_rank` (1 or 2); schema 11 components without that field are read as
   rank one for compatibility.
 - Each `[[variable]]` records a module variable's Fortran `name`, scalar `kind`,

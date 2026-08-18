@@ -26,12 +26,15 @@ module ffc_module_artefact
     ! type-bound bindings and schema 12 records the rank of allocatable array
     ! components. Schema 13 records whether a procedure dummy is class(t) and
     ! its declared derived type, which is required to reconstruct the passed-
-    ! object ABI across separate compilation. Writers always emit the newest
-    ! schema.
-    integer, parameter, public :: FMOD_SCHEMA_VERSION = 13
+    ! object ABI across separate compilation. Schema 14 records the canonical
+    ! identity behind a re-exported derived type name, so a later consumer can
+    ! merge an alias with the original type across multiple .fmod files.
+    ! Writers always emit the newest schema.
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 14
     integer, parameter :: FMOD_LEGACY_SCHEMA_VERSION = 10
     integer, parameter :: FMOD_PREVIOUS_SCHEMA_VERSION = 11
     integer, parameter :: FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION = 12
+    integer, parameter :: FMOD_SCHEMA_BEFORE_CURRENT_VERSION = 13
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -86,6 +89,10 @@ module ffc_module_artefact
 
     type :: fmod_derived_type_t
         character(len=:), allocatable :: name
+        ! Canonical identity in the defining module. For a local declaration
+        ! this equals name; for a public USE rename, name is the exported
+        ! spelling and canonical_name remains the remote type identity.
+        character(len=:), allocatable :: canonical_name
         ! Name of the type this one extends; empty when it extends nothing.
         character(len=:), allocatable :: parent_name
         type(fmod_component_t), allocatable :: components(:)
@@ -222,6 +229,8 @@ contains
                 write (unit, '(A)') '[[derived_type]]'
                 write (unit, '(A)') 'name = "'// &
                     field(info%derived_types(i)%name)//'"'
+                write (unit, '(A)') 'canonical_name = "'// &
+                    field(info%derived_types(i)%canonical_name)//'"'
                 write (unit, '(A)') 'parent_name = "'// &
                     field(info%derived_types(i)%parent_name)//'"'
                 write (unit, '(A)') 'components = ['
@@ -328,7 +337,7 @@ contains
         type(fmod_variable_t), allocatable :: vars(:)
         type(fmod_procedure_t), allocatable :: procs(:)
         type(fmod_generic_t), allocatable :: gens(:)
-        integer :: nuse, nparam, ndtype, ncomp, nvar, nproc, ngen, io_read
+        integer :: nuse, nparam, ndtype, ncomp, nvar, nproc, ngen, io_read, i
         integer :: schema
 
         allocate (character(len=0) :: error_msg)
@@ -426,6 +435,7 @@ contains
                 ndtype = ndtype + 1
                 call grow_dtypes(dtypes, ndtype)
                 dtypes(ndtype)%name = ''
+                dtypes(ndtype)%canonical_name = ''
                 allocate (dtypes(ndtype)%components(0))
                 allocate (dtypes(ndtype)%bindings(0))
                 deallocate (comps); allocate (comps(0)); ncomp = 0
@@ -457,6 +467,8 @@ contains
                 if (key == 'value') params(nparam)%value = unquote(val)
             case ('derived_type')
                 if (key == 'name') dtypes(ndtype)%name = unquote(val)
+                if (key == 'canonical_name') &
+                    dtypes(ndtype)%canonical_name = unquote(val)
                 if (key == 'parent_name') &
                     dtypes(ndtype)%parent_name = unquote(val)
                 if (key == 'bindings') &
@@ -508,6 +520,17 @@ contains
         close (unit)
         call flush_component(comps, ncomp, dtypes, ndtype)
 
+        ! Schema 13 and earlier did not carry provenance. A local type's name
+        ! is the only available identity in those artefacts, preserving their
+        ! read compatibility while giving every record one canonical spelling.
+        do i = 1, ndtype
+            if (.not. allocated(dtypes(i)%canonical_name)) then
+                dtypes(i)%canonical_name = dtypes(i)%name
+            else if (len_trim(dtypes(i)%canonical_name) == 0) then
+                dtypes(i)%canonical_name = dtypes(i)%name
+            end if
+        end do
+
         info%uses = uses(1:nuse)
         info%parameters = params
         info%derived_types = dtypes
@@ -524,12 +547,14 @@ contains
         if (schema /= FMOD_SCHEMA_VERSION .and. &
             schema /= FMOD_PREVIOUS_SCHEMA_VERSION .and. &
             schema /= FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION .and. &
+            schema /= FMOD_SCHEMA_BEFORE_CURRENT_VERSION .and. &
             schema /= FMOD_LEGACY_SCHEMA_VERSION) then
             error_msg = 'unsupported .fmod schema version'//schema_text(schema)// &
                 ' in '//trim(path)//' (this ffc reads schema versions '// &
                 int_text(FMOD_LEGACY_SCHEMA_VERSION)//' and '// &
                 int_text(FMOD_PREVIOUS_SCHEMA_VERSION)//' and '// &
                 int_text(FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION)//' and '// &
+                int_text(FMOD_SCHEMA_BEFORE_CURRENT_VERSION)//' and '// &
                 int_text(FMOD_SCHEMA_VERSION)//'): recompile the module'
         end if
     end subroutine read_fmod

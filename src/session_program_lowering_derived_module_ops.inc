@@ -515,7 +515,7 @@
         integer :: type_index_new, k, offset, nested, value_kind
         integer :: canonical_index
         integer(c_int64_t) :: no_default
-        character(len=:), allocatable :: registered_name
+        character(len=:), allocatable :: registered_name, canonical_name
 
         call set_empty(error_msg)
         if (.not. allocated(dtype%name)) return
@@ -524,9 +524,15 @@
         if (present(local_name)) then
             if (len_trim(local_name) > 0) registered_name = trim(local_name)
         end if
-        canonical_index = find_canonical_derived_type(context, trim(dtype%name))
+        canonical_name = trim(dtype%name)
+        if (allocated(dtype%canonical_name)) then
+            if (len_trim(dtype%canonical_name) > 0) then
+                canonical_name = trim(dtype%canonical_name)
+            end if
+        end if
+        canonical_index = find_canonical_derived_type(context, canonical_name)
         if (canonical_index > 0) then
-            if (.not. same_name(registered_name, dtype%name)) then
+            if (.not. same_name(registered_name, canonical_name)) then
                 call register_derived_type_alias(context, registered_name, &
                                                  canonical_index, error_msg)
             end if
@@ -537,7 +543,7 @@
 
         call grow_derived_types(context)
         type_index_new = context%derived_type_count + 1
-        context%derived_types(type_index_new)%name = trim(registered_name)
+        context%derived_types(type_index_new)%name = trim(canonical_name)
         context%derived_types(type_index_new)%component_count = 0
         context%derived_types(type_index_new)%parent_name = ''
         context%derived_types(type_index_new)%is_imported = .true.
@@ -633,7 +639,7 @@
                 end do
             end if
         end if
-        if (.not. same_name(registered_name, dtype%name)) then
+        if (.not. same_name(registered_name, canonical_name)) then
             call register_derived_type_alias(context, registered_name, &
                                              type_index_new, error_msg)
         end if
