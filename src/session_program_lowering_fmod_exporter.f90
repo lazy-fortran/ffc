@@ -220,7 +220,7 @@ contains
                         module%declaration_indices(i))%node)
                 type is (use_statement_node)
                     if (.not. allocated(use_node%module_name)) cycle
-                    call resolve_fmod_import_name(use_node, trim(type_name), &
+                    call resolve_export_import_name(use_node, trim(type_name), &
                                                   candidate, imported)
                     if (imported) then
                         reexports = .true.
@@ -242,6 +242,41 @@ contains
             end do
         end select
     end function module_reexports_type
+
+    subroutine resolve_export_import_name(use_node, remote_name, local_name, &
+                                          imported)
+        ! The exporter is a separate submodule object. Keep this tiny
+        ! read-only USE-name resolver local so a fresh build does not create a
+        ! link-time dependency on the parent implementation's internal helper.
+        type(use_statement_node), intent(in) :: use_node
+        character(len=*), intent(in) :: remote_name
+        character(len=:), allocatable, intent(out) :: local_name
+        logical, intent(out) :: imported
+        integer :: i
+
+        local_name = trim(remote_name)
+        imported = .true.
+        if (allocated(use_node%rename_list)) then
+            do i = 1, size(use_node%rename_list) - 1, 2
+                if (.not. allocated(use_node%rename_list(i)%s)) cycle
+                if (.not. allocated(use_node%rename_list(i + 1)%s)) cycle
+                if (same_name(use_node%rename_list(i + 1)%s, remote_name)) then
+                    local_name = trim(use_node%rename_list(i)%s)
+                    return
+                end if
+            end do
+        end if
+        if (.not. use_node%has_only) return
+        imported = .false.
+        if (.not. allocated(use_node%only_list)) return
+        do i = 1, size(use_node%only_list)
+            if (.not. allocated(use_node%only_list(i)%s)) cycle
+            if (same_name(use_node%only_list(i)%s, remote_name)) then
+                imported = .true.
+                return
+            end if
+        end do
+    end subroutine resolve_export_import_name
 
     module subroutine build_fmod_generics(arena, module_name, procs, generics, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -583,6 +618,8 @@ contains
                 procs(count)%result_kind = ''
                 procs(count)%arg_ranks = ''
                 procs(count)%arg_extents = ''
+                procs(count)%arg_classes = ''
+                procs(count)%arg_class_types = ''
                 procs(count)%opaque = .true.
                 procs(count)%callable = .true.
                 procs(count)%external_binding = is_external
@@ -627,6 +664,9 @@ contains
                                                      procs(count)%arg_intents, &
                                                      procs(count)%arg_optionals, &
                                                      procs(count)%arg_values)
+                call fmod_procedure_arg_class_info(arena, node_index, &
+                                                   procs(count)%arg_classes, &
+                                                   procs(count)%arg_class_types)
                 call pad_fmod_dummy_attributes(procs(count)%nargs, &
                                                procs(count)%arg_intents, &
                                                procs(count)%arg_optionals, &
@@ -657,6 +697,8 @@ contains
             procs(count)%result_kind = ''
             procs(count)%arg_ranks = ''
             procs(count)%arg_extents = ''
+            procs(count)%arg_classes = ''
+            procs(count)%arg_class_types = ''
             procs(count)%callable = .false.
             procs(count)%external_binding = is_external
             procs(count)%deferred_body = deferred_body
@@ -674,6 +716,9 @@ contains
         procs(count)%arg_kinds = arg_tokens
         procs(count)%arg_ranks = rank_tokens
         procs(count)%arg_extents = extent_tokens
+        call fmod_procedure_arg_class_info(arena, node_index, &
+                                           procs(count)%arg_classes, &
+                                           procs(count)%arg_class_types)
         procs(count)%callable = .true.
         procs(count)%external_binding = is_external
         procs(count)%arg_names = fmod_procedure_arg_names(arena, node_index)
@@ -764,6 +809,81 @@ contains
             values = values//flag_token(is_value)
         end do
     end subroutine fmod_procedure_dummy_attributes
+
+    subroutine fmod_procedure_arg_class_info(arena, node_index, classes, &
+                                                    class_types)
+        ! Preserve the distinction between type(t) and class(t) dummies in
+        ! the separate-compilation contract. In particular, an imported
+        ! type-bound target cannot recover this from its caller's AST.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: classes
+        character(len=:), allocatable, intent(out) :: class_types
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer, allocatable :: param_indices(:), body_indices(:)
+        character(len=:), allocatable :: param_name, name_error, type_name
+        logical :: is_class
+        integer :: i, j, open_pos, close_pos
+
+        classes = ''
+        class_types = ''
+        fn_node => get_node_as_function_def(arena, node_index)
+        if (associated(fn_node)) then
+            if (allocated(fn_node%param_indices)) param_indices = &
+                fn_node%param_indices
+            if (allocated(fn_node%body_indices)) body_indices = &
+                fn_node%body_indices
+        else
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            if (.not. associated(sb_node)) return
+            if (allocated(sb_node%param_indices)) param_indices = &
+                sb_node%param_indices
+            if (allocated(sb_node%body_indices)) body_indices = &
+                sb_node%body_indices
+        end if
+        if (.not. allocated(param_indices)) return
+        if (.not. allocated(body_indices)) allocate (body_indices(0))
+        do i = 1, size(param_indices)
+            is_class = .false.
+            type_name = '-'
+            call parameter_name(arena, param_indices(i), param_name, name_error)
+            if (len_trim(name_error) == 0) then
+                do j = 1, size(body_indices)
+                    if (.not. node_exists(arena, body_indices(j))) cycle
+                    select type (decl => arena%entries(body_indices(j))%node)
+                    type is (declaration_node)
+                        if (.not. declaration_declares_name(decl, &
+                            trim(lowercase_text(param_name)))) cycle
+                        if (.not. allocated(decl%type_name)) exit
+                        type_name = trim(lowercase_text(decl%type_name))
+                        is_class = len_trim(type_name) >= 6 .and. &
+                            type_name(1:6) == 'class('
+                        if (is_class) then
+                            open_pos = index(type_name, '(')
+                            close_pos = index(type_name, ')', back=.true.)
+                            if (close_pos > open_pos + 1 .and. &
+                                trim(type_name(open_pos + 1:close_pos - 1)) /= '*') then
+                                type_name = trim(type_name(open_pos + 1:close_pos - 1))
+                            else
+                                is_class = .false.
+                                type_name = '-'
+                            end if
+                        else
+                            type_name = '-'
+                        end if
+                        exit
+                    end select
+                end do
+            end if
+            if (i > 1) then
+                classes = classes//' '
+                class_types = class_types//' '
+            end if
+            classes = classes//flag_token(is_class)
+            class_types = class_types//type_name
+        end do
+    end subroutine fmod_procedure_arg_class_info
 
     module function flag_token(flag) result(token)
         logical, intent(in) :: flag

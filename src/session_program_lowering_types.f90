@@ -641,6 +641,12 @@ module session_program_lowering_types
         ! An opaque imported dummy has no scalar kind claim. Its actual is
         ! accepted only by a dedicated ABI lowering path.
         logical :: arg_is_opaque(MAX_PROC_ARGS) = .false.
+        ! A separately compiled class(t) dummy receives a scalar class
+        ! descriptor; type(t) passed-object dummies receive the raw object
+        ! address. The declared type spelling is retained for class dummies
+        ! so inherited bindings use the parent's descriptor type.
+        logical :: arg_is_class(MAX_PROC_ARGS) = .false.
+        character(len=64) :: arg_class_types(MAX_PROC_ARGS) = ''
     end type external_procedure_t
 
     integer, parameter, public :: MAX_NAMELIST_MEMBERS = 32
@@ -718,6 +724,12 @@ module session_program_lowering_types
         integer :: current_declaration_index = 0
         type(derived_type_info_t), allocatable :: derived_types(:)
         integer :: derived_type_count = 0
+        ! Local spellings imported through USE renames map to one canonical
+        ! derived-type record. Keeping aliases out of derived_types preserves
+        ! type identity for inheritance, nested components, and descriptors.
+        character(len=64), allocatable :: derived_type_alias_names(:)
+        integer, allocatable :: derived_type_alias_indices(:)
+        integer :: derived_type_alias_count = 0
         ! Parameterized derived types (#411). A PDT definition registers its
         ! name here as a template instead of a concrete layout; every distinct
         ! tuple of constant actual type parameters instantiates one concrete

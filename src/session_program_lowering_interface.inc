@@ -839,7 +839,8 @@
                                       return_kind, arg_count, by_reference, &
                                       arg_kinds, arg_names, arg_optionals, &
                                       arg_values, arg_intents, arg_ranks, &
-                                      arg_extents, is_bind_c, arg_opaque)
+                                      arg_extents, is_bind_c, arg_opaque, &
+                                      arg_class, arg_class_types)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: fortran_name, c_name
         integer, intent(in) :: return_kind, arg_count
@@ -853,6 +854,8 @@
         integer, intent(in), optional :: arg_extents(:)
         logical, intent(in), optional :: is_bind_c
         logical, intent(in), optional :: arg_opaque(:)
+        logical, intent(in), optional :: arg_class(:)
+        character(len=*), intent(in), optional :: arg_class_types(:)
         integer :: j
 
         if (external_procedure_index(context, trim(fortran_name)) > 0) return
@@ -916,6 +919,18 @@
             if (present(arg_opaque)) then
                 do j = 1, min(arg_count, size(arg_opaque))
                     ep%arg_is_opaque(j) = arg_opaque(j)
+                end do
+            end if
+            ep%arg_is_class = .false.
+            ep%arg_class_types = ''
+            if (present(arg_class)) then
+                do j = 1, min(arg_count, size(arg_class))
+                    ep%arg_is_class(j) = arg_class(j)
+                end do
+            end if
+            if (present(arg_class_types)) then
+                do j = 1, min(arg_count, size(arg_class_types))
+                    ep%arg_class_types(j) = trim(arg_class_types(j))
                 end do
             end if
         end associate

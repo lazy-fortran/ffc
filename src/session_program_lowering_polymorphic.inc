@@ -689,22 +689,31 @@
         integer, intent(in) :: symbol_index
         type(lr_operand_desc_t), intent(out) :: argument
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: declared_index
+        integer :: declared_index, ext_idx
 
         call class_dummy_declared_type_index(context, arena, impl_name, position, &
                                              declared_index)
         if (declared_index <= 0) then
             ! A separately compiled type-bound target has no procedure AST in
-            ! the caller's arena, but its fmod entry is the canonical class
-            ! passed-object ABI. Reconstruct the borrowed descriptor from the
-            ! actual's declared type instead of passing raw storage to a
-            ! class(box_t) dummy.
-            if (external_procedure_index(context, trim(impl_name)) > 0) then
-                declared_index = context%symbols(symbol_index)%derived_type_index
-                if (declared_index > 0) then
-                    call build_class_scalar_descriptor(context, symbol_index, &
-                        declared_index, argument, error_msg)
-                    return
+            ! the caller's arena. Use the explicit .fmod ABI metadata: only a
+            ! class(t) dummy receives a descriptor; type(t) receives raw
+            ! storage. The recorded declared type also matters for an
+            ! inherited class(parent_t) binding invoked on a child object.
+            ext_idx = external_procedure_index(context, trim(impl_name))
+            if (ext_idx > 0) then
+                if (position <= context%external_procedures(ext_idx)%arg_count) then
+                    if (context%external_procedures(ext_idx)%arg_is_class(position)) then
+                        declared_index = find_derived_type(context, trim( &
+                            context%external_procedures(ext_idx)%arg_class_types(position)))
+                        if (declared_index <= 0) then
+                            error_msg = 'class passed-object dummy of "'//trim(impl_name)// &
+                                '" names an unavailable derived type'
+                            return
+                        end if
+                        call build_class_scalar_descriptor(context, symbol_index, &
+                            declared_index, argument, error_msg)
+                        return
+                    end if
                 end if
             end if
             argument = context%symbols(symbol_index)%element_address

@@ -141,6 +141,11 @@
             end if
         end do
         context%derived_type_count = 0
+        context%derived_type_alias_count = 0
+        if (allocated(context%derived_type_alias_names)) &
+            deallocate(context%derived_type_alias_names)
+        if (allocated(context%derived_type_alias_indices)) &
+            deallocate(context%derived_type_alias_indices)
         call set_empty(error_msg)
 
         select type (program => arena%entries(root_index)%node)

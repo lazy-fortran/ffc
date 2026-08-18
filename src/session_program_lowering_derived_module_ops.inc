@@ -194,7 +194,72 @@
                 return
             end if
         end do
+        do i = 1, context%derived_type_alias_count
+            if (same_name(context%derived_type_alias_names(i), name)) then
+                type_index = context%derived_type_alias_indices(i)
+                return
+            end if
+        end do
     end function find_derived_type
+
+    integer function find_canonical_derived_type(context, name) result(type_index)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: i
+
+        type_index = 0
+        do i = 1, context%derived_type_count
+            if (same_name(context%derived_types(i)%name, name)) then
+                type_index = i
+                return
+            end if
+        end do
+    end function find_canonical_derived_type
+
+    subroutine register_derived_type_alias(context, alias_name, type_index, &
+                                           error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: alias_name
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64), allocatable :: old_names(:), new_names(:)
+        integer, allocatable :: old_indices(:), new_indices(:)
+        integer :: i, n
+
+        call set_empty(error_msg)
+        if (len_trim(alias_name) == 0) return
+        if (type_index <= 0 .or. type_index > context%derived_type_count) then
+            error_msg = 'cannot alias an invalid derived type index'
+            return
+        end if
+        if (same_name(alias_name, context%derived_types(type_index)%name)) return
+        do i = 1, context%derived_type_alias_count
+            if (.not. same_name(context%derived_type_alias_names(i), alias_name)) cycle
+            if (context%derived_type_alias_indices(i) /= type_index) then
+                error_msg = 'derived type alias "'//trim(alias_name)// &
+                    '" refers to conflicting types'
+            end if
+            return
+        end do
+        if (find_canonical_derived_type(context, alias_name) > 0) then
+            error_msg = 'derived type alias "'//trim(alias_name)// &
+                '" conflicts with a canonical type name'
+            return
+        end if
+        n = context%derived_type_alias_count + 1
+        allocate(new_names(n), new_indices(n))
+        if (context%derived_type_alias_count > 0) then
+            old_names = context%derived_type_alias_names
+            old_indices = context%derived_type_alias_indices
+            new_names(1:n - 1) = old_names
+            new_indices(1:n - 1) = old_indices
+        end if
+        new_names(n) = trim(alias_name)
+        new_indices(n) = type_index
+        call move_alloc(new_names, context%derived_type_alias_names)
+        call move_alloc(new_indices, context%derived_type_alias_indices)
+        context%derived_type_alias_count = n
+    end subroutine register_derived_type_alias
 
     integer function find_derived_component(context, type_index, name) &
         result(component_index)
@@ -448,6 +513,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=*), intent(in), optional :: local_name
         integer :: type_index_new, k, offset, nested, value_kind
+        integer :: canonical_index
         integer(c_int64_t) :: no_default
         character(len=:), allocatable :: registered_name
 
@@ -457,6 +523,14 @@
         registered_name = trim(dtype%name)
         if (present(local_name)) then
             if (len_trim(local_name) > 0) registered_name = trim(local_name)
+        end if
+        canonical_index = find_canonical_derived_type(context, trim(dtype%name))
+        if (canonical_index > 0) then
+            if (.not. same_name(registered_name, dtype%name)) then
+                call register_derived_type_alias(context, registered_name, &
+                                                 canonical_index, error_msg)
+            end if
+            return
         end if
         if (find_derived_type(context, trim(registered_name)) > 0) return
         if (.not. allocated(dtype%components)) return
@@ -558,6 +632,10 @@
                         binding_pass_args(k) = dtype%bindings(k)%pass_arg
                 end do
             end if
+        end if
+        if (.not. same_name(registered_name, dtype%name)) then
+            call register_derived_type_alias(context, registered_name, &
+                                             type_index_new, error_msg)
         end if
     end subroutine import_fmod_derived_type
 
@@ -688,6 +766,8 @@
         character(len=64), allocatable :: arg_names(:)
         logical, allocatable :: arg_optionals(:), arg_values(:)
         logical, allocatable :: arg_opaque(:)
+        logical, allocatable :: arg_class(:)
+        character(len=64), allocatable :: arg_class_types(:)
         integer, allocatable :: arg_intents(:), arg_ranks(:), arg_extents(:)
         integer :: return_kind
         logical :: forced, imported
@@ -735,6 +815,8 @@
         call parse_fmod_arg_flags(proc%arg_optionals, proc%nargs, arg_optionals)
         call parse_fmod_arg_flags(proc%arg_values, proc%nargs, arg_values)
         call parse_fmod_arg_opaque(proc, arg_opaque)
+        call parse_fmod_arg_classes(proc, arg_class)
+        call parse_fmod_arg_class_types(proc, arg_class_types)
         call parse_fmod_arg_intents(proc, arg_intents)
         call parse_fmod_arg_integers(proc%arg_ranks, proc%nargs, arg_ranks)
         call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents)
@@ -754,7 +836,9 @@
                                     arg_names, arg_optionals, arg_values, &
                                     arg_intents, arg_ranks, arg_extents, &
                                     is_bind_c=proc%external_binding, &
-                                    arg_opaque=arg_opaque)
+                                    arg_opaque=arg_opaque, &
+                                    arg_class=arg_class, &
+                                    arg_class_types=arg_class_types)
     end subroutine import_fmod_procedure
 
     subroutine parse_fmod_arg_opaque(proc, opaque)
@@ -789,6 +873,39 @@
         end do
         if (i /= proc%nargs) opaque = proc%opaque
     end subroutine parse_fmod_arg_opaque
+
+    subroutine parse_fmod_arg_classes(proc, classes)
+        type(fmod_procedure_t), intent(in) :: proc
+        logical, allocatable, intent(out) :: classes(:)
+
+        call parse_fmod_arg_flags(proc%arg_classes, proc%nargs, classes)
+    end subroutine parse_fmod_arg_classes
+
+    subroutine parse_fmod_arg_class_types(proc, class_types)
+        type(fmod_procedure_t), intent(in) :: proc
+        character(len=64), allocatable, intent(out) :: class_types(:)
+        character(len=:), allocatable :: rest, token
+        integer :: i, sep
+
+        allocate(class_types(max(proc%nargs, 0)))
+        class_types = ''
+        if (proc%nargs <= 0) return
+        if (.not. allocated(proc%arg_class_types)) return
+        rest = trim(adjustl(proc%arg_class_types))
+        i = 0
+        do while (len_trim(rest) > 0 .and. i < proc%nargs)
+            sep = index(rest, ' ')
+            i = i + 1
+            if (sep == 0) then
+                token = rest
+                rest = ''
+            else
+                token = trim(rest(1:sep - 1))
+                rest = adjustl(rest(sep + 1:))
+            end if
+            if (trim(token) /= '-') class_types(i) = trim(token)
+        end do
+    end subroutine parse_fmod_arg_class_types
 
     subroutine parse_fmod_arg_flags(text, nargs, flags)
         ! Split a .fmod per-dummy '0'/'1' attribute list (OPTIONAL, VALUE) into

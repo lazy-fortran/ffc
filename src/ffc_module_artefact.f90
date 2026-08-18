@@ -24,10 +24,14 @@ module ffc_module_artefact
     ! Schema 10 remains readable because its records are structurally
     ! compatible; schema 11 adds the optional specific-target list for generic
     ! type-bound bindings and schema 12 records the rank of allocatable array
-    ! components. Writers always emit the newest schema.
-    integer, parameter, public :: FMOD_SCHEMA_VERSION = 12
+    ! components. Schema 13 records whether a procedure dummy is class(t) and
+    ! its declared derived type, which is required to reconstruct the passed-
+    ! object ABI across separate compilation. Writers always emit the newest
+    ! schema.
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 13
     integer, parameter :: FMOD_LEGACY_SCHEMA_VERSION = 10
     integer, parameter :: FMOD_PREVIOUS_SCHEMA_VERSION = 11
+    integer, parameter :: FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION = 12
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -127,6 +131,10 @@ module ffc_module_artefact
         ! call resolves one by the declared ranks (#415).
         character(len=:), allocatable :: arg_ranks
         character(len=:), allocatable :: arg_extents
+        ! Space-joined 0/1 flags and declared derived-type names for dummies.
+        ! Only class dummies use the latter for descriptor construction.
+        character(len=:), allocatable :: arg_classes
+        character(len=:), allocatable :: arg_class_types
         ! True when the exporter preserved a public procedure whose dummy
         ! contracts are outside the scalar lowering ABI. Such arguments must
         ! be lowered only through explicit opaque-argument paths (#584).
@@ -271,6 +279,10 @@ contains
                     field(info%procedures(i)%arg_ranks)//'"'
                 write (unit, '(A)') 'arg_extents = "'// &
                     field(info%procedures(i)%arg_extents)//'"'
+                write (unit, '(A)') 'arg_classes = "'// &
+                    field(info%procedures(i)%arg_classes)//'"'
+                write (unit, '(A)') 'arg_class_types = "'// &
+                    field(info%procedures(i)%arg_class_types)//'"'
                 write (unit, '(A)') 'opaque = '// &
                     bool_text(info%procedures(i)%opaque)
                 write (unit, '(A)') 'callable = '// &
@@ -393,6 +405,8 @@ contains
                 procs(nproc)%result_kind = ''
                 procs(nproc)%arg_ranks = ''
                 procs(nproc)%arg_extents = ''
+                procs(nproc)%arg_classes = ''
+                procs(nproc)%arg_class_types = ''
                 procs(nproc)%callable = .true.
                 procs(nproc)%external_binding = .false.
                 procs(nproc)%deferred_body = .false.
@@ -470,6 +484,10 @@ contains
                 if (key == 'arg_ranks') procs(nproc)%arg_ranks = unquote(val)
                 if (key == 'arg_extents') &
                     procs(nproc)%arg_extents = unquote(val)
+                if (key == 'arg_classes') &
+                    procs(nproc)%arg_classes = unquote(val)
+                if (key == 'arg_class_types') &
+                    procs(nproc)%arg_class_types = unquote(val)
                 if (key == 'opaque') &
                     procs(nproc)%opaque = unquote(val) == '1'
                 if (key == 'callable') &
@@ -505,11 +523,13 @@ contains
         ! 10 is explicitly retained for backwards-compatible reads (#397).
         if (schema /= FMOD_SCHEMA_VERSION .and. &
             schema /= FMOD_PREVIOUS_SCHEMA_VERSION .and. &
+            schema /= FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION .and. &
             schema /= FMOD_LEGACY_SCHEMA_VERSION) then
             error_msg = 'unsupported .fmod schema version'//schema_text(schema)// &
                 ' in '//trim(path)//' (this ffc reads schema versions '// &
                 int_text(FMOD_LEGACY_SCHEMA_VERSION)//' and '// &
                 int_text(FMOD_PREVIOUS_SCHEMA_VERSION)//' and '// &
+                int_text(FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION)//' and '// &
                 int_text(FMOD_SCHEMA_VERSION)//'): recompile the module'
         end if
     end subroutine read_fmod
@@ -594,10 +614,10 @@ contains
         if (.not. allocated(bindings)) return
         do i = 1, size(bindings)
             item = field(bindings(i)%method_name)//'=>'// &
-                   field(bindings(i)%target_name)//'|'// &
-                   field(bindings(i)%pass_name)//'|'// &
-                   bool_text(bindings(i)%pass_arg)//'|'// &
-                   field(bindings(i)%specific_names)
+                field(bindings(i)%target_name)//'|'// &
+                field(bindings(i)%pass_name)//'|'// &
+                bool_text(bindings(i)%pass_arg)//'|'// &
+                field(bindings(i)%specific_names)
             if (len_trim(text) > 0) text = text//';'
             text = text//item
         end do
