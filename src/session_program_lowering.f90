@@ -1651,12 +1651,14 @@ module session_program_lowering_impl
             type(fmod_derived_type_t), intent(out) :: dtype
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine build_fmod_derived_type
-        module function module_reexports_type(arena, module_index, type_name) &
+        module function module_reexports_type(arena, module_index, type_name, &
+                local_name) &
                 result(reexports)
             logical :: reexports
             type(ast_arena_t), intent(in) :: arena
             integer, intent(in) :: module_index
             character(len=*), intent(in) :: type_name
+            character(len=:), allocatable, optional, intent(out) :: local_name
         end function module_reexports_type
         module subroutine build_fmod_derived_type_from_context(context, type_index, &
                 dtype, error_msg)

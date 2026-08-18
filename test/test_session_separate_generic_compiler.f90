@@ -341,15 +341,15 @@ contains
             'end module fmod447_base'
         character(len=*), parameter :: bridge_source = &
             'module fmod447_bridge'//new_line('a')// &
-            '    use fmod447_base, only: box_t'//new_line('a')// &
+            '    use fmod447_base, only: alias_t => box_t'//new_line('a')// &
             '    implicit none'//new_line('a')// &
-            '    public :: box_t'//new_line('a')// &
+            '    public :: alias_t'//new_line('a')// &
             'end module fmod447_bridge'
         character(len=*), parameter :: program_source = &
             'program main'//new_line('a')// &
-            '    use fmod447_bridge, only: box_t'//new_line('a')// &
+            '    use fmod447_bridge, only: alias_t'//new_line('a')// &
             '    implicit none'//new_line('a')// &
-            '    type(box_t) :: box'//new_line('a')// &
+            '    type(alias_t) :: box'//new_line('a')// &
             '    box%value = 0'//new_line('a')// &
             '    call box%set(4)'//new_line('a')// &
             '    call box%set(2.5)'//new_line('a')// &

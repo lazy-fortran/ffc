@@ -47,6 +47,8 @@ contains
         integer :: type_index
         integer, allocatable :: derived_indices(:)
         integer, allocatable :: imported_type_indices(:)
+        character(len=:), allocatable :: exported_name
+        logical :: reexported
 
         call set_empty(error_msg)
         info%name = trim(export%module_name)
@@ -124,7 +126,8 @@ contains
         do i = 1, context%derived_type_count
             if (.not. context%derived_types(i)%is_imported) cycle
             if (module_reexports_type(arena, module_index, &
-                                      context%derived_types(i)%name)) then
+                                      context%derived_types(i)%name, &
+                                      exported_name)) then
                 imported_count = imported_count + 1
             end if
         end do
@@ -133,7 +136,8 @@ contains
         do i = 1, context%derived_type_count
             if (.not. context%derived_types(i)%is_imported) cycle
             if (.not. module_reexports_type(arena, module_index, &
-                                            context%derived_types(i)%name)) cycle
+                                            context%derived_types(i)%name, &
+                                            exported_name)) cycle
             j = j + 1
             imported_type_indices(j) = i
         end do
@@ -163,6 +167,12 @@ contains
                                                       derived_count + i), &
                                                       error_msg)
             if (len_trim(error_msg) > 0) return
+            reexported = module_reexports_type(arena, module_index, &
+                                               context%derived_types(type_index)%name, &
+                                               exported_name)
+            if (reexported .and. len_trim(exported_name) > 0) then
+                info%derived_types(derived_count + i)%name = trim(exported_name)
+            end if
         end do
         deallocate (imported_type_indices)
         ! Scalar module variables round-trip so a separately compiled program
@@ -186,15 +196,20 @@ contains
                                  info%procedures, info%generics, error_msg)
     end subroutine build_module_info
 
-    module function module_reexports_type(arena, module_index, type_name) &
+    module function module_reexports_type(arena, module_index, type_name, &
+                                          local_name) &
             result(reexports)
         logical :: reexports
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: module_index
         character(len=*), intent(in) :: type_name
-        integer :: i
+        character(len=:), allocatable, optional, intent(out) :: local_name
+        character(len=:), allocatable :: candidate
+        logical :: imported
+        integer :: i, j
 
         reexports = .false.
+        if (present(local_name)) local_name = ''
         if (module_index <= 0) return
         select type (module => arena%entries(module_index)%node)
         type is (module_node)
@@ -205,9 +220,23 @@ contains
                         module%declaration_indices(i))%node)
                 type is (use_statement_node)
                     if (.not. allocated(use_node%module_name)) cycle
-                    if (use_only_wants(use_node, trim(type_name))) then
+                    call resolve_fmod_import_name(use_node, trim(type_name), &
+                                                  candidate, imported)
+                    if (imported) then
                         reexports = .true.
+                        if (present(local_name)) local_name = trim(candidate)
                         return
+                    end if
+                    if (allocated(use_node%rename_list)) then
+                        do j = 1, size(use_node%rename_list) - 1, 2
+                            if (.not. allocated(use_node%rename_list(j)%s)) cycle
+                            if (.not. same_name(use_node%rename_list(j)%s, &
+                                                type_name)) cycle
+                            reexports = .true.
+                            if (present(local_name)) local_name = &
+                                trim(use_node%rename_list(j)%s)
+                            return
+                        end do
                     end if
                 end select
             end do

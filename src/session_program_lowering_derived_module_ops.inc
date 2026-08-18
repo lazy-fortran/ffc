@@ -404,6 +404,8 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
+        character(len=:), allocatable :: local_name
+        logical :: imported
 
         call set_empty(error_msg)
         if (.not. allocated(info%derived_types)) return
@@ -411,8 +413,11 @@
             if (.not. fmod_derived_type_dependencies_available(info%derived_types(i), &
                                                                context) .and. &
                 .not. allocated(use_node%only_list)) cycle
+            call resolve_fmod_import_name(use_node, trim(info%derived_types(i)%name), &
+                                          local_name, imported)
+            if (.not. imported) local_name = trim(info%derived_types(i)%name)
             call import_fmod_derived_type(use_node, info%derived_types(i), &
-                                          context, error_msg)
+                                          context, error_msg, local_name)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine import_fmod_derived_types
@@ -434,24 +439,31 @@
         end do
     end function fmod_derived_type_dependencies_available
 
-    subroutine import_fmod_derived_type(use_node, dtype, context, error_msg)
+    subroutine import_fmod_derived_type(use_node, dtype, context, error_msg, &
+                                        local_name)
         ! Reconstruct one derived type's layout from its artefact record.
         type(use_statement_node), intent(in) :: use_node
         type(fmod_derived_type_t), intent(in) :: dtype
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: local_name
         integer :: type_index_new, k, offset, nested, value_kind
         integer(c_int64_t) :: no_default
+        character(len=:), allocatable :: registered_name
 
         call set_empty(error_msg)
         if (.not. allocated(dtype%name)) return
         if (len_trim(dtype%name) == 0) return
-        if (find_derived_type(context, trim(dtype%name)) > 0) return
+        registered_name = trim(dtype%name)
+        if (present(local_name)) then
+            if (len_trim(local_name) > 0) registered_name = trim(local_name)
+        end if
+        if (find_derived_type(context, trim(registered_name)) > 0) return
         if (.not. allocated(dtype%components)) return
 
         call grow_derived_types(context)
         type_index_new = context%derived_type_count + 1
-        context%derived_types(type_index_new)%name = trim(dtype%name)
+        context%derived_types(type_index_new)%name = trim(registered_name)
         context%derived_types(type_index_new)%component_count = 0
         context%derived_types(type_index_new)%parent_name = ''
         context%derived_types(type_index_new)%is_imported = .true.
