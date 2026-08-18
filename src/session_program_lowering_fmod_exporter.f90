@@ -857,14 +857,20 @@ contains
                             trim(lowercase_text(param_name)))) cycle
                         if (.not. allocated(decl%type_name)) exit
                         type_name = trim(lowercase_text(decl%type_name))
-                        is_class = len_trim(type_name) >= 6 .and. &
-                            type_name(1:6) == 'class('
+                        is_class = .false.
+                        if (len_trim(type_name) >= 6) then
+                            is_class = type_name(1:6) == 'class('
+                        end if
                         if (is_class) then
                             open_pos = index(type_name, '(')
                             close_pos = index(type_name, ')', back=.true.)
-                            if (close_pos > open_pos + 1 .and. &
-                                trim(type_name(open_pos + 1:close_pos - 1)) /= '*') then
-                                type_name = trim(type_name(open_pos + 1:close_pos - 1))
+                            if (close_pos > open_pos + 1) then
+                                if (trim(type_name(open_pos + 1:close_pos - 1)) /= '*') then
+                                    type_name = trim(type_name(open_pos + 1:close_pos - 1))
+                                else
+                                    is_class = .false.
+                                    type_name = '-'
+                                end if
                             else
                                 is_class = .false.
                                 type_name = '-'
