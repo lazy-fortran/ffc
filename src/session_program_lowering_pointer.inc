@@ -550,10 +550,19 @@
                 context, ptr_index, error_msg)
             return
         end if
+        ! p => a(lo:hi:s): a strided array-section view bound through the
+        ! pointer's descriptor byte-stride path (#338).
         if (.not. is_identifier(arena, node%target_index)) then
-            error_msg = 'direct LIRIC session pointer assignment requires a '// &
-                        'scalar or whole-array target variable'
-            return
+            select type (target_entry => arena%entries(node%target_index)%node)
+            type is (array_slice_node)
+                call alias_pointer_array_section(arena, node%target_index, context, &
+                                                 ptr_index, error_msg)
+                return
+            class default
+                error_msg = 'pointer assignment target AST node is not an '// &
+                            'array slice node (#338)'
+                return
+            end select
         end if
         call get_identifier_name(arena, node%target_index, target_name, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -907,6 +916,139 @@
             context%symbols(target_index)%runtime_array_stride_bytes
         call set_empty(error_msg)
     end subroutine alias_pointer_array
+
+    subroutine alias_pointer_array_section(arena, target_index, context, &
+                                            ptr_index, error_msg)
+        ! p => a(lo:hi:s): bind p to a strided section view of the target
+        ! array.  Element addressing through p uses the descriptor byte-stride
+        ! path, so p(i) steps by the section's stride across the target's
+        ! storage (#338).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: target_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: ptr_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_section_info_t) :: info
+        type(lr_operand_desc_t) :: index_op, base_addr
+        integer(c_int64_t) :: first_linear, stride_bytes
+        integer :: src, vk, arr_size
+
+        select type (slice => arena%entries(target_index)%node)
+        type is (array_slice_node)
+            call describe_array_section(arena, slice, context, info, error_msg, &
+                                        allow_derived=.true.)
+            if (len_trim(error_msg) > 0) return
+        class default
+            error_msg = 'pointer assignment section expected an array slice node'
+            return
+        end select
+        if (info%result_rank /= 1) then
+            error_msg = 'pointer array sections support rank-1 views only'
+            return
+        end if
+        if (info%has_runtime_bounds) then
+            error_msg = 'pointer array sections require compile-time bounds'
+            return
+        end if
+        src = info%source_index
+        if (src <= 0 .or. src > context%symbol_count) then
+            error_msg = 'pointer array section source was not declared'
+            return
+        end if
+        if (.not. context%symbols(ptr_index)%is_array) then
+            error_msg = 'left of => is a scalar pointer but the target is an array'
+            return
+        end if
+        if (.not. context%symbols(src)%is_array) then
+            error_msg = 'pointer array section source is not an array'
+            return
+        end if
+        if (.not. (context%symbols(src)%is_target .or. &
+                   context%symbols(src)%is_pointer)) then
+            error_msg = 'right of => is not a target or pointer'
+            return
+        end if
+        if (context%symbols(src)%is_pointer) then
+            ! A section of a pointer may already carry a non-unit or negative
+            ! descriptor stride. Compose that stride before accepting the
+            ! association, or reject it rather than treating the source as
+            ! contiguous (#338).
+            error_msg = 'pointer array section source must be a contiguous target'
+            return
+        end if
+        if (.not. context%symbols(src)%has_address) then
+            error_msg = 'pointer array section source has no storage'
+            return
+        end if
+        if (context%symbols(ptr_index)%array_rank /= info%result_rank) then
+            error_msg = 'pointer and section ranks do not match'
+            return
+        end if
+        if (context%symbols(ptr_index)%value_kind /= &
+            context%symbols(src)%value_kind) then
+            error_msg = 'pointer and target array element kinds do not match'
+            return
+        end if
+        if (context%symbols(ptr_index)%is_derived .neqv. &
+            context%symbols(src)%is_derived) then
+            error_msg = 'pointer and target array types do not match'
+            return
+        end if
+        if (context%symbols(ptr_index)%is_derived .and. &
+            context%symbols(ptr_index)%derived_type_index /= &
+            context%symbols(src)%derived_type_index) then
+            if (.not. derived_type_extends(context, &
+                    context%symbols(src)%derived_type_index, &
+                    context%symbols(ptr_index)%derived_type_index)) then
+                error_msg = 'pointer and target array derived types do not match'
+                return
+            end if
+        end if
+        if (context%symbols(src)%is_allocatable) then
+            error_msg = 'pointer array section of an allocatable target is '// &
+                        'not supported'
+            return
+        end if
+        vk = context%symbols(src)%value_kind
+        if (vk /= VALUE_I32 .and. vk /= VALUE_LOGICAL .and. &
+            vk /= VALUE_F32 .and. vk /= VALUE_F64) then
+            error_msg = 'pointer array sections do not support this element kind'
+            return
+        end if
+        arr_size = context%symbols(src)%array_size
+        first_linear = array_section_source_linear_index(info, 0_c_int64_t)
+        index_op = i32_immediate(context%session, first_linear)
+        select case (vk)
+        case (VALUE_F32)
+            if (.not. emit_f32_array_element_addr(context%session, arr_size, &
+                    context%symbols(src)%element_address, index_op, base_addr, &
+                    error_msg)) return
+        case (VALUE_F64)
+            if (.not. emit_f64_array_element_addr(context%session, arr_size, &
+                    context%symbols(src)%element_address, index_op, base_addr, &
+                    error_msg)) return
+        case (VALUE_I32, VALUE_LOGICAL)
+            if (.not. emit_i32_array_element_addr(context%session, arr_size, &
+                    context%symbols(src)%element_address, index_op, base_addr, &
+                    error_msg)) return
+        end select
+
+        stride_bytes = info%section_strides(info%kept_dims(1)) * &
+                       allocatable_elem_size(vk)
+        context%symbols(ptr_index)%element_address = base_addr
+        context%symbols(ptr_index)%array_size = int(info%section_extents( &
+            info%kept_dims(1)))
+        context%symbols(ptr_index)%array_lower_bound = 1
+        context%symbols(ptr_index)%array_rank = 1
+        context%symbols(ptr_index)%has_runtime_array_stride = .true.
+        context%symbols(ptr_index)%runtime_array_stride_bytes = &
+            i64_immediate(context%session, stride_bytes)
+        context%symbols(ptr_index)%has_address = .true.
+        context%symbols(ptr_index)%is_reference = .true.
+        context%symbols(ptr_index)%is_associated = .true.
+        context%symbols(ptr_index)%has_runtime_association = .false.
+        call set_empty(error_msg)
+    end subroutine alias_pointer_array_section
 
     subroutine lower_nullify(arena, node, context, error_msg)
         ! nullify(p [, q ...]) : disassociate each pointer.
