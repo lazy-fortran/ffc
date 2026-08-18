@@ -158,6 +158,8 @@ contains
                                          derived_indices(i), &
                                          info%derived_types(i), error_msg)
             if (len_trim(error_msg) > 0) return
+            info%derived_types(i)%canonical_identity = trim(export%module_name)// &
+                '::'//trim(info%derived_types(i)%canonical_name)
         end do
         deallocate (derived_indices)
         do i = 1, imported_count
@@ -1513,7 +1515,9 @@ contains
         call set_empty(error_msg)
         dtype%name = ''
         dtype%canonical_name = ''
+        dtype%canonical_identity = ''
         dtype%parent_name = ''
+        dtype%parent_identity = ''
         if (.not. is_derived_type_node(arena, node_index)) then
             error_msg = 'module derived-type export is not a derived type'
             return
@@ -1538,19 +1542,31 @@ contains
         integer, intent(in) :: type_index
         type(fmod_derived_type_t), intent(out) :: dtype
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: k, offset, nested, b
+        integer :: k, offset, nested, b, parent_index
 
         call set_empty(error_msg)
         dtype%name = ''
         dtype%canonical_name = ''
+        dtype%canonical_identity = ''
         dtype%parent_name = ''
+        dtype%parent_identity = ''
         if (type_index <= 0 .or. type_index > context%derived_type_count) then
             error_msg = 'invalid derived type context index for .fmod export'
             return
         end if
         dtype%name = trim(context%derived_types(type_index)%name)
-        dtype%canonical_name = trim(context%derived_types(type_index)%name)
+        dtype%canonical_name = trim(context%derived_types(type_index)% &
+                                    canonical_name)
+        if (len_trim(dtype%canonical_name) == 0) &
+            dtype%canonical_name = trim(dtype%name)
+        dtype%canonical_identity = trim(context%derived_types(type_index)% &
+                                        canonical_identity)
+        if (len_trim(dtype%canonical_identity) == 0) &
+            dtype%canonical_identity = trim(dtype%canonical_name)
         dtype%parent_name = trim(context%derived_types(type_index)%parent_name)
+        parent_index = find_derived_type(context, trim(dtype%parent_name))
+        if (parent_index > 0) dtype%parent_identity = trim( &
+            context%derived_types(parent_index)%canonical_identity)
         allocate (dtype%components( &
             context%derived_types(type_index)%component_count))
         allocate (dtype%bindings( &
@@ -1562,10 +1578,13 @@ contains
                                  component_names(k))
                 comp%kind = fmod_component_kind_token(context, type_index, k)
                 comp%type_name = ''
+                comp%type_identity = ''
                 nested = context%derived_types(type_index)% &
                          component_type_index(k)
                 if (nested > 0) comp%type_name = &
                     trim(context%derived_types(nested)%name)
+                if (nested > 0) comp%type_identity = trim( &
+                    context%derived_types(nested)%canonical_identity)
                 comp%slot_width = component_slot_width(context, type_index, k)
                 comp%elem_count = context%derived_types(type_index)% &
                                   component_array_size(k)

@@ -28,7 +28,9 @@ module ffc_module_artefact
     ! its declared derived type, which is required to reconstruct the passed-
     ! object ABI across separate compilation. Schema 14 records the canonical
     ! identity behind a re-exported derived type name, so a later consumer can
-    ! merge an alias with the original type across multiple .fmod files.
+    ! merge an alias with the original type across multiple .fmod files. The
+    ! identity includes the defining module to keep unrelated same-named types
+    ! distinct.
     ! Writers always emit the newest schema.
     integer, parameter, public :: FMOD_SCHEMA_VERSION = 14
     integer, parameter :: FMOD_LEGACY_SCHEMA_VERSION = 10
@@ -56,6 +58,8 @@ module ffc_module_artefact
         ! Name of the nested derived type of a 'derived' component; empty for
         ! every other kind.
         character(len=:), allocatable :: type_name
+        ! Module-qualified identity of type_name for schema 14 artefacts.
+        character(len=:), allocatable :: type_identity
         ! Elements the component declares (1 for a scalar), the i32 slots one
         ! element occupies, and the total and starting slots of the component.
         integer :: elem_count = 1
@@ -93,8 +97,13 @@ module ffc_module_artefact
         ! this equals name; for a public USE rename, name is the exported
         ! spelling and canonical_name remains the remote type identity.
         character(len=:), allocatable :: canonical_name
+        ! Module-qualified canonical identity, e.g. "m::box_t". Empty in
+        ! pre-schema-14 artefacts; the importer derives it from the module name.
+        character(len=:), allocatable :: canonical_identity
         ! Name of the type this one extends; empty when it extends nothing.
         character(len=:), allocatable :: parent_name
+        ! Module-qualified identity of parent_name for schema 14 artefacts.
+        character(len=:), allocatable :: parent_identity
         type(fmod_component_t), allocatable :: components(:)
         type(fmod_binding_t), allocatable :: bindings(:)
     end type fmod_derived_type_t
@@ -231,8 +240,12 @@ contains
                     field(info%derived_types(i)%name)//'"'
                 write (unit, '(A)') 'canonical_name = "'// &
                     field(info%derived_types(i)%canonical_name)//'"'
+                write (unit, '(A)') 'canonical_identity = "'// &
+                    field(info%derived_types(i)%canonical_identity)//'"'
                 write (unit, '(A)') 'parent_name = "'// &
                     field(info%derived_types(i)%parent_name)//'"'
+                write (unit, '(A)') 'parent_identity = "'// &
+                    field(info%derived_types(i)%parent_identity)//'"'
                 write (unit, '(A)') 'components = ['
                 if (allocated(info%derived_types(i)%components)) then
                     do j = 1, size(info%derived_types(i)%components)
@@ -436,6 +449,8 @@ contains
                 call grow_dtypes(dtypes, ndtype)
                 dtypes(ndtype)%name = ''
                 dtypes(ndtype)%canonical_name = ''
+                dtypes(ndtype)%canonical_identity = ''
+                dtypes(ndtype)%parent_identity = ''
                 allocate (dtypes(ndtype)%components(0))
                 allocate (dtypes(ndtype)%bindings(0))
                 deallocate (comps); allocate (comps(0)); ncomp = 0
@@ -469,8 +484,12 @@ contains
                 if (key == 'name') dtypes(ndtype)%name = unquote(val)
                 if (key == 'canonical_name') &
                     dtypes(ndtype)%canonical_name = unquote(val)
+                if (key == 'canonical_identity') &
+                    dtypes(ndtype)%canonical_identity = unquote(val)
                 if (key == 'parent_name') &
                     dtypes(ndtype)%parent_name = unquote(val)
+                if (key == 'parent_identity') &
+                    dtypes(ndtype)%parent_identity = unquote(val)
                 if (key == 'bindings') &
                     call parse_binding_list(unquote(val), dtypes(ndtype)%bindings)
             case ('variable')
@@ -617,6 +636,7 @@ contains
 
         line = '    { name = "'//field(comp%name)//'", kind = "'// &
             field(comp%kind)//'", type_name = "'//field(comp%type_name)// &
+            '", type_identity = "'//field(comp%type_identity)// &
             '", elem_count = '//int_text(comp%elem_count)// &
             ', slot_width = '//int_text(comp%slot_width)// &
             ', slot_count = '//int_text(comp%slot_count)// &
@@ -713,6 +733,7 @@ contains
         comp%name = quoted_field(line, 'name')
         comp%kind = quoted_field(line, 'kind')
         comp%type_name = quoted_field(line, 'type_name')
+        comp%type_identity = quoted_field(line, 'type_identity')
         comp%elem_count = integer_field(line, 'elem_count', 1)
         comp%slot_width = integer_field(line, 'slot_width', 1)
         comp%slot_count = integer_field(line, 'slot_count', 1)

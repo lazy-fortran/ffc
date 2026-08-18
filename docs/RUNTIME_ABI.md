@@ -526,11 +526,11 @@ struct ffc_type_info_t {
 };
 ```
 
-The instance is a 16-byte const global named `__ffc_type_info_<typename>` (a
-module prefix is added once module-scope types export type info). The `id` is
-assigned monotonically as types are collected. Nothing references these
-constants yet; later polymorphism slices compare a value's type pointer
-against them.
+The instance is a 16-byte const global named
+`__ffc_type_info_<defining-module>__<typename>` for module-defined types and
+`__ffc_type_info_<typename>` for program-local types. The `id` is assigned
+monotonically as types are collected. Nothing references these constants yet;
+later polymorphism slices compare a value's type pointer against them.
 
 ## Scalar class descriptor
 
@@ -652,6 +652,7 @@ value = 10
 [[derived_type]]
 name = "point_t"
 canonical_name = "point_t"
+canonical_identity = "shapes::point_t"
 components = [
     { name = "x", kind = "integer" },
     { name = "y", kind = "integer" },
@@ -667,9 +668,10 @@ components = [
 - Each `[[derived_type]]` is a type definition with its `components`, each a
   `{ name, kind }` pair. `canonical_name` identifies the defining type when a
   public module re-exports it under a local alias; local declarations set it
-  equal to `name`. Allocatable array components additionally record
-  `alloc_rank` (1 or 2); schema 11 components without that field are read as
-  rank one for compatibility.
+  equal to `name`. `canonical_identity` adds the defining module, preventing
+  unrelated same-named types from being merged. Allocatable array components
+  additionally record `alloc_rank` (1 or 2); schema 11 components without that
+  field are read as rank one for compatibility.
 - Each `[[variable]]` records a module variable's Fortran `name`, scalar `kind`,
   and optional mangled `c_name`.
 - Each `[[procedure]]` records an exportable module procedure's `name`, result

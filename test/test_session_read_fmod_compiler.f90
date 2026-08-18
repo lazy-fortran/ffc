@@ -25,6 +25,7 @@ program test_session_read_fmod_compiler
     if (.not. test_fmod_value_dummy_separate_compilation()) all_passed = .false.
     if (.not. test_fmod_intent_out_rejects_literal()) all_passed = .false.
     if (.not. test_fmod_schema_version_is_checked()) all_passed = .false.
+    if (.not. test_fmod_rejects_malformed_class_metadata()) all_passed = .false.
     if (.not. test_use_repeated_rename_is_valid()) all_passed = .false.
     if (.not. test_use_repeated_rename_one_statement()) all_passed = .false.
     if (.not. test_use_two_locals_one_remote()) all_passed = .false.
@@ -543,7 +544,7 @@ contains
     end function test_same_file_conflicting_rename_rejected
 
     integer function run_separate_compilation(dir, mod_source, prog_source, &
-                                              log_path) result(status)
+            log_path) result(status)
         ! Compile mod_source with -c in one ffc invocation, then prog_source in
         ! a second, independent invocation that can only learn the module's
         ! interface from the .fmod artefact the first invocation wrote. Returns
@@ -838,6 +839,53 @@ contains
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_schema_version_is_checked
+
+    logical function test_fmod_rejects_malformed_class_metadata() result(ok)
+        ! Class ABI metadata is paired data: a class flag requires a matching
+        ! declared type token. A truncated pair must be rejected before the
+        ! importer can construct a descriptor with the wrong calling ABI.
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod_class_metadata'
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use bad_class, only: touch'//new_line('a')// &
+            '  call touch(1)'//new_line('a')// &
+            'end program main'
+        type(module_info_t) :: info
+        character(len=:), allocatable :: error_msg
+
+        ok = .false.
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+        info%name = 'bad_class'
+        allocate (info%parameters(0), info%derived_types(0), &
+            info%procedures(1))
+        info%procedures(1)%name = 'touch'
+        info%procedures(1)%kind = 'subroutine'
+        info%procedures(1)%arg_kinds = 'integer'
+        info%procedures(1)%arg_names = 'value'
+        info%procedures(1)%arg_intents = 'in'
+        info%procedures(1)%arg_optionals = '0'
+        info%procedures(1)%arg_values = '0'
+        info%procedures(1)%arg_ranks = '0'
+        info%procedures(1)%arg_extents = '1'
+        info%procedures(1)%arg_classes = '1'
+        info%procedures(1)%arg_class_types = '-'
+        info%procedures(1)%callable = .true.
+        info%procedures(1)%nargs = 1
+        call write_fmod(dir//'/bad_class.fmod', info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: write_fmod malformed class fixture: ', &
+                trim(error_msg)
+            return
+        end if
+        call compile_with_include(source, dir//'/bad_class', dir, error_msg)
+        if (index(error_msg, 'class metadata') == 0) then
+            print *, 'FAIL: malformed class metadata was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_rejects_malformed_class_metadata
 
     subroutine compile_with_include(source, exe_path, include_dir, error_msg)
         character(len=*), intent(in) :: source

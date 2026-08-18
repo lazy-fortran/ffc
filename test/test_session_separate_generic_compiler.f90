@@ -57,6 +57,8 @@ program test_session_separate_generic_compiler
     if (.not. test_rank_only_specifics_share_one_generic()) all_passed = .false.
     if (.not. test_assumed_shape_rank_specifics_accepted()) all_passed = .false.
     if (.not. test_transitive_typebound_generic_reexport()) all_passed = .false.
+    if (.not. test_unrelated_same_named_types_remain_distinct()) &
+        all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: separate-compilation generic interface'
@@ -403,6 +405,64 @@ contains
         call remove_scratch_dir(dir)
         ok = .true.
     end function test_transitive_typebound_generic_reexport
+
+    logical function test_unrelated_same_named_types_remain_distinct() result(ok)
+        ! Two defining modules may legitimately export the same type spelling.
+        ! Their local renames must remain distinct in a consumer; otherwise an
+        ! imported layout can silently be applied to the wrong object.
+        character(len=:), allocatable :: dir
+        integer :: ffc_status, gfortran_status
+        character(len=*), parameter :: first_source = &
+            'module fmod737_first'//new_line('a')// &
+            '    implicit none'//new_line('a')// &
+            '    type :: value_t'//new_line('a')// &
+            '        integer :: first_value'//new_line('a')// &
+            '    end type value_t'//new_line('a')// &
+            'end module fmod737_first'
+        character(len=*), parameter :: second_source = &
+            'module fmod737_second'//new_line('a')// &
+            '    implicit none'//new_line('a')// &
+            '    type :: value_t'//new_line('a')// &
+            '        integer :: second_value'//new_line('a')// &
+            '    end type value_t'//new_line('a')// &
+            'end module fmod737_second'
+        character(len=*), parameter :: program_source = &
+            'program main'//new_line('a')// &
+            '    use fmod737_first, only: first_t => value_t'//new_line('a')// &
+            '    use fmod737_second, only: second_t => value_t'//new_line('a')// &
+            '    type(first_t) :: first'//new_line('a')// &
+            '    type(second_t) :: second'//new_line('a')// &
+            '    first%first_value = 4'//new_line('a')// &
+            '    second%second_value = 7'//new_line('a')// &
+            '    print *, first%first_value + second%second_value'// &
+            new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call make_scratch_dir('fmod737_same_named', dir)
+        ffc_status = run_transitive_typebound_compilation(dir, first_source, &
+            second_source, program_source)
+        gfortran_status = run_gfortran_transitive_compilation(dir, first_source, &
+            second_source, program_source)
+        if (gfortran_status /= 0) then
+            print *, 'FAIL: gfortran oracle failed for same-named types'
+            call show_log(dir)
+            return
+        end if
+        if (ffc_status /= gfortran_status) then
+            print *, 'FAIL: same-named type status ', ffc_status, &
+                ' differs from gfortran ', gfortran_status
+            call show_log(dir)
+            return
+        end if
+        if (.not. files_equal(dir//'/ffc.out', dir//'/gfortran.out')) then
+            print *, 'FAIL: same-named type output differs from gfortran'
+            call show_log(dir)
+            return
+        end if
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_unrelated_same_named_types_remain_distinct
 
     integer function run_transitive_typebound_compilation(dir, base_source, &
             bridge_source, &

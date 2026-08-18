@@ -461,6 +461,10 @@ module session_program_lowering_types
 
     type, public :: derived_type_info_t
         character(len=64) :: name = ''
+        character(len=64) :: canonical_name = ''
+        ! Module-qualified identity for imported types. Local source types may
+        ! leave this empty until their .fmod export is formed.
+        character(len=128) :: canonical_identity = ''
         logical :: layout_registered = .false.
         integer :: component_count = 0
         character(len=64), allocatable :: component_names(:)
