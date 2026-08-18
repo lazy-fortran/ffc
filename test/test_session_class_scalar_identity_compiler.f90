@@ -174,10 +174,10 @@ contains
 
         test_type_info_ids_exist_for_hierarchy = .true.
         if (.not. expect_exe_has_symbol(source, &
-            '/tmp/ffc_class_identity_info_base.o', '__ffc_type_info_m__base_t')) &
+            '/tmp/ffc_class_identity_info_base.o', '__ffc_type_info_m_c_cbase_ut')) &
             test_type_info_ids_exist_for_hierarchy = .false.
         if (.not. expect_exe_has_symbol(source, &
-            '/tmp/ffc_class_identity_info_ext.o', '__ffc_type_info_m__ext_t')) &
+            '/tmp/ffc_class_identity_info_ext.o', '__ffc_type_info_m_c_cext_ut')) &
             test_type_info_ids_exist_for_hierarchy = .false.
     end function test_type_info_ids_exist_for_hierarchy
 

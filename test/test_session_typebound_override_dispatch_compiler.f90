@@ -1,6 +1,6 @@
 program test_session_typebound_override_dispatch_compiler
-    use ffc_test_support, only: expect_output, expect_error_contains, &
-        expect_exe_has_symbol
+    use ffc_test_support, only: expect_output, expect_output_matches_gfortran, &
+        expect_error_contains, expect_exe_has_symbol
     implicit none
 
     logical :: all_passed
@@ -16,6 +16,7 @@ program test_session_typebound_override_dispatch_compiler
         all_passed = .false.
     if (.not. test_monomorphic_receiver_stays_static()) all_passed = .false.
     if (.not. test_vtable_symbols_are_emitted()) all_passed = .false.
+    if (.not. test_same_named_bound_types_do_not_collide()) all_passed = .false.
     if (.not. test_duplicate_binding_is_rejected()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -281,13 +282,55 @@ contains
             'end program main'
 
         ok = expect_exe_has_symbol(source, '/tmp/ffc_tbp_vtable_syms.o', &
-            '__ffc_vtable_base_t')
+            '__ffc_vtable_m_c_cbase_ut')
         if (.not. expect_exe_has_symbol(source, '/tmp/ffc_tbp_vtable_syms2.o', &
-            '__ffc_vtable_ext_t')) ok = .false.
+            '__ffc_vtable_m_c_cext_ut')) ok = .false.
         if (.not. expect_exe_has_symbol(source, '/tmp/ffc_tbp_vtable_syms3.o', &
             '__ffc_vtable_table')) ok = .false.
         test_vtable_symbols_are_emitted = ok
     end function test_vtable_symbols_are_emitted
+
+    logical function test_same_named_bound_types_do_not_collide()
+        ! The old vtable spelling collapsed module/type separators and
+        ! source underscores. These legal identities intentionally exercise
+        ! both dimensions while comparing the result with gfortran.
+        character(len=:), allocatable :: source
+
+        source = 'module a__b'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: t'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure :: value => a_value'//new_line('a')// &
+            '  end type t'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function a_value(self)'//new_line('a')// &
+            '    class(t), intent(in) :: self'//new_line('a')// &
+            '    a_value = 7'//new_line('a')// &
+            '  end function a_value'//new_line('a')// &
+            'end module a__b'//new_line('a')// &
+            'module a'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: b__t'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure :: value => b_value'//new_line('a')// &
+            '  end type b__t'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function b_value(self)'//new_line('a')// &
+            '    class(b__t), intent(in) :: self'//new_line('a')// &
+            '    b_value = 8'//new_line('a')// &
+            '  end function b_value'//new_line('a')// &
+            'end module a'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use a__b, only: t'//new_line('a')// &
+            '  use a, only: b__t'//new_line('a')// &
+            '  type(t) :: x'//new_line('a')// &
+            '  type(b__t) :: y'//new_line('a')// &
+            '  print *, x%value() + y%value()'//new_line('a')// &
+            'end program main'
+
+        test_same_named_bound_types_do_not_collide = &
+            expect_output_matches_gfortran(source, 'same_named_bound_vtables')
+    end function test_same_named_bound_types_do_not_collide
 
     logical function test_duplicate_binding_is_rejected()
         ! Two bindings of the same name in one type have no single slot

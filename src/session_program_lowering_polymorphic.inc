@@ -184,7 +184,8 @@
     end subroutine bind_class_dummy_descriptor
 
     ! Type-bound dispatch through vtables (#420). Every derived type that has
-    ! type-bound bindings gets one const vtable global, `__ffc_vtable_<type>`,
+    ! type-bound bindings gets one const vtable global,
+    ! `__ffc_vtable_<encoded canonical identity>`,
     ! holding one code address per binding slot. Slot numbering is the binding
     ! numbering of the derived-type table: a child inherits its parent's slots
     ! in order and an override replaces the target in place, so slot k names
@@ -201,8 +202,12 @@
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         character(len=:), allocatable, intent(out) :: name
+        character(len=:), allocatable :: identity
 
-        name = '__ffc_vtable_'//trim(context%derived_types(type_index)%name)
+        identity = trim(context%derived_types(type_index)%canonical_identity)
+        if (len_trim(identity) == 0) identity = trim( &
+            context%derived_types(type_index)%name)
+        name = '__ffc_vtable_'//trim(abi_mangle_identity(identity))
     end subroutine type_vtable_symbol_name
 
     subroutine emit_type_vtables(arena, context, error_msg)
@@ -703,8 +708,12 @@
             if (ext_idx > 0) then
                 if (position <= context%external_procedures(ext_idx)%arg_count) then
                     if (context%external_procedures(ext_idx)%arg_is_class(position)) then
-                        declared_index = find_derived_type(context, trim( &
-                            context%external_procedures(ext_idx)%arg_class_types(position)))
+                        declared_index = find_derived_type_identity(context, trim( &
+                            context%external_procedures(ext_idx)% &
+                            arg_class_type_identities(position)))
+                        if (declared_index <= 0) declared_index = find_derived_type( &
+                            context, trim(context%external_procedures(ext_idx)% &
+                            arg_class_types(position)))
                         if (declared_index <= 0) then
                             error_msg = 'class passed-object dummy of "'//trim(impl_name)// &
                                 '" names an unavailable derived type'

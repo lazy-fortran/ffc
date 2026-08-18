@@ -299,18 +299,16 @@
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         character(len=:), allocatable :: symbol
-        character(len=:), allocatable :: identity
-        integer :: i, prefix_length
+        character(len=:), allocatable :: identity, encoded
+        integer :: prefix_length
 
         prefix_length = len('__ffc_type_info_')
         identity = trim(context%derived_types(type_index)%canonical_identity)
         if (len_trim(identity) == 0) identity = trim( &
             context%derived_types(type_index)%name)
-        allocate (character(len=prefix_length + len_trim(identity)) :: symbol)
-        symbol = '__ffc_type_info_'//trim(identity)
-        do i = prefix_length + 1, len(symbol)
-            if (symbol(i:i) == ':') symbol(i:i) = '_'
-        end do
+        encoded = abi_mangle_identity(identity)
+        allocate (character(len=prefix_length + len_trim(encoded)) :: symbol)
+        symbol = '__ffc_type_info_'//trim(encoded)
     end function type_info_symbol_name
 
     subroutine collect_module_exports(arena, root_index, context, &

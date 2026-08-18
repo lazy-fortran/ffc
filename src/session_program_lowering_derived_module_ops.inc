@@ -627,6 +627,13 @@
         offset = 0
         do k = 1, size(dtype%components)
             associate (comp => dtype%components(k))
+                if (comp%numeric_metadata_invalid) then
+                    error_msg = 'corrupt .fmod derived layout: component '// &
+                        trim(comp%name)//' of '//trim(dtype%name)// &
+                        ' contains an unreadable numeric field'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
                 if (comp%slot_offset /= offset) then
                     error_msg = 'corrupt .fmod derived layout: component '// &
                         trim(comp%name)//' of '//trim(dtype%name)// &
@@ -853,6 +860,7 @@
         logical, allocatable :: arg_opaque(:)
         logical, allocatable :: arg_class(:)
         character(len=64), allocatable :: arg_class_types(:)
+        character(len=128), allocatable :: arg_class_type_identities(:)
         integer, allocatable :: arg_intents(:), arg_ranks(:), arg_extents(:)
         integer :: return_kind
         logical :: forced, imported
@@ -904,6 +912,8 @@
         call parse_fmod_arg_opaque(proc, arg_opaque)
         call parse_fmod_arg_classes(proc, arg_class)
         call parse_fmod_arg_class_types(proc, arg_class_types)
+        call parse_fmod_arg_class_type_identities(proc, &
+                                                  arg_class_type_identities)
         call parse_fmod_arg_intents(proc, arg_intents)
         call parse_fmod_arg_integers(proc%arg_ranks, proc%nargs, arg_ranks)
         call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents)
@@ -925,7 +935,9 @@
                                     is_bind_c=proc%external_binding, &
                                     arg_opaque=arg_opaque, &
                                     arg_class=arg_class, &
-                                    arg_class_types=arg_class_types)
+                                    arg_class_types=arg_class_types, &
+                                    arg_class_type_identities= &
+                                        arg_class_type_identities)
     end subroutine import_fmod_procedure
 
     subroutine validate_fmod_procedure_metadata(proc, error_msg)
@@ -935,6 +947,7 @@
         type(fmod_procedure_t), intent(in) :: proc
         character(len=:), allocatable, intent(out) :: error_msg
         logical :: have_classes, have_class_types
+        logical :: have_class_identities
         logical, allocatable :: classes(:)
         character(len=64), allocatable :: class_types(:)
         integer :: i
@@ -953,6 +966,11 @@
         if (allocated(proc%arg_class_types)) then
             if (len_trim(proc%arg_class_types) > 0) have_class_types = .true.
         end if
+        have_class_identities = .false.
+        if (allocated(proc%arg_class_type_identities)) then
+            if (len_trim(proc%arg_class_type_identities) > 0) &
+                have_class_identities = .true.
+        end if
         if (have_classes .neqv. have_class_types) then
             error_msg = 'malformed .fmod class metadata for procedure "'// &
                 trim(proc%name)//'": flags and declared types must both be present'
@@ -964,6 +982,13 @@
             error_msg = 'malformed .fmod class metadata for procedure "'// &
                 trim(proc%name)//'": one value is required per argument'
             return
+        end if
+        if (have_class_identities) then
+            if (fmod_token_count(proc%arg_class_type_identities) /= proc%nargs) then
+                error_msg = 'malformed .fmod class metadata for procedure "'// &
+                    trim(proc%name)//'": one identity is required per argument'
+                return
+            end if
         end if
         call validate_fmod_flag_tokens(proc%arg_classes, proc%nargs, &
                                         trim(proc%name), error_msg)
@@ -1095,6 +1120,32 @@
             if (trim(token) /= '-') class_types(i) = trim(token)
         end do
     end subroutine parse_fmod_arg_class_types
+
+    subroutine parse_fmod_arg_class_type_identities(proc, identities)
+        type(fmod_procedure_t), intent(in) :: proc
+        character(len=128), allocatable, intent(out) :: identities(:)
+        character(len=:), allocatable :: rest, token
+        integer :: i, sep
+
+        allocate (identities(max(proc%nargs, 0)))
+        identities = ''
+        if (proc%nargs <= 0) return
+        if (.not. allocated(proc%arg_class_type_identities)) return
+        rest = trim(adjustl(proc%arg_class_type_identities))
+        i = 0
+        do while (len_trim(rest) > 0 .and. i < proc%nargs)
+            sep = index(rest, ' ')
+            i = i + 1
+            if (sep == 0) then
+                token = rest
+                rest = ''
+            else
+                token = trim(rest(1:sep - 1))
+                rest = adjustl(rest(sep + 1:))
+            end if
+            if (trim(token) /= '-') identities(i) = trim(token)
+        end do
+    end subroutine parse_fmod_arg_class_type_identities
 
     subroutine parse_fmod_arg_flags(text, nargs, flags)
         ! Split a .fmod per-dummy '0'/'1' attribute list (OPTIONAL, VALUE) into

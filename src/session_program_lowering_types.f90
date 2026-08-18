@@ -651,6 +651,7 @@ module session_program_lowering_types
         ! so inherited bindings use the parent's descriptor type.
         logical :: arg_is_class(MAX_PROC_ARGS) = .false.
         character(len=64) :: arg_class_types(MAX_PROC_ARGS) = ''
+        character(len=128) :: arg_class_type_identities(MAX_PROC_ARGS) = ''
     end type external_procedure_t
 
     integer, parameter, public :: MAX_NAMELIST_MEMBERS = 32
@@ -882,5 +883,46 @@ module session_program_lowering_types
         integer(c_int32_t) :: predecessor_block_id = 0_c_int32_t
         logical :: terminated = .false.
     end type branch_result_t
+
+    public :: abi_mangle_identity
+
+contains
+
+    function abi_mangle_identity(identity) result(mangled)
+        ! Encode a Fortran identity into a linker-safe, injective spelling.
+        ! Every source underscore and colon gets a reserved two-character
+        ! escape, so e.g. m__n::t and m::n__t cannot share a symbol.
+        character(len=*), intent(in) :: identity
+        character(len=:), allocatable :: mangled
+        integer :: i, code
+        character :: ch
+
+        mangled = ''
+        do i = 1, len_trim(identity)
+            ch = identity(i:i)
+            select case (ch)
+            case ('A':'Z')
+                mangled = mangled//achar(iachar(ch) + iachar('a') - iachar('A'))
+            case ('a':'z', '0':'9')
+                mangled = mangled//ch
+            case ('_')
+                mangled = mangled//'_u'
+            case (':')
+                mangled = mangled//'_c'
+            case default
+                code = iachar(ch)
+                mangled = mangled//'_x'//trim(integer_text(code))
+            end select
+        end do
+    contains
+        function integer_text(value) result(text)
+            integer, intent(in) :: value
+            character(len=:), allocatable :: text
+            character(len=16) :: buffer
+
+            write (buffer, '(I0)') value
+            text = trim(buffer)
+        end function integer_text
+    end function abi_mangle_identity
 
 end module session_program_lowering_types

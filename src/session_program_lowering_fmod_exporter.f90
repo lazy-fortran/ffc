@@ -622,6 +622,7 @@ contains
                 procs(count)%arg_extents = ''
                 procs(count)%arg_classes = ''
                 procs(count)%arg_class_types = ''
+                procs(count)%arg_class_type_identities = ''
                 procs(count)%opaque = .true.
                 procs(count)%callable = .true.
                 procs(count)%external_binding = is_external
@@ -666,9 +667,10 @@ contains
                                                      procs(count)%arg_intents, &
                                                      procs(count)%arg_optionals, &
                                                      procs(count)%arg_values)
-                call fmod_procedure_arg_class_info(arena, node_index, &
+                call fmod_procedure_arg_class_info(arena, node_index, context, &
                                                    procs(count)%arg_classes, &
-                                                   procs(count)%arg_class_types)
+                                                   procs(count)%arg_class_types, &
+                                                   procs(count)%arg_class_type_identities)
                 call pad_fmod_dummy_attributes(procs(count)%nargs, &
                                                procs(count)%arg_intents, &
                                                procs(count)%arg_optionals, &
@@ -701,6 +703,7 @@ contains
             procs(count)%arg_extents = ''
             procs(count)%arg_classes = ''
             procs(count)%arg_class_types = ''
+            procs(count)%arg_class_type_identities = ''
             procs(count)%callable = .false.
             procs(count)%external_binding = is_external
             procs(count)%deferred_body = deferred_body
@@ -718,9 +721,10 @@ contains
         procs(count)%arg_kinds = arg_tokens
         procs(count)%arg_ranks = rank_tokens
         procs(count)%arg_extents = extent_tokens
-        call fmod_procedure_arg_class_info(arena, node_index, &
+        call fmod_procedure_arg_class_info(arena, node_index, context, &
                                            procs(count)%arg_classes, &
-                                           procs(count)%arg_class_types)
+                                           procs(count)%arg_class_types, &
+                                           procs(count)%arg_class_type_identities)
         procs(count)%callable = .true.
         procs(count)%external_binding = is_external
         procs(count)%arg_names = fmod_procedure_arg_names(arena, node_index)
@@ -812,24 +816,27 @@ contains
         end do
     end subroutine fmod_procedure_dummy_attributes
 
-    subroutine fmod_procedure_arg_class_info(arena, node_index, classes, &
-                                                    class_types)
+    subroutine fmod_procedure_arg_class_info(arena, node_index, context, classes, &
+                                                    class_types, class_identities)
         ! Preserve the distinction between type(t) and class(t) dummies in
         ! the separate-compilation contract. In particular, an imported
         ! type-bound target cannot recover this from its caller's AST.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable, intent(out) :: classes
         character(len=:), allocatable, intent(out) :: class_types
+        character(len=:), allocatable, intent(out) :: class_identities
         type(function_def_node), pointer :: fn_node
         type(subroutine_def_node), pointer :: sb_node
         integer, allocatable :: param_indices(:), body_indices(:)
         character(len=:), allocatable :: param_name, name_error, type_name
         logical :: is_class
-        integer :: i, j, open_pos, close_pos
+        integer :: i, j, open_pos, close_pos, type_index
 
         classes = ''
         class_types = ''
+        class_identities = ''
         fn_node => get_node_as_function_def(arena, node_index)
         if (associated(fn_node)) then
             if (allocated(fn_node%param_indices)) param_indices = &
@@ -887,9 +894,21 @@ contains
             if (i > 1) then
                 classes = classes//' '
                 class_types = class_types//' '
+                class_identities = class_identities//' '
             end if
             classes = classes//flag_token(is_class)
             class_types = class_types//type_name
+            if (is_class) then
+                type_index = find_derived_type(context, type_name)
+                if (type_index > 0) then
+                    class_identities = class_identities//trim( &
+                        context%derived_types(type_index)%canonical_identity)
+                else
+                    class_identities = class_identities//'-'
+                end if
+            else
+                class_identities = class_identities//'-'
+            end if
         end do
     end subroutine fmod_procedure_arg_class_info
 

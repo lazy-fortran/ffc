@@ -26,6 +26,8 @@ program test_session_read_fmod_compiler
     if (.not. test_fmod_intent_out_rejects_literal()) all_passed = .false.
     if (.not. test_fmod_schema_version_is_checked()) all_passed = .false.
     if (.not. test_fmod_rejects_malformed_class_metadata()) all_passed = .false.
+    if (.not. test_fmod_rejects_unreadable_numeric_metadata()) &
+        all_passed = .false.
     if (.not. test_use_repeated_rename_is_valid()) all_passed = .false.
     if (.not. test_use_repeated_rename_one_statement()) all_passed = .false.
     if (.not. test_use_two_locals_one_remote()) all_passed = .false.
@@ -886,6 +888,50 @@ contains
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_rejects_malformed_class_metadata
+
+    logical function test_fmod_rejects_unreadable_numeric_metadata() result(ok)
+        ! A present but unreadable layout number is corruption, not an omitted
+        ! legacy field. The importer must reject it before lowering a type.
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod_numeric_metadata'
+        character(len=:), allocatable :: error_msg
+        character(len=:), allocatable :: fixture
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use bad_layout, only: box_t'//new_line('a')// &
+            '  type(box_t) :: value'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+        fixture = '[module]'//new_line('a')// &
+            'name = "bad_layout"'//new_line('a')// &
+            'ffc_version = "0.1.0"'//new_line('a')// &
+            'fmod_schema = 14'//new_line('a')//new_line('a')// &
+            '[[derived_type]]'//new_line('a')// &
+            'name = "box_t"'//new_line('a')// &
+            'canonical_name = "box_t"'//new_line('a')// &
+            'canonical_identity = "bad_layout::box_t"'//new_line('a')// &
+            'parent_name = ""'//new_line('a')// &
+            'parent_identity = ""'//new_line('a')// &
+            'components = ['//new_line('a')// &
+            '    { name = "x", kind = "integer", type_name = "", '// &
+            'type_identity = "", elem_count = nope, slot_width = 1, '// &
+            'slot_count = 1, slot_offset = 0, char_length = 0, dim1 = 0, '// &
+            'alloc_rank = 0, allocatable = 0, pointer = 0, alloc_array = 0 },'// &
+            new_line('a')// &
+            ']'//new_line('a')// &
+            'bindings = ""'//new_line('a')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout', dir, error_msg)
+        if (index(error_msg, 'unreadable numeric field') == 0) then
+            print *, 'FAIL: unreadable numeric metadata was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_rejects_unreadable_numeric_metadata
 
     subroutine compile_with_include(source, exe_path, include_dir, error_msg)
         character(len=*), intent(in) :: source

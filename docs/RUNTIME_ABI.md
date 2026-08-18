@@ -527,10 +527,13 @@ struct ffc_type_info_t {
 ```
 
 The instance is a 16-byte const global named
-`__ffc_type_info_<defining-module>__<typename>` for module-defined types and
-`__ffc_type_info_<typename>` for program-local types. The `id` is assigned
-monotonically as types are collected. Nothing references these constants yet;
-later polymorphism slices compare a value's type pointer against them.
+`__ffc_type_info_<encoded canonical identity>` for module-defined types and
+`__ffc_type_info_<encoded typename>` for program-local types. The encoding is
+injective: underscores and the `::` identity separator are escaped instead of
+being collapsed, so legal module/type names cannot collide at link time. The
+`id` is assigned monotonically as types are collected. Nothing references
+these constants yet; later polymorphism slices compare a value's type pointer
+against them.
 
 ## Scalar class descriptor
 
@@ -573,7 +576,9 @@ struct ffc_polymorphic_descriptor_t {
 ## Type-bound dispatch vtables
 
 Each derived type with type-bound bindings emits one const global,
-`__ffc_vtable_<typename>`, holding one 8-byte code address per binding slot.
+`__ffc_vtable_<encoded canonical identity>`, holding one 8-byte code address
+per binding slot. The same injective encoding as type-info globals prevents
+distinct separately compiled types from colliding.
 Slot `k` is the `k`-th binding of the type in declaration order, counting
 inherited bindings first: an extension copies its parent's slots in order and
 an override replaces the target of the slot it overrides, so slot `k` names the

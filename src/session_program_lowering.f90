@@ -261,6 +261,7 @@ module session_program_lowering_impl
     use fortfront, only: get_node_line, get_node_column
     use session_program_lowering_types, only: lowering_context_t, &
         branch_result_t, symbol_t, declaration_record_t, &
+        abi_mangle_identity, &
         array_section_info_t, &
         reduction_operand_t, &
         derived_type_info_t, &
@@ -387,7 +388,8 @@ module session_program_lowering_impl
     public :: emit_array_literal_print_items, emit_array_section_print_items
     public :: emit_io_implied_do_print_items, emit_whole_array_print_items
     public :: eval_i32_constant, external_procedure_index, f64_intrinsic_id
-    public :: find_derived_type, find_module_in_arena, find_symbol_compat
+    public :: find_derived_type, find_derived_type_identity, &
+        find_module_in_arena, find_symbol_compat
     public :: flatten_constructor_elements, fold_scoped_i32_name
     public :: generic_call_return_kind, grow_symbols
     public :: interface_body_procedure_name, intrinsic_real_conversion_args

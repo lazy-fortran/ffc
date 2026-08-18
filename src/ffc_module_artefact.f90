@@ -75,6 +75,7 @@ module ffc_module_artefact
         logical :: is_allocatable = .false.
         logical :: is_pointer = .false.
         logical :: is_alloc_array = .false.
+        logical :: numeric_metadata_invalid = .false.
     end type fmod_component_t
 
     ! One static type-bound binding. The defining unit exports the resolved
@@ -151,6 +152,7 @@ module ffc_module_artefact
         ! Only class dummies use the latter for descriptor construction.
         character(len=:), allocatable :: arg_classes
         character(len=:), allocatable :: arg_class_types
+        character(len=:), allocatable :: arg_class_type_identities
         ! True when the exporter preserved a public procedure whose dummy
         ! contracts are outside the scalar lowering ABI. Such arguments must
         ! be lowered only through explicit opaque-argument paths (#584).
@@ -305,6 +307,8 @@ contains
                     field(info%procedures(i)%arg_classes)//'"'
                 write (unit, '(A)') 'arg_class_types = "'// &
                     field(info%procedures(i)%arg_class_types)//'"'
+                write (unit, '(A)') 'arg_class_type_identities = "'// &
+                    field(info%procedures(i)%arg_class_type_identities)//'"'
                 write (unit, '(A)') 'opaque = '// &
                     bool_text(info%procedures(i)%opaque)
                 write (unit, '(A)') 'callable = '// &
@@ -429,6 +433,7 @@ contains
                 procs(nproc)%arg_extents = ''
                 procs(nproc)%arg_classes = ''
                 procs(nproc)%arg_class_types = ''
+                procs(nproc)%arg_class_type_identities = ''
                 procs(nproc)%callable = .true.
                 procs(nproc)%external_binding = .false.
                 procs(nproc)%deferred_body = .false.
@@ -519,6 +524,8 @@ contains
                     procs(nproc)%arg_classes = unquote(val)
                 if (key == 'arg_class_types') &
                     procs(nproc)%arg_class_types = unquote(val)
+                if (key == 'arg_class_type_identities') &
+                    procs(nproc)%arg_class_type_identities = unquote(val)
                 if (key == 'opaque') &
                     procs(nproc)%opaque = unquote(val) == '1'
                 if (key == 'callable') &
@@ -729,21 +736,33 @@ contains
         ! Parse one component row back into its record.
         character(len=*), intent(in) :: line
         type(fmod_component_t), intent(out) :: comp
+        logical :: invalid
 
         comp%name = quoted_field(line, 'name')
         comp%kind = quoted_field(line, 'kind')
         comp%type_name = quoted_field(line, 'type_name')
         comp%type_identity = quoted_field(line, 'type_identity')
-        comp%elem_count = integer_field(line, 'elem_count', 1)
-        comp%slot_width = integer_field(line, 'slot_width', 1)
-        comp%slot_count = integer_field(line, 'slot_count', 1)
-        comp%slot_offset = integer_field(line, 'slot_offset', 0)
-        comp%char_length = integer_field(line, 'char_length', 0)
-        comp%dim1 = integer_field(line, 'dim1', 0)
-        comp%is_allocatable = integer_field(line, 'allocatable', 0) /= 0
-        comp%is_pointer = integer_field(line, 'pointer', 0) /= 0
-        comp%is_alloc_array = integer_field(line, 'alloc_array', 0) /= 0
-        comp%alloc_rank = integer_field(line, 'alloc_rank', 0)
+        comp%numeric_metadata_invalid = .false.
+        comp%elem_count = integer_field(line, 'elem_count', 1, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%slot_width = integer_field(line, 'slot_width', 1, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%slot_count = integer_field(line, 'slot_count', 1, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%slot_offset = integer_field(line, 'slot_offset', 0, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%char_length = integer_field(line, 'char_length', 0, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%dim1 = integer_field(line, 'dim1', 0, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%is_allocatable = integer_field(line, 'allocatable', 0, invalid) /= 0
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%is_pointer = integer_field(line, 'pointer', 0, invalid) /= 0
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%is_alloc_array = integer_field(line, 'alloc_array', 0, invalid) /= 0
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%alloc_rank = integer_field(line, 'alloc_rank', 0, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
         if (comp%is_alloc_array .and. comp%alloc_rank == 0) &
             comp%alloc_rank = 1
     end subroutine parse_component_line
@@ -761,19 +780,24 @@ contains
         out = take_quoted(line(p + len(key) + 4:))
     end function quoted_field
 
-    integer function integer_field(line, key, default_value) result(value)
+    integer function integer_field(line, key, default_value, invalid) result(value)
         ! The integer value of `key = N` in a component row, or default_value
         ! when the key is absent or unreadable.
         character(len=*), intent(in) :: line
         character(len=*), intent(in) :: key
         integer, intent(in) :: default_value
+        logical, intent(out), optional :: invalid
         integer :: p, io_stat
 
         value = default_value
+        if (present(invalid)) invalid = .false.
         p = index(line, key//' = ')
         if (p <= 0) return
         read (line(p + len(key) + 3:), *, iostat=io_stat) value
-        if (io_stat /= 0) value = default_value
+        if (io_stat /= 0) then
+            value = default_value
+            if (present(invalid)) invalid = .true.
+        end if
     end function integer_field
 
     function bool_text(flag) result(text)
