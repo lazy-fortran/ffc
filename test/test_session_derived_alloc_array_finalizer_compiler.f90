@@ -17,6 +17,7 @@ program test_session_derived_alloc_array_finalizer_compiler
     if (.not. test_rank2_finalizes_all()) all_passed = .false.
     if (.not. test_unallocated_finalizes_nothing()) all_passed = .false.
     if (.not. test_polymorphic_array_refused()) all_passed = .false.
+    if (.not. test_rank3_array_refused()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: allocatable derived array finalizers lower through direct LIRIC'
@@ -196,5 +197,34 @@ contains
             source, 'polymorphic allocatable array finalization is not supported', &
             '/tmp/ffc_alloc_arr_final_polymorphic')
     end function test_polymorphic_array_refused
+
+    logical function test_rank3_array_refused()
+        ! Rank-3 finalization is outside this slice and must not silently skip
+        ! the scalar FINAL procedure during deallocation.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: box_t'//new_line('a')// &
+            '    integer :: id = 0'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    final :: box_final'//new_line('a')// &
+            '  end type'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine box_final(self)'//new_line('a')// &
+            '    type(box_t), intent(inout) :: self'//new_line('a')// &
+            '  end subroutine box_final'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type(box_t), allocatable :: a(:,:,:)'//new_line('a')// &
+            '  allocate(a(2,2,2))'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            'end program main'
+
+        test_rank3_array_refused = expect_error_contains( &
+            source, 'direct LIRIC session supports rank-1 and rank-2 derived allocatable arrays', &
+            '/tmp/ffc_alloc_arr_final_rank3')
+    end function test_rank3_array_refused
 
 end program test_session_derived_alloc_array_finalizer_compiler

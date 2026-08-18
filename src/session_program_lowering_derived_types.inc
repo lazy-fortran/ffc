@@ -652,7 +652,11 @@
         final_name = trim(context%derived_types(type_index)%final_proc_name)
         if (len_trim(final_name) == 0) return
         rank = context%symbols(symbol_index)%array_rank
-        if (rank < 1 .or. rank > 2) return
+        if (rank < 1 .or. rank > 2) then
+            error_msg = 'allocatable derived array finalization supports rank 1 '// &
+                        'and rank 2 only'
+            return
+        end if
 
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
         if (.not. emit_ptr_load(context%session, descriptor, data_ptr, &
