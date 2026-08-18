@@ -337,6 +337,14 @@
             return
         type is (call_or_subscript_node)
             array_real_call = is_elemental_real_call(arena, idx)
+            ! Intrinsic ABS has dedicated scalar/complex element handling
+            ! below.  Treating it as a generic elemental real call first
+            ! loses the complex source kind for ABS(ABS(z)) and routes the
+            ! whole-array operand to the identifier-only fallback.
+            if (array_real_call .and. allocated(n%name) .and. &
+                same_name(n%name, 'abs') .and. n%is_intrinsic) then
+                array_real_call = .false.
+            end if
             if (.not. array_real_call) then
                 if (allocated(n%name)) then
                     if (same_name(n%name, 'aint') .or. same_name(n%name, 'anint')) then
