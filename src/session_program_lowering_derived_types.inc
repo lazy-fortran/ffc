@@ -123,7 +123,7 @@
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i
+        integer :: i, type_index
 
         do i = 1, size(context%derived_types)
             context%derived_types(i)%name = ''
@@ -159,8 +159,11 @@
                 type is (derived_type_node)
                     call lower_derived_type_definition(node, context, error_msg)
                     if (len_trim(error_msg) > 0) return
+                    type_index = find_derived_type(context, trim(node%name))
+                    if (type_index <= 0) cycle
+                    if (.not. context%derived_types(type_index)%layout_registered) cycle
                     call emit_type_info_constant(context, &
-                                                 context%derived_type_count, &
+                                                 type_index, &
                                                  error_msg)
                     if (len_trim(error_msg) > 0) return
                 type is (module_node)
@@ -179,8 +182,11 @@
                 type is (derived_type_node)
                     call lower_derived_type_definition(node, context, error_msg)
                     if (len_trim(error_msg) > 0) return
+                    type_index = find_derived_type(context, trim(node%name))
+                    if (type_index <= 0) cycle
+                    if (.not. context%derived_types(type_index)%layout_registered) cycle
                     call emit_type_info_constant(context, &
-                                                 context%derived_type_count, &
+                                                 type_index, &
                                                  error_msg)
                     if (len_trim(error_msg) > 0) return
                 type is (module_node)
@@ -231,7 +237,7 @@
         type(module_node), intent(in) :: mod_node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: j
+        integer :: j, type_index
 
         call set_empty(error_msg)
         if (.not. allocated(mod_node%declaration_indices)) return
@@ -263,12 +269,15 @@
                     call set_empty(error_msg)
                     cycle
                 end if
-                context%derived_types(context%derived_type_count)% &
+                type_index = find_derived_type(context, trim(decl%name))
+                if (type_index <= 0) cycle
+                if (.not. context%derived_types(type_index)%layout_registered) cycle
+                context%derived_types(type_index)% &
                     canonical_identity = trim(mod_node%name)//'::'// &
-                    trim(context%derived_types(context%derived_type_count)% &
+                    trim(context%derived_types(type_index)% &
                          canonical_name)
                 call emit_type_info_constant(context, &
-                                             context%derived_type_count, &
+                                             type_index, &
                                              error_msg)
                 if (len_trim(error_msg) > 0) return
             end select
