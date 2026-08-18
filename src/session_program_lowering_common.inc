@@ -158,13 +158,11 @@
                                                  c8_im, error_msg)
             if (len_trim(error_msg) > 0) return
             if (slot%value_kind == VALUE_C8) then
-                call put_bytes(buffer, slot%byte_offset, transfer(c8_re, buffer, 8))
-                call put_bytes(buffer, slot%byte_offset + 8, &
-                               transfer(c8_im, buffer, 8))
+                call put_common_f64(buffer, slot%byte_offset, c8_re)
+                call put_common_f64(buffer, slot%byte_offset + 8, c8_im)
             else
-                call put_bytes(buffer, slot%byte_offset, transfer(c4_re, buffer, 4))
-                call put_bytes(buffer, slot%byte_offset + 4, &
-                               transfer(c4_im, buffer, 4))
+                call put_common_f32(buffer, slot%byte_offset, c4_re)
+                call put_common_f32(buffer, slot%byte_offset + 4, c4_im)
             end if
             return
         end if
@@ -179,10 +177,10 @@
                     call fold_array_element_i32(slot%array_init_values(k), &
                                                 init_i32, error_msg)
                     if (len_trim(error_msg) > 0) return
-                    call put_bytes(buffer, off, transfer(init_i32, buffer, 4))
+                    call put_common_i32(buffer, off, init_i32)
                 case (VALUE_LOGICAL)
                     init_i32 = logical_literal_to_i32(slot%array_init_values(k))
-                    call put_bytes(buffer, off, transfer(init_i32, buffer, 4))
+                    call put_common_i32(buffer, off, init_i32)
                 case (VALUE_F32)
                     read (slot%array_init_values(k), *, iostat=io_stat) init_f32
                     if (io_stat /= 0) then
@@ -190,7 +188,7 @@
                                     slot%array_init_values(k)
                         return
                     end if
-                    call put_bytes(buffer, off, transfer(init_f32, buffer, 4))
+                    call put_common_f32(buffer, off, init_f32)
                 case (VALUE_F64)
                     read (slot%array_init_values(k), *, iostat=io_stat) init_f64
                     if (io_stat /= 0) then
@@ -198,7 +196,7 @@
                                     slot%array_init_values(k)
                         return
                     end if
-                    call put_bytes(buffer, off, transfer(init_f64, buffer, 8))
+                    call put_common_f64(buffer, off, init_f64)
                 case default
                     error_msg = 'unsupported array COMMON variable kind'
                     return
@@ -212,11 +210,11 @@
         if (len_trim(error_msg) > 0) return
         select case (slot%value_kind)
         case (VALUE_I32, VALUE_LOGICAL)
-            call put_bytes(buffer, slot%byte_offset, transfer(init_i32, buffer, 4))
+            call put_common_i32(buffer, slot%byte_offset, init_i32)
         case (VALUE_F32)
-            call put_bytes(buffer, slot%byte_offset, transfer(init_f32, buffer, 4))
+            call put_common_f32(buffer, slot%byte_offset, init_f32)
         case (VALUE_F64)
-            call put_bytes(buffer, slot%byte_offset, transfer(init_f64, buffer, 8))
+            call put_common_f64(buffer, slot%byte_offset, init_f64)
         case default
             error_msg = 'unsupported COMMON variable kind for global emission'
         end select
@@ -233,6 +231,74 @@
         if (byte_offset + size(bytes) > size(buffer)) return
         buffer(byte_offset + 1:byte_offset + size(bytes)) = bytes
     end subroutine put_bytes
+
+    subroutine put_common_i32(buffer, byte_offset, value)
+        ! Copy the native byte representation of one 32-bit value without
+        ! constructing an array-valued TRANSFER result.
+        use, intrinsic :: iso_c_binding, only: c_char, c_int8_t, c_int32_t, &
+                                               c_f_pointer, c_loc
+        character(kind=c_char, len=1), intent(inout) :: buffer(:)
+        integer, intent(in) :: byte_offset
+        integer(c_int32_t), intent(in) :: value
+        integer(c_int32_t), target :: storage
+        integer(c_int8_t), pointer :: raw_bytes(:)
+        character(kind=c_char, len=1) :: mold
+        integer :: shape(1), i
+
+        if (byte_offset < 0) return
+        if (byte_offset + 4 > size(buffer)) return
+        storage = value
+        shape(1) = 4
+        call c_f_pointer(c_loc(storage), raw_bytes, shape)
+        do i = 1, 4
+            buffer(byte_offset + i) = transfer(raw_bytes(i), mold)
+        end do
+    end subroutine put_common_i32
+
+    subroutine put_common_i64(buffer, byte_offset, value)
+        ! Copy the native byte representation of one 64-bit value without
+        ! constructing an array-valued TRANSFER result.
+        use, intrinsic :: iso_c_binding, only: c_char, c_int8_t, c_int64_t, &
+                                               c_f_pointer, c_loc
+        character(kind=c_char, len=1), intent(inout) :: buffer(:)
+        integer, intent(in) :: byte_offset
+        integer(c_int64_t), intent(in) :: value
+        integer(c_int64_t), target :: storage
+        integer(c_int8_t), pointer :: raw_bytes(:)
+        character(kind=c_char, len=1) :: mold
+        integer :: shape(1), i
+
+        if (byte_offset < 0) return
+        if (byte_offset + 8 > size(buffer)) return
+        storage = value
+        shape(1) = 8
+        call c_f_pointer(c_loc(storage), raw_bytes, shape)
+        do i = 1, 8
+            buffer(byte_offset + i) = transfer(raw_bytes(i), mold)
+        end do
+    end subroutine put_common_i64
+
+    subroutine put_common_f32(buffer, byte_offset, value)
+        use, intrinsic :: iso_c_binding, only: c_char, c_float, c_int32_t
+        character(kind=c_char, len=1), intent(inout) :: buffer(:)
+        integer, intent(in) :: byte_offset
+        real(c_float), intent(in) :: value
+        integer(c_int32_t) :: bits
+
+        bits = transfer(value, bits)
+        call put_common_i32(buffer, byte_offset, bits)
+    end subroutine put_common_f32
+
+    subroutine put_common_f64(buffer, byte_offset, value)
+        use, intrinsic :: iso_c_binding, only: c_char, c_double, c_int64_t
+        character(kind=c_char, len=1), intent(inout) :: buffer(:)
+        integer, intent(in) :: byte_offset
+        real(c_double), intent(in) :: value
+        integer(c_int64_t) :: bits
+
+        bits = transfer(value, bits)
+        call put_common_i64(buffer, byte_offset, bits)
+    end subroutine put_common_f64
 
     subroutine canonicalize_common_slots(slots, slot_count, canon, canon_count)
         ! Collapse the raw per-unit member list down to one entry per

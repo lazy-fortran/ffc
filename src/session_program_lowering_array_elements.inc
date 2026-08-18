@@ -2051,6 +2051,7 @@
         character(len=:), allocatable :: id_name
         type(lr_operand_desc_t) :: lhs
         type(lr_operand_desc_t) :: rhs
+        type(lr_operand_desc_t) :: call_args(2)
         type(lr_operand_desc_t) :: logical_xor
         type(lr_operand_desc_t) :: logical_cond
 
@@ -2251,13 +2252,15 @@
                                                    context, rhs, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (trim(bin_op) == '**') then
+                    call_args(1) = lhs
+                    call_args(2) = rhs
                     if (context%symbols(target_symbol_index)%value_kind == &
                         VALUE_F32) then
                         if (.not. emit_liric_f32_call(context%session, 'powf', &
-                                [lhs, rhs], value, error_msg)) return
+                                call_args, value, error_msg)) return
                     else
                         if (.not. emit_liric_f64_call(context%session, 'pow', &
-                                [lhs, rhs], value, error_msg)) return
+                                call_args, value, error_msg)) return
                     end if
                     return
                 end if

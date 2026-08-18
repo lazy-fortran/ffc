@@ -1204,7 +1204,8 @@ contains
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
 
-        operands = [lhs, rhs]
+        operands(1) = lhs
+        operands(2) = rhs
 
         inst%op = opcode
         inst%typ = lhs%typ

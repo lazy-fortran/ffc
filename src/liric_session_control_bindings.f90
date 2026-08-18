@@ -375,7 +375,8 @@ contains
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
 
-        operands = [lhs, rhs]
+        operands(1) = lhs
+        operands(2) = rhs
 
         call clear_inst(inst)
         inst%op = LR_OP_ICMP
@@ -397,7 +398,8 @@ contains
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
 
-        operands = [lhs, rhs]
+        operands(1) = lhs
+        operands(2) = rhs
 
         call clear_inst(inst)
         inst%op = LR_OP_FCMP
@@ -420,7 +422,9 @@ contains
         type(lr_operand_desc_t), target :: operands(3)
         type(lr_inst_desc_t) :: inst
 
-        operands = [condition, true_target, false_target]
+        operands(1) = condition
+        operands(2) = true_target
+        operands(3) = false_target
 
         call clear_inst(inst)
         inst%op = LR_OP_CONDBR
@@ -443,7 +447,10 @@ contains
         type(lr_operand_desc_t), target :: operands(4)
         type(lr_inst_desc_t) :: inst
 
-        operands = [lhs, lhs_block, rhs, rhs_block]
+        operands(1) = lhs
+        operands(2) = lhs_block
+        operands(3) = rhs
+        operands(4) = rhs_block
 
         call clear_inst(inst)
         inst%op = LR_OP_PHI

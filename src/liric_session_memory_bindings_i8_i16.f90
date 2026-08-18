@@ -79,7 +79,8 @@ contains
 
         emit_i8_binary = .false.
         if (.not. require_open_session(session, error_msg)) return
-        operands = [lhs, rhs]
+        operands(1) = lhs
+        operands(2) = rhs
         inst%op = opcode
         inst%typ = lr_type_i8_s(session%handle)
         inst%dest = 0_c_int32_t
@@ -175,7 +176,8 @@ contains
 
         emit_i16_binary = .false.
         if (.not. require_open_session(session, error_msg)) return
-        operands = [lhs, rhs]
+        operands(1) = lhs
+        operands(2) = rhs
         inst%op = opcode
         inst%typ = lr_type_i16_s(session%handle)
         inst%dest = 0_c_int32_t

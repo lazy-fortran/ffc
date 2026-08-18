@@ -550,7 +550,10 @@ contains
         type(lr_operand_desc_t), target :: operands(4)
         type(lr_inst_desc_t) :: inst
 
-        operands = [callee, unit, format_ptr, value]
+        operands(1) = callee
+        operands(2) = unit
+        operands(3) = format_ptr
+        operands(4) = value
 
         inst%op = LR_OP_CALL
         inst%typ = lr_type_i32_s(handle)
@@ -584,7 +587,10 @@ contains
         type(lr_operand_desc_t), target :: operands(4)
         type(lr_inst_desc_t) :: inst
 
-        operands = [callee, unit, format_ptr, value]
+        operands(1) = callee
+        operands(2) = unit
+        operands(3) = format_ptr
+        operands(4) = value
 
         inst%op = LR_OP_CALL
         inst%typ = lr_type_i32_s(handle)
@@ -1239,7 +1245,8 @@ contains
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
 
-        operands = [lhs, rhs]
+        operands(1) = lhs
+        operands(2) = rhs
 
         inst%op = opcode
         inst%typ = lr_type_f32_s(handle)
@@ -1298,7 +1305,8 @@ contains
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
 
-        operands = [lhs, rhs]
+        operands(1) = lhs
+        operands(2) = rhs
 
         inst%op = opcode
         inst%typ = lr_type_f64_s(handle)

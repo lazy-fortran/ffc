@@ -565,6 +565,7 @@
         type(lr_operand_desc_t), intent(in) :: element
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: current, updated, condition, selected
+        type(lr_operand_desc_t) :: call_args(2)
         integer(c_int) :: predicate
 
         select case (value_kind)
@@ -584,9 +585,11 @@
                         current, selected, updated, error_msg)) return
             else if (trim(reduction_name) == 'minval' .or. &
                      trim(reduction_name) == 'maxval') then
+                call_args(1) = current
+                call_args(2) = element
                 if (.not. emit_liric_f32_call(context%session, &
                         merge('fminf', 'fmaxf', trim(reduction_name) == 'minval'), &
-                        [current, element], updated, error_msg)) return
+                        call_args, updated, error_msg)) return
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -609,9 +612,11 @@
                         current, selected, updated, error_msg)) return
             else if (trim(reduction_name) == 'minval' .or. &
                      trim(reduction_name) == 'maxval') then
+                call_args(1) = current
+                call_args(2) = element
                 if (.not. emit_liric_f64_call(context%session, &
                         merge('fmin', 'fmax', trim(reduction_name) == 'minval'), &
-                        [current, element], updated, error_msg)) return
+                        call_args, updated, error_msg)) return
             else
                 error_msg = 'unsupported runtime reduction: '//trim(reduction_name)
                 return
@@ -677,13 +682,15 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: root
+        type(lr_operand_desc_t) :: call_args(1)
 
         select case (value_kind)
         case (VALUE_F32)
             if (.not. emit_liric_f32_load(context%session, slot, value, &
                                           error_msg)) return
             if (trim(reduction_name) == 'norm2') then
-                if (.not. emit_liric_f32_call(context%session, 'sqrtf', [value], &
+                call_args(1) = value
+                if (.not. emit_liric_f32_call(context%session, 'sqrtf', call_args, &
                                               root, error_msg)) return
                 value = root
             end if
@@ -691,7 +698,8 @@
             if (.not. emit_liric_f64_load(context%session, slot, value, &
                                           error_msg)) return
             if (trim(reduction_name) == 'norm2') then
-                if (.not. emit_liric_f64_call(context%session, 'sqrt', [value], &
+                call_args(1) = value
+                if (.not. emit_liric_f64_call(context%session, 'sqrt', call_args, &
                                               root, error_msg)) return
                 value = root
             end if

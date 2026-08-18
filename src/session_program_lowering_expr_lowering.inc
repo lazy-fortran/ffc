@@ -485,6 +485,7 @@
         real(c_double) :: literal_value_f64
         type(lr_operand_desc_t) :: lhs
         type(lr_operand_desc_t) :: rhs
+        type(lr_operand_desc_t) :: call_args(2)
         integer :: opcode
         integer :: symbol_index
         character(len=:), allocatable :: bin_op
@@ -534,8 +535,10 @@
             if (len_trim(error_msg) > 0) return
             if (trim(bin_op) == '**') then
                 ! f32 exponentiation: call libm powf(f32, f32).
+                call_args(1) = lhs
+                call_args(2) = rhs
                 if (.not. emit_liric_f32_call(context%session, 'powf', &
-                                              [lhs, rhs], value, error_msg)) &
+                                              call_args, value, error_msg)) &
                     return
                 return
             end if
@@ -781,6 +784,7 @@
         real(c_double) :: literal_value
         type(lr_operand_desc_t) :: lhs
         type(lr_operand_desc_t) :: rhs
+        type(lr_operand_desc_t) :: call_args(2)
         integer :: opcode
         integer :: symbol_index
         character(len=:), allocatable :: bin_op
@@ -829,8 +833,10 @@
             if (len_trim(error_msg) > 0) return
             if (trim(bin_op) == '**') then
                 ! Real exponentiation lowers to a libm pow(f64, f64) call.
+                call_args(1) = lhs
+                call_args(2) = rhs
                 if (.not. emit_liric_f64_call(context%session, 'pow', &
-                                              [lhs, rhs], value, error_msg)) &
+                                              call_args, value, error_msg)) &
                     return
                 return
             end if
@@ -1154,6 +1160,7 @@
         integer :: bin_left, bin_right, bin_line, bin_col, ret_kind
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
+        integer :: unary_indices(1), binary_indices(2)
 
         call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                 bin_right, bin_line, bin_col, error_msg)
@@ -1161,11 +1168,14 @@
         specific = operator_specific_name(context, slot)
         ret_kind = operator_return_kind(context, slot)
         if (bin_left == 0) then
-            call prepare_reference_args(arena, [bin_right], context, VALUE_I32, &
+            unary_indices(1) = bin_right
+            call prepare_reference_args(arena, unary_indices, context, VALUE_I32, &
                                         specific, args, copyback_indices, &
                                         error_msg)
         else
-            call prepare_reference_args(arena, [bin_left, bin_right], context, &
+            binary_indices(1) = bin_left
+            binary_indices(2) = bin_right
+            call prepare_reference_args(arena, binary_indices, context, &
                                         VALUE_I32, specific, args, &
                                         copyback_indices, error_msg)
         end if
