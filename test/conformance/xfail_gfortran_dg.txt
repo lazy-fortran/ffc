@@ -280,7 +280,6 @@ assumed_rank_7.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymo
 assumed_rank_bounds_1.f90 # owner=lazy-fortran/ffc#457; reason=register resolved declarations once
 assumed_rank_bounds_2.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 assumed_rank_bounds_3.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-assumed_size_2.f90 # owner=lazy-fortran/ffc#386; reason=reject invalid array indexing and shape expressions
 assumed_size_refs_3.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
 assumed_type_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 assumed_type_18.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
