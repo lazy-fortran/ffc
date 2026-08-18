@@ -63,6 +63,7 @@ int _ffc_runtime_probe(void) {
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <sys/stat.h>
 
 #define FFC_PATH_MAX 4096
@@ -88,17 +89,25 @@ static int ffc_unit_valid(int unit) {
     return unit >= FFC_UNIT_MIN && unit <= FFC_UNIT_MAX;
 }
 
-/* Case-sensitive compare; the compiler lowers STATUS= values in
- * lower case. */
+/* Compare a Fortran STATUS= value case-insensitively and ignore
+ * fixed-length trailing blanks. */
 static int ffc_streq(const char *a, const char *b) {
+    int i = 0;
     if (a == NULL || b == NULL) {
         return 0;
     }
-    while (*a != '\0' && *a == *b) {
-        a++;
-        b++;
+    while (a[i] != '\0' && b[i] != '\0' &&
+           tolower((unsigned char)a[i]) ==
+           tolower((unsigned char)b[i])) {
+        i++;
     }
-    return *a == *b;
+    if (b[i] == '\0') {
+        while (a[i] == ' ') {
+            i++;
+        }
+        return a[i] == '\0';
+    }
+    return a[i] == '\0' && b[i] == '\0';
 }
 
 /* Units the process starts with: 5 is standard input, 6 standard
