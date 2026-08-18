@@ -28,6 +28,8 @@ program test_session_read_fmod_compiler
     if (.not. test_fmod_rejects_malformed_class_metadata()) all_passed = .false.
     if (.not. test_fmod_rejects_unreadable_numeric_metadata()) &
         all_passed = .false.
+    if (.not. test_fmod_rejects_malformed_binding_flag()) &
+        all_passed = .false.
     if (.not. test_fmod_rejects_malformed_numeric_headers()) &
         all_passed = .false.
     if (.not. test_use_repeated_rename_is_valid()) all_passed = .false.
@@ -931,9 +933,63 @@ contains
                 trim(error_msg)
             return
         end if
+
+        fixture = replace_text(fixture, 'elem_count = 1 trailing', &
+                               'elem_count = 1,2')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_suffix', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unreadable numeric field') == 0) then
+            print *, 'FAIL: component comma suffix was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = replace_text(fixture, 'elem_count = 1,2', &
+                               'elem_count = 1')
+        fixture = replace_text(fixture, 'alloc_array = 0 },', &
+                               'alloc_array = 0}junk,')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_brace_suffix', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unreadable numeric field') == 0) then
+            print *, 'FAIL: component brace suffix was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_rejects_unreadable_numeric_metadata
+
+    logical function test_fmod_rejects_malformed_binding_flag() result(ok)
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod_binding_metadata'
+        character(len=:), allocatable :: error_msg, fixture
+        type(module_info_t) :: info
+
+        ok = .false.
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+        fixture = '[module]'//new_line('a')// &
+            'name = "bad_binding"'//new_line('a')// &
+            'ffc_version = "0.1.0"'//new_line('a')// &
+            'fmod_schema = 14'//new_line('a')//new_line('a')// &
+            '[[derived_type]]'//new_line('a')// &
+            'name = "t"'//new_line('a')// &
+            'canonical_name = "t"'//new_line('a')// &
+            'canonical_identity = "bad_binding::t"'//new_line('a')// &
+            'components = ['//new_line('a')// &
+            ']'//new_line('a')// &
+            'bindings = "m=>p|p|2|p"'//new_line('a')
+        if (.not. write_file(dir//'/bad_binding.fmod', fixture)) return
+        call read_fmod(dir//'/bad_binding.fmod', info, error_msg)
+        if (index(error_msg, 'binding pass flag') == 0) then
+            print *, 'FAIL: malformed binding pass flag was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_rejects_malformed_binding_flag
 
     logical function test_fmod_rejects_malformed_numeric_headers() result(ok)
         ! Header and procedure signature integers use the same strict parser as
@@ -986,13 +1042,65 @@ contains
             return
         end if
 
+        fixture = signature_fixture('14', '1', '0', '1', '2', '0')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/flags', dir, error_msg)
+        if (index(error_msg, 'integer flag metadata') == 0) then
+            print *, 'FAIL: malformed optional flag was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1', '0', '1', '0', '0,1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/value_flags', dir, error_msg)
+        if (index(error_msg, 'integer flag metadata') == 0) then
+            print *, 'FAIL: malformed value flag was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = parameter_fixture('37 trailing')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include( &
+            'program main'//new_line('a')// &
+            '  use bad_numeric, only: value'//new_line('a')// &
+            '  stop value'//new_line('a')// &
+            'end program main', dir//'/parameter', dir, error_msg)
+        if (index(error_msg, 'malformed integer value') == 0) then
+            print *, 'FAIL: malformed parameter value was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = parameter_fixture('999999999999999999999999')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include( &
+            'program main'//new_line('a')// &
+            '  use bad_numeric, only: value'//new_line('a')// &
+            '  stop value'//new_line('a')// &
+            'end program main', dir//'/parameter_overflow', dir, error_msg)
+        if (index(error_msg, 'malformed integer value') == 0) then
+            print *, 'FAIL: overflowing parameter value was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_rejects_malformed_numeric_headers
 
-    function signature_fixture(schema, nargs, ranks, extents) result(text)
+    function signature_fixture(schema, nargs, ranks, extents, optionals, values) &
+        result(text)
         character(len=*), intent(in) :: schema, nargs, ranks, extents
+        character(len=*), intent(in), optional :: optionals, values
         character(len=:), allocatable :: text
+        character(len=:), allocatable :: optional_text, value_text
+
+        optional_text = '0'
+        if (present(optionals)) optional_text = optionals
+        value_text = '0'
+        if (present(values)) value_text = values
 
         text = '[module]'//new_line('a')// &
             'name = "bad_numeric"'//new_line('a')// &
@@ -1005,14 +1113,41 @@ contains
             'arg_kinds = "integer"'//new_line('a')// &
             'arg_names = "value"'//new_line('a')// &
             'arg_intents = "in"'//new_line('a')// &
-            'arg_optionals = "0"'//new_line('a')// &
-            'arg_values = "0"'//new_line('a')// &
+            'arg_optionals = "'//optional_text//'"'//new_line('a')// &
+            'arg_values = "'//value_text//'"'//new_line('a')// &
             'arg_ranks = "'//ranks//'"'//new_line('a')// &
             'arg_extents = "'//extents//'"'//new_line('a')// &
             'arg_classes = "0"'//new_line('a')// &
             'arg_class_types = "-"'//new_line('a')// &
             'callable = 1'//new_line('a')
     end function signature_fixture
+
+    function parameter_fixture(value) result(text)
+        character(len=*), intent(in) :: value
+        character(len=:), allocatable :: text
+
+        text = '[module]'//new_line('a')// &
+            'name = "bad_numeric"'//new_line('a')// &
+            'ffc_version = "0.1.0"'//new_line('a')// &
+            'fmod_schema = 14'//new_line('a')//new_line('a')// &
+            '[[parameter]]'//new_line('a')// &
+            'name = "value"'//new_line('a')// &
+            'kind = "integer"'//new_line('a')// &
+            'value = "'//value//'"'//new_line('a')
+    end function parameter_fixture
+
+    function replace_text(text, old, new) result(out)
+        character(len=*), intent(in) :: text, old, new
+        character(len=:), allocatable :: out
+        integer :: position
+
+        position = index(text, old)
+        if (position <= 0) then
+            out = text
+        else
+            out = text(:position - 1)//new//text(position + len(old):)
+        end if
+    end function replace_text
 
     subroutine compile_with_include(source, exe_path, include_dir, error_msg)
         character(len=*), intent(in) :: source

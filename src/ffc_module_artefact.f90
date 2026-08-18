@@ -4,6 +4,7 @@ module ffc_module_artefact
     ! source. The format is a minimal, line-oriented TOML subset: one [module]
     ! header, then [[parameter]] and [[derived_type]] tables. It carries no
     ! source locations, comments, or prose.
+    use, intrinsic :: iso_c_binding, only: c_int64_t
     implicit none
     private
 
@@ -18,6 +19,7 @@ module ffc_module_artefact
     public :: write_fmod
     public :: read_fmod
     public :: parse_strict_integer
+    public :: parse_strict_int64
 
     character(len=*), parameter, public :: FFC_FMOD_VERSION = '0.1.0'
 
@@ -495,8 +497,14 @@ contains
                     dtypes(ndtype)%parent_name = unquote(val)
                 if (key == 'parent_identity') &
                     dtypes(ndtype)%parent_identity = unquote(val)
-                if (key == 'bindings') &
-                    call parse_binding_list(unquote(val), dtypes(ndtype)%bindings)
+                if (key == 'bindings') then
+                    call parse_binding_list(unquote(val), dtypes(ndtype)%bindings, &
+                                            error_msg)
+                    if (len_trim(error_msg) > 0) then
+                        close (unit)
+                        return
+                    end if
+                end if
             case ('variable')
                 if (key == 'name') vars(nvar)%name = unquote(val)
                 if (key == 'kind') vars(nvar)%kind = unquote(val)
@@ -675,13 +683,15 @@ contains
         end do
     end function binding_list
 
-    subroutine parse_binding_list(text, bindings)
+    subroutine parse_binding_list(text, bindings, error_msg)
         character(len=*), intent(in) :: text
         type(fmod_binding_t), allocatable, intent(out) :: bindings(:)
+        character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: rest, token, target_part, pass_part, &
             pass_arg_part
-        integer :: sep, arrow, bar, count
+        integer :: sep, arrow, bar, count, pass_value
 
+        error_msg = ''
         allocate (bindings(0))
         rest = trim(text)
         count = 0
@@ -720,10 +730,32 @@ contains
                 pass_arg_part = pass_part(bar + 1:)
                 bar = index(pass_arg_part, '|')
                 if (bar == 0) then
-                    bindings(count)%pass_arg = trim(pass_arg_part) /= '0'
+                    if (.not. parse_strict_integer(trim(pass_arg_part), &
+                                                   pass_value)) then
+                        error_msg = 'malformed .fmod binding pass flag'
+                        return
+                    end if
+                    if (pass_value /= 0 .and. pass_value /= 1) then
+                        error_msg = 'malformed .fmod binding pass flag'
+                        return
+                    end if
+                    bindings(count)%pass_arg = pass_value /= 0
                     bindings(count)%specific_names = bindings(count)%target_name
                 else
-                    bindings(count)%pass_arg = trim(pass_arg_part(1:bar - 1)) /= '0'
+                    if (bar <= 1) then
+                        error_msg = 'malformed .fmod binding pass flag'
+                        return
+                    end if
+                    if (.not. parse_strict_integer( &
+                        trim(pass_arg_part(1:bar - 1)), pass_value)) then
+                        error_msg = 'malformed .fmod binding pass flag'
+                        return
+                    end if
+                    if (pass_value /= 0 .and. pass_value /= 1) then
+                        error_msg = 'malformed .fmod binding pass flag'
+                        return
+                    end if
+                    bindings(count)%pass_arg = pass_value /= 0
                     bindings(count)%specific_names = trim(pass_arg_part(bar + 1:))
                 end if
             end if
@@ -787,31 +819,57 @@ contains
         character(len=*), intent(in) :: key
         integer, intent(in) :: default_value
         logical, intent(out), optional :: invalid
-        character(len=:), allocatable :: token
-        integer :: p, sep
+        character(len=:), allocatable :: token, tail
+        integer :: p, comma, brace, sep
 
         value = default_value
         if (present(invalid)) invalid = .false.
         p = index(line, key//' = ')
         if (p <= 0) return
         token = trim(adjustl(line(p + len(key) + 3:)))
-        sep = index(token, ',')
-        if (sep == 1) then
-            token = ''
-        else if (sep > 1) then
-            token = trim(token(:sep - 1))
+        comma = index(token, ',')
+        brace = index(token, '}')
+        sep = 0
+        if (comma > 0) sep = comma
+        if (brace > 0 .and. (sep == 0 .or. brace < sep)) sep = brace
+        if (sep <= 1) then
+            if (present(invalid)) invalid = .true.
+            return
         end if
-        sep = index(token, '}')
-        if (sep == 1) then
-            token = ''
-        else if (sep > 1) then
-            token = trim(token(:sep - 1))
+        if (.not. parse_strict_integer(trim(token(:sep - 1)), value)) then
+            value = default_value
+            if (present(invalid)) invalid = .true.
+            return
         end if
-        if (.not. parse_strict_integer(token, value)) then
+        tail = ''
+        if (sep < len_trim(token)) tail = adjustl(token(sep + 1:))
+        if (token(sep:sep) == ',') then
+            if (.not. valid_component_field_start(tail)) then
+                value = default_value
+                if (present(invalid)) invalid = .true.
+            end if
+        else if (len_trim(tail) > 0 .and. trim(tail) /= ',') then
             value = default_value
             if (present(invalid)) invalid = .true.
         end if
     end function integer_field
+
+    logical function valid_component_field_start(text)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: rest
+        integer :: equal
+
+        valid_component_field_start = .false.
+        rest = trim(adjustl(text))
+        equal = index(rest, ' = ')
+        if (equal <= 1) return
+        select case (trim(rest(:equal - 1)))
+        case ('elem_count', 'slot_width', 'slot_count', 'slot_offset', &
+              'char_length', 'dim1', 'alloc_rank', 'allocatable', 'pointer', &
+              'alloc_array')
+            valid_component_field_start = .true.
+        end select
+    end function valid_component_field_start
 
     logical function parse_strict_integer(text, value)
         ! Parse exactly one signed decimal integer. List-directed reads accept
@@ -819,22 +877,47 @@ contains
         character(len=*), intent(in) :: text
         integer, intent(out) :: value
         character(len=:), allocatable :: token
-        integer :: i, first, io_stat
+        integer :: io_stat
 
         parse_strict_integer = .false.
         value = 0
         token = trim(adjustl(text))
-        if (len_trim(token) == 0) return
-        first = 1
-        if (token(1:1) == '+' .or. token(1:1) == '-') first = 2
-        if (first > len_trim(token)) return
-        do i = first, len_trim(token)
-            if (token(i:i) < '0' .or. token(i:i) > '9') return
-        end do
+        if (.not. strict_decimal_token(token)) return
         read (token, *, iostat=io_stat) value
         if (io_stat /= 0) return
         parse_strict_integer = .true.
     end function parse_strict_integer
+
+    logical function parse_strict_int64(text, value)
+        character(len=*), intent(in) :: text
+        integer(c_int64_t), intent(out) :: value
+        character(len=:), allocatable :: token
+        integer :: io_stat
+
+        parse_strict_int64 = .false.
+        value = 0_c_int64_t
+        token = trim(adjustl(text))
+        if (.not. strict_decimal_token(token)) return
+        read (token, *, iostat=io_stat) value
+        if (io_stat /= 0) return
+        parse_strict_int64 = .true.
+    end function parse_strict_int64
+
+    logical function strict_decimal_token(text)
+        character(len=*), intent(in) :: text
+        integer :: i, first, length
+
+        strict_decimal_token = .false.
+        length = len_trim(text)
+        if (length == 0) return
+        first = 1
+        if (text(1:1) == '+' .or. text(1:1) == '-') first = 2
+        if (first > length) return
+        do i = first, length
+            if (text(i:i) < '0' .or. text(i:i) > '9') return
+        end do
+        strict_decimal_token = .true.
+    end function strict_decimal_token
 
     function bool_text(flag) result(text)
         logical, intent(in) :: flag

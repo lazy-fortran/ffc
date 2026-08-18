@@ -907,8 +907,12 @@
         call parse_fmod_arg_kinds(proc, arg_kinds, error_msg)
         if (len_trim(error_msg) > 0) return
         call parse_fmod_arg_names(proc, arg_names)
-        call parse_fmod_arg_flags(proc%arg_optionals, proc%nargs, arg_optionals)
-        call parse_fmod_arg_flags(proc%arg_values, proc%nargs, arg_values)
+        call parse_fmod_arg_flags(proc%arg_optionals, proc%nargs, arg_optionals, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call parse_fmod_arg_flags(proc%arg_values, proc%nargs, arg_values, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
         call parse_fmod_arg_opaque(proc, arg_opaque)
         call parse_fmod_arg_classes(proc, arg_class)
         call parse_fmod_arg_class_types(proc, arg_class_types)
@@ -1151,32 +1155,55 @@
         end do
     end subroutine parse_fmod_arg_class_type_identities
 
-    subroutine parse_fmod_arg_flags(text, nargs, flags)
+    subroutine parse_fmod_arg_flags(text, nargs, flags, error_msg)
         ! Split a .fmod per-dummy '0'/'1' attribute list (OPTIONAL, VALUE) into
         ! logicals. A shorter or absent list leaves the remaining dummies
         ! without the attribute (#397).
         character(len=:), allocatable, intent(in) :: text
         integer, intent(in) :: nargs
         logical, allocatable, intent(out) :: flags(:)
+        character(len=:), allocatable, intent(out), optional :: error_msg
         character(len=:), allocatable :: rest
-        integer :: n, sep
+        character(len=:), allocatable :: token
+        integer :: n, sep, value
 
+        if (present(error_msg)) error_msg = ''
         allocate (flags(max(nargs, 0)))
-        if (nargs <= 0) return
+        if (nargs <= 0) then
+            if (present(error_msg)) then
+                if (allocated(text)) then
+                    if (len_trim(text) > 0) &
+                        error_msg = 'malformed .fmod integer flag metadata'
+                end if
+            end if
+            return
+        end if
         flags = .false.
         if (.not. allocated(text)) return
         rest = trim(adjustl(text))
         n = 0
-        do while (len_trim(rest) > 0 .and. n < nargs)
+        do while (len_trim(rest) > 0)
+            if (n >= nargs) then
+                if (present(error_msg)) &
+                    error_msg = 'malformed .fmod integer flag metadata'
+                return
+            end if
             sep = index(rest, ' ')
             n = n + 1
             if (sep == 0) then
-                flags(n) = trim(rest) == '1'
+                token = trim(rest)
                 rest = ''
             else
-                flags(n) = rest(1:sep - 1) == '1'
+                token = trim(rest(1:sep - 1))
                 rest = adjustl(rest(sep + 1:))
             end if
+            if (.not. parse_strict_integer(token, value) .or. &
+                (value /= 0 .and. value /= 1)) then
+                if (present(error_msg)) &
+                    error_msg = 'malformed .fmod integer flag metadata'
+                return
+            end if
+            flags(n) = value /= 0
         end do
     end subroutine parse_fmod_arg_flags
 
@@ -1192,7 +1219,13 @@
 
         call set_empty(error_msg)
         allocate (values(max(nargs, 0)))
-        if (nargs <= 0) return
+        if (nargs <= 0) then
+            if (allocated(text)) then
+                if (len_trim(text) > 0) &
+                    error_msg = 'malformed .fmod integer argument metadata'
+            end if
+            return
+        end if
         values = 0
         if (.not. allocated(text)) return
         rest = trim(adjustl(text))
@@ -1394,7 +1427,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int64_t) :: constant_value
-        integer :: index, io_stat, existing_idx
+        integer :: index, existing_idx
         character(len=:), allocatable :: local_name
         logical :: imported
         logical :: rebind, skip
@@ -1415,8 +1448,7 @@
         ! independent USE list (#584).
         if (.not. allocated(param%value)) return
         if (len_trim(param%value) == 0) return
-        read (param%value, *, iostat=io_stat) constant_value
-        if (io_stat /= 0) then
+        if (.not. parse_strict_int64(param%value, constant_value)) then
             error_msg = 'malformed integer value in .fmod for parameter '// &
                         trim(param%name)
             return
