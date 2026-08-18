@@ -10,13 +10,16 @@ program test_session_pointer_array_descriptor
     if (.not. expect_output( &
         'program main'//new_line('a')// &
         'integer, target :: a(8)'//new_line('a')// &
-        'integer, pointer :: p(:), q(:)'//new_line('a')// &
+        'integer, pointer :: p(:), q(:), r(:)'//new_line('a')// &
         'a = [1, 2, 3, 4, 5, 6, 7, 8]'//new_line('a')// &
         'p => a'//new_line('a')// &
         'q => a(2:8:2)'//new_line('a')// &
-        'print *, p(5), q(1), q(2), q(3), q(4)'//new_line('a')// &
+        'r => a(8:2:-2)'//new_line('a')// &
+        'print *, p(5), q(1), q(2), q(3), q(4), r(1), r(2), r(3), r(4)'// &
+        new_line('a')// &
         'end program main', &
-        '           5           2           4           6           8'//new_line('a'), &
+        '           5           2           4           6           8           8           6           4           2'// &
+        new_line('a'), &
         '/tmp/ffc_session_pointer_array_descriptor')) stop 1
 
     ! associated(p) is true once p => a has run.
@@ -49,6 +52,16 @@ program test_session_pointer_array_descriptor
         'right of => is not a target or pointer', &
         '/tmp/ffc_session_pointer_array_descriptor_target_check')) stop 4
 
+    if (.not. expect_error_contains( &
+        'program main'//new_line('a')// &
+        'integer, target :: a(8)'//new_line('a')// &
+        'integer, pointer :: p(:), q(:)'//new_line('a')// &
+        'q => a(2:8:2)'//new_line('a')// &
+        'p => q(2:4:2)'//new_line('a')// &
+        'end program main', &
+        'pointer array section source must be a contiguous target', &
+        '/tmp/ffc_session_pointer_array_descriptor_nested')) stop 5
+
     ! Unsupported element layouts must be rejected instead of using the
     ! four-byte integer address helper and corrupting the section base.
     if (.not. expect_error_contains( &
@@ -58,7 +71,7 @@ program test_session_pointer_array_descriptor
         'p => a(:)'//new_line('a')// &
         'end program main', &
         'array sections support integer, real(4), and real(8) arrays', &
-        '/tmp/ffc_session_pointer_array_descriptor_unsupported_kind')) stop 5
+        '/tmp/ffc_session_pointer_array_descriptor_unsupported_kind')) stop 6
 
     print *, 'PASS: pointer array descriptor, whole array and strided section'
 end program test_session_pointer_array_descriptor

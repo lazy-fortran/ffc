@@ -968,6 +968,14 @@
             error_msg = 'right of => is not a target or pointer'
             return
         end if
+        if (context%symbols(src)%is_pointer) then
+            ! A section of a pointer may already carry a non-unit or negative
+            ! descriptor stride. Compose that stride before accepting the
+            ! association, or reject it rather than treating the source as
+            ! contiguous (#338).
+            error_msg = 'pointer array section source must be a contiguous target'
+            return
+        end if
         if (.not. context%symbols(src)%has_address) then
             error_msg = 'pointer array section source has no storage'
             return
