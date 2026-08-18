@@ -577,22 +577,6 @@ module session_program_lowering_impl
     public :: try_general_mask_reduction
     public :: unsupported_array_subscript, unsupported_intrinsic_error
     public :: unsupported_feature_error
-    ! Assumed-rank, derived-component, complex-array, intrinsic-argument, and
-    ! reduction helpers referenced by descendant submodules that were added to
-    ! host includes after the initial GCC-14 visibility pass.  A private
-    ! ancestor procedure receives local linkage even when a submodule calls it,
-    ! so keep these implementation entry points explicit and externally
-    ! linkable.
-    public :: component_alloc_rank_at, alloc_array_component_descriptor
-    public :: load_alloc_component_element, derived_component_access_kind_at
-    public :: load_complex_array_element, complex_array_element_addresses
-    public :: lower_external_complex_call, contained_array_result_info
-    public :: contained_function_kind, is_integer_operand
-    public :: lower_f32_intrinsic_arg, lower_f64_intrinsic_arg
-    public :: require_intrinsic_arg_count, resolve_assumed_rank
-    public :: emit_or_add1, lower_runtime_reduction
-    public :: try_array_mask_reduction, try_general_mask_reduction
-
     ! Storage classes of the canonical character descriptor, widened to the
     ! i64 immediate width the lowering emits with. They are derived from
     ! ffc_character_descriptor so the emitted descriptors and the host-side
