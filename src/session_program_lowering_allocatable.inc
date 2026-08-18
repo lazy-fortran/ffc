@@ -3226,6 +3226,18 @@
         type(lr_operand_desc_t) :: descriptor, data_ptr, zero
 
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        ! Deallocation ends the array's lifetime: finalize each element before
+        ! the storage is released (#403 / #643). The finalizer loop splits the
+        ! control flow (its exit is reached both when the array is unallocated
+        ! and when every element has been finalized), so the descriptor data
+        ! pointer is reloaded in that merge block before it is freed. The
+        ! descriptor is unchanged until emit_alloc_desc_clear, so the reload
+        ! is dominance-safe and free(NULL) remains a no-op for an unallocated
+        ! entity.
+        if (context%symbols(symbol_index)%is_derived) then
+            call emit_array_finalizer_call(context, symbol_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (.not. emit_ptr_load(context%session, descriptor, data_ptr, &
                 error_msg)) return
         if (.not. emit_free(context%session, data_ptr, error_msg)) return
