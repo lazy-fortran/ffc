@@ -858,7 +858,7 @@
         logical, intent(in), optional :: arg_class(:)
         character(len=*), intent(in), optional :: arg_class_types(:)
         character(len=*), intent(in), optional :: arg_class_type_identities(:)
-        integer :: j
+        integer :: j, identity_length
 
         if (external_procedure_index(context, trim(fortran_name)) > 0) return
         call grow_external_procedures(context)
@@ -925,6 +925,15 @@
             end if
             ep%arg_is_class = .false.
             ep%arg_class_types = ''
+            if (allocated(ep%arg_class_type_identities)) &
+                deallocate(ep%arg_class_type_identities)
+            identity_length = 1
+            if (present(arg_class_type_identities)) then
+                if (size(arg_class_type_identities) > 0) identity_length = max( &
+                    identity_length, maxval(len_trim(arg_class_type_identities)))
+            end if
+            allocate(character(len=identity_length) :: &
+                     ep%arg_class_type_identities(MAX_PROC_ARGS))
             ep%arg_class_type_identities = ''
             if (present(arg_class)) then
                 do j = 1, min(arg_count, size(arg_class))

@@ -613,8 +613,8 @@ module session_program_lowering_types
     end type lazy_specialization_t
 
     type, public :: external_procedure_t
-        character(len=64) :: fortran_name = ''
-        character(len=64) :: c_name = ''
+        character(len=:), allocatable :: fortran_name
+        character(len=:), allocatable :: c_name
         integer :: return_value_kind = VALUE_I32
         integer :: arg_value_kinds(MAX_PROC_ARGS) = VALUE_I32
         ! Declared dummy names, when the signature carried them, so a call
@@ -651,7 +651,7 @@ module session_program_lowering_types
         ! so inherited bindings use the parent's descriptor type.
         logical :: arg_is_class(MAX_PROC_ARGS) = .false.
         character(len=64) :: arg_class_types(MAX_PROC_ARGS) = ''
-        character(len=128) :: arg_class_type_identities(MAX_PROC_ARGS) = ''
+        character(len=:), allocatable :: arg_class_type_identities(:)
     end type external_procedure_t
 
     integer, parameter, public :: MAX_NAMELIST_MEMBERS = 32

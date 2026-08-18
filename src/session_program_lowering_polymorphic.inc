@@ -217,13 +217,21 @@
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=128), allocatable :: slots(:), table(:)
+        character(len=:), allocatable :: slots(:), table(:)
         character(len=:), allocatable :: vtable_name
-        integer :: t, b, n
+        character(len=:), allocatable :: emitted_name
+        integer :: t, b, n, slot_length, table_length
 
         call set_empty(error_msg)
         if (context%derived_type_count <= 0) return
-        allocate (table(context%derived_type_count + 1))
+        table_length = 1
+        do t = 1, context%derived_type_count
+            if (context%derived_types(t)%is_imported) cycle
+            call type_vtable_symbol_name(context, t, vtable_name)
+            table_length = max(table_length, len_trim(vtable_name))
+        end do
+        allocate (character(len=table_length) :: &
+                  table(context%derived_type_count + 1))
         table = ''
         do t = 1, context%derived_type_count
             if (context%derived_types(t)%is_imported) cycle
@@ -237,7 +245,16 @@
             n = context%derived_types(t)%binding_count
             if (n <= 0) cycle
             if (.not. allocated(context%derived_types(t)%binding_target_names)) cycle
-            allocate (slots(n))
+            slot_length = 1
+            do b = 1, n
+                if (arena_proc_param_count(arena, &
+                        trim(context%derived_types(t)%binding_target_names(b))) &
+                    < 0) cycle
+                emitted_name = call_emit_name(arena, &
+                    trim(context%derived_types(t)%binding_target_names(b)))
+                slot_length = max(slot_length, len_trim(emitted_name))
+            end do
+            allocate (character(len=slot_length) :: slots(n))
             slots = ''
             do b = 1, n
                 ! A binding whose implementation is not defined in this
@@ -247,8 +264,9 @@
                 if (arena_proc_param_count(arena, &
                         trim(context%derived_types(t)%binding_target_names(b))) &
                     < 0) cycle
-                slots(b) = call_emit_name(arena, &
+                emitted_name = call_emit_name(arena, &
                     trim(context%derived_types(t)%binding_target_names(b)))
+                slots(b) = emitted_name
             end do
             call type_vtable_symbol_name(context, t, vtable_name)
             call create_pointer_table_global(context%session, vtable_name, &

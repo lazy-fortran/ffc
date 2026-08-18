@@ -59,6 +59,7 @@ program test_session_separate_generic_compiler
     if (.not. test_transitive_typebound_generic_reexport()) all_passed = .false.
     if (.not. test_unrelated_same_named_types_remain_distinct()) &
         all_passed = .false.
+    if (.not. test_long_vtable_identity()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: separate-compilation generic interface'
@@ -463,6 +464,75 @@ contains
         call remove_scratch_dir(dir)
         ok = .true.
     end function test_unrelated_same_named_types_remain_distinct
+
+    logical function test_long_vtable_identity() result(ok)
+        ! The encoded canonical identity is longer than the historical 128-byte
+        ! scratch buffers when valid module/type names contain many underscores.
+        ! Compile and run the aliased type through two module boundaries so the
+        ! long vtable symbol is exercised by both FFC and gfortran.
+        character(len=:), allocatable :: dir
+        integer :: ffc_status, gfortran_status
+        character(len=*), parameter :: module_source = &
+            'module m_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'// &
+            new_line('a')// &
+            '    implicit none'//new_line('a')// &
+            '    type :: t_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'// &
+            new_line('a')// &
+            '        integer :: value'//new_line('a')// &
+            '    contains'//new_line('a')// &
+            '        procedure :: bump'//new_line('a')// &
+            '    end type t_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'// &
+            new_line('a')// &
+            'contains'//new_line('a')// &
+            '    subroutine bump(self, amount)'//new_line('a')// &
+            '        class(t_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) :: self'// &
+            new_line('a')// &
+            '        integer, intent(in) :: amount'//new_line('a')// &
+            '        self%value = self%value + amount'//new_line('a')// &
+            '    end subroutine bump'//new_line('a')// &
+            'end module m_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        character(len=*), parameter :: bridge_source = &
+            'module m_long_identity_bridge'//new_line('a')// &
+            '    use m_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, only: alias_t => &'// &
+            new_line('a')// &
+            '        t_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'//new_line('a')// &
+            '    implicit none'//new_line('a')// &
+            '    public :: alias_t'//new_line('a')// &
+            'end module m_long_identity_bridge'
+        character(len=*), parameter :: program_source = &
+            'program main'//new_line('a')// &
+            '    use m_long_identity_bridge, only: alias_t'//new_line('a')// &
+            '    type(alias_t) :: value'//new_line('a')// &
+            '    value%value = 0'//new_line('a')// &
+            '    call value%bump(7)'//new_line('a')// &
+            '    print *, value%value'//new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call make_scratch_dir('fmod737_long_identity', dir)
+        ffc_status = run_transitive_typebound_compilation(dir, module_source, &
+            bridge_source, program_source)
+        gfortran_status = run_gfortran_transitive_compilation(dir, module_source, &
+            bridge_source, program_source)
+        if (gfortran_status /= 0) then
+            print *, 'FAIL: gfortran oracle failed for long vtable identity'
+            call show_log(dir)
+            return
+        end if
+        if (ffc_status /= gfortran_status) then
+            print *, 'FAIL: long vtable identity status ', ffc_status, &
+                ' differs from gfortran ', gfortran_status
+            call show_log(dir)
+            return
+        end if
+        if (.not. files_equal(dir//'/ffc.out', dir//'/gfortran.out')) then
+            print *, 'FAIL: long vtable identity output differs from gfortran'
+            call show_log(dir)
+            return
+        end if
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_long_vtable_identity
 
     integer function run_transitive_typebound_compilation(dir, base_source, &
             bridge_source, &

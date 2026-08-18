@@ -1561,7 +1561,8 @@ contains
         integer, intent(in) :: type_index
         type(fmod_derived_type_t), intent(out) :: dtype
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: k, offset, nested, b, parent_index
+        integer :: k, nested, b, parent_index
+        integer(c_int64_t) :: offset, slot_product, max_integer
 
         call set_empty(error_msg)
         dtype%name = ''
@@ -1590,7 +1591,8 @@ contains
             context%derived_types(type_index)%component_count))
         allocate (dtype%bindings( &
             context%derived_types(type_index)%binding_count))
-        offset = 0
+        offset = 0_c_int64_t
+        max_integer = int(huge(0), c_int64_t)
         do k = 1, context%derived_types(type_index)%component_count
             associate (comp => dtype%components(k))
                 comp%name = trim(context%derived_types(type_index)% &
@@ -1607,8 +1609,21 @@ contains
                 comp%slot_width = component_slot_width(context, type_index, k)
                 comp%elem_count = context%derived_types(type_index)% &
                                   component_array_size(k)
-                comp%slot_count = comp%elem_count * comp%slot_width
-                comp%slot_offset = offset
+                slot_product = int(comp%elem_count, c_int64_t) * &
+                                int(comp%slot_width, c_int64_t)
+                if (slot_product < 1_c_int64_t .or. &
+                    slot_product > max_integer) then
+                    error_msg = 'derived type component slot count exceeds '// &
+                        'the .fmod integer range'
+                    return
+                end if
+                if (offset > max_integer - slot_product) then
+                    error_msg = 'derived type component slot offset exceeds '// &
+                        'the .fmod integer range'
+                    return
+                end if
+                comp%slot_count = int(slot_product)
+                comp%slot_offset = int(offset)
                 comp%char_length = context%derived_types(type_index)% &
                                    component_char_length(k)
                 comp%dim1 = context%derived_types(type_index)%component_dim1(k)
@@ -1620,7 +1635,7 @@ contains
                                   component_is_pointer(k)
                 comp%is_alloc_array = context%derived_types(type_index)% &
                                       component_is_alloc_array(k)
-                offset = offset + comp%slot_count
+                offset = offset + slot_product
             end associate
         end do
         do b = 1, context%derived_types(type_index)%binding_count

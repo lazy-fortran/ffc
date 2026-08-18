@@ -190,6 +190,7 @@ module ffc_module_artefact
 
     type :: module_info_t
         character(len=:), allocatable :: name
+        integer :: fmod_schema = 0
         type(fmod_use_t), allocatable :: uses(:)
         type(fmod_parameter_t), allocatable :: parameters(:)
         type(fmod_derived_type_t), allocatable :: derived_types(:)
@@ -362,6 +363,7 @@ contains
 
         allocate (character(len=0) :: error_msg)
         info%name = ''
+        info%fmod_schema = 0
         allocate (uses(0))
         allocate (params(0))
         allocate (dtypes(0))
@@ -566,6 +568,7 @@ contains
         end do
 
         info%uses = uses(1:nuse)
+        info%fmod_schema = schema
         info%parameters = params
         info%derived_types = dtypes
         info%variables = vars(1:nvar)
@@ -846,8 +849,6 @@ contains
             comp%slot_count < 1 .or. comp%slot_offset < 0 .or. &
             comp%char_length < 0 .or. comp%dim1 < 0 .or. &
             comp%alloc_rank < 0) comp%numeric_metadata_invalid = .true.
-        if (comp%is_alloc_array .and. comp%alloc_rank == 0) &
-            comp%alloc_rank = 1
     end subroutine parse_component_line
 
     function quoted_field(line, key) result(out)

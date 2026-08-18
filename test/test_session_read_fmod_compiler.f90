@@ -889,6 +889,20 @@ contains
                 trim(error_msg)
             return
         end if
+        info%procedures(1)%arg_class_types = 't'
+        info%procedures(1)%arg_class_type_identities = ''
+        call write_fmod(dir//'/bad_class_identity.fmod', info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: write_fmod missing class identity fixture: ', &
+                trim(error_msg)
+            return
+        end if
+        call compile_with_include(source, dir//'/bad_class_identity', dir, error_msg)
+        if (index(error_msg, 'canonical identities are required') == 0) then
+            print *, 'FAIL: missing schema-14 class identity was accepted: ', &
+                trim(error_msg)
+            return
+        end if
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_rejects_malformed_class_metadata
@@ -899,6 +913,8 @@ contains
         character(len=*), parameter :: dir = '/tmp/ffc_fmod_numeric_metadata'
         character(len=:), allocatable :: error_msg
         character(len=:), allocatable :: fixture
+        character(len=:), allocatable :: identity_fixture
+        character(len=:), allocatable :: flag_fixture
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  use bad_layout, only: box_t'//new_line('a')// &
@@ -930,6 +946,20 @@ contains
         call compile_with_include(source, dir//'/bad_layout', dir, error_msg)
         if (index(error_msg, 'unreadable numeric field') == 0) then
             print *, 'FAIL: unreadable numeric metadata was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        identity_fixture = replace_text(fixture, 'elem_count = 1 trailing', &
+                                        'elem_count = 1')
+        identity_fixture = replace_text(identity_fixture, &
+            'canonical_identity = "bad_layout::box_t"', &
+            'canonical_identity = ""')
+        if (.not. write_file(dir//'/bad_layout.fmod', identity_fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_identity', dir, &
+                                  error_msg)
+        if (index(error_msg, 'canonical identity') == 0) then
+            print *, 'FAIL: missing schema-14 canonical identity was accepted: ', &
                 trim(error_msg)
             return
         end if
@@ -984,6 +1014,16 @@ contains
 
         fixture = replace_text(fixture, 'char_length = -1', &
                                'char_length = 0')
+        fixture = replace_text(fixture, 'alloc_rank = 0', 'alloc_rank = 1')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_rank_without_array', dir, &
+                                  error_msg)
+        if (index(error_msg, 'without an array descriptor') == 0) then
+            print *, 'FAIL: allocatable rank without array metadata was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        fixture = replace_text(fixture, 'alloc_rank = 1', 'alloc_rank = 0')
         fixture = replace_text(fixture, 'alloc_rank = 0', 'alloc_rank = 8')
         if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
         call compile_with_include(source, dir//'/bad_layout_rank', dir, &
@@ -1008,6 +1048,24 @@ contains
             return
         end if
 
+        flag_fixture = replace_text(fixture, 'elem_count = 2147483647', &
+                                    'elem_count = 1')
+        flag_fixture = replace_text(flag_fixture, 'slot_width = 3', &
+                                    'slot_width = 1')
+        flag_fixture = replace_text(flag_fixture, 'slot_count = 2147483645', &
+                                    'slot_count = 1')
+        flag_fixture = replace_text(flag_fixture, 'alloc_rank = 0', &
+                                    'alloc_rank = 1')
+        flag_fixture = replace_text(flag_fixture, 'pointer = 0, alloc_array = 0', &
+                                    'pointer = 1, alloc_array = 1')
+        if (.not. write_file(dir//'/bad_layout.fmod', flag_fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_flags', dir, error_msg)
+        if (index(error_msg, 'inconsistent component flags') == 0) then
+            print *, 'FAIL: contradictory component flags were accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_rejects_unreadable_numeric_metadata
@@ -1015,6 +1073,7 @@ contains
     logical function test_fmod_rejects_malformed_binding_flag() result(ok)
         character(len=*), parameter :: dir = '/tmp/ffc_fmod_binding_metadata'
         character(len=:), allocatable :: error_msg, fixture
+        character(len=:), allocatable :: valid_fixture
         type(module_info_t) :: info
 
         ok = .false.
@@ -1030,6 +1089,20 @@ contains
             'components = ['//new_line('a')// &
             ']'//new_line('a')// &
             'bindings = "m=>p|p|2|p"'//new_line('a')
+        valid_fixture = replace_text(fixture, 'm=>p|p|2|p', 'm=>p||1|p')
+        if (.not. write_file(dir//'/valid_binding.fmod', valid_fixture)) return
+        call read_fmod(dir//'/valid_binding.fmod', info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: canonical empty pass-name binding was rejected: ', &
+                trim(error_msg)
+            return
+        end if
+        if (size(info%derived_types) /= 1 .or. &
+            size(info%derived_types(1)%bindings) /= 1 .or. &
+            trim(info%derived_types(1)%bindings(1)%specific_names) /= 'p') then
+            print *, 'FAIL: canonical empty pass-name binding was not preserved'
+            return
+        end if
         if (.not. write_file(dir//'/bad_binding.fmod', fixture)) return
         call read_fmod(dir//'/bad_binding.fmod', info, error_msg)
         if (index(error_msg, 'binding pass flag') == 0) then
