@@ -20,6 +20,7 @@ jobs:
         with:
           path: ffc
           fetch-depth: 0
+          fetch-depth: 0
 
       - name: Read corpus pins
         id: corpus_pins
@@ -206,9 +207,9 @@ jobs:
           fpm install --prefix "$HOME/.local"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      # main is clean under `fo fmt --check` today, so this gate blocks from
-      # the start. It covers *.f90 only; fo's formatter does not read the
-      # *.inc lowering fragments.
-      - name: Check formatting
+      # Compare changed sources with the base revision. This prevents new
+      # formatting regressions without making every feature PR inherit the
+      # existing whole-tree formatter debt. *.inc fragments remain excluded.
+      - name: Check changed-file formatting
         working-directory: ffc
-        run: fo fmt --check
+        run: scripts/check_changed_format.sh
