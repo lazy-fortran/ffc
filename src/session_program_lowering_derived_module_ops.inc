@@ -546,7 +546,7 @@
         character(len=*), intent(in), optional :: module_name
         integer :: type_index_new, k, offset, nested, value_kind
         integer :: canonical_index, name_index, registered_index, parent_index
-        integer(c_int64_t) :: no_default
+        integer(c_int64_t) :: no_default, slot_product
         character(len=:), allocatable :: registered_name, canonical_name, &
             canonical_identity, record_name
 
@@ -634,6 +634,13 @@
                     context%derived_type_count = type_index_new - 1
                     return
                 end if
+                if (comp%alloc_rank < 0 .or. comp%alloc_rank > ARRAY_MAX_RANK) then
+                    error_msg = 'corrupt .fmod derived layout: component '// &
+                        trim(comp%name)//' of '//trim(dtype%name)// &
+                        ' has an unsupported allocatable rank'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
                 if (comp%slot_offset /= offset) then
                     error_msg = 'corrupt .fmod derived layout: component '// &
                         trim(comp%name)//' of '//trim(dtype%name)// &
@@ -643,9 +650,11 @@
                     context%derived_type_count = type_index_new - 1
                     return
                 end if
+                slot_product = int(comp%elem_count, c_int64_t) * &
+                               int(comp%slot_width, c_int64_t)
                 if (comp%slot_count < 1 .or. comp%elem_count < 1 .or. &
                     comp%slot_width < 1 .or. &
-                    comp%slot_count /= comp%elem_count * comp%slot_width) then
+                    int(comp%slot_count, c_int64_t) /= slot_product) then
                     error_msg = 'corrupt .fmod derived layout: component '// &
                         trim(comp%name)//' of '//trim(dtype%name)// &
                         ' has inconsistent slot counts'
@@ -925,6 +934,14 @@
         call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents, &
                                      error_msg)
         if (len_trim(error_msg) > 0) return
+        if (any(arg_ranks < 0) .or. any(arg_ranks > ARRAY_MAX_RANK)) then
+            error_msg = 'malformed .fmod rank metadata'
+            return
+        end if
+        if (any(arg_extents < 0)) then
+            error_msg = 'malformed .fmod extent metadata'
+            return
+        end if
         if (proc%external_binding) then
             if (allocated(proc%external_name) .and. &
                 len_trim(proc%external_name) > 0) then

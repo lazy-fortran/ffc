@@ -297,6 +297,22 @@
             call set_empty(error_msg)
             return
         end if
+        if (type_index > context%derived_type_count) then
+            error_msg = 'invalid derived type index for type-info emission'
+            return
+        end if
+        if (.not. allocated(context%derived_types)) then
+            error_msg = 'derived type table is not allocated'
+            return
+        end if
+        if (type_index > size(context%derived_types)) then
+            error_msg = 'derived type index exceeds the type table'
+            return
+        end if
+        if (.not. context%derived_types(type_index)%layout_registered) then
+            error_msg = 'cannot emit type-info for an unregistered derived layout'
+            return
+        end if
         call create_type_info_global(context%session, &
             type_info_symbol_name(context, type_index), &
             int(type_index, c_int64_t), &

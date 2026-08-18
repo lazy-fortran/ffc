@@ -982,6 +982,32 @@ contains
             return
         end if
 
+        fixture = replace_text(fixture, 'char_length = -1', &
+                               'char_length = 0')
+        fixture = replace_text(fixture, 'alloc_rank = 0', 'alloc_rank = 8')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_rank', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unsupported allocatable rank') == 0) then
+            print *, 'FAIL: oversized allocatable rank was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = replace_text(fixture, 'alloc_rank = 8', 'alloc_rank = 0')
+        fixture = replace_text(fixture, 'elem_count = 1', &
+                               'elem_count = 2147483647')
+        fixture = replace_text(fixture, 'slot_width = 1', 'slot_width = 3')
+        fixture = replace_text(fixture, 'slot_count = 1', 'slot_count = 2147483645')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_overflow', dir, &
+                                  error_msg)
+        if (index(error_msg, 'inconsistent slot counts') == 0) then
+            print *, 'FAIL: overflowing slot product was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_rejects_unreadable_numeric_metadata
@@ -1024,6 +1050,14 @@ contains
         call read_fmod(dir//'/bad_binding.fmod', info, error_msg)
         if (index(error_msg, 'binding record') == 0) then
             print *, 'FAIL: empty binding specific list was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        fixture = replace_text(fixture, 'm=>p|p|1|', 'm=>p|p|1|p;')
+        if (.not. write_file(dir//'/bad_binding.fmod', fixture)) return
+        call read_fmod(dir//'/bad_binding.fmod', info, error_msg)
+        if (index(error_msg, 'binding record') == 0) then
+            print *, 'FAIL: trailing binding separator was accepted: ', &
                 trim(error_msg)
             return
         end if
@@ -1079,6 +1113,22 @@ contains
         if (index(error_msg, 'integer argument metadata') == 0) then
             print *, 'FAIL: malformed extent integer was accepted: ', &
                 trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1', '-1', '1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/negative_rank', dir, error_msg)
+        if (index(error_msg, 'rank metadata') == 0) then
+            print *, 'FAIL: negative rank was accepted: ', trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1', '0', '-1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/negative_extent', dir, error_msg)
+        if (index(error_msg, 'extent metadata') == 0) then
+            print *, 'FAIL: negative extent was accepted: ', trim(error_msg)
             return
         end if
 

@@ -707,7 +707,8 @@ contains
                 end if
                 token = rest(1:sep - 1)
                 if (sep >= len_trim(rest)) then
-                    rest = ''
+                    error_msg = 'malformed .fmod binding record'
+                    return
                 else
                     rest = adjustl(rest(sep + 1:))
                 end if
@@ -741,24 +742,28 @@ contains
                 end if
                 pass_part = adjustl(target_part(bar + 1:))
                 target_part = trim(target_part(1:bar - 1))
-                if (len_trim(target_part) == 0 .or. len_trim(pass_part) == 0) then
+                if (len_trim(target_part) == 0) then
                     error_msg = 'malformed .fmod binding record'
                     return
                 end if
                 bar = index(pass_part, '|')
                 if (bar == 0) then
+                    if (len_trim(pass_part) == 0) then
+                        error_msg = 'malformed .fmod binding record'
+                        return
+                    end if
                     pass_part = trim(pass_part)
                     pass_arg_part = ''
                     specific_names = target_part
                 else
-                    if (bar <= 1) then
-                        error_msg = 'malformed .fmod binding record'
-                        return
+                    if (bar == 1) then
+                        pass_arg_part = adjustl(pass_part(2:))
+                        pass_part = ''
+                    else
+                        pass_arg_part = adjustl(pass_part(bar + 1:))
+                        pass_part = trim(pass_part(1:bar - 1))
                     end if
-                    pass_arg_part = adjustl(pass_part(bar + 1:))
-                    pass_part = trim(pass_part(1:bar - 1))
-                    if (len_trim(pass_part) == 0 .or. &
-                        len_trim(pass_arg_part) == 0) then
+                    if (len_trim(pass_arg_part) == 0) then
                         error_msg = 'malformed .fmod binding record'
                         return
                     end if
