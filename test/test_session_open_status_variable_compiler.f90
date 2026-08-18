@@ -1,7 +1,7 @@
 program test_session_open_status_variable_compiler
     ! A dynamic STATUS= value must be evaluated at runtime. In particular,
-    ! NEWUNIT with STATUS='scratch' is valid even when the compiler cannot
-    ! know the value at parse time (#628).
+    ! NEWUNIT with mixed-case STATUS='scratch' is valid even when the compiler
+    ! cannot know the value at parse time (#628), including fixed-width padding.
     use ffc_test_support, only: expect_exit_status
     implicit none
 
@@ -9,7 +9,7 @@ program test_session_open_status_variable_compiler
         'program main'//new_line('a')// &
         '  character(len=8) :: mode'//new_line('a')// &
         '  integer :: u, ios'//new_line('a')// &
-        '  mode = ''scratch'''//new_line('a')// &
+        '  mode = ''ScRaTcH'''//new_line('a')// &
         '  open(newunit=u, status=mode, iostat=ios)'//new_line('a')// &
         '  if (ios /= 0) error stop 1'//new_line('a')// &
         '  write(u,*) 42'//new_line('a')// &
