@@ -173,6 +173,7 @@ module session_program_lowering_impl
         emit_complex4_print_call, &
         emit_complex8_print_call
     use liric_session_io_bindings, only: emit_liric_f32_binary, &
+        emit_liric_integer_to_f32, &
         emit_liric_i32_to_f32, &
         emit_liric_f32_to_i32, &
         emit_liric_f32_to_f64, &
@@ -180,6 +181,7 @@ module session_program_lowering_impl
         emit_liric_print_f32, &
         emit_liric_print_f32_value, &
         emit_liric_f64_binary, &
+        emit_liric_integer_to_f64, &
         emit_liric_i32_to_f64, &
         emit_liric_i1_to_i32, &
         emit_liric_f64_to_i32, &

@@ -715,6 +715,27 @@
             end block
         end if
 
+        if (same_name(call_name, 'float') .and. &
+            .not. is_contained_f32_function(context, call_name) .and. &
+            .not. is_contained_f64_function(context, call_name)) then
+            call lower_legacy_integer_conversion(arena, node, context, .false., &
+                                                 value, error_msg)
+            return
+        end if
+        if (same_name(call_name, 'dfloat') .and. &
+            .not. is_contained_f32_function(context, call_name) .and. &
+            .not. is_contained_f64_function(context, call_name)) then
+            block
+                type(lr_operand_desc_t) :: wide_value
+                call lower_legacy_integer_conversion(arena, node, context, .true., &
+                                                     wide_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f64_to_f32(context%session, wide_value, &
+                                                value, error_msg)) return
+            end block
+            return
+        end if
+
         if ((same_name(call_name, 'amin0') .or. same_name(call_name, 'amin1')) .and. &
             .not. is_contained_f32_function(context, call_name)) then
             call lower_f32_minmax_intrinsic(arena, node, LR_FCMP_OLE, context, &
@@ -1003,6 +1024,27 @@
                 if (handled) return
                 if (len_trim(error_msg) > 0) return
             end block
+        end if
+
+        if (same_name(call_name, 'float') .and. &
+            .not. is_contained_f32_function(context, call_name) .and. &
+            .not. is_contained_f64_function(context, call_name)) then
+            block
+                type(lr_operand_desc_t) :: narrow_value
+                call lower_legacy_integer_conversion(arena, node, context, .false., &
+                                                     narrow_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f32_to_f64(context%session, narrow_value, &
+                                                value, error_msg)) return
+            end block
+            return
+        end if
+        if (same_name(call_name, 'dfloat') .and. &
+            .not. is_contained_f32_function(context, call_name) .and. &
+            .not. is_contained_f64_function(context, call_name)) then
+            call lower_legacy_integer_conversion(arena, node, context, .true., &
+                                                 value, error_msg)
+            return
         end if
 
         if (same_name(call_name, 'dmin1') .and. &

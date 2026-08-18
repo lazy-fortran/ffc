@@ -181,7 +181,10 @@ support element assignment, element reads, scalar broadcast, and whole-array
 convention and resolves a literal kind suffix naming any other declared
 `integer, parameter` kind constant to its folded value. Declaration-side
 `real(prec)`/`integer(prec)`/`complex(prec)` kind specs resolve the same
-declared-parameter names, not just `dp`/`wp`. `real()`/`dble()`
+declared-parameter names, not just `dp`/`wp`. `real()`/`float()` convert to
+default real, while `dble()`/`dfloat()` convert to double precision; all four
+accept integer scalar arguments, including non-default integer kinds.
+`real()`/`dble()`
 applied to a BOZ-literal-constant argument reinterpret its bit pattern as
 the result kind rather than converting the magnitude. Scalar `complex`/`complex(8)` support `+`/`-`/`*`/`/` arithmetic,
 including a mixed real/complex operand, `cmplx()` (single-argument or with a

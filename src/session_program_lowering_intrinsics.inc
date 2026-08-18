@@ -701,6 +701,35 @@
                                      error_msg)
     end subroutine lower_f32_real_intrinsic
 
+    recursive subroutine lower_legacy_integer_conversion(arena, node, context, &
+                                                         want_f64, value, error_msg)
+        !! Lower GNU FLOAT/DFLOAT, whose argument is integer-only.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(in) :: want_f64
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: integer_kind
+
+        if (.not. require_intrinsic_arg_count(node, 1, 1, error_msg)) return
+        integer_kind = expression_value_kind(arena, node%arg_indices(1), context, &
+                                             VALUE_I32)
+        if (integer_kind /= VALUE_I8 .and. integer_kind /= VALUE_I16 .and. &
+            integer_kind /= VALUE_I32 .and. integer_kind /= VALUE_I64) then
+            error_msg = trim(node%name)//' argument must be INTEGER'
+            return
+        end if
+
+        if (want_f64) then
+            call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, &
+                                         value, error_msg)
+        else
+            call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, &
+                                         value, error_msg)
+        end if
+    end subroutine lower_legacy_integer_conversion
+
     recursive subroutine lower_f32_intrinsic_arg(arena, node_index, context, value, &
                                                  error_msg)
         ! Lower an argument to an f32 intrinsic. Real literals and f32 variables
@@ -715,6 +744,7 @@
         real(c_double) :: lit_f64
         character(len=:), allocatable :: lit_value, lit_type
         integer :: actual_index
+        integer :: integer_kind
         character(len=:), allocatable :: keyword
 
         call unwrap_intrinsic_arg(arena, node_index, keyword, actual_index)
@@ -757,11 +787,25 @@
             return
         end if
 
-        ! Integer argument: promote to f32.
-        call lower_i32_expression(arena, node_index, context, integer_value, &
-                                  error_msg)
+        ! Integer arguments retain their source width until SITOFP.  In
+        ! particular, FLOAT(integer(8)) must not truncate through i32.
+        integer_kind = expression_value_kind(arena, node_index, context, VALUE_I32)
+        select case (integer_kind)
+        case (VALUE_I64)
+            call lower_i64_expression(arena, node_index, context, integer_value, &
+                                      error_msg)
+        case (VALUE_I16)
+            call lower_i16_expression(arena, node_index, context, integer_value, &
+                                      error_msg)
+        case (VALUE_I8)
+            call lower_i8_expression(arena, node_index, context, integer_value, &
+                                     error_msg)
+        case default
+            call lower_i32_expression(arena, node_index, context, integer_value, &
+                                      error_msg)
+        end select
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_liric_i32_to_f32(context%session, integer_value, value, &
+        if (.not. emit_liric_integer_to_f32(context%session, integer_value, value, &
                                         error_msg)) return
     end subroutine lower_f32_intrinsic_arg
 
@@ -1475,6 +1519,7 @@
         type(lr_operand_desc_t) :: integer_value
         type(lr_operand_desc_t) :: f32_value
         integer :: actual_index
+        integer :: integer_kind
         character(len=:), allocatable :: keyword
 
         call unwrap_intrinsic_arg(arena, node_index, keyword, actual_index)
@@ -1500,10 +1545,23 @@
             return
         end if
 
-        call lower_i32_expression(arena, node_index, context, integer_value, &
-                                  error_msg)
+        integer_kind = expression_value_kind(arena, node_index, context, VALUE_I32)
+        select case (integer_kind)
+        case (VALUE_I64)
+            call lower_i64_expression(arena, node_index, context, integer_value, &
+                                      error_msg)
+        case (VALUE_I16)
+            call lower_i16_expression(arena, node_index, context, integer_value, &
+                                      error_msg)
+        case (VALUE_I8)
+            call lower_i8_expression(arena, node_index, context, integer_value, &
+                                     error_msg)
+        case default
+            call lower_i32_expression(arena, node_index, context, integer_value, &
+                                      error_msg)
+        end select
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_liric_i32_to_f64(context%session, integer_value, value, &
+        if (.not. emit_liric_integer_to_f64(context%session, integer_value, value, &
                                         error_msg)) return
     end subroutine lower_f64_intrinsic_arg
 

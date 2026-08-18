@@ -5,6 +5,11 @@ A program is supported only when every construct it uses appears in
 "Supported now". Everything else is unsupported until the linked issue is
 closed with executable tests.
 
+The legacy conversion spellings `float()` and `dfloat()` are supported for
+scalar integer arguments of kinds 1, 2, 4, and 8. They return default
+`real(4)` and `real(8)`, respectively, and require exactly one argument;
+contained procedures with the same name retain normal procedure shadowing.
+
 ## Architecture boundary
 
 - FortFront owns lexing, parsing, AST storage, semantic analysis, type
