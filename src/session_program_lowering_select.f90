@@ -950,14 +950,38 @@ contains
         type(branch_result_t), intent(out) :: result
         logical, intent(out) :: captured
         integer :: i
+        logical :: binding_changed
 
         captured = .not. terminated
         if (.not. captured) return
         ! Drop any associate-name symbol appended past the baseline and revert a
-        ! baseline slot whose kind changed (the associate bound onto it), keeping
-        ! the merge's symbol set identical across arms.
+        ! baseline slot whose binding metadata changed (the associate bound onto
+        ! it), keeping the merge's symbol set identical across arms.
         do i = 1, baseline_count
-            if (context%symbols(i)%value_kind /= baseline(i)%value_kind) &
+            binding_changed = context%symbols(i)%value_kind /= &
+                baseline(i)%value_kind
+            if (.not. context%symbols(i)%is_array) then
+                if (.not. binding_changed) then
+                    binding_changed = &
+                        context%symbols(i)%derived_type_index /= &
+                        baseline(i)%derived_type_index
+                end if
+                if (.not. binding_changed) then
+                    binding_changed = &
+                        context%symbols(i)%is_polymorphic .neqv. &
+                        baseline(i)%is_polymorphic
+                end if
+                if (.not. binding_changed) then
+                    binding_changed = &
+                        context%symbols(i)%has_dynamic_type_address .neqv. &
+                        baseline(i)%has_dynamic_type_address
+                end if
+                if (.not. binding_changed) then
+                    binding_changed = context%symbols(i)%has_address .neqv. &
+                        baseline(i)%has_address
+                end if
+            end if
+            if (binding_changed) &
                 context%symbols(i) = baseline(i)
         end do
         context%symbol_count = baseline_count
