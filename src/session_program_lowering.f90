@@ -347,7 +347,7 @@ module session_program_lowering_impl
     use ffc_module_artefact, only: module_info_t, fmod_parameter_t, &
         fmod_component_t, fmod_derived_type_t, &
         fmod_variable_t, fmod_procedure_t, fmod_generic_t, &
-        write_fmod, read_fmod
+        write_fmod, read_fmod, parse_strict_integer
     use session_program_lowering_fmod, only: integer_token, scalar_kind_token, &
         value_kind_of_token
     use session_program_lowering_scalar_kind, only: real_value_kind_of, &

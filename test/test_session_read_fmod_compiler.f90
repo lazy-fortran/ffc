@@ -28,6 +28,8 @@ program test_session_read_fmod_compiler
     if (.not. test_fmod_rejects_malformed_class_metadata()) all_passed = .false.
     if (.not. test_fmod_rejects_unreadable_numeric_metadata()) &
         all_passed = .false.
+    if (.not. test_fmod_rejects_malformed_numeric_headers()) &
+        all_passed = .false.
     if (.not. test_use_repeated_rename_is_valid()) all_passed = .false.
     if (.not. test_use_repeated_rename_one_statement()) all_passed = .false.
     if (.not. test_use_two_locals_one_remote()) all_passed = .false.
@@ -932,6 +934,85 @@ contains
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_rejects_unreadable_numeric_metadata
+
+    logical function test_fmod_rejects_malformed_numeric_headers() result(ok)
+        ! Header and procedure signature integers use the same strict parser as
+        ! component layout fields. Prefixes followed by junk or separators are
+        ! not valid metadata, while absent legacy fields still use defaults.
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod_numeric_headers'
+        character(len=:), allocatable :: error_msg, fixture
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use bad_numeric, only: touch'//new_line('a')// &
+            '  call touch(1)'//new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+
+        fixture = signature_fixture('14 trailing', '1', '0', '1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/schema', dir, error_msg)
+        if (index(error_msg, 'schema version') == 0) then
+            print *, 'FAIL: malformed schema integer was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1 trailing', '0', '1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/nargs', dir, error_msg)
+        if (index(error_msg, 'invalid argument count') == 0) then
+            print *, 'FAIL: malformed nargs integer was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1', '0 trailing', '1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/ranks', dir, error_msg)
+        if (index(error_msg, 'integer argument metadata') == 0) then
+            print *, 'FAIL: malformed rank integer was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1', '0', '1 trailing')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/extents', dir, error_msg)
+        if (index(error_msg, 'integer argument metadata') == 0) then
+            print *, 'FAIL: malformed extent integer was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_rejects_malformed_numeric_headers
+
+    function signature_fixture(schema, nargs, ranks, extents) result(text)
+        character(len=*), intent(in) :: schema, nargs, ranks, extents
+        character(len=:), allocatable :: text
+
+        text = '[module]'//new_line('a')// &
+            'name = "bad_numeric"'//new_line('a')// &
+            'ffc_version = "0.1.0"'//new_line('a')// &
+            'fmod_schema = '//schema//new_line('a')//new_line('a')// &
+            '[[procedure]]'//new_line('a')// &
+            'name = "touch"'//new_line('a')// &
+            'kind = "subroutine"'//new_line('a')// &
+            'nargs = '//nargs//new_line('a')// &
+            'arg_kinds = "integer"'//new_line('a')// &
+            'arg_names = "value"'//new_line('a')// &
+            'arg_intents = "in"'//new_line('a')// &
+            'arg_optionals = "0"'//new_line('a')// &
+            'arg_values = "0"'//new_line('a')// &
+            'arg_ranks = "'//ranks//'"'//new_line('a')// &
+            'arg_extents = "'//extents//'"'//new_line('a')// &
+            'arg_classes = "0"'//new_line('a')// &
+            'arg_class_types = "-"'//new_line('a')// &
+            'callable = 1'//new_line('a')
+    end function signature_fixture
 
     subroutine compile_with_include(source, exe_path, include_dir, error_msg)
         character(len=*), intent(in) :: source

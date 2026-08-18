@@ -17,6 +17,7 @@ module ffc_module_artefact
     public :: module_info_t
     public :: write_fmod
     public :: read_fmod
+    public :: parse_strict_integer
 
     character(len=*), parameter, public :: FFC_FMOD_VERSION = '0.1.0'
 
@@ -354,7 +355,7 @@ contains
         type(fmod_variable_t), allocatable :: vars(:)
         type(fmod_procedure_t), allocatable :: procs(:)
         type(fmod_generic_t), allocatable :: gens(:)
-        integer :: nuse, nparam, ndtype, ncomp, nvar, nproc, ngen, io_read, i
+        integer :: nuse, nparam, ndtype, ncomp, nvar, nproc, ngen, i
         integer :: schema
 
         allocate (character(len=0) :: error_msg)
@@ -476,8 +477,7 @@ contains
             case ('module')
                 if (key == 'name') info%name = unquote(val)
                 if (key == 'fmod_schema') then
-                    read (val, *, iostat=io_read) schema
-                    if (io_read /= 0) schema = 0
+                    if (.not. parse_strict_integer(val, schema)) schema = 0
                 end if
             case ('use')
                 if (key == 'name') uses(nuse)%name = unquote(val)
@@ -535,8 +535,8 @@ contains
                 if (key == 'deferred_body') &
                     procs(nproc)%deferred_body = unquote(val) == '1'
                 if (key == 'nargs') then
-                    read (val, *, iostat=io_read) procs(nproc)%nargs
-                    if (io_read /= 0) procs(nproc)%nargs = 0
+                    if (.not. parse_strict_integer(val, procs(nproc)%nargs)) &
+                        procs(nproc)%nargs = -1
                 end if
             case ('generic')
                 if (key == 'name') gens(ngen)%name = unquote(val)
@@ -788,11 +788,9 @@ contains
         integer, intent(in) :: default_value
         logical, intent(out), optional :: invalid
         character(len=:), allocatable :: token
-        integer :: p, io_stat, sep, i, first
-        logical :: valid
+        integer :: p, sep
 
         value = default_value
-        io_stat = 0
         if (present(invalid)) invalid = .false.
         p = index(line, key//' = ')
         if (p <= 0) return
@@ -809,26 +807,34 @@ contains
         else if (sep > 1) then
             token = trim(token(:sep - 1))
         end if
-        valid = len_trim(token) > 0
-        first = 1
-        if (valid) then
-            if (token(1:1) == '+' .or. token(1:1) == '-') first = 2
-            if (first > len_trim(token)) valid = .false.
-        end if
-        if (valid) then
-            do i = first, len_trim(token)
-                if (token(i:i) < '0' .or. token(i:i) > '9') then
-                    valid = .false.
-                    exit
-                end if
-            end do
-        end if
-        if (valid) read (token, *, iostat=io_stat) value
-        if (.not. valid .or. io_stat /= 0) then
+        if (.not. parse_strict_integer(token, value)) then
             value = default_value
             if (present(invalid)) invalid = .true.
         end if
     end function integer_field
+
+    logical function parse_strict_integer(text, value)
+        ! Parse exactly one signed decimal integer. List-directed reads accept
+        ! prefixes such as "14 trailing" or "14,"; metadata must not.
+        character(len=*), intent(in) :: text
+        integer, intent(out) :: value
+        character(len=:), allocatable :: token
+        integer :: i, first, io_stat
+
+        parse_strict_integer = .false.
+        value = 0
+        token = trim(adjustl(text))
+        if (len_trim(token) == 0) return
+        first = 1
+        if (token(1:1) == '+' .or. token(1:1) == '-') first = 2
+        if (first > len_trim(token)) return
+        do i = first, len_trim(token)
+            if (token(i:i) < '0' .or. token(i:i) > '9') return
+        end do
+        read (token, *, iostat=io_stat) value
+        if (io_stat /= 0) return
+        parse_strict_integer = .true.
+    end function parse_strict_integer
 
     function bool_text(flag) result(text)
         logical, intent(in) :: flag

@@ -915,8 +915,12 @@
         call parse_fmod_arg_class_type_identities(proc, &
                                                   arg_class_type_identities)
         call parse_fmod_arg_intents(proc, arg_intents)
-        call parse_fmod_arg_integers(proc%arg_ranks, proc%nargs, arg_ranks)
-        call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents)
+        call parse_fmod_arg_integers(proc%arg_ranks, proc%nargs, arg_ranks, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
         if (proc%external_binding) then
             if (allocated(proc%external_name) .and. &
                 len_trim(proc%external_name) > 0) then
@@ -1176,15 +1180,17 @@
         end do
     end subroutine parse_fmod_arg_flags
 
-    subroutine parse_fmod_arg_integers(text, nargs, values)
+    subroutine parse_fmod_arg_integers(text, nargs, values, error_msg)
         ! Split a .fmod per-dummy integer list (ranks, extents) into values. An
         ! absent or short list leaves the remaining dummies at 0 (#415).
         character(len=:), allocatable, intent(in) :: text
         integer, intent(in) :: nargs
         integer, allocatable, intent(out) :: values(:)
+        character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: rest, token
-        integer :: n, sep, io_stat
+        integer :: n, sep, value
 
+        call set_empty(error_msg)
         allocate (values(max(nargs, 0)))
         if (nargs <= 0) return
         values = 0
@@ -1201,9 +1207,14 @@
                 token = rest(1:sep - 1)
                 rest = adjustl(rest(sep + 1:))
             end if
-            read (token, *, iostat=io_stat) values(n)
-            if (io_stat /= 0) values(n) = 0
+            if (.not. parse_strict_integer(token, value)) then
+                error_msg = 'malformed .fmod integer argument metadata'
+                return
+            end if
+            values(n) = value
         end do
+        if (len_trim(rest) > 0) &
+            error_msg = 'malformed .fmod integer argument metadata'
     end subroutine parse_fmod_arg_integers
 
     subroutine parse_fmod_arg_intents(proc, intents)
