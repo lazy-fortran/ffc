@@ -787,14 +787,44 @@ contains
         character(len=*), intent(in) :: key
         integer, intent(in) :: default_value
         logical, intent(out), optional :: invalid
-        integer :: p, io_stat
+        character(len=:), allocatable :: token
+        integer :: p, io_stat, sep, i, first
+        logical :: valid
 
         value = default_value
+        io_stat = 0
         if (present(invalid)) invalid = .false.
         p = index(line, key//' = ')
         if (p <= 0) return
-        read (line(p + len(key) + 3:), *, iostat=io_stat) value
-        if (io_stat /= 0) then
+        token = trim(adjustl(line(p + len(key) + 3:)))
+        sep = index(token, ',')
+        if (sep == 1) then
+            token = ''
+        else if (sep > 1) then
+            token = trim(token(:sep - 1))
+        end if
+        sep = index(token, '}')
+        if (sep == 1) then
+            token = ''
+        else if (sep > 1) then
+            token = trim(token(:sep - 1))
+        end if
+        valid = len_trim(token) > 0
+        first = 1
+        if (valid) then
+            if (token(1:1) == '+' .or. token(1:1) == '-') first = 2
+            if (first > len_trim(token)) valid = .false.
+        end if
+        if (valid) then
+            do i = first, len_trim(token)
+                if (token(i:i) < '0' .or. token(i:i) > '9') then
+                    valid = .false.
+                    exit
+                end if
+            end do
+        end if
+        if (valid) read (token, *, iostat=io_stat) value
+        if (.not. valid .or. io_stat /= 0) then
             value = default_value
             if (present(invalid)) invalid = .true.
         end if

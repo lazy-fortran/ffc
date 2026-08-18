@@ -916,7 +916,7 @@ contains
             'parent_identity = ""'//new_line('a')// &
             'components = ['//new_line('a')// &
             '    { name = "x", kind = "integer", type_name = "", '// &
-            'type_identity = "", elem_count = nope, slot_width = 1, '// &
+            'type_identity = "", elem_count = 1 trailing, slot_width = 1, '// &
             'slot_count = 1, slot_offset = 0, char_length = 0, dim1 = 0, '// &
             'alloc_rank = 0, allocatable = 0, pointer = 0, alloc_array = 0 },'// &
             new_line('a')// &

@@ -330,6 +330,22 @@ contains
 
         test_same_named_bound_types_do_not_collide = &
             expect_output_matches_gfortran(source, 'same_named_bound_vtables')
+        if (.not. expect_exe_has_symbol(source, &
+            '/tmp/ffc_same_named_identity_symbols.o', &
+            '__ffc_type_info_a_u_ub_c_ct')) &
+            test_same_named_bound_types_do_not_collide = .false.
+        if (.not. expect_exe_has_symbol(source, &
+            '/tmp/ffc_same_named_identity_symbols2.o', &
+            '__ffc_type_info_a_c_cb_u_ut')) &
+            test_same_named_bound_types_do_not_collide = .false.
+        if (.not. expect_exe_has_symbol(source, &
+            '/tmp/ffc_same_named_vtable_symbols.o', &
+            '__ffc_vtable_a_u_ub_c_ct')) &
+            test_same_named_bound_types_do_not_collide = .false.
+        if (.not. expect_exe_has_symbol(source, &
+            '/tmp/ffc_same_named_vtable_symbols2.o', &
+            '__ffc_vtable_a_c_cb_u_ut')) &
+            test_same_named_bound_types_do_not_collide = .false.
     end function test_same_named_bound_types_do_not_collide
 
     logical function test_duplicate_binding_is_rejected()
