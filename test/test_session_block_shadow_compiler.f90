@@ -99,7 +99,8 @@ contains
             '  print *, inside'//new_line('a')// &
             'end program main'
         test_block_local_is_not_visible_after_end = expect_error_contains( &
-            source, 'was not declared', '/tmp/ffc_block_scope_error_test')
+            source, 'Name ''inside'' is not declared', &
+                '/tmp/ffc_block_scope_error_test')
     end function test_block_local_is_not_visible_after_end
 
 end program test_session_block_shadow_compiler
