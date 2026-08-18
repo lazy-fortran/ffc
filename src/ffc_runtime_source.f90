@@ -218,9 +218,15 @@ contains
         text = text// &
             '    }'//NL
         text = text// &
-            '    while (a[i] == '' '') {'//NL
+            '    if (b[i] == ''\0'') {'//NL
         text = text// &
-            '        i++;'//NL
+            '        while (a[i] == '' '') {'//NL
+        text = text// &
+            '            i++;'//NL
+        text = text// &
+            '        }'//NL
+        text = text// &
+            '        return a[i] == ''\0'';'//NL
         text = text// &
             '    }'//NL
         text = text// &

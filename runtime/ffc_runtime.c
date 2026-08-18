@@ -101,8 +101,11 @@ static int ffc_streq(const char *a, const char *b) {
            tolower((unsigned char)b[i])) {
         i++;
     }
-    while (a[i] == ' ') {
-        i++;
+    if (b[i] == '\0') {
+        while (a[i] == ' ') {
+            i++;
+        }
+        return a[i] == '\0';
     }
     return a[i] == '\0' && b[i] == '\0';
 }
