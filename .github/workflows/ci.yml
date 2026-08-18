@@ -178,6 +178,8 @@ jobs:
           # `fo lint` exits 1 on any finding, so capture the report first and
           # decide below which half of it gates.
           fo lint --json > "$RUNNER_TEMP/fo-lint.json" || true
+          jq -r '.unused_imports[]? | "\(.file):\(.line): unused import \(.module)::\(.symbol)"' \
+            "$RUNNER_TEMP/fo-lint.json"
           jq -r '.warnings[] | "\(.file):\(.line):\(.column): \(.message)"' \
             "$RUNNER_TEMP/fo-lint.json"
           unused=$(jq '.unused_imports | length' "$RUNNER_TEMP/fo-lint.json")
