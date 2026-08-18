@@ -915,6 +915,7 @@ contains
         character(len=:), allocatable :: fixture
         character(len=:), allocatable :: identity_fixture
         character(len=:), allocatable :: flag_fixture
+        character(len=:), allocatable :: mismatch_fixture
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  use bad_layout, only: box_t'//new_line('a')// &
@@ -960,6 +961,21 @@ contains
                                   error_msg)
         if (index(error_msg, 'canonical identity') == 0) then
             print *, 'FAIL: missing schema-14 canonical identity was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        mismatch_fixture = replace_text(fixture, 'elem_count = 1 trailing', &
+                                        'elem_count = 1')
+        mismatch_fixture = replace_text(mismatch_fixture, &
+            'kind = "integer", type_name = "", type_identity = ""', &
+            'kind = "derived", type_name = "inner_t", '// &
+            'type_identity = "wrong::inner_t"')
+        if (.not. write_file(dir//'/bad_layout.fmod', mismatch_fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_component_identity', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unknown component identity') == 0) then
+            print *, 'FAIL: unresolved schema-14 component identity used a short-name fallback: ', &
                 trim(error_msg)
             return
         end if

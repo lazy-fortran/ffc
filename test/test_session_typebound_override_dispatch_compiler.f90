@@ -17,6 +17,8 @@ program test_session_typebound_override_dispatch_compiler
     if (.not. test_monomorphic_receiver_stays_static()) all_passed = .false.
     if (.not. test_vtable_symbols_are_emitted()) all_passed = .false.
     if (.not. test_same_named_bound_types_do_not_collide()) all_passed = .false.
+    if (.not. test_underscore_escape_boundaries_do_not_collide()) &
+        all_passed = .false.
     if (.not. test_duplicate_binding_is_rejected()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -282,9 +284,9 @@ contains
             'end program main'
 
         ok = expect_exe_has_symbol(source, '/tmp/ffc_tbp_vtable_syms.o', &
-            '__ffc_vtable_m_c_cbase_ut')
+            '__ffc_vtable_h6d3a3a626173655f74')
         if (.not. expect_exe_has_symbol(source, '/tmp/ffc_tbp_vtable_syms2.o', &
-            '__ffc_vtable_m_c_cext_ut')) ok = .false.
+            '__ffc_vtable_h6d3a3a6578745f74')) ok = .false.
         if (.not. expect_exe_has_symbol(source, '/tmp/ffc_tbp_vtable_syms3.o', &
             '__ffc_vtable_table')) ok = .false.
         test_vtable_symbols_are_emitted = ok
@@ -332,21 +334,66 @@ contains
             expect_output_matches_gfortran(source, 'same_named_bound_vtables')
         if (.not. expect_exe_has_symbol(source, &
             '/tmp/ffc_same_named_identity_symbols.o', &
-            '__ffc_type_info_a_u_ub_c_ct')) &
+            '__ffc_type_info_h615f5f623a3a74')) &
             test_same_named_bound_types_do_not_collide = .false.
         if (.not. expect_exe_has_symbol(source, &
             '/tmp/ffc_same_named_identity_symbols2.o', &
-            '__ffc_type_info_a_c_cb_u_ut')) &
+            '__ffc_type_info_h613a3a625f5f74')) &
             test_same_named_bound_types_do_not_collide = .false.
         if (.not. expect_exe_has_symbol(source, &
             '/tmp/ffc_same_named_vtable_symbols.o', &
-            '__ffc_vtable_a_u_ub_c_ct')) &
+            '__ffc_vtable_h615f5f623a3a74')) &
             test_same_named_bound_types_do_not_collide = .false.
         if (.not. expect_exe_has_symbol(source, &
             '/tmp/ffc_same_named_vtable_symbols2.o', &
-            '__ffc_vtable_a_c_cb_u_ut')) &
+            '__ffc_vtable_h613a3a625f5f74')) &
             test_same_named_bound_types_do_not_collide = .false.
     end function test_same_named_bound_types_do_not_collide
+
+    logical function test_underscore_escape_boundaries_do_not_collide()
+        ! A trailing source underscore and a following source `u` must remain
+        ! distinct in ABI names. Compare execution with gfortran and require
+        ! both self-delimited type-info symbols to survive linking.
+        character(len=:), allocatable :: source
+
+        source = 'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: a_'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure :: value => value_a_'//new_line('a')// &
+            '  end type a_'//new_line('a')// &
+            '  type :: a_u'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    procedure :: value => value_a_u'//new_line('a')// &
+            '  end type a_u'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  integer function value_a_(self)'//new_line('a')// &
+            '    class(a_), intent(in) :: self'//new_line('a')// &
+            '    value_a_ = 7'//new_line('a')// &
+            '  end function value_a_'//new_line('a')// &
+            '  integer function value_a_u(self)'//new_line('a')// &
+            '    class(a_u), intent(in) :: self'//new_line('a')// &
+            '    value_a_u = 8'//new_line('a')// &
+            '  end function value_a_u'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  type(a_) :: x'//new_line('a')// &
+            '  type(a_u) :: y'//new_line('a')// &
+            '  print *, x%value() + y%value()'//new_line('a')// &
+            'end program main'
+
+        test_underscore_escape_boundaries_do_not_collide = &
+            expect_output_matches_gfortran(source, 'underscore_escape_boundaries')
+        if (.not. expect_exe_has_symbol(source, &
+            '/tmp/ffc_underscore_escape_info1.o', &
+            '__ffc_type_info_h6d3a3a615f')) &
+            test_underscore_escape_boundaries_do_not_collide = .false.
+        if (.not. expect_exe_has_symbol(source, &
+            '/tmp/ffc_underscore_escape_info2.o', &
+            '__ffc_type_info_h6d3a3a615f75')) &
+            test_underscore_escape_boundaries_do_not_collide = .false.
+    end function test_underscore_escape_boundaries_do_not_collide
 
     logical function test_duplicate_binding_is_rejected()
         ! Two bindings of the same name in one type have no single slot

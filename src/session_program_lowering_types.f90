@@ -652,6 +652,7 @@ module session_program_lowering_types
         logical :: arg_is_class(MAX_PROC_ARGS) = .false.
         character(len=64) :: arg_class_types(MAX_PROC_ARGS) = ''
         character(len=:), allocatable :: arg_class_type_identities(:)
+        logical :: require_class_type_identities = .false.
     end type external_procedure_t
 
     integer, parameter, public :: MAX_NAMELIST_MEMBERS = 32
@@ -889,40 +890,21 @@ module session_program_lowering_types
 contains
 
     function abi_mangle_identity(identity) result(mangled)
-        ! Encode a Fortran identity into a linker-safe, injective spelling.
-        ! Every source underscore and colon gets a reserved two-character
-        ! escape, so e.g. m__n::t and m::n__t cannot share a symbol.
+        ! Encode a Fortran identity into a linker-safe, self-delimiting
+        ! spelling. Every source byte is represented by exactly two lowercase
+        ! hexadecimal digits, so punctuation, separators, and source
+        ! underscores cannot become token boundaries or collide.
         character(len=*), intent(in) :: identity
         character(len=:), allocatable :: mangled
         integer :: i, code
-        character :: ch
+        character(len=16), parameter :: hex_digits = '0123456789abcdef'
 
-        mangled = ''
+        mangled = 'h'
         do i = 1, len_trim(identity)
-            ch = identity(i:i)
-            select case (ch)
-            case ('A':'Z')
-                mangled = mangled//achar(iachar(ch) + iachar('a') - iachar('A'))
-            case ('a':'z', '0':'9')
-                mangled = mangled//ch
-            case ('_')
-                mangled = mangled//'_u'
-            case (':')
-                mangled = mangled//'_c'
-            case default
-                code = iachar(ch)
-                mangled = mangled//'_x'//trim(integer_text(code))
-            end select
+            code = iachar(identity(i:i))
+            mangled = mangled//hex_digits(code/16 + 1:code/16 + 1)// &
+                hex_digits(mod(code, 16) + 1:mod(code, 16) + 1)
         end do
-    contains
-        function integer_text(value) result(text)
-            integer, intent(in) :: value
-            character(len=:), allocatable :: text
-            character(len=16) :: buffer
-
-            write (buffer, '(I0)') value
-            text = trim(buffer)
-        end function integer_text
     end function abi_mangle_identity
 
 end module session_program_lowering_types

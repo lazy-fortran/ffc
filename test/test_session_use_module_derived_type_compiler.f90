@@ -162,7 +162,8 @@ contains
         end if
         call compile_using_program(dir, 'fmod414_unknown', 'holder_t', &
             error_msg)
-        if (index(error_msg, 'never_defined_t') == 0) then
+        if (index(error_msg, 'never_defined_t') == 0 .and. &
+            index(error_msg, 'unknown component identity') == 0) then
             print *, 'FAIL: unknown nested type was accepted: ', trim(error_msg)
             return
         end if

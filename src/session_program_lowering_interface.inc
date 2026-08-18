@@ -841,7 +841,8 @@
                                       arg_values, arg_intents, arg_ranks, &
                                       arg_extents, is_bind_c, arg_opaque, &
                                       arg_class, arg_class_types, &
-                                      arg_class_type_identities)
+                                      arg_class_type_identities, &
+                                      require_class_type_identities)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: fortran_name, c_name
         integer, intent(in) :: return_kind, arg_count
@@ -858,6 +859,7 @@
         logical, intent(in), optional :: arg_class(:)
         character(len=*), intent(in), optional :: arg_class_types(:)
         character(len=*), intent(in), optional :: arg_class_type_identities(:)
+        logical, intent(in), optional :: require_class_type_identities
         integer :: j, identity_length
 
         if (external_procedure_index(context, trim(fortran_name)) > 0) return
@@ -873,6 +875,9 @@
             if (present(by_reference)) ep%by_reference = by_reference
             ep%is_bind_c = .false.
             if (present(is_bind_c)) ep%is_bind_c = is_bind_c
+            ep%require_class_type_identities = .false.
+            if (present(require_class_type_identities)) ep% &
+                require_class_type_identities = require_class_type_identities
             do j = 1, arg_count
                 ep%arg_value_kinds(j) = VALUE_I32
             end do

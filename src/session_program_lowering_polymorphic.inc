@@ -726,12 +726,22 @@
             if (ext_idx > 0) then
                 if (position <= context%external_procedures(ext_idx)%arg_count) then
                     if (context%external_procedures(ext_idx)%arg_is_class(position)) then
-                        declared_index = find_derived_type_identity(context, trim( &
+                        declared_index = 0
+                        if (allocated(context%external_procedures(ext_idx)% &
+                                      arg_class_type_identities)) then
+                            if (len_trim(context%external_procedures(ext_idx)% &
+                                         arg_class_type_identities(position)) > 0) &
+                                declared_index = find_derived_type_identity(context, &
+                                    trim(context%external_procedures(ext_idx)% &
+                                         arg_class_type_identities(position)))
+                        end if
+                        if (declared_index <= 0 .and. .not. &
                             context%external_procedures(ext_idx)% &
-                            arg_class_type_identities(position)))
-                        if (declared_index <= 0) declared_index = find_derived_type( &
-                            context, trim(context%external_procedures(ext_idx)% &
-                            arg_class_types(position)))
+                            require_class_type_identities) then
+                            declared_index = find_derived_type(context, &
+                                trim(context%external_procedures(ext_idx)% &
+                                     arg_class_types(position)))
+                        end if
                         if (declared_index <= 0) then
                             error_msg = 'class passed-object dummy of "'//trim(impl_name)// &
                                 '" names an unavailable derived type'

@@ -529,11 +529,12 @@ struct ffc_type_info_t {
 The instance is a 16-byte const global named
 `__ffc_type_info_<encoded canonical identity>` for module-defined types and
 `__ffc_type_info_<encoded typename>` for program-local types. The encoding is
-injective: underscores and the `::` identity separator are escaped instead of
-being collapsed, so legal module/type names cannot collide at link time. The
-`id` is assigned monotonically as types are collected. Nothing references
-these constants yet; later polymorphism slices compare a value's type pointer
-against them.
+self-delimiting: it starts with `h` and represents every source byte as two
+lowercase hexadecimal digits. Thus underscores and the `::` identity
+separator cannot become token boundaries, so legal module/type names cannot
+collide at link time. The `id` is assigned monotonically as types are
+collected. Nothing references these constants yet; later polymorphism slices
+compare a value's type pointer against them.
 
 ## Scalar class descriptor
 

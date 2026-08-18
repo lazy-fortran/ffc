@@ -496,7 +496,7 @@
         type(module_info_t), intent(in) :: info
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i
+        integer :: i, j
         character(len=:), allocatable :: local_name
         logical :: imported
 
@@ -504,7 +504,10 @@
         if (.not. allocated(info%derived_types)) return
         do i = 1, size(info%derived_types)
             if (.not. fmod_derived_type_dependencies_available(info%derived_types(i), &
-                                                               context) .and. &
+                                                               context, &
+                                                               require_canonical_identity= &
+                                                                   info%fmod_schema == &
+                                                                   FMOD_SCHEMA_VERSION) .and. &
                 .not. allocated(use_node%only_list)) cycle
             call resolve_fmod_import_name(use_node, trim(info%derived_types(i)%name), &
                                           local_name, imported)
@@ -518,16 +521,38 @@
         end do
     end subroutine import_fmod_derived_types
 
-    logical function fmod_derived_type_dependencies_available(dtype, context) &
+    logical function fmod_derived_type_dependencies_available(dtype, context, &
+                                                              require_canonical_identity) &
             result(available)
         type(fmod_derived_type_t), intent(in) :: dtype
         type(lowering_context_t), intent(in) :: context
+        logical, intent(in), optional :: require_canonical_identity
         integer :: i
+        logical :: require_identity
 
         available = .true.
+        require_identity = .false.
+        if (present(require_canonical_identity)) require_identity = &
+            require_canonical_identity
         if (.not. allocated(dtype%components)) return
         do i = 1, size(dtype%components)
             if (trim(dtype%components(i)%kind) /= 'derived') cycle
+            if (require_identity) then
+                if (.not. allocated(dtype%components(i)%type_identity)) then
+                    available = .false.
+                    return
+                end if
+                if (len_trim(dtype%components(i)%type_identity) == 0) then
+                    available = .false.
+                    return
+                end if
+                if (find_derived_type_identity(context, trim( &
+                        dtype%components(i)%type_identity)) <= 0) then
+                    available = .false.
+                    return
+                end if
+                cycle
+            end if
             if (allocated(dtype%components(i)%type_identity)) then
                 if (len_trim(dtype%components(i)%type_identity) > 0) then
                     if (find_derived_type_identity(context, trim( &
@@ -581,9 +606,14 @@
                 canonical_identity = trim(dtype%canonical_identity)
         end if
         if (len_trim(canonical_identity) == 0) then
-            if (present(module_name)) then
-                if (len_trim(module_name) > 0) canonical_identity = &
-                    trim(module_name)//'::'//trim(canonical_name)
+            if (require_identity) then
+                canonical_identity = '__missing_canonical_identity__'// &
+                    trim(canonical_name)
+            else
+                if (present(module_name)) then
+                    if (len_trim(module_name) > 0) canonical_identity = &
+                        trim(module_name)//'::'//trim(canonical_name)
+                end if
             end if
         end if
         if (len_trim(canonical_identity) == 0) canonical_identity = canonical_name
@@ -622,14 +652,26 @@
         context%derived_types(type_index_new)%parent_name = ''
         context%derived_types(type_index_new)%is_imported = .true.
         parent_index = 0
-        if (allocated(dtype%parent_identity)) then
-            if (len_trim(dtype%parent_identity) > 0) parent_index = &
-                find_derived_type_identity(context, trim(dtype%parent_identity))
+        if (require_identity) then
+            if (allocated(dtype%parent_name)) then
+                if (len_trim(dtype%parent_name) > 0) then
+                    if (allocated(dtype%parent_identity)) then
+                        if (len_trim(dtype%parent_identity) > 0) parent_index = &
+                            find_derived_type_identity(context, &
+                                                       trim(dtype%parent_identity))
+                    end if
+                end if
+            end if
+        else
+            if (allocated(dtype%parent_identity)) then
+                if (len_trim(dtype%parent_identity) > 0) parent_index = &
+                    find_derived_type_identity(context, trim(dtype%parent_identity))
+            end if
         end if
         if (parent_index > 0) then
             context%derived_types(type_index_new)%parent_name = &
                 trim(context%derived_types(parent_index)%name)
-        else if (allocated(dtype%parent_name)) then
+        else if (.not. require_identity .and. allocated(dtype%parent_name)) then
             context%derived_types(type_index_new)%parent_name = &
                 trim(dtype%parent_name)
         end if
@@ -714,13 +756,29 @@
                 end if
                 nested = 0
                 if (value_kind == VALUE_DERIVED) then
-                    if (allocated(comp%type_identity)) then
-                        if (len_trim(comp%type_identity) > 0) nested = &
-                            find_derived_type_identity(context, &
-                                                       trim(comp%type_identity))
+                    if (require_identity) then
+                        if (allocated(comp%type_identity)) then
+                            if (len_trim(comp%type_identity) > 0) nested = &
+                                find_derived_type_identity(context, &
+                                                           trim(comp%type_identity))
+                        end if
+                        if (nested <= 0) then
+                            error_msg = 'unknown component identity for '// &
+                                trim(comp%name)// &
+                                ' of '//trim(dtype%name)//' (unknown derived type "'// &
+                                trim(comp%type_name)//'")'
+                            context%derived_type_count = type_index_new - 1
+                            return
+                        end if
+                    else
+                        if (allocated(comp%type_identity)) then
+                            if (len_trim(comp%type_identity) > 0) nested = &
+                                find_derived_type_identity(context, &
+                                                           trim(comp%type_identity))
+                        end if
+                        if (nested <= 0) nested = find_derived_type(context, &
+                                                                      trim(comp%type_name))
                     end if
-                    if (nested <= 0) nested = find_derived_type(context, &
-                                                                  trim(comp%type_name))
                     if (nested <= 0) then
                         error_msg = 'unknown derived type "'// &
                             trim(comp%type_name)//'" for component '// &
@@ -780,6 +838,12 @@
                         context%derived_type_count = type_index_new - 1
                         return
                     end if
+                    if (find_derived_type_identity(context, trim( &
+                            dtype%parent_identity)) <= 0) then
+                        error_msg = 'unknown parent identity for '//trim(dtype%name)
+                        context%derived_type_count = type_index_new - 1
+                        return
+                    end if
                 end if
             end if
             if (allocated(dtype%components)) then
@@ -794,6 +858,15 @@
                     if (len_trim(dtype%components(k)%type_identity) == 0) then
                         error_msg = 'malformed .fmod derived type "'// &
                             trim(dtype%name)//'": missing component identity'
+                        context%derived_type_count = type_index_new - 1
+                        return
+                    end if
+                    if (find_derived_type_identity(context, trim( &
+                            dtype%components(k)%type_identity)) <= 0) then
+                        error_msg = 'unknown component identity for '// &
+                            trim(dtype%components(k)%name)//' of '//trim(dtype%name)// &
+                            ' (unknown derived type "'// &
+                            trim(dtype%components(k)%type_name)//'")'
                         context%derived_type_count = type_index_new - 1
                         return
                     end if
@@ -978,11 +1051,14 @@
         character(len=:), allocatable :: arg_class_type_identities(:)
         integer, allocatable :: arg_intents(:), arg_ranks(:), arg_extents(:)
         integer :: return_kind
-        logical :: forced, imported
+        logical :: forced, imported, require_identities
 
         call set_empty(error_msg)
         forced = .false.
         if (present(force)) forced = force
+        require_identities = .false.
+        if (present(require_class_identities)) require_identities = &
+            require_class_identities
         if (.not. allocated(proc%name)) return
         if (len_trim(proc%name) == 0) return
         if (.not. proc%callable) return
@@ -1069,7 +1145,9 @@
                                     arg_class=arg_class, &
                                     arg_class_types=arg_class_types, &
                                     arg_class_type_identities= &
-                                        arg_class_type_identities)
+                                        arg_class_type_identities, &
+                                    require_class_type_identities= &
+                                        require_identities)
     end subroutine import_fmod_procedure
 
     subroutine validate_fmod_procedure_metadata(proc, error_msg, &
