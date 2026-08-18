@@ -636,6 +636,16 @@
         integer :: type_index, rank, slots
 
         call set_empty(error_msg)
+        if (context%symbols(symbol_index)%is_polymorphic) then
+            ! The descriptor records a dynamic finalizer and element layout,
+            ! while this slice is statically specialized to the declared type.
+            ! Refuse the case until runtime finalizer/layout dispatch is
+            ! available instead of calling the wrong procedure or stepping by
+            ! the wrong element width (#643 / #403).
+            error_msg = 'polymorphic allocatable array finalization is not '// &
+                        'supported'
+            return
+        end if
         type_index = context%symbols(symbol_index)%derived_type_index
         if (type_index <= 0) return
         if (type_index > context%derived_type_count) return

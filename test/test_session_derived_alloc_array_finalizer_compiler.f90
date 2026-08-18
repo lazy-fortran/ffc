@@ -4,7 +4,7 @@ program test_session_derived_alloc_array_finalizer_compiler
     ! rank-1/rank-2 derived array, both when `deallocate` releases the block
     ! and when the owning procedure reaches the end of its scope. An
     ! unallocated array finalizes nothing.
-    use ffc_test_support, only: expect_exit_status
+    use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
 
     logical :: all_passed
@@ -16,6 +16,7 @@ program test_session_derived_alloc_array_finalizer_compiler
     if (.not. test_scope_exit_finalizes_rank1()) all_passed = .false.
     if (.not. test_rank2_finalizes_all()) all_passed = .false.
     if (.not. test_unallocated_finalizes_nothing()) all_passed = .false.
+    if (.not. test_polymorphic_array_refused()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: allocatable derived array finalizers lower through direct LIRIC'
@@ -167,5 +168,33 @@ contains
         test_unallocated_finalizes_nothing = expect_exit_status( &
             source, 0, '/tmp/ffc_alloc_arr_final_unalloc')
     end function test_unallocated_finalizes_nothing
+
+    logical function test_polymorphic_array_refused()
+        ! The current finalizer loop is monomorphic. A polymorphic array must
+        ! fail before deallocation rather than use its declared type's layout.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: base_t'//new_line('a')// &
+            '  contains'//new_line('a')// &
+            '    final :: base_final'//new_line('a')// &
+            '  end type'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine base_final(self)'//new_line('a')// &
+            '    type(base_t), intent(inout) :: self'//new_line('a')// &
+            '  end subroutine base_final'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  class(base_t), allocatable :: a(:)'//new_line('a')// &
+            '  allocate(a(2))'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            'end program main'
+
+        test_polymorphic_array_refused = expect_error_contains( &
+            source, 'polymorphic allocatable array finalization is not supported', &
+            '/tmp/ffc_alloc_arr_final_polymorphic')
+    end function test_polymorphic_array_refused
 
 end program test_session_derived_alloc_array_finalizer_compiler
