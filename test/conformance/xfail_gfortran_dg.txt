@@ -999,7 +999,6 @@ iso_fortran_env_8.f90 # owner=lazy-fortran/ffc#457; reason=register resolved dec
 large_recl.f90 # owner=lazy-fortran/ffc#396; reason=move file-unit state behind the runtime ABI
 large_unit_2.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
 leadz_trailz_1.f90 # owner=lazy-fortran/ffc#342; reason=centralize array element-expression lowering
-linked_list_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 list_read_1.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 list_read_10.f90 # owner=lazy-fortran/ffc#447; reason=centralize typed scalar expression lowering
 list_read_12.f90 # owner=lazy-fortran/ffc#427; reason=return stable IOSTAT and IOMSG values
