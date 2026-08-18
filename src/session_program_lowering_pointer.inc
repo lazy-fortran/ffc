@@ -951,12 +951,62 @@
             return
         end if
         src = info%source_index
+        if (src <= 0 .or. src > context%symbol_count) then
+            error_msg = 'pointer array section source was not declared'
+            return
+        end if
+        if (.not. context%symbols(ptr_index)%is_array) then
+            error_msg = 'left of => is a scalar pointer but the target is an array'
+            return
+        end if
+        if (.not. context%symbols(src)%is_array) then
+            error_msg = 'pointer array section source is not an array'
+            return
+        end if
+        if (.not. (context%symbols(src)%is_target .or. &
+                   context%symbols(src)%is_pointer)) then
+            error_msg = 'right of => is not a target or pointer'
+            return
+        end if
+        if (.not. context%symbols(src)%has_address) then
+            error_msg = 'pointer array section source has no storage'
+            return
+        end if
+        if (context%symbols(ptr_index)%array_rank /= info%result_rank) then
+            error_msg = 'pointer and section ranks do not match'
+            return
+        end if
+        if (context%symbols(ptr_index)%value_kind /= &
+            context%symbols(src)%value_kind) then
+            error_msg = 'pointer and target array element kinds do not match'
+            return
+        end if
+        if (context%symbols(ptr_index)%is_derived .neqv. &
+            context%symbols(src)%is_derived) then
+            error_msg = 'pointer and target array types do not match'
+            return
+        end if
+        if (context%symbols(ptr_index)%is_derived .and. &
+            context%symbols(ptr_index)%derived_type_index /= &
+            context%symbols(src)%derived_type_index) then
+            if (.not. derived_type_extends(context, &
+                    context%symbols(src)%derived_type_index, &
+                    context%symbols(ptr_index)%derived_type_index)) then
+                error_msg = 'pointer and target array derived types do not match'
+                return
+            end if
+        end if
         if (context%symbols(src)%is_allocatable) then
             error_msg = 'pointer array section of an allocatable target is '// &
                         'not supported'
             return
         end if
         vk = context%symbols(src)%value_kind
+        if (vk /= VALUE_I32 .and. vk /= VALUE_LOGICAL .and. &
+            vk /= VALUE_F32 .and. vk /= VALUE_F64) then
+            error_msg = 'pointer array sections do not support this element kind'
+            return
+        end if
         arr_size = context%symbols(src)%array_size
         first_linear = array_section_source_linear_index(info, 0_c_int64_t)
         index_op = i32_immediate(context%session, first_linear)
@@ -969,7 +1019,7 @@
             if (.not. emit_f64_array_element_addr(context%session, arr_size, &
                     context%symbols(src)%element_address, index_op, base_addr, &
                     error_msg)) return
-        case default
+        case (VALUE_I32, VALUE_LOGICAL)
             if (.not. emit_i32_array_element_addr(context%session, arr_size, &
                     context%symbols(src)%element_address, index_op, base_addr, &
                     error_msg)) return
