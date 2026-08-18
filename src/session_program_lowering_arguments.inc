@@ -83,6 +83,12 @@
         if (sp > 0 .and. explicit_param_count >= 0) then
             explicit_param_count = max(explicit_param_count - 1, 0)
         end if
+        if (param_count >= 0) then
+            do p = 1, param_count
+                if (callee_dummy_is_alternate_return(arena, callee_name, p)) &
+                    explicit_param_count = max(explicit_param_count - 1, 0)
+            end do
+        end if
         if (explicit_param_count >= 0 .and. visible_count > explicit_param_count) then
             error_msg = 'More actual than formal arguments in call to '// &
                 trim(callee_name)
@@ -104,6 +110,12 @@
                 ! receiver after this routine returns; it is not among the
                 ! explicit actuals being checked here.
                 if (sp > 0 .and. p == sp) cycle
+                ! Alternate-return dummies are represented in the AST so the
+                ! callee can branch on RETURN n, but their corresponding
+                ! actuals were removed by split_alt_return_args.  They are
+                ! therefore positional control slots, not required data
+                ! arguments (#353).
+                if (callee_dummy_is_alternate_return(arena, callee_name, p)) cycle
                 supplied = .false.
                 do i = 1, size(arg_indices)
                     if (arg_indices(i) <= 0) cycle
@@ -642,6 +654,48 @@
             if (allocated(sb_node%param_indices)) params = sb_node%param_indices
         end if
     end subroutine procedure_node_param_indices
+
+    logical function callee_dummy_is_alternate_return(arena, callee_name, param_pos) &
+            result(is_altret)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer :: n
+        character(len=:), allocatable :: node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        is_altret = .false.
+        if (param_pos < 1) return
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            node_type = get_node_type_at(arena, n)
+            if (node_type == 'subroutine_def_node' .or. &
+                node_type == 'subroutine_def') then
+                sb_node => get_node_as_subroutine_def(arena, n)
+                if (.not. associated(sb_node)) cycle
+                if (.not. allocated(sb_node%name)) cycle
+                if (.not. same_name(sb_node%name, callee_name)) cycle
+                if (.not. allocated(sb_node%param_indices)) return
+                if (param_pos > size(sb_node%param_indices)) return
+                is_altret = is_alternate_return_dummy(arena, &
+                    sb_node%param_indices(param_pos))
+                return
+            end if
+            if (node_type == 'function_def_node' .or. &
+                node_type == 'function_def') then
+                fn_node => get_node_as_function_def(arena, n)
+                if (.not. associated(fn_node)) cycle
+                if (.not. allocated(fn_node%name)) cycle
+                if (.not. same_name(fn_node%name, callee_name)) cycle
+                if (.not. allocated(fn_node%param_indices)) return
+                if (param_pos > size(fn_node%param_indices)) return
+                is_altret = is_alternate_return_dummy(arena, &
+                    fn_node%param_indices(param_pos))
+                return
+            end if
+        end do
+    end function callee_dummy_is_alternate_return
 
     logical function procedure_node_is_interface_signature(arena, node_index) &
             result(is_signature)
