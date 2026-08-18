@@ -958,6 +958,30 @@ contains
             return
         end if
 
+        fixture = replace_text(fixture, 'alloc_array = 0}junk,', &
+                               'alloc_array = 2 },')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_flag', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unreadable numeric field') == 0) then
+            print *, 'FAIL: component flag outside 0/1 was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = replace_text(fixture, 'alloc_array = 2 },', &
+                               'alloc_array = 0 },')
+        fixture = replace_text(fixture, 'char_length = 0', &
+                               'char_length = -1')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_length', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unreadable numeric field') == 0) then
+            print *, 'FAIL: negative component length was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_rejects_unreadable_numeric_metadata
@@ -984,6 +1008,22 @@ contains
         call read_fmod(dir//'/bad_binding.fmod', info, error_msg)
         if (index(error_msg, 'binding pass flag') == 0) then
             print *, 'FAIL: malformed binding pass flag was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        fixture = replace_text(fixture, 'm=>p|p|2|p', 'm=>p|p|1|p|junk')
+        if (.not. write_file(dir//'/bad_binding.fmod', fixture)) return
+        call read_fmod(dir//'/bad_binding.fmod', info, error_msg)
+        if (index(error_msg, 'binding record') == 0) then
+            print *, 'FAIL: extra binding delimiter was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        fixture = replace_text(fixture, 'm=>p|p|1|p|junk', 'm=>p|p|1|')
+        if (.not. write_file(dir//'/bad_binding.fmod', fixture)) return
+        call read_fmod(dir//'/bad_binding.fmod', info, error_msg)
+        if (index(error_msg, 'binding record') == 0) then
+            print *, 'FAIL: empty binding specific list was accepted: ', &
                 trim(error_msg)
             return
         end if

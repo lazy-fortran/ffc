@@ -687,8 +687,8 @@ contains
         character(len=*), intent(in) :: text
         type(fmod_binding_t), allocatable, intent(out) :: bindings(:)
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: rest, token, target_part, pass_part, &
-            pass_arg_part
+        character(len=:), allocatable :: rest, token, method_name, target_part, &
+            pass_part, pass_arg_part, specific_names
         integer :: sep, arrow, bar, count, pass_value
 
         error_msg = ''
@@ -701,66 +701,108 @@ contains
                 token = rest
                 rest = ''
             else
+                if (sep <= 1) then
+                    error_msg = 'malformed .fmod binding record'
+                    return
+                end if
                 token = rest(1:sep - 1)
-                rest = adjustl(rest(sep + 1:))
-            end if
-            arrow = index(token, '=>')
-            if (arrow <= 1) cycle
-            count = count + 1
-            call grow_bindings(bindings, count)
-            bindings(count)%method_name = trim(token(1:arrow - 1))
-            target_part = token(arrow + 2:)
-            bar = index(target_part, '|')
-            if (bar == 0) then
-                bindings(count)%target_name = trim(target_part)
-                bindings(count)%specific_names = trim(target_part)
-                bindings(count)%pass_name = ''
-                bindings(count)%pass_arg = .true.
-                cycle
-            end if
-            bindings(count)%target_name = trim(target_part(1:bar - 1))
-            pass_part = target_part(bar + 1:)
-            bar = index(pass_part, '|')
-            if (bar == 0) then
-                bindings(count)%pass_name = trim(pass_part)
-                bindings(count)%pass_arg = .true.
-                bindings(count)%specific_names = bindings(count)%target_name
-            else
-                bindings(count)%pass_name = trim(pass_part(1:bar - 1))
-                pass_arg_part = pass_part(bar + 1:)
-                bar = index(pass_arg_part, '|')
-                if (bar == 0) then
-                    if (.not. parse_strict_integer(trim(pass_arg_part), &
-                                                   pass_value)) then
-                        error_msg = 'malformed .fmod binding pass flag'
-                        return
-                    end if
-                    if (pass_value /= 0 .and. pass_value /= 1) then
-                        error_msg = 'malformed .fmod binding pass flag'
-                        return
-                    end if
-                    bindings(count)%pass_arg = pass_value /= 0
-                    bindings(count)%specific_names = bindings(count)%target_name
+                if (sep >= len_trim(rest)) then
+                    rest = ''
                 else
-                    if (bar <= 1) then
-                        error_msg = 'malformed .fmod binding pass flag'
-                        return
-                    end if
-                    if (.not. parse_strict_integer( &
-                        trim(pass_arg_part(1:bar - 1)), pass_value)) then
-                        error_msg = 'malformed .fmod binding pass flag'
-                        return
-                    end if
-                    if (pass_value /= 0 .and. pass_value /= 1) then
-                        error_msg = 'malformed .fmod binding pass flag'
-                        return
-                    end if
-                    bindings(count)%pass_arg = pass_value /= 0
-                    bindings(count)%specific_names = trim(pass_arg_part(bar + 1:))
+                    rest = adjustl(rest(sep + 1:))
                 end if
             end if
-            if (.not. allocated(bindings(count)%specific_names)) &
-                bindings(count)%specific_names = bindings(count)%target_name
+            token = trim(token)
+            arrow = index(token, '=>')
+            if (arrow <= 1 .or. arrow >= len_trim(token)) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            method_name = trim(token(1:arrow - 1))
+            target_part = token(arrow + 2:)
+            if (len_trim(method_name) == 0 .or. len_trim(target_part) == 0) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            if (index(target_part, '=>') > 0) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            bar = index(target_part, '|')
+            if (bar == 0) then
+                target_part = trim(target_part)
+                pass_part = ''
+                pass_arg_part = ''
+                specific_names = target_part
+            else
+                if (bar <= 1) then
+                    error_msg = 'malformed .fmod binding record'
+                    return
+                end if
+                pass_part = adjustl(target_part(bar + 1:))
+                target_part = trim(target_part(1:bar - 1))
+                if (len_trim(target_part) == 0 .or. len_trim(pass_part) == 0) then
+                    error_msg = 'malformed .fmod binding record'
+                    return
+                end if
+                bar = index(pass_part, '|')
+                if (bar == 0) then
+                    pass_part = trim(pass_part)
+                    pass_arg_part = ''
+                    specific_names = target_part
+                else
+                    if (bar <= 1) then
+                        error_msg = 'malformed .fmod binding record'
+                        return
+                    end if
+                    pass_arg_part = adjustl(pass_part(bar + 1:))
+                    pass_part = trim(pass_part(1:bar - 1))
+                    if (len_trim(pass_part) == 0 .or. &
+                        len_trim(pass_arg_part) == 0) then
+                        error_msg = 'malformed .fmod binding record'
+                        return
+                    end if
+                    bar = index(pass_arg_part, '|')
+                    if (bar == 0) then
+                        specific_names = target_part
+                    else
+                        if (bar <= 1 .or. bar >= len_trim(pass_arg_part)) then
+                            error_msg = 'malformed .fmod binding record'
+                            return
+                        end if
+                        specific_names = trim(pass_arg_part(bar + 1:))
+                        if (index(specific_names, '|') > 0) then
+                            error_msg = 'malformed .fmod binding record'
+                            return
+                        end if
+                        pass_arg_part = trim(pass_arg_part(1:bar - 1))
+                    end if
+                end if
+            end if
+            if (len_trim(pass_arg_part) == 0) then
+                pass_value = 1
+            else
+                if (.not. parse_strict_integer(trim(pass_arg_part), &
+                                               pass_value)) then
+                    error_msg = 'malformed .fmod binding pass flag'
+                    return
+                end if
+                if (pass_value /= 0 .and. pass_value /= 1) then
+                    error_msg = 'malformed .fmod binding pass flag'
+                    return
+                end if
+            end if
+            if (len_trim(specific_names) == 0) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            count = count + 1
+            call grow_bindings(bindings, count)
+            bindings(count)%method_name = method_name
+            bindings(count)%target_name = target_part
+            bindings(count)%pass_name = pass_part
+            bindings(count)%pass_arg = pass_value /= 0
+            bindings(count)%specific_names = specific_names
         end do
     end subroutine parse_binding_list
 
@@ -787,14 +829,18 @@ contains
         comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
         comp%dim1 = integer_field(line, 'dim1', 0, invalid)
         comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
-        comp%is_allocatable = integer_field(line, 'allocatable', 0, invalid) /= 0
+        comp%is_allocatable = logical_field(line, 'allocatable', invalid)
         comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
-        comp%is_pointer = integer_field(line, 'pointer', 0, invalid) /= 0
+        comp%is_pointer = logical_field(line, 'pointer', invalid)
         comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
-        comp%is_alloc_array = integer_field(line, 'alloc_array', 0, invalid) /= 0
+        comp%is_alloc_array = logical_field(line, 'alloc_array', invalid)
         comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
         comp%alloc_rank = integer_field(line, 'alloc_rank', 0, invalid)
         comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        if (comp%elem_count < 1 .or. comp%slot_width < 1 .or. &
+            comp%slot_count < 1 .or. comp%slot_offset < 0 .or. &
+            comp%char_length < 0 .or. comp%dim1 < 0 .or. &
+            comp%alloc_rank < 0) comp%numeric_metadata_invalid = .true.
         if (comp%is_alloc_array .and. comp%alloc_rank == 0) &
             comp%alloc_rank = 1
     end subroutine parse_component_line
@@ -870,6 +916,25 @@ contains
             valid_component_field_start = .true.
         end select
     end function valid_component_field_start
+
+    logical function logical_field(line, key, invalid)
+        character(len=*), intent(in) :: line
+        character(len=*), intent(in) :: key
+        logical, intent(out) :: invalid
+        integer :: value
+
+        value = integer_field(line, key, 0, invalid)
+        if (invalid) then
+            logical_field = .false.
+            return
+        end if
+        if (value /= 0 .and. value /= 1) then
+            invalid = .true.
+            logical_field = .false.
+            return
+        end if
+        logical_field = value == 1
+    end function logical_field
 
     logical function parse_strict_integer(text, value)
         ! Parse exactly one signed decimal integer. List-directed reads accept
