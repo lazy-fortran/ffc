@@ -1,4 +1,4 @@
-# lfortran integration_tests entries skipped by the gauntlet.
+# Current full-epoch skipped cases for lfortran.
 # Format: path # owner=ORG/REPO#N; reason=text or path # scope=TAG; reason=text
 gpu_metal_51.f90 # scope=GPU; reason=excluded GPU or device-backend case
 sync_all_01.f90 # scope=coarray; reason=excluded coarray or image-control semantics

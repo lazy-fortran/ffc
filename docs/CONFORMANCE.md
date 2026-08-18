@@ -330,23 +330,25 @@ they contain these normalized entry counts, ignoring comments and blank lines:
 
 | Manifest | Entries |
 |---|---:|
-| `test/conformance/xfail_fortfront_f90.txt` | 90 |
-| `test/conformance/xfail_fortfront_lf.txt` | 51 |
+| `test/conformance/xfail_fortfront_f90.txt` | 84 |
+| `test/conformance/xfail_fortfront_lf.txt` | 48 |
 | `test/conformance/noref_fortfront_f90.txt` | 6 |
 | `test/conformance/noref_lfortran.txt` | 6 |
-| `test/conformance/xfail_lfortran.txt` | 3213 |
-| `test/conformance/xfail_gfortran_dg.txt` | 2174 |
+| `test/conformance/xfail_lfortran.txt` | 3015 |
+| `test/conformance/xfail_gfortran_dg.txt` | 2067 |
 | `test/conformance/skip_fortfront_f90.txt` | 2 |
 | `test/conformance/skip_lfortran.txt` | 3 |
 | `test/conformance/skip_gfortran_dg.txt` | 2300 |
-| `test/conformance/fail_owners_lfortran.txt` | 4 |
-| `test/conformance/fail_owners_gfortran_dg.txt` | 284 |
-| `test/conformance/scopes_fortfront_f90.txt` | 6 |
+| `test/conformance/fail_owners_fortfront_f90.txt` | 146 |
+| `test/conformance/fail_owners_fortfront_lf.txt` | 26 |
+| `test/conformance/fail_owners_lfortran.txt` | 85 |
+| `test/conformance/fail_owners_gfortran_dg.txt` | 108 |
+| `test/conformance/scopes_fortfront_f90.txt` | 4 |
 | `test/conformance/scopes_lfortran.txt` | 302 |
 | `test/conformance/scopes_gfortran_dg.txt` | 219 |
-| `test/conformance/owner_subsystems.txt` | 135 |
+| `test/conformance/owner_subsystems.txt` | 27 |
 
-The aggregate manifest inventory is `XFAIL=5527`, `FAIL=288`, `NOREF=12`, and
+The aggregate manifest inventory is `XFAIL=5214`, `FAIL=365`, `NOREF=12`, and
 `SKIP=2305`. `FAIL` counts FAIL-owner rows. These are inventory facts, not fresh
 compiler outcomes.
 

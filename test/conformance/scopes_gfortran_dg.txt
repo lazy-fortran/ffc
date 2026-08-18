@@ -1,3 +1,5 @@
+# Current dashboard exclusion scopes for gfortran-dg.
+# Only coarray, OpenMP, OpenACC, and GPU entries belong here.
 arith_divide_3.f90 # scope=coarray; reason=dashboard scope registry
 associate_26.f90 # scope=coarray; reason=dashboard scope registry
 associate_26a.f90 # scope=coarray; reason=dashboard scope registry

@@ -1,4 +1,4 @@
-# gfortran.dg entries skipped by the gauntlet.
+# Current full-epoch skipped cases for gfortran-dg.
 # Format: path # owner=ORG/REPO#N; reason=text or path # scope=TAG; reason=text
 20231103-1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 20231103-2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -96,6 +96,7 @@ altreturn_7.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg co
 altreturn_8.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 altreturn_9_0.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
 altreturn_9_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+always_inline_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 any_loc.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 argument_checking_11.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 argument_checking_12.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -244,7 +245,9 @@ bind_c_usage_33.f90 # scope=harness; reason=requires unmodeled DejaGNU additiona
 bind_c_vars.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
 binding_label_tests_20.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 binding_label_tests_26b.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
+binding_label_tests_34.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 binding_label_tests_35.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+binding_label_tests_36.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 block_11.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 block_12.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 block_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -271,6 +274,7 @@ bounds_check_15.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.d
 bounds_check_16.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 bounds_check_17.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 bounds_check_19.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+bounds_check_20.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 bounds_check_21.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 bounds_check_22.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 bounds_check_23.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -471,6 +475,7 @@ coarray_48.f90 # scope=coarray; reason=excluded coarray or image-control semanti
 coarray_49.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 coarray_5.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 coarray_50.f90 # scope=coarray; reason=excluded coarray or image-control semantics
+coarray_51.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 coarray_6.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 coarray_7.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 coarray_8.f90 # scope=coarray; reason=excluded coarray or image-control semantics
@@ -509,6 +514,7 @@ coarray_collectives_9.f90 # scope=coarray; reason=excluded coarray or image-cont
 coarray_critical_1.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 coarray_critical_3.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 coarray_data_1.f90 # scope=coarray; reason=excluded coarray or image-control semantics
+coarray_data_2.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 coarray_dependency_1.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 coarray_fail_st.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 coarray_lib_alloc_1.f90 # scope=coarray; reason=excluded coarray or image-control semantics
@@ -821,6 +827,7 @@ do_concurrent_7.f90 # scope=harness; reason=requires unmodeled DejaGNU directive
 do_concurrent_8_f2018.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 do_concurrent_8_f2023.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 do_concurrent_9.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+do_concurrent_assoc_default_none.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 do_concurrent_constraints.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 do_concurrent_local_init.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 do_concurrent_typespec_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -887,6 +894,8 @@ f2c_6.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler
 f2c_7.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 f2c_8.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 f2c_9.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+f_c_string3.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
+f_c_string4.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 feed_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 feed_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 fimplicit_none_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -992,6 +1001,7 @@ implicit_pure_5.f90 # scope=harness; reason=requires unmodeled DejaGNU additiona
 implied_do_io_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 implied_do_io_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 implied_do_io_4.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
+implied_do_io_5.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 implied_do_io_6.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 implied_shape_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 import2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -1042,6 +1052,7 @@ initialization_30.f90 # scope=compiler-flags; reason=requires unmodeled gfortran
 initialization_4.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 initialization_5.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 initialization_6.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+inline_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 inline_matmul_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 inline_matmul_10.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 inline_matmul_11.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
@@ -1054,10 +1065,12 @@ inline_matmul_17.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.
 inline_matmul_18.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 inline_matmul_19.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 inline_matmul_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+inline_matmul_20.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 inline_matmul_23.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 inline_matmul_24.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 inline_matmul_25.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 inline_matmul_26.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+inline_matmul_27.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 inline_matmul_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 inline_matmul_4.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 inline_matmul_5.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -1427,6 +1440,7 @@ parens_5.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compi
 parens_6.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 parity_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 parity_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+pdt_86_reduced.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pointer_assign_6.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pointer_check_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pointer_check_10.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -1453,6 +1467,7 @@ pointer_intent_4.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.
 pointer_remapping_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pointer_remapping_10.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pointer_target_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+power_10.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 power_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 power_4.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 power_5.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -1497,6 +1512,7 @@ pr105456-ruf.f90 # scope=harness; reason=requires unmodeled DejaGNU directive se
 pr105456-wf.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 pr105456-wuf.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 pr105456.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
+pr105594.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pr105954.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pr106331.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pr106556.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -1724,6 +1740,7 @@ pr83246.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semanti
 pr84117.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pr84245.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pr84565.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+pr84622.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 pr84784.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 pr85082.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pr85357.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
@@ -2046,6 +2063,12 @@ string_length_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.d
 string_length_4.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 structure_constructor_11.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 structure_constructor_9.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+submodule_35_aux.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
+submodule_37.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+submodule_host_assoc_1.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
+submodule_host_assoc_1_aux.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
+submodule_private_host.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
+submodule_private_host_aux.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 subnormal_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 substr_6.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 substr_9.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -2153,6 +2176,7 @@ unsigned_8.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg com
 unsigned_9.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 unsigned_kiss.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 unsigned_write.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
+unsigned_write_2.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 unused_artificial_dummies_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 use_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 use_12.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -2210,6 +2234,12 @@ warn_target_lifetime_2.f90 # scope=compiler-flags; reason=requires unmodeled gfo
 warn_target_lifetime_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_target_lifetime_4.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_undefined_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+warn_undefined_vars_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+warn_undefined_vars_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+warn_undefined_vars_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+warn_undefined_vars_4.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+warn_unused_but_set_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+warn_unused_but_set_error_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_unused_dummy_argument_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_unused_dummy_argument_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_unused_dummy_argument_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -2218,6 +2248,7 @@ warn_unused_dummy_argument_6.f90 # scope=compiler-flags; reason=requires unmodel
 warn_unused_function.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_unused_function_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_unused_function_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+warn_unused_intent_out_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_unused_var.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_unused_var_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 warn_unused_var_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -2269,34 +2300,3 @@ wunused-parameter.f90 # scope=compiler-flags; reason=requires unmodeled gfortran
 wunused-parameter_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 zero_sized_13.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 zero_sized_8.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
-bounds_check_20.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
-implied_do_io_5.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
-inline_matmul_20.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
-unsigned_write_2.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
-always_inline_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-binding_label_tests_34.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-binding_label_tests_36.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-coarray_51.f90 # scope=coarray; reason=excluded coarray or image-control semantics
-do_concurrent_assoc_default_none.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-f_c_string3.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
-f_c_string4.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
-inline_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-inline_matmul_27.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-pdt_86_reduced.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-power_10.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
-pr105594.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-pr84622.f90 # scope=coarray; reason=excluded coarray or image-control semantics
-submodule_35_aux.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
-submodule_37.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-submodule_host_assoc_1.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
-submodule_host_assoc_1_aux.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
-submodule_private_host.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
-submodule_private_host_aux.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
-warn_undefined_vars_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-warn_undefined_vars_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-warn_undefined_vars_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-warn_undefined_vars_4.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-warn_unused_but_set_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-warn_unused_but_set_error_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-warn_unused_intent_out_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
-coarray_data_2.f90 # scope=coarray; reason=excluded coarray or image-control semantics
