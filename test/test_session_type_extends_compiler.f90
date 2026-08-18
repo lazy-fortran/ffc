@@ -104,7 +104,7 @@ contains
             '  stop c%get()'//new_line('a')// &
             'contains'//new_line('a')// &
             '  integer function base_get(self)'//new_line('a')// &
-            '    type(base_t), intent(in) :: self'//new_line('a')// &
+            '    class(base_t), intent(in) :: self'//new_line('a')// &
             '    base_get = self%n'//new_line('a')// &
             '  end function base_get'//new_line('a')// &
             'end program main'
@@ -135,7 +135,7 @@ contains
             '  stop c%get()'//new_line('a')// &
             'contains'//new_line('a')// &
             '  integer function base_get(self)'//new_line('a')// &
-            '    type(base_t), intent(in) :: self'//new_line('a')// &
+            '    class(base_t), intent(in) :: self'//new_line('a')// &
             '    base_get = self%v'//new_line('a')// &
             '  end function base_get'//new_line('a')// &
             '  integer function child_get(self)'//new_line('a')// &
@@ -170,7 +170,7 @@ contains
             '  stop c%get() + c%get_extra()'//new_line('a')// &
             'contains'//new_line('a')// &
             '  integer function base_get(self)'//new_line('a')// &
-            '    type(base_t), intent(in) :: self'//new_line('a')// &
+            '    class(base_t), intent(in) :: self'//new_line('a')// &
             '    base_get = self%v'//new_line('a')// &
             '  end function base_get'//new_line('a')// &
             '  integer function child_extra(self)'//new_line('a')// &

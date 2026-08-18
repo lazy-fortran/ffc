@@ -4,6 +4,7 @@ module ffc_module_artefact
     ! source. The format is a minimal, line-oriented TOML subset: one [module]
     ! header, then [[parameter]] and [[derived_type]] tables. It carries no
     ! source locations, comments, or prose.
+    use, intrinsic :: iso_c_binding, only: c_int64_t
     implicit none
     private
 
@@ -17,6 +18,8 @@ module ffc_module_artefact
     public :: module_info_t
     public :: write_fmod
     public :: read_fmod
+    public :: parse_strict_integer
+    public :: parse_strict_int64
 
     character(len=*), parameter, public :: FFC_FMOD_VERSION = '0.1.0'
 
@@ -24,10 +27,19 @@ module ffc_module_artefact
     ! Schema 10 remains readable because its records are structurally
     ! compatible; schema 11 adds the optional specific-target list for generic
     ! type-bound bindings and schema 12 records the rank of allocatable array
-    ! components. Writers always emit the newest schema.
-    integer, parameter, public :: FMOD_SCHEMA_VERSION = 12
+    ! components. Schema 13 records whether a procedure dummy is class(t) and
+    ! its declared derived type, which is required to reconstruct the passed-
+    ! object ABI across separate compilation. Schema 14 records the canonical
+    ! identity behind a re-exported derived type name, so a later consumer can
+    ! merge an alias with the original type across multiple .fmod files. The
+    ! identity includes the defining module to keep unrelated same-named types
+    ! distinct.
+    ! Writers always emit the newest schema.
+    integer, parameter, public :: FMOD_SCHEMA_VERSION = 14
     integer, parameter :: FMOD_LEGACY_SCHEMA_VERSION = 10
     integer, parameter :: FMOD_PREVIOUS_SCHEMA_VERSION = 11
+    integer, parameter :: FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION = 12
+    integer, parameter :: FMOD_SCHEMA_BEFORE_CURRENT_VERSION = 13
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -49,6 +61,8 @@ module ffc_module_artefact
         ! Name of the nested derived type of a 'derived' component; empty for
         ! every other kind.
         character(len=:), allocatable :: type_name
+        ! Module-qualified identity of type_name for schema 14 artefacts.
+        character(len=:), allocatable :: type_identity
         ! Elements the component declares (1 for a scalar), the i32 slots one
         ! element occupies, and the total and starting slots of the component.
         integer :: elem_count = 1
@@ -64,6 +78,7 @@ module ffc_module_artefact
         logical :: is_allocatable = .false.
         logical :: is_pointer = .false.
         logical :: is_alloc_array = .false.
+        logical :: numeric_metadata_invalid = .false.
     end type fmod_component_t
 
     ! One static type-bound binding. The defining unit exports the resolved
@@ -82,8 +97,17 @@ module ffc_module_artefact
 
     type :: fmod_derived_type_t
         character(len=:), allocatable :: name
+        ! Canonical identity in the defining module. For a local declaration
+        ! this equals name; for a public USE rename, name is the exported
+        ! spelling and canonical_name remains the remote type identity.
+        character(len=:), allocatable :: canonical_name
+        ! Module-qualified canonical identity, e.g. "m::box_t". Empty in
+        ! pre-schema-14 artefacts; the importer derives it from the module name.
+        character(len=:), allocatable :: canonical_identity
         ! Name of the type this one extends; empty when it extends nothing.
         character(len=:), allocatable :: parent_name
+        ! Module-qualified identity of parent_name for schema 14 artefacts.
+        character(len=:), allocatable :: parent_identity
         type(fmod_component_t), allocatable :: components(:)
         type(fmod_binding_t), allocatable :: bindings(:)
     end type fmod_derived_type_t
@@ -127,6 +151,11 @@ module ffc_module_artefact
         ! call resolves one by the declared ranks (#415).
         character(len=:), allocatable :: arg_ranks
         character(len=:), allocatable :: arg_extents
+        ! Space-joined 0/1 flags and declared derived-type names for dummies.
+        ! Only class dummies use the latter for descriptor construction.
+        character(len=:), allocatable :: arg_classes
+        character(len=:), allocatable :: arg_class_types
+        character(len=:), allocatable :: arg_class_type_identities
         ! True when the exporter preserved a public procedure whose dummy
         ! contracts are outside the scalar lowering ABI. Such arguments must
         ! be lowered only through explicit opaque-argument paths (#584).
@@ -161,6 +190,7 @@ module ffc_module_artefact
 
     type :: module_info_t
         character(len=:), allocatable :: name
+        integer :: fmod_schema = 0
         type(fmod_use_t), allocatable :: uses(:)
         type(fmod_parameter_t), allocatable :: parameters(:)
         type(fmod_derived_type_t), allocatable :: derived_types(:)
@@ -214,8 +244,14 @@ contains
                 write (unit, '(A)') '[[derived_type]]'
                 write (unit, '(A)') 'name = "'// &
                     field(info%derived_types(i)%name)//'"'
+                write (unit, '(A)') 'canonical_name = "'// &
+                    field(info%derived_types(i)%canonical_name)//'"'
+                write (unit, '(A)') 'canonical_identity = "'// &
+                    field(info%derived_types(i)%canonical_identity)//'"'
                 write (unit, '(A)') 'parent_name = "'// &
                     field(info%derived_types(i)%parent_name)//'"'
+                write (unit, '(A)') 'parent_identity = "'// &
+                    field(info%derived_types(i)%parent_identity)//'"'
                 write (unit, '(A)') 'components = ['
                 if (allocated(info%derived_types(i)%components)) then
                     do j = 1, size(info%derived_types(i)%components)
@@ -271,6 +307,12 @@ contains
                     field(info%procedures(i)%arg_ranks)//'"'
                 write (unit, '(A)') 'arg_extents = "'// &
                     field(info%procedures(i)%arg_extents)//'"'
+                write (unit, '(A)') 'arg_classes = "'// &
+                    field(info%procedures(i)%arg_classes)//'"'
+                write (unit, '(A)') 'arg_class_types = "'// &
+                    field(info%procedures(i)%arg_class_types)//'"'
+                write (unit, '(A)') 'arg_class_type_identities = "'// &
+                    field(info%procedures(i)%arg_class_type_identities)//'"'
                 write (unit, '(A)') 'opaque = '// &
                     bool_text(info%procedures(i)%opaque)
                 write (unit, '(A)') 'callable = '// &
@@ -316,11 +358,12 @@ contains
         type(fmod_variable_t), allocatable :: vars(:)
         type(fmod_procedure_t), allocatable :: procs(:)
         type(fmod_generic_t), allocatable :: gens(:)
-        integer :: nuse, nparam, ndtype, ncomp, nvar, nproc, ngen, io_read
+        integer :: nuse, nparam, ndtype, ncomp, nvar, nproc, ngen, i
         integer :: schema
 
         allocate (character(len=0) :: error_msg)
         info%name = ''
+        info%fmod_schema = 0
         allocate (uses(0))
         allocate (params(0))
         allocate (dtypes(0))
@@ -393,6 +436,9 @@ contains
                 procs(nproc)%result_kind = ''
                 procs(nproc)%arg_ranks = ''
                 procs(nproc)%arg_extents = ''
+                procs(nproc)%arg_classes = ''
+                procs(nproc)%arg_class_types = ''
+                procs(nproc)%arg_class_type_identities = ''
                 procs(nproc)%callable = .true.
                 procs(nproc)%external_binding = .false.
                 procs(nproc)%deferred_body = .false.
@@ -412,6 +458,9 @@ contains
                 ndtype = ndtype + 1
                 call grow_dtypes(dtypes, ndtype)
                 dtypes(ndtype)%name = ''
+                dtypes(ndtype)%canonical_name = ''
+                dtypes(ndtype)%canonical_identity = ''
+                dtypes(ndtype)%parent_identity = ''
                 allocate (dtypes(ndtype)%components(0))
                 allocate (dtypes(ndtype)%bindings(0))
                 deallocate (comps); allocate (comps(0)); ncomp = 0
@@ -432,8 +481,7 @@ contains
             case ('module')
                 if (key == 'name') info%name = unquote(val)
                 if (key == 'fmod_schema') then
-                    read (val, *, iostat=io_read) schema
-                    if (io_read /= 0) schema = 0
+                    if (.not. parse_strict_integer(val, schema)) schema = 0
                 end if
             case ('use')
                 if (key == 'name') uses(nuse)%name = unquote(val)
@@ -443,10 +491,22 @@ contains
                 if (key == 'value') params(nparam)%value = unquote(val)
             case ('derived_type')
                 if (key == 'name') dtypes(ndtype)%name = unquote(val)
+                if (key == 'canonical_name') &
+                    dtypes(ndtype)%canonical_name = unquote(val)
+                if (key == 'canonical_identity') &
+                    dtypes(ndtype)%canonical_identity = unquote(val)
                 if (key == 'parent_name') &
                     dtypes(ndtype)%parent_name = unquote(val)
-                if (key == 'bindings') &
-                    call parse_binding_list(unquote(val), dtypes(ndtype)%bindings)
+                if (key == 'parent_identity') &
+                    dtypes(ndtype)%parent_identity = unquote(val)
+                if (key == 'bindings') then
+                    call parse_binding_list(unquote(val), dtypes(ndtype)%bindings, &
+                                            error_msg)
+                    if (len_trim(error_msg) > 0) then
+                        close (unit)
+                        return
+                    end if
+                end if
             case ('variable')
                 if (key == 'name') vars(nvar)%name = unquote(val)
                 if (key == 'kind') vars(nvar)%kind = unquote(val)
@@ -470,6 +530,12 @@ contains
                 if (key == 'arg_ranks') procs(nproc)%arg_ranks = unquote(val)
                 if (key == 'arg_extents') &
                     procs(nproc)%arg_extents = unquote(val)
+                if (key == 'arg_classes') &
+                    procs(nproc)%arg_classes = unquote(val)
+                if (key == 'arg_class_types') &
+                    procs(nproc)%arg_class_types = unquote(val)
+                if (key == 'arg_class_type_identities') &
+                    procs(nproc)%arg_class_type_identities = unquote(val)
                 if (key == 'opaque') &
                     procs(nproc)%opaque = unquote(val) == '1'
                 if (key == 'callable') &
@@ -479,8 +545,8 @@ contains
                 if (key == 'deferred_body') &
                     procs(nproc)%deferred_body = unquote(val) == '1'
                 if (key == 'nargs') then
-                    read (val, *, iostat=io_read) procs(nproc)%nargs
-                    if (io_read /= 0) procs(nproc)%nargs = 0
+                    if (.not. parse_strict_integer(val, procs(nproc)%nargs)) &
+                        procs(nproc)%nargs = -1
                 end if
             case ('generic')
                 if (key == 'name') gens(ngen)%name = unquote(val)
@@ -490,7 +556,19 @@ contains
         close (unit)
         call flush_component(comps, ncomp, dtypes, ndtype)
 
+        ! Schema 13 and earlier did not carry provenance. A local type's name
+        ! is the only available identity in those artefacts, preserving their
+        ! read compatibility while giving every record one canonical spelling.
+        do i = 1, ndtype
+            if (.not. allocated(dtypes(i)%canonical_name)) then
+                dtypes(i)%canonical_name = dtypes(i)%name
+            else if (len_trim(dtypes(i)%canonical_name) == 0) then
+                dtypes(i)%canonical_name = dtypes(i)%name
+            end if
+        end do
+
         info%uses = uses(1:nuse)
+        info%fmod_schema = schema
         info%parameters = params
         info%derived_types = dtypes
         info%variables = vars(1:nvar)
@@ -505,11 +583,15 @@ contains
         ! 10 is explicitly retained for backwards-compatible reads (#397).
         if (schema /= FMOD_SCHEMA_VERSION .and. &
             schema /= FMOD_PREVIOUS_SCHEMA_VERSION .and. &
+            schema /= FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION .and. &
+            schema /= FMOD_SCHEMA_BEFORE_CURRENT_VERSION .and. &
             schema /= FMOD_LEGACY_SCHEMA_VERSION) then
             error_msg = 'unsupported .fmod schema version'//schema_text(schema)// &
                 ' in '//trim(path)//' (this ffc reads schema versions '// &
                 int_text(FMOD_LEGACY_SCHEMA_VERSION)//' and '// &
                 int_text(FMOD_PREVIOUS_SCHEMA_VERSION)//' and '// &
+                int_text(FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION)//' and '// &
+                int_text(FMOD_SCHEMA_BEFORE_CURRENT_VERSION)//' and '// &
                 int_text(FMOD_SCHEMA_VERSION)//'): recompile the module'
         end if
     end subroutine read_fmod
@@ -572,6 +654,7 @@ contains
 
         line = '    { name = "'//field(comp%name)//'", kind = "'// &
             field(comp%kind)//'", type_name = "'//field(comp%type_name)// &
+            '", type_identity = "'//field(comp%type_identity)// &
             '", elem_count = '//int_text(comp%elem_count)// &
             ', slot_width = '//int_text(comp%slot_width)// &
             ', slot_count = '//int_text(comp%slot_count)// &
@@ -594,22 +677,24 @@ contains
         if (.not. allocated(bindings)) return
         do i = 1, size(bindings)
             item = field(bindings(i)%method_name)//'=>'// &
-                   field(bindings(i)%target_name)//'|'// &
-                   field(bindings(i)%pass_name)//'|'// &
-                   bool_text(bindings(i)%pass_arg)//'|'// &
-                   field(bindings(i)%specific_names)
+                field(bindings(i)%target_name)//'|'// &
+                field(bindings(i)%pass_name)//'|'// &
+                bool_text(bindings(i)%pass_arg)//'|'// &
+                field(bindings(i)%specific_names)
             if (len_trim(text) > 0) text = text//';'
             text = text//item
         end do
     end function binding_list
 
-    subroutine parse_binding_list(text, bindings)
+    subroutine parse_binding_list(text, bindings, error_msg)
         character(len=*), intent(in) :: text
         type(fmod_binding_t), allocatable, intent(out) :: bindings(:)
-        character(len=:), allocatable :: rest, token, target_part, pass_part, &
-            pass_arg_part
-        integer :: sep, arrow, bar, count
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: rest, token, method_name, target_part, &
+            pass_part, pass_arg_part, specific_names
+        integer :: sep, arrow, bar, count, pass_value
 
+        error_msg = ''
         allocate (bindings(0))
         rest = trim(text)
         count = 0
@@ -619,44 +704,113 @@ contains
                 token = rest
                 rest = ''
             else
+                if (sep <= 1) then
+                    error_msg = 'malformed .fmod binding record'
+                    return
+                end if
                 token = rest(1:sep - 1)
-                rest = adjustl(rest(sep + 1:))
-            end if
-            arrow = index(token, '=>')
-            if (arrow <= 1) cycle
-            count = count + 1
-            call grow_bindings(bindings, count)
-            bindings(count)%method_name = trim(token(1:arrow - 1))
-            target_part = token(arrow + 2:)
-            bar = index(target_part, '|')
-            if (bar == 0) then
-                bindings(count)%target_name = trim(target_part)
-                bindings(count)%specific_names = trim(target_part)
-                bindings(count)%pass_name = ''
-                bindings(count)%pass_arg = .true.
-                cycle
-            end if
-            bindings(count)%target_name = trim(target_part(1:bar - 1))
-            pass_part = target_part(bar + 1:)
-            bar = index(pass_part, '|')
-            if (bar == 0) then
-                bindings(count)%pass_name = trim(pass_part)
-                bindings(count)%pass_arg = .true.
-                bindings(count)%specific_names = bindings(count)%target_name
-            else
-                bindings(count)%pass_name = trim(pass_part(1:bar - 1))
-                pass_arg_part = pass_part(bar + 1:)
-                bar = index(pass_arg_part, '|')
-                if (bar == 0) then
-                    bindings(count)%pass_arg = trim(pass_arg_part) /= '0'
-                    bindings(count)%specific_names = bindings(count)%target_name
+                if (sep >= len_trim(rest)) then
+                    error_msg = 'malformed .fmod binding record'
+                    return
                 else
-                    bindings(count)%pass_arg = trim(pass_arg_part(1:bar - 1)) /= '0'
-                    bindings(count)%specific_names = trim(pass_arg_part(bar + 1:))
+                    rest = adjustl(rest(sep + 1:))
                 end if
             end if
-            if (.not. allocated(bindings(count)%specific_names)) &
-                bindings(count)%specific_names = bindings(count)%target_name
+            token = trim(token)
+            arrow = index(token, '=>')
+            if (arrow <= 1 .or. arrow >= len_trim(token)) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            method_name = trim(token(1:arrow - 1))
+            target_part = token(arrow + 2:)
+            if (len_trim(method_name) == 0 .or. len_trim(target_part) == 0) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            if (index(target_part, '=>') > 0) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            bar = index(target_part, '|')
+            if (bar == 0) then
+                target_part = trim(target_part)
+                pass_part = ''
+                pass_arg_part = ''
+                specific_names = target_part
+            else
+                if (bar <= 1) then
+                    error_msg = 'malformed .fmod binding record'
+                    return
+                end if
+                pass_part = adjustl(target_part(bar + 1:))
+                target_part = trim(target_part(1:bar - 1))
+                if (len_trim(target_part) == 0) then
+                    error_msg = 'malformed .fmod binding record'
+                    return
+                end if
+                bar = index(pass_part, '|')
+                if (bar == 0) then
+                    if (len_trim(pass_part) == 0) then
+                        error_msg = 'malformed .fmod binding record'
+                        return
+                    end if
+                    pass_part = trim(pass_part)
+                    pass_arg_part = ''
+                    specific_names = target_part
+                else
+                    if (bar == 1) then
+                        pass_arg_part = adjustl(pass_part(2:))
+                        pass_part = ''
+                    else
+                        pass_arg_part = adjustl(pass_part(bar + 1:))
+                        pass_part = trim(pass_part(1:bar - 1))
+                    end if
+                    if (len_trim(pass_arg_part) == 0) then
+                        error_msg = 'malformed .fmod binding record'
+                        return
+                    end if
+                    bar = index(pass_arg_part, '|')
+                    if (bar == 0) then
+                        specific_names = target_part
+                    else
+                        if (bar <= 1 .or. bar >= len_trim(pass_arg_part)) then
+                            error_msg = 'malformed .fmod binding record'
+                            return
+                        end if
+                        specific_names = trim(pass_arg_part(bar + 1:))
+                        if (index(specific_names, '|') > 0) then
+                            error_msg = 'malformed .fmod binding record'
+                            return
+                        end if
+                        pass_arg_part = trim(pass_arg_part(1:bar - 1))
+                    end if
+                end if
+            end if
+            if (len_trim(pass_arg_part) == 0) then
+                pass_value = 1
+            else
+                if (.not. parse_strict_integer(trim(pass_arg_part), &
+                                               pass_value)) then
+                    error_msg = 'malformed .fmod binding pass flag'
+                    return
+                end if
+                if (pass_value /= 0 .and. pass_value /= 1) then
+                    error_msg = 'malformed .fmod binding pass flag'
+                    return
+                end if
+            end if
+            if (len_trim(specific_names) == 0) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            count = count + 1
+            call grow_bindings(bindings, count)
+            bindings(count)%method_name = method_name
+            bindings(count)%target_name = target_part
+            bindings(count)%pass_name = pass_part
+            bindings(count)%pass_arg = pass_value /= 0
+            bindings(count)%specific_names = specific_names
         end do
     end subroutine parse_binding_list
 
@@ -664,22 +818,37 @@ contains
         ! Parse one component row back into its record.
         character(len=*), intent(in) :: line
         type(fmod_component_t), intent(out) :: comp
+        logical :: invalid
 
         comp%name = quoted_field(line, 'name')
         comp%kind = quoted_field(line, 'kind')
         comp%type_name = quoted_field(line, 'type_name')
-        comp%elem_count = integer_field(line, 'elem_count', 1)
-        comp%slot_width = integer_field(line, 'slot_width', 1)
-        comp%slot_count = integer_field(line, 'slot_count', 1)
-        comp%slot_offset = integer_field(line, 'slot_offset', 0)
-        comp%char_length = integer_field(line, 'char_length', 0)
-        comp%dim1 = integer_field(line, 'dim1', 0)
-        comp%is_allocatable = integer_field(line, 'allocatable', 0) /= 0
-        comp%is_pointer = integer_field(line, 'pointer', 0) /= 0
-        comp%is_alloc_array = integer_field(line, 'alloc_array', 0) /= 0
-        comp%alloc_rank = integer_field(line, 'alloc_rank', 0)
-        if (comp%is_alloc_array .and. comp%alloc_rank == 0) &
-            comp%alloc_rank = 1
+        comp%type_identity = quoted_field(line, 'type_identity')
+        comp%numeric_metadata_invalid = .false.
+        comp%elem_count = integer_field(line, 'elem_count', 1, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%slot_width = integer_field(line, 'slot_width', 1, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%slot_count = integer_field(line, 'slot_count', 1, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%slot_offset = integer_field(line, 'slot_offset', 0, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%char_length = integer_field(line, 'char_length', 0, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%dim1 = integer_field(line, 'dim1', 0, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%is_allocatable = logical_field(line, 'allocatable', invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%is_pointer = logical_field(line, 'pointer', invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%is_alloc_array = logical_field(line, 'alloc_array', invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        comp%alloc_rank = integer_field(line, 'alloc_rank', 0, invalid)
+        comp%numeric_metadata_invalid = comp%numeric_metadata_invalid .or. invalid
+        if (comp%elem_count < 1 .or. comp%slot_width < 1 .or. &
+            comp%slot_count < 1 .or. comp%slot_offset < 0 .or. &
+            comp%char_length < 0 .or. comp%dim1 < 0 .or. &
+            comp%alloc_rank < 0) comp%numeric_metadata_invalid = .true.
     end subroutine parse_component_line
 
     function quoted_field(line, key) result(out)
@@ -695,20 +864,131 @@ contains
         out = take_quoted(line(p + len(key) + 4:))
     end function quoted_field
 
-    integer function integer_field(line, key, default_value) result(value)
+    integer function integer_field(line, key, default_value, invalid) result(value)
         ! The integer value of `key = N` in a component row, or default_value
         ! when the key is absent or unreadable.
         character(len=*), intent(in) :: line
         character(len=*), intent(in) :: key
         integer, intent(in) :: default_value
-        integer :: p, io_stat
+        logical, intent(out), optional :: invalid
+        character(len=:), allocatable :: token, tail
+        integer :: p, comma, brace, sep
 
         value = default_value
+        if (present(invalid)) invalid = .false.
         p = index(line, key//' = ')
         if (p <= 0) return
-        read (line(p + len(key) + 3:), *, iostat=io_stat) value
-        if (io_stat /= 0) value = default_value
+        token = trim(adjustl(line(p + len(key) + 3:)))
+        comma = index(token, ',')
+        brace = index(token, '}')
+        sep = 0
+        if (comma > 0) sep = comma
+        if (brace > 0 .and. (sep == 0 .or. brace < sep)) sep = brace
+        if (sep <= 1) then
+            if (present(invalid)) invalid = .true.
+            return
+        end if
+        if (.not. parse_strict_integer(trim(token(:sep - 1)), value)) then
+            value = default_value
+            if (present(invalid)) invalid = .true.
+            return
+        end if
+        tail = ''
+        if (sep < len_trim(token)) tail = adjustl(token(sep + 1:))
+        if (token(sep:sep) == ',') then
+            if (.not. valid_component_field_start(tail)) then
+                value = default_value
+                if (present(invalid)) invalid = .true.
+            end if
+        else if (len_trim(tail) > 0 .and. trim(tail) /= ',') then
+            value = default_value
+            if (present(invalid)) invalid = .true.
+        end if
     end function integer_field
+
+    logical function valid_component_field_start(text)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: rest
+        integer :: equal
+
+        valid_component_field_start = .false.
+        rest = trim(adjustl(text))
+        equal = index(rest, ' = ')
+        if (equal <= 1) return
+        select case (trim(rest(:equal - 1)))
+        case ('elem_count', 'slot_width', 'slot_count', 'slot_offset', &
+              'char_length', 'dim1', 'alloc_rank', 'allocatable', 'pointer', &
+              'alloc_array')
+            valid_component_field_start = .true.
+        end select
+    end function valid_component_field_start
+
+    logical function logical_field(line, key, invalid)
+        character(len=*), intent(in) :: line
+        character(len=*), intent(in) :: key
+        logical, intent(out) :: invalid
+        integer :: value
+
+        value = integer_field(line, key, 0, invalid)
+        if (invalid) then
+            logical_field = .false.
+            return
+        end if
+        if (value /= 0 .and. value /= 1) then
+            invalid = .true.
+            logical_field = .false.
+            return
+        end if
+        logical_field = value == 1
+    end function logical_field
+
+    logical function parse_strict_integer(text, value)
+        ! Parse exactly one signed decimal integer. List-directed reads accept
+        ! prefixes such as "14 trailing" or "14,"; metadata must not.
+        character(len=*), intent(in) :: text
+        integer, intent(out) :: value
+        character(len=:), allocatable :: token
+        integer :: io_stat
+
+        parse_strict_integer = .false.
+        value = 0
+        token = trim(adjustl(text))
+        if (.not. strict_decimal_token(token)) return
+        read (token, *, iostat=io_stat) value
+        if (io_stat /= 0) return
+        parse_strict_integer = .true.
+    end function parse_strict_integer
+
+    logical function parse_strict_int64(text, value)
+        character(len=*), intent(in) :: text
+        integer(c_int64_t), intent(out) :: value
+        character(len=:), allocatable :: token
+        integer :: io_stat
+
+        parse_strict_int64 = .false.
+        value = 0_c_int64_t
+        token = trim(adjustl(text))
+        if (.not. strict_decimal_token(token)) return
+        read (token, *, iostat=io_stat) value
+        if (io_stat /= 0) return
+        parse_strict_int64 = .true.
+    end function parse_strict_int64
+
+    logical function strict_decimal_token(text)
+        character(len=*), intent(in) :: text
+        integer :: i, first, length
+
+        strict_decimal_token = .false.
+        length = len_trim(text)
+        if (length == 0) return
+        first = 1
+        if (text(1:1) == '+' .or. text(1:1) == '-') first = 2
+        if (first > length) return
+        do i = first, length
+            if (text(i:i) < '0' .or. text(i:i) > '9') return
+        end do
+        strict_decimal_token = .true.
+    end function strict_decimal_token
 
     function bool_text(flag) result(text)
         logical, intent(in) :: flag

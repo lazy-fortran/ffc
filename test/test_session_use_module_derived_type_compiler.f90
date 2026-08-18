@@ -31,6 +31,7 @@ program test_session_use_module_derived_type_compiler
     if (.not. test_character_component_length_round_trip()) all_passed = .false.
     if (.not. test_unknown_nested_type_is_rejected()) all_passed = .false.
     if (.not. test_overlapping_offsets_are_rejected()) all_passed = .false.
+    if (.not. test_inconsistent_slot_counts_are_rejected()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: USE module derived type lowers through direct LIRIC session'
@@ -74,9 +75,9 @@ contains
         ok = .false.
         call make_scratch_dir('fmod414_layout', dir)
         separate_status = run_separate_compilation(dir, module_source, &
-                                                   program_source)
+            program_source)
         same_status = run_same_unit_compilation(dir, module_source, &
-                                                program_source)
+            program_source)
         if (same_status /= 115) then
             print *, 'FAIL: same-unit derived layout status ', same_status
             call show_log(dir)
@@ -118,9 +119,9 @@ contains
         ok = .false.
         call make_scratch_dir('fmod414_char', dir)
         separate_status = run_separate_compilation(dir, module_source, &
-                                                   program_source)
+            program_source)
         same_status = run_same_unit_compilation(dir, module_source, &
-                                                program_source)
+            program_source)
         if (same_status /= 116) then
             print *, 'FAIL: same-unit character component status ', same_status
             call show_log(dir)
@@ -152,7 +153,7 @@ contains
         info%derived_types(1)%components(1)%name = 'core'
         info%derived_types(1)%components(1)%kind = 'derived'
         info%derived_types(1)%components(1)%type_name = 'never_defined_t'
-        info%derived_types(1)%components(1)%slot_count = 2
+        info%derived_types(1)%components(1)%slot_count = 1
         info%derived_types(1)%components(1)%slot_offset = 0
         call write_fmod(dir//'/fmod414_unknown.fmod', info, error_msg)
         if (len_trim(error_msg) > 0) then
@@ -160,8 +161,9 @@ contains
             return
         end if
         call compile_using_program(dir, 'fmod414_unknown', 'holder_t', &
-                                   error_msg)
-        if (index(error_msg, 'never_defined_t') == 0) then
+            error_msg)
+        if (index(error_msg, 'never_defined_t') == 0 .and. &
+            index(error_msg, 'unknown component identity') == 0) then
             print *, 'FAIL: unknown nested type was accepted: ', trim(error_msg)
             return
         end if
@@ -206,6 +208,42 @@ contains
         ok = .true.
     end function test_overlapping_offsets_are_rejected
 
+    logical function test_inconsistent_slot_counts_are_rejected() result(ok)
+        ! slot_count is derived from elem_count and slot_width. A corrupt
+        ! artefact must not be allowed to invent a larger or smaller storage
+        ! span that shifts every following component.
+        character(len=:), allocatable :: dir, error_msg
+        type(module_info_t) :: info
+
+        ok = .false.
+        call make_scratch_dir('fmod414_slot_count', dir)
+        info%name = 'fmod414_slot_count'
+        allocate (info%parameters(0))
+        allocate (info%derived_types(1))
+        info%derived_types(1)%name = 'value_t'
+        allocate (info%derived_types(1)%components(1))
+        info%derived_types(1)%components(1)%name = 'value'
+        info%derived_types(1)%components(1)%kind = 'integer'
+        info%derived_types(1)%components(1)%elem_count = 1
+        info%derived_types(1)%components(1)%slot_width = 1
+        info%derived_types(1)%components(1)%slot_count = 2
+        info%derived_types(1)%components(1)%slot_offset = 0
+        call write_fmod(dir//'/fmod414_slot_count.fmod', info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: write_fmod: ', trim(error_msg)
+            return
+        end if
+        call compile_using_program(dir, 'fmod414_slot_count', 'value_t', &
+            error_msg)
+        if (index(error_msg, 'inconsistent slot counts') == 0) then
+            print *, 'FAIL: inconsistent slot counts were accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        call remove_scratch_dir(dir)
+        ok = .true.
+    end function test_inconsistent_slot_counts_are_rejected
+
     subroutine compile_using_program(dir, module_name, type_name, error_msg)
         ! Compile a program that USEs type_name from module_name, seeing only
         ! the .fmod in dir. error_msg carries the compiler's diagnostic.
@@ -233,7 +271,7 @@ contains
     end subroutine compile_using_program
 
     integer function run_separate_compilation(dir, module_source, &
-                                              program_source) result(status)
+            program_source) result(status)
         ! Compile the module with -c in one ffc invocation, then the program in
         ! a second, independent invocation that can only learn the module's
         ! types from the .fmod artefact. Returns 90 when no ffc binary was
@@ -260,7 +298,7 @@ contains
     end function run_separate_compilation
 
     integer function run_same_unit_compilation(dir, module_source, &
-                                               program_source) result(status)
+            program_source) result(status)
         ! Compile the same module and program together in one unit, so the
         ! separate-compilation result can be held against it.
         character(len=*), intent(in) :: dir
@@ -270,7 +308,7 @@ contains
 
         status = 90
         if (.not. write_file(dir//'/same.f90', module_source//new_line('a')// &
-                             program_source)) return
+            program_source)) return
         call execute_command_line( &
             "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
             'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
@@ -317,7 +355,7 @@ contains
 
         text = ''
         open (newunit=unit, file=path, status='old', action='read', &
-              iostat=io_stat)
+            iostat=io_stat)
         if (io_stat /= 0) return
         do
             read (unit, '(A)', iostat=io_stat) line
@@ -334,7 +372,7 @@ contains
 
         ok = .false.
         open (newunit=unit, file=path, status='replace', action='write', &
-              iostat=io_stat)
+            iostat=io_stat)
         if (io_stat /= 0) then
             print *, 'FAIL: could not write ', path
             return

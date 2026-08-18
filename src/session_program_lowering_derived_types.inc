@@ -123,10 +123,12 @@
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i
+        integer :: i, type_index
 
         do i = 1, size(context%derived_types)
             context%derived_types(i)%name = ''
+            context%derived_types(i)%canonical_name = ''
+            context%derived_types(i)%canonical_identity = ''
             context%derived_types(i)%layout_registered = .false.
             context%derived_types(i)%component_count = 0
             context%derived_types(i)%duplicate_binding_name = ''
@@ -141,6 +143,11 @@
             end if
         end do
         context%derived_type_count = 0
+        context%derived_type_alias_count = 0
+        if (allocated(context%derived_type_alias_names)) &
+            deallocate(context%derived_type_alias_names)
+        if (allocated(context%derived_type_alias_indices)) &
+            deallocate(context%derived_type_alias_indices)
         call set_empty(error_msg)
 
         select type (program => arena%entries(root_index)%node)
@@ -152,8 +159,11 @@
                 type is (derived_type_node)
                     call lower_derived_type_definition(node, context, error_msg)
                     if (len_trim(error_msg) > 0) return
+                    type_index = find_derived_type(context, trim(node%name))
+                    if (type_index <= 0) cycle
+                    if (.not. context%derived_types(type_index)%layout_registered) cycle
                     call emit_type_info_constant(context, &
-                                                 context%derived_type_count, &
+                                                 type_index, &
                                                  error_msg)
                     if (len_trim(error_msg) > 0) return
                 type is (module_node)
@@ -172,8 +182,11 @@
                 type is (derived_type_node)
                     call lower_derived_type_definition(node, context, error_msg)
                     if (len_trim(error_msg) > 0) return
+                    type_index = find_derived_type(context, trim(node%name))
+                    if (type_index <= 0) cycle
+                    if (.not. context%derived_types(type_index)%layout_registered) cycle
                     call emit_type_info_constant(context, &
-                                                 context%derived_type_count, &
+                                                 type_index, &
                                                  error_msg)
                     if (len_trim(error_msg) > 0) return
                 type is (module_node)
@@ -224,7 +237,7 @@
         type(module_node), intent(in) :: mod_node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: j
+        integer :: j, type_index
 
         call set_empty(error_msg)
         if (.not. allocated(mod_node%declaration_indices)) return
@@ -256,8 +269,15 @@
                     call set_empty(error_msg)
                     cycle
                 end if
+                type_index = find_derived_type(context, trim(decl%name))
+                if (type_index <= 0) cycle
+                if (.not. context%derived_types(type_index)%layout_registered) cycle
+                context%derived_types(type_index)% &
+                    canonical_identity = trim(mod_node%name)//'::'// &
+                    trim(context%derived_types(type_index)% &
+                         canonical_name)
                 call emit_type_info_constant(context, &
-                                             context%derived_type_count, &
+                                             type_index, &
                                              error_msg)
                 if (len_trim(error_msg) > 0) return
             end select
@@ -277,12 +297,44 @@
             call set_empty(error_msg)
             return
         end if
+        if (type_index > context%derived_type_count) then
+            error_msg = 'invalid derived type index for type-info emission'
+            return
+        end if
+        if (.not. allocated(context%derived_types)) then
+            error_msg = 'derived type table is not allocated'
+            return
+        end if
+        if (type_index > size(context%derived_types)) then
+            error_msg = 'derived type index exceeds the type table'
+            return
+        end if
+        if (.not. context%derived_types(type_index)%layout_registered) then
+            error_msg = 'cannot emit type-info for an unregistered derived layout'
+            return
+        end if
         call create_type_info_global(context%session, &
-            '__ffc_type_info_'//trim(context%derived_types(type_index)%name), &
+            type_info_symbol_name(context, type_index), &
             int(type_index, c_int64_t), &
             int(total_component_slots(context, type_index) * 4, c_int64_t), &
             error_msg)
     end subroutine emit_type_info_constant
+
+    function type_info_symbol_name(context, type_index) result(symbol)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        character(len=:), allocatable :: symbol
+        character(len=:), allocatable :: identity, encoded
+        integer :: prefix_length
+
+        prefix_length = len('__ffc_type_info_')
+        identity = trim(context%derived_types(type_index)%canonical_identity)
+        if (len_trim(identity) == 0) identity = trim( &
+            context%derived_types(type_index)%name)
+        encoded = abi_mangle_identity(identity)
+        allocate (character(len=prefix_length + len_trim(encoded)) :: symbol)
+        symbol = '__ffc_type_info_'//trim(encoded)
+    end function type_info_symbol_name
 
     subroutine collect_module_exports(arena, root_index, context, &
                                       error_msg)
@@ -861,6 +913,8 @@
         if (allocated(context%derived_types(type_index)%binding_pass_args)) &
             deallocate(context%derived_types(type_index)%binding_pass_args)
         context%derived_types(type_index)%name = trim(layout_name)
+        context%derived_types(type_index)%canonical_name = trim(layout_name)
+        context%derived_types(type_index)%canonical_identity = ''
         context%derived_types(type_index)%layout_registered = .false.
         context%derived_types(type_index)%binding_count = 0
         if (allocated(node%extends_parent)) then

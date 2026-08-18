@@ -10,8 +10,8 @@ module session_program_lowering_impl
         pointer_assignment_node, literal_node, &
         identifier_node, binary_op_node
     use ast_nodes_transfer, only: nullify_node, entry_node
-    use ast_nodes_data, only: derived_type_node, type_binding_node, &
-        block_data_node
+    use ast_nodes_data, only: derived_type_node, module_node, &
+        type_binding_node, block_data_node
     use ast_nodes_legacy, only: common_block_node, enum_node
     use ast_nodes_io, only: open_statement_node, close_statement_node, &
         rewind_statement_node, io_implied_do_node, inquire_statement_node, &
@@ -261,6 +261,7 @@ module session_program_lowering_impl
     use fortfront, only: get_node_line, get_node_column
     use session_program_lowering_types, only: lowering_context_t, &
         branch_result_t, symbol_t, declaration_record_t, &
+        abi_mangle_identity, &
         array_section_info_t, &
         reduction_operand_t, &
         derived_type_info_t, &
@@ -346,7 +347,8 @@ module session_program_lowering_impl
     use ffc_module_artefact, only: module_info_t, fmod_parameter_t, &
         fmod_component_t, fmod_derived_type_t, &
         fmod_variable_t, fmod_procedure_t, fmod_generic_t, &
-        write_fmod, read_fmod
+        write_fmod, read_fmod, parse_strict_integer, parse_strict_int64, &
+        FMOD_SCHEMA_VERSION
     use session_program_lowering_fmod, only: integer_token, scalar_kind_token, &
         value_kind_of_token
     use session_program_lowering_scalar_kind, only: real_value_kind_of, &
@@ -387,7 +389,8 @@ module session_program_lowering_impl
     public :: emit_array_literal_print_items, emit_array_section_print_items
     public :: emit_io_implied_do_print_items, emit_whole_array_print_items
     public :: eval_i32_constant, external_procedure_index, f64_intrinsic_id
-    public :: find_derived_type, find_module_in_arena, find_symbol_compat
+    public :: find_derived_type, find_derived_type_identity, &
+        find_module_in_arena, find_symbol_compat
     public :: flatten_constructor_elements, fold_scoped_i32_name
     public :: generic_call_return_kind, grow_symbols
     public :: interface_body_procedure_name, intrinsic_real_conversion_args
@@ -1651,12 +1654,14 @@ module session_program_lowering_impl
             type(fmod_derived_type_t), intent(out) :: dtype
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine build_fmod_derived_type
-        module function module_reexports_type(arena, module_index, type_name) &
+        module function module_reexports_type(arena, module_index, type_name, &
+                local_name) &
                 result(reexports)
             logical :: reexports
             type(ast_arena_t), intent(in) :: arena
             integer, intent(in) :: module_index
             character(len=*), intent(in) :: type_name
+            character(len=:), allocatable, optional, intent(out) :: local_name
         end function module_reexports_type
         module subroutine build_fmod_derived_type_from_context(context, type_index, &
                 dtype, error_msg)

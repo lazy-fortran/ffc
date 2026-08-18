@@ -184,7 +184,8 @@
     end subroutine bind_class_dummy_descriptor
 
     ! Type-bound dispatch through vtables (#420). Every derived type that has
-    ! type-bound bindings gets one const vtable global, `__ffc_vtable_<type>`,
+    ! type-bound bindings gets one const vtable global,
+    ! `__ffc_vtable_<encoded canonical identity>`,
     ! holding one code address per binding slot. Slot numbering is the binding
     ! numbering of the derived-type table: a child inherits its parent's slots
     ! in order and an override replaces the target in place, so slot k names
@@ -201,8 +202,12 @@
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         character(len=:), allocatable, intent(out) :: name
+        character(len=:), allocatable :: identity
 
-        name = '__ffc_vtable_'//trim(context%derived_types(type_index)%name)
+        identity = trim(context%derived_types(type_index)%canonical_identity)
+        if (len_trim(identity) == 0) identity = trim( &
+            context%derived_types(type_index)%name)
+        name = '__ffc_vtable_'//trim(abi_mangle_identity(identity))
     end subroutine type_vtable_symbol_name
 
     subroutine emit_type_vtables(arena, context, error_msg)
@@ -212,13 +217,21 @@
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=128), allocatable :: slots(:), table(:)
+        character(len=:), allocatable :: slots(:), table(:)
         character(len=:), allocatable :: vtable_name
-        integer :: t, b, n
+        character(len=:), allocatable :: emitted_name
+        integer :: t, b, n, slot_length, table_length
 
         call set_empty(error_msg)
         if (context%derived_type_count <= 0) return
-        allocate (table(context%derived_type_count + 1))
+        table_length = 1
+        do t = 1, context%derived_type_count
+            if (context%derived_types(t)%is_imported) cycle
+            call type_vtable_symbol_name(context, t, vtable_name)
+            table_length = max(table_length, len_trim(vtable_name))
+        end do
+        allocate (character(len=table_length) :: &
+                  table(context%derived_type_count + 1))
         table = ''
         do t = 1, context%derived_type_count
             if (context%derived_types(t)%is_imported) cycle
@@ -232,7 +245,16 @@
             n = context%derived_types(t)%binding_count
             if (n <= 0) cycle
             if (.not. allocated(context%derived_types(t)%binding_target_names)) cycle
-            allocate (slots(n))
+            slot_length = 1
+            do b = 1, n
+                if (arena_proc_param_count(arena, &
+                        trim(context%derived_types(t)%binding_target_names(b))) &
+                    < 0) cycle
+                emitted_name = call_emit_name(arena, &
+                    trim(context%derived_types(t)%binding_target_names(b)))
+                slot_length = max(slot_length, len_trim(emitted_name))
+            end do
+            allocate (character(len=slot_length) :: slots(n))
             slots = ''
             do b = 1, n
                 ! A binding whose implementation is not defined in this
@@ -242,8 +264,9 @@
                 if (arena_proc_param_count(arena, &
                         trim(context%derived_types(t)%binding_target_names(b))) &
                     < 0) cycle
-                slots(b) = call_emit_name(arena, &
+                emitted_name = call_emit_name(arena, &
                     trim(context%derived_types(t)%binding_target_names(b)))
+                slots(b) = emitted_name
             end do
             call type_vtable_symbol_name(context, t, vtable_name)
             call create_pointer_table_global(context%session, vtable_name, &
@@ -689,11 +712,47 @@
         integer, intent(in) :: symbol_index
         type(lr_operand_desc_t), intent(out) :: argument
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: declared_index
+        integer :: declared_index, ext_idx
 
         call class_dummy_declared_type_index(context, arena, impl_name, position, &
                                              declared_index)
         if (declared_index <= 0) then
+            ! A separately compiled type-bound target has no procedure AST in
+            ! the caller's arena. Use the explicit .fmod ABI metadata: only a
+            ! class(t) dummy receives a descriptor; type(t) receives raw
+            ! storage. The recorded declared type also matters for an
+            ! inherited class(parent_t) binding invoked on a child object.
+            ext_idx = external_procedure_index(context, trim(impl_name))
+            if (ext_idx > 0) then
+                if (position <= context%external_procedures(ext_idx)%arg_count) then
+                    if (context%external_procedures(ext_idx)%arg_is_class(position)) then
+                        declared_index = 0
+                        if (allocated(context%external_procedures(ext_idx)% &
+                                      arg_class_type_identities)) then
+                            if (len_trim(context%external_procedures(ext_idx)% &
+                                         arg_class_type_identities(position)) > 0) &
+                                declared_index = find_derived_type_identity(context, &
+                                    trim(context%external_procedures(ext_idx)% &
+                                         arg_class_type_identities(position)))
+                        end if
+                        if (declared_index <= 0 .and. .not. &
+                            context%external_procedures(ext_idx)% &
+                            require_class_type_identities) then
+                            declared_index = find_derived_type(context, &
+                                trim(context%external_procedures(ext_idx)% &
+                                     arg_class_types(position)))
+                        end if
+                        if (declared_index <= 0) then
+                            error_msg = 'class passed-object dummy of "'//trim(impl_name)// &
+                                '" names an unavailable derived type'
+                            return
+                        end if
+                        call build_class_scalar_descriptor(context, symbol_index, &
+                            declared_index, argument, error_msg)
+                        return
+                    end if
+                end if
+            end if
             argument = context%symbols(symbol_index)%element_address
             call set_empty(error_msg)
             return

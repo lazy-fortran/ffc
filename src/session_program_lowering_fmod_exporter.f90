@@ -47,6 +47,8 @@ contains
         integer :: type_index
         integer, allocatable :: derived_indices(:)
         integer, allocatable :: imported_type_indices(:)
+        character(len=:), allocatable :: exported_name
+        logical :: reexported
 
         call set_empty(error_msg)
         info%name = trim(export%module_name)
@@ -124,7 +126,8 @@ contains
         do i = 1, context%derived_type_count
             if (.not. context%derived_types(i)%is_imported) cycle
             if (module_reexports_type(arena, module_index, &
-                                      context%derived_types(i)%name)) then
+                                      context%derived_types(i)%name, &
+                                      exported_name)) then
                 imported_count = imported_count + 1
             end if
         end do
@@ -133,7 +136,8 @@ contains
         do i = 1, context%derived_type_count
             if (.not. context%derived_types(i)%is_imported) cycle
             if (.not. module_reexports_type(arena, module_index, &
-                                            context%derived_types(i)%name)) cycle
+                                            context%derived_types(i)%name, &
+                                            exported_name)) cycle
             j = j + 1
             imported_type_indices(j) = i
         end do
@@ -154,6 +158,8 @@ contains
                                          derived_indices(i), &
                                          info%derived_types(i), error_msg)
             if (len_trim(error_msg) > 0) return
+            info%derived_types(i)%canonical_identity = trim(export%module_name)// &
+                '::'//trim(info%derived_types(i)%canonical_name)
         end do
         deallocate (derived_indices)
         do i = 1, imported_count
@@ -163,6 +169,12 @@ contains
                                                       derived_count + i), &
                                                       error_msg)
             if (len_trim(error_msg) > 0) return
+            reexported = module_reexports_type(arena, module_index, &
+                                               context%derived_types(type_index)%name, &
+                                               exported_name)
+            if (reexported .and. len_trim(exported_name) > 0) then
+                info%derived_types(derived_count + i)%name = trim(exported_name)
+            end if
         end do
         deallocate (imported_type_indices)
         ! Scalar module variables round-trip so a separately compiled program
@@ -186,15 +198,20 @@ contains
                                  info%procedures, info%generics, error_msg)
     end subroutine build_module_info
 
-    module function module_reexports_type(arena, module_index, type_name) &
+    module function module_reexports_type(arena, module_index, type_name, &
+                                          local_name) &
             result(reexports)
         logical :: reexports
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: module_index
         character(len=*), intent(in) :: type_name
-        integer :: i
+        character(len=:), allocatable, optional, intent(out) :: local_name
+        character(len=:), allocatable :: candidate
+        logical :: imported
+        integer :: i, j
 
         reexports = .false.
+        if (present(local_name)) local_name = ''
         if (module_index <= 0) return
         select type (module => arena%entries(module_index)%node)
         type is (module_node)
@@ -205,14 +222,63 @@ contains
                         module%declaration_indices(i))%node)
                 type is (use_statement_node)
                     if (.not. allocated(use_node%module_name)) cycle
-                    if (use_only_wants(use_node, trim(type_name))) then
+                    call resolve_export_import_name(use_node, trim(type_name), &
+                                                  candidate, imported)
+                    if (imported) then
                         reexports = .true.
+                        if (present(local_name)) local_name = trim(candidate)
                         return
+                    end if
+                    if (allocated(use_node%rename_list)) then
+                        do j = 1, size(use_node%rename_list) - 1, 2
+                            if (.not. allocated(use_node%rename_list(j)%s)) cycle
+                            if (.not. same_name(use_node%rename_list(j)%s, &
+                                                type_name)) cycle
+                            reexports = .true.
+                            if (present(local_name)) local_name = &
+                                trim(use_node%rename_list(j)%s)
+                            return
+                        end do
                     end if
                 end select
             end do
         end select
     end function module_reexports_type
+
+    subroutine resolve_export_import_name(use_node, remote_name, local_name, &
+                                          imported)
+        ! The exporter is a separate submodule object. Keep this tiny
+        ! read-only USE-name resolver local so a fresh build does not create a
+        ! link-time dependency on the parent implementation's internal helper.
+        type(use_statement_node), intent(in) :: use_node
+        character(len=*), intent(in) :: remote_name
+        character(len=:), allocatable, intent(out) :: local_name
+        logical, intent(out) :: imported
+        integer :: i
+
+        local_name = trim(remote_name)
+        imported = .true.
+        if (allocated(use_node%rename_list)) then
+            do i = 1, size(use_node%rename_list) - 1, 2
+                if (.not. allocated(use_node%rename_list(i)%s)) cycle
+                if (.not. allocated(use_node%rename_list(i + 1)%s)) cycle
+                if (same_name(use_node%rename_list(i + 1)%s, remote_name)) then
+                    local_name = trim(use_node%rename_list(i)%s)
+                    return
+                end if
+            end do
+        end if
+        if (.not. use_node%has_only) return
+        imported = .false.
+        if (.not. allocated(use_node%only_list)) return
+        do i = 1, size(use_node%only_list)
+            if (.not. allocated(use_node%only_list(i)%s)) cycle
+            if (same_name(use_node%only_list(i)%s, remote_name)) then
+                imported = .true.
+                return
+            end if
+        end do
+    end subroutine resolve_export_import_name
 
     module subroutine build_fmod_generics(arena, module_name, procs, generics, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -554,6 +620,9 @@ contains
                 procs(count)%result_kind = ''
                 procs(count)%arg_ranks = ''
                 procs(count)%arg_extents = ''
+                procs(count)%arg_classes = ''
+                procs(count)%arg_class_types = ''
+                procs(count)%arg_class_type_identities = ''
                 procs(count)%opaque = .true.
                 procs(count)%callable = .true.
                 procs(count)%external_binding = is_external
@@ -598,6 +667,10 @@ contains
                                                      procs(count)%arg_intents, &
                                                      procs(count)%arg_optionals, &
                                                      procs(count)%arg_values)
+                call fmod_procedure_arg_class_info(arena, node_index, context, &
+                                                   procs(count)%arg_classes, &
+                                                   procs(count)%arg_class_types, &
+                                                   procs(count)%arg_class_type_identities)
                 call pad_fmod_dummy_attributes(procs(count)%nargs, &
                                                procs(count)%arg_intents, &
                                                procs(count)%arg_optionals, &
@@ -628,6 +701,9 @@ contains
             procs(count)%result_kind = ''
             procs(count)%arg_ranks = ''
             procs(count)%arg_extents = ''
+            procs(count)%arg_classes = ''
+            procs(count)%arg_class_types = ''
+            procs(count)%arg_class_type_identities = ''
             procs(count)%callable = .false.
             procs(count)%external_binding = is_external
             procs(count)%deferred_body = deferred_body
@@ -645,6 +721,10 @@ contains
         procs(count)%arg_kinds = arg_tokens
         procs(count)%arg_ranks = rank_tokens
         procs(count)%arg_extents = extent_tokens
+        call fmod_procedure_arg_class_info(arena, node_index, context, &
+                                           procs(count)%arg_classes, &
+                                           procs(count)%arg_class_types, &
+                                           procs(count)%arg_class_type_identities)
         procs(count)%callable = .true.
         procs(count)%external_binding = is_external
         procs(count)%arg_names = fmod_procedure_arg_names(arena, node_index)
@@ -735,6 +815,102 @@ contains
             values = values//flag_token(is_value)
         end do
     end subroutine fmod_procedure_dummy_attributes
+
+    subroutine fmod_procedure_arg_class_info(arena, node_index, context, classes, &
+                                                    class_types, class_identities)
+        ! Preserve the distinction between type(t) and class(t) dummies in
+        ! the separate-compilation contract. In particular, an imported
+        ! type-bound target cannot recover this from its caller's AST.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: classes
+        character(len=:), allocatable, intent(out) :: class_types
+        character(len=:), allocatable, intent(out) :: class_identities
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+        integer, allocatable :: param_indices(:), body_indices(:)
+        character(len=:), allocatable :: param_name, name_error, type_name
+        logical :: is_class
+        integer :: i, j, open_pos, close_pos, type_index
+
+        classes = ''
+        class_types = ''
+        class_identities = ''
+        fn_node => get_node_as_function_def(arena, node_index)
+        if (associated(fn_node)) then
+            if (allocated(fn_node%param_indices)) param_indices = &
+                fn_node%param_indices
+            if (allocated(fn_node%body_indices)) body_indices = &
+                fn_node%body_indices
+        else
+            sb_node => get_node_as_subroutine_def(arena, node_index)
+            if (.not. associated(sb_node)) return
+            if (allocated(sb_node%param_indices)) param_indices = &
+                sb_node%param_indices
+            if (allocated(sb_node%body_indices)) body_indices = &
+                sb_node%body_indices
+        end if
+        if (.not. allocated(param_indices)) return
+        if (.not. allocated(body_indices)) allocate (body_indices(0))
+        do i = 1, size(param_indices)
+            is_class = .false.
+            type_name = '-'
+            call parameter_name(arena, param_indices(i), param_name, name_error)
+            if (len_trim(name_error) == 0) then
+                do j = 1, size(body_indices)
+                    if (.not. node_exists(arena, body_indices(j))) cycle
+                    select type (decl => arena%entries(body_indices(j))%node)
+                    type is (declaration_node)
+                        if (.not. declaration_declares_name(decl, &
+                            trim(lowercase_text(param_name)))) cycle
+                        if (.not. allocated(decl%type_name)) exit
+                        type_name = trim(lowercase_text(decl%type_name))
+                        is_class = .false.
+                        if (len_trim(type_name) >= 6) then
+                            is_class = type_name(1:6) == 'class('
+                        end if
+                        if (is_class) then
+                            open_pos = index(type_name, '(')
+                            close_pos = index(type_name, ')', back=.true.)
+                            if (close_pos > open_pos + 1) then
+                                if (trim(type_name(open_pos + 1:close_pos - 1)) /= '*') then
+                                    type_name = trim(type_name(open_pos + 1:close_pos - 1))
+                                else
+                                    is_class = .false.
+                                    type_name = '-'
+                                end if
+                            else
+                                is_class = .false.
+                                type_name = '-'
+                            end if
+                        else
+                            type_name = '-'
+                        end if
+                        exit
+                    end select
+                end do
+            end if
+            if (i > 1) then
+                classes = classes//' '
+                class_types = class_types//' '
+                class_identities = class_identities//' '
+            end if
+            classes = classes//flag_token(is_class)
+            class_types = class_types//type_name
+            if (is_class) then
+                type_index = find_derived_type(context, type_name)
+                if (type_index > 0) then
+                    class_identities = class_identities//trim( &
+                        context%derived_types(type_index)%canonical_identity)
+                else
+                    class_identities = class_identities//'-'
+                end if
+            else
+                class_identities = class_identities//'-'
+            end if
+        end do
+    end subroutine fmod_procedure_arg_class_info
 
     module function flag_token(flag) result(token)
         logical, intent(in) :: flag
@@ -1357,7 +1533,10 @@ contains
 
         call set_empty(error_msg)
         dtype%name = ''
+        dtype%canonical_name = ''
+        dtype%canonical_identity = ''
         dtype%parent_name = ''
+        dtype%parent_identity = ''
         if (.not. is_derived_type_node(arena, node_index)) then
             error_msg = 'module derived-type export is not a derived type'
             return
@@ -1382,37 +1561,69 @@ contains
         integer, intent(in) :: type_index
         type(fmod_derived_type_t), intent(out) :: dtype
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: k, offset, nested, b
+        integer :: k, nested, b, parent_index
+        integer(c_int64_t) :: offset, slot_product, max_integer
 
         call set_empty(error_msg)
         dtype%name = ''
+        dtype%canonical_name = ''
+        dtype%canonical_identity = ''
         dtype%parent_name = ''
+        dtype%parent_identity = ''
         if (type_index <= 0 .or. type_index > context%derived_type_count) then
             error_msg = 'invalid derived type context index for .fmod export'
             return
         end if
         dtype%name = trim(context%derived_types(type_index)%name)
+        dtype%canonical_name = trim(context%derived_types(type_index)% &
+                                    canonical_name)
+        if (len_trim(dtype%canonical_name) == 0) &
+            dtype%canonical_name = trim(dtype%name)
+        dtype%canonical_identity = trim(context%derived_types(type_index)% &
+                                        canonical_identity)
+        if (len_trim(dtype%canonical_identity) == 0) &
+            dtype%canonical_identity = trim(dtype%canonical_name)
         dtype%parent_name = trim(context%derived_types(type_index)%parent_name)
+        parent_index = find_derived_type(context, trim(dtype%parent_name))
+        if (parent_index > 0) dtype%parent_identity = trim( &
+            context%derived_types(parent_index)%canonical_identity)
         allocate (dtype%components( &
             context%derived_types(type_index)%component_count))
         allocate (dtype%bindings( &
             context%derived_types(type_index)%binding_count))
-        offset = 0
+        offset = 0_c_int64_t
+        max_integer = int(huge(0), c_int64_t)
         do k = 1, context%derived_types(type_index)%component_count
             associate (comp => dtype%components(k))
                 comp%name = trim(context%derived_types(type_index)% &
                                  component_names(k))
                 comp%kind = fmod_component_kind_token(context, type_index, k)
                 comp%type_name = ''
+                comp%type_identity = ''
                 nested = context%derived_types(type_index)% &
                          component_type_index(k)
                 if (nested > 0) comp%type_name = &
                     trim(context%derived_types(nested)%name)
+                if (nested > 0) comp%type_identity = trim( &
+                    context%derived_types(nested)%canonical_identity)
                 comp%slot_width = component_slot_width(context, type_index, k)
                 comp%elem_count = context%derived_types(type_index)% &
                                   component_array_size(k)
-                comp%slot_count = comp%elem_count * comp%slot_width
-                comp%slot_offset = offset
+                slot_product = int(comp%elem_count, c_int64_t) * &
+                                int(comp%slot_width, c_int64_t)
+                if (slot_product < 1_c_int64_t .or. &
+                    slot_product > max_integer) then
+                    error_msg = 'derived type component slot count exceeds '// &
+                        'the .fmod integer range'
+                    return
+                end if
+                if (offset > max_integer - slot_product) then
+                    error_msg = 'derived type component slot offset exceeds '// &
+                        'the .fmod integer range'
+                    return
+                end if
+                comp%slot_count = int(slot_product)
+                comp%slot_offset = int(offset)
                 comp%char_length = context%derived_types(type_index)% &
                                    component_char_length(k)
                 comp%dim1 = context%derived_types(type_index)%component_dim1(k)
@@ -1424,7 +1635,7 @@ contains
                                   component_is_pointer(k)
                 comp%is_alloc_array = context%derived_types(type_index)% &
                                       component_is_alloc_array(k)
-                offset = offset + comp%slot_count
+                offset = offset + slot_product
             end associate
         end do
         do b = 1, context%derived_types(type_index)%binding_count

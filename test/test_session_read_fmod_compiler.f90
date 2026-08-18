@@ -25,6 +25,13 @@ program test_session_read_fmod_compiler
     if (.not. test_fmod_value_dummy_separate_compilation()) all_passed = .false.
     if (.not. test_fmod_intent_out_rejects_literal()) all_passed = .false.
     if (.not. test_fmod_schema_version_is_checked()) all_passed = .false.
+    if (.not. test_fmod_rejects_malformed_class_metadata()) all_passed = .false.
+    if (.not. test_fmod_rejects_unreadable_numeric_metadata()) &
+        all_passed = .false.
+    if (.not. test_fmod_rejects_malformed_binding_flag()) &
+        all_passed = .false.
+    if (.not. test_fmod_rejects_malformed_numeric_headers()) &
+        all_passed = .false.
     if (.not. test_use_repeated_rename_is_valid()) all_passed = .false.
     if (.not. test_use_repeated_rename_one_statement()) all_passed = .false.
     if (.not. test_use_two_locals_one_remote()) all_passed = .false.
@@ -543,7 +550,7 @@ contains
     end function test_same_file_conflicting_rename_rejected
 
     integer function run_separate_compilation(dir, mod_source, prog_source, &
-                                              log_path) result(status)
+            log_path) result(status)
         ! Compile mod_source with -c in one ffc invocation, then prog_source in
         ! a second, independent invocation that can only learn the module's
         ! interface from the .fmod artefact the first invocation wrote. Returns
@@ -702,9 +709,10 @@ contains
     end function test_fmod_intent_out_rejects_literal
 
     logical function test_fmod_schema_version_is_checked() result(ok)
-        ! Schema 10 is a supported read-only legacy format; schema 11 is what
-        ! write_fmod emits. Unknown and unversioned artefacts remain rejected
-        ! instead of being silently misread (#397).
+        ! Schema 10 is a supported read-only legacy format; schemas 11-13 are
+        ! compatibility points for prior writers, and schema 14 is current.
+        ! Unknown and unversioned artefacts remain rejected instead of being
+        ! silently misread (#397).
         character(len=*), parameter :: dir = '/tmp/ffc_fmod397_schema'
         character(len=*), parameter :: legacy_path = dir//'/legacy.fmod'
         character(len=*), parameter :: source = &
@@ -788,6 +796,34 @@ contains
             print *, 'FAIL: schema-10 binding target fallback was not set'
             return
         end if
+        if (trim(legacy_info%derived_types(1)%canonical_name) /= 'widget') then
+            print *, 'FAIL: schema-10 canonical identity fallback was not set'
+            return
+        end if
+
+        ! The three immediately preceding schemas remain readable even though
+        ! schema 14 adds canonical derived-type provenance.
+        call execute_command_line("sed -i 's/^fmod_schema = 10/fmod_schema = 13/' "// &
+            legacy_path)
+        call read_fmod(legacy_path, legacy_info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: schema-13 .fmod was rejected: ', trim(error_msg)
+            return
+        end if
+        call execute_command_line("sed -i 's/^fmod_schema = 13/fmod_schema = 12/' "// &
+            legacy_path)
+        call read_fmod(legacy_path, legacy_info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: schema-12 .fmod was rejected: ', trim(error_msg)
+            return
+        end if
+        call execute_command_line("sed -i 's/^fmod_schema = 12/fmod_schema = 11/' "// &
+            legacy_path)
+        call read_fmod(legacy_path, legacy_info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: schema-11 .fmod was rejected: ', trim(error_msg)
+            return
+        end if
 
         call execute_command_line("sed -i 's/^fmod_schema = .*/"// &
             "fmod_schema = 99999/' "//dir//'/m.fmod')
@@ -809,6 +845,488 @@ contains
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_schema_version_is_checked
+
+    logical function test_fmod_rejects_malformed_class_metadata() result(ok)
+        ! Class ABI metadata is paired data: a class flag requires a matching
+        ! declared type token. A truncated pair must be rejected before the
+        ! importer can construct a descriptor with the wrong calling ABI.
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod_class_metadata'
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use bad_class, only: touch'//new_line('a')// &
+            '  call touch(1)'//new_line('a')// &
+            'end program main'
+        type(module_info_t) :: info
+        character(len=:), allocatable :: error_msg
+
+        ok = .false.
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+        info%name = 'bad_class'
+        allocate (info%parameters(0), info%derived_types(0), &
+            info%procedures(1))
+        info%procedures(1)%name = 'touch'
+        info%procedures(1)%kind = 'subroutine'
+        info%procedures(1)%arg_kinds = 'integer'
+        info%procedures(1)%arg_names = 'value'
+        info%procedures(1)%arg_intents = 'in'
+        info%procedures(1)%arg_optionals = '0'
+        info%procedures(1)%arg_values = '0'
+        info%procedures(1)%arg_ranks = '0'
+        info%procedures(1)%arg_extents = '1'
+        info%procedures(1)%arg_classes = '1'
+        info%procedures(1)%arg_class_types = '-'
+        info%procedures(1)%callable = .true.
+        info%procedures(1)%nargs = 1
+        call write_fmod(dir//'/bad_class.fmod', info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: write_fmod malformed class fixture: ', &
+                trim(error_msg)
+            return
+        end if
+        call compile_with_include(source, dir//'/bad_class', dir, error_msg)
+        if (index(error_msg, 'class metadata') == 0) then
+            print *, 'FAIL: malformed class metadata was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        info%procedures(1)%arg_class_types = 't'
+        info%procedures(1)%arg_class_type_identities = ''
+        call write_fmod(dir//'/bad_class_identity.fmod', info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: write_fmod missing class identity fixture: ', &
+                trim(error_msg)
+            return
+        end if
+        call compile_with_include(source, dir//'/bad_class_identity', dir, error_msg)
+        if (index(error_msg, 'canonical identities are required') == 0) then
+            print *, 'FAIL: missing schema-14 class identity was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_rejects_malformed_class_metadata
+
+    logical function test_fmod_rejects_unreadable_numeric_metadata() result(ok)
+        ! A present but unreadable layout number is corruption, not an omitted
+        ! legacy field. The importer must reject it before lowering a type.
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod_numeric_metadata'
+        character(len=:), allocatable :: error_msg
+        character(len=:), allocatable :: fixture
+        character(len=:), allocatable :: identity_fixture
+        character(len=:), allocatable :: flag_fixture
+        character(len=:), allocatable :: mismatch_fixture
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use bad_layout, only: box_t'//new_line('a')// &
+            '  type(box_t) :: value'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+        fixture = '[module]'//new_line('a')// &
+            'name = "bad_layout"'//new_line('a')// &
+            'ffc_version = "0.1.0"'//new_line('a')// &
+            'fmod_schema = 14'//new_line('a')//new_line('a')// &
+            '[[derived_type]]'//new_line('a')// &
+            'name = "box_t"'//new_line('a')// &
+            'canonical_name = "box_t"'//new_line('a')// &
+            'canonical_identity = "bad_layout::box_t"'//new_line('a')// &
+            'parent_name = ""'//new_line('a')// &
+            'parent_identity = ""'//new_line('a')// &
+            'components = ['//new_line('a')// &
+            '    { name = "x", kind = "integer", type_name = "", '// &
+            'type_identity = "", elem_count = 1 trailing, slot_width = 1, '// &
+            'slot_count = 1, slot_offset = 0, char_length = 0, dim1 = 0, '// &
+            'alloc_rank = 0, allocatable = 0, pointer = 0, alloc_array = 0 },'// &
+            new_line('a')// &
+            ']'//new_line('a')// &
+            'bindings = ""'//new_line('a')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout', dir, error_msg)
+        if (index(error_msg, 'unreadable numeric field') == 0) then
+            print *, 'FAIL: unreadable numeric metadata was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        identity_fixture = replace_text(fixture, 'elem_count = 1 trailing', &
+                                        'elem_count = 1')
+        identity_fixture = replace_text(identity_fixture, &
+            'canonical_identity = "bad_layout::box_t"', &
+            'canonical_identity = ""')
+        if (.not. write_file(dir//'/bad_layout.fmod', identity_fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_identity', dir, &
+                                  error_msg)
+        if (index(error_msg, 'canonical identity') == 0) then
+            print *, 'FAIL: missing schema-14 canonical identity was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        mismatch_fixture = replace_text(fixture, 'elem_count = 1 trailing', &
+                                        'elem_count = 1')
+        mismatch_fixture = replace_text(mismatch_fixture, &
+            'kind = "integer", type_name = "", type_identity = ""', &
+            'kind = "derived", type_name = "inner_t", '// &
+            'type_identity = "wrong::inner_t"')
+        if (.not. write_file(dir//'/bad_layout.fmod', mismatch_fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_component_identity', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unknown component identity') == 0) then
+            print *, 'FAIL: unresolved schema-14 component identity used a short-name fallback: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = replace_text(fixture, 'elem_count = 1 trailing', &
+                               'elem_count = 1,2')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_suffix', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unreadable numeric field') == 0) then
+            print *, 'FAIL: component comma suffix was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = replace_text(fixture, 'elem_count = 1,2', &
+                               'elem_count = 1')
+        fixture = replace_text(fixture, 'alloc_array = 0 },', &
+                               'alloc_array = 0}junk,')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_brace_suffix', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unreadable numeric field') == 0) then
+            print *, 'FAIL: component brace suffix was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = replace_text(fixture, 'alloc_array = 0}junk,', &
+                               'alloc_array = 2 },')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_flag', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unreadable numeric field') == 0) then
+            print *, 'FAIL: component flag outside 0/1 was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = replace_text(fixture, 'alloc_array = 2 },', &
+                               'alloc_array = 0 },')
+        fixture = replace_text(fixture, 'char_length = 0', &
+                               'char_length = -1')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_length', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unreadable numeric field') == 0) then
+            print *, 'FAIL: negative component length was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = replace_text(fixture, 'char_length = -1', &
+                               'char_length = 0')
+        fixture = replace_text(fixture, 'alloc_rank = 0', 'alloc_rank = 1')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_rank_without_array', dir, &
+                                  error_msg)
+        if (index(error_msg, 'without an array descriptor') == 0) then
+            print *, 'FAIL: allocatable rank without array metadata was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        fixture = replace_text(fixture, 'alloc_rank = 1', 'alloc_rank = 0')
+        fixture = replace_text(fixture, 'alloc_rank = 0', 'alloc_rank = 8')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_rank', dir, &
+                                  error_msg)
+        if (index(error_msg, 'unsupported allocatable rank') == 0) then
+            print *, 'FAIL: oversized allocatable rank was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = replace_text(fixture, 'alloc_rank = 8', 'alloc_rank = 0')
+        fixture = replace_text(fixture, 'elem_count = 1', &
+                               'elem_count = 2147483647')
+        fixture = replace_text(fixture, 'slot_width = 1', 'slot_width = 3')
+        fixture = replace_text(fixture, 'slot_count = 1', 'slot_count = 2147483645')
+        if (.not. write_file(dir//'/bad_layout.fmod', fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_overflow', dir, &
+                                  error_msg)
+        if (index(error_msg, 'inconsistent slot counts') == 0) then
+            print *, 'FAIL: overflowing slot product was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        flag_fixture = replace_text(fixture, 'elem_count = 2147483647', &
+                                    'elem_count = 1')
+        flag_fixture = replace_text(flag_fixture, 'slot_width = 3', &
+                                    'slot_width = 1')
+        flag_fixture = replace_text(flag_fixture, 'slot_count = 2147483645', &
+                                    'slot_count = 1')
+        flag_fixture = replace_text(flag_fixture, 'alloc_rank = 0', &
+                                    'alloc_rank = 1')
+        flag_fixture = replace_text(flag_fixture, 'pointer = 0, alloc_array = 0', &
+                                    'pointer = 1, alloc_array = 1')
+        if (.not. write_file(dir//'/bad_layout.fmod', flag_fixture)) return
+        call compile_with_include(source, dir//'/bad_layout_flags', dir, error_msg)
+        if (index(error_msg, 'inconsistent component flags') == 0) then
+            print *, 'FAIL: contradictory component flags were accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_rejects_unreadable_numeric_metadata
+
+    logical function test_fmod_rejects_malformed_binding_flag() result(ok)
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod_binding_metadata'
+        character(len=:), allocatable :: error_msg, fixture
+        character(len=:), allocatable :: valid_fixture
+        type(module_info_t) :: info
+
+        ok = .false.
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+        fixture = '[module]'//new_line('a')// &
+            'name = "bad_binding"'//new_line('a')// &
+            'ffc_version = "0.1.0"'//new_line('a')// &
+            'fmod_schema = 14'//new_line('a')//new_line('a')// &
+            '[[derived_type]]'//new_line('a')// &
+            'name = "t"'//new_line('a')// &
+            'canonical_name = "t"'//new_line('a')// &
+            'canonical_identity = "bad_binding::t"'//new_line('a')// &
+            'components = ['//new_line('a')// &
+            ']'//new_line('a')// &
+            'bindings = "m=>p|p|2|p"'//new_line('a')
+        valid_fixture = replace_text(fixture, 'm=>p|p|2|p', 'm=>p||1|p')
+        if (.not. write_file(dir//'/valid_binding.fmod', valid_fixture)) return
+        call read_fmod(dir//'/valid_binding.fmod', info, error_msg)
+        if (len_trim(error_msg) > 0) then
+            print *, 'FAIL: canonical empty pass-name binding was rejected: ', &
+                trim(error_msg)
+            return
+        end if
+        if (size(info%derived_types) /= 1 .or. &
+            size(info%derived_types(1)%bindings) /= 1 .or. &
+            trim(info%derived_types(1)%bindings(1)%specific_names) /= 'p') then
+            print *, 'FAIL: canonical empty pass-name binding was not preserved'
+            return
+        end if
+        if (.not. write_file(dir//'/bad_binding.fmod', fixture)) return
+        call read_fmod(dir//'/bad_binding.fmod', info, error_msg)
+        if (index(error_msg, 'binding pass flag') == 0) then
+            print *, 'FAIL: malformed binding pass flag was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        fixture = replace_text(fixture, 'm=>p|p|2|p', 'm=>p|p|1|p|junk')
+        if (.not. write_file(dir//'/bad_binding.fmod', fixture)) return
+        call read_fmod(dir//'/bad_binding.fmod', info, error_msg)
+        if (index(error_msg, 'binding record') == 0) then
+            print *, 'FAIL: extra binding delimiter was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        fixture = replace_text(fixture, 'm=>p|p|1|p|junk', 'm=>p|p|1|')
+        if (.not. write_file(dir//'/bad_binding.fmod', fixture)) return
+        call read_fmod(dir//'/bad_binding.fmod', info, error_msg)
+        if (index(error_msg, 'binding record') == 0) then
+            print *, 'FAIL: empty binding specific list was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        fixture = replace_text(fixture, 'm=>p|p|1|', 'm=>p|p|1|p;')
+        if (.not. write_file(dir//'/bad_binding.fmod', fixture)) return
+        call read_fmod(dir//'/bad_binding.fmod', info, error_msg)
+        if (index(error_msg, 'binding record') == 0) then
+            print *, 'FAIL: trailing binding separator was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_rejects_malformed_binding_flag
+
+    logical function test_fmod_rejects_malformed_numeric_headers() result(ok)
+        ! Header and procedure signature integers use the same strict parser as
+        ! component layout fields. Prefixes followed by junk or separators are
+        ! not valid metadata, while absent legacy fields still use defaults.
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod_numeric_headers'
+        character(len=:), allocatable :: error_msg, fixture
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  use bad_numeric, only: touch'//new_line('a')// &
+            '  call touch(1)'//new_line('a')// &
+            'end program main'
+
+        ok = .false.
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+
+        fixture = signature_fixture('14 trailing', '1', '0', '1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/schema', dir, error_msg)
+        if (index(error_msg, 'schema version') == 0) then
+            print *, 'FAIL: malformed schema integer was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1 trailing', '0', '1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/nargs', dir, error_msg)
+        if (index(error_msg, 'invalid argument count') == 0) then
+            print *, 'FAIL: malformed nargs integer was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1', '0 trailing', '1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/ranks', dir, error_msg)
+        if (index(error_msg, 'integer argument metadata') == 0) then
+            print *, 'FAIL: malformed rank integer was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1', '0', '1 trailing')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/extents', dir, error_msg)
+        if (index(error_msg, 'integer argument metadata') == 0) then
+            print *, 'FAIL: malformed extent integer was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1', '-1', '1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/negative_rank', dir, error_msg)
+        if (index(error_msg, 'rank metadata') == 0) then
+            print *, 'FAIL: negative rank was accepted: ', trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1', '0', '-1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/negative_extent', dir, error_msg)
+        if (index(error_msg, 'extent metadata') == 0) then
+            print *, 'FAIL: negative extent was accepted: ', trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1', '0', '1', '2', '0')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/flags', dir, error_msg)
+        if (index(error_msg, 'integer flag metadata') == 0) then
+            print *, 'FAIL: malformed optional flag was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = signature_fixture('14', '1', '0', '1', '0', '0,1')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include(source, dir//'/value_flags', dir, error_msg)
+        if (index(error_msg, 'integer flag metadata') == 0) then
+            print *, 'FAIL: malformed value flag was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = parameter_fixture('37 trailing')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include( &
+            'program main'//new_line('a')// &
+            '  use bad_numeric, only: value'//new_line('a')// &
+            '  stop value'//new_line('a')// &
+            'end program main', dir//'/parameter', dir, error_msg)
+        if (index(error_msg, 'malformed integer value') == 0) then
+            print *, 'FAIL: malformed parameter value was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        fixture = parameter_fixture('999999999999999999999999')
+        if (.not. write_file(dir//'/bad_numeric.fmod', fixture)) return
+        call compile_with_include( &
+            'program main'//new_line('a')// &
+            '  use bad_numeric, only: value'//new_line('a')// &
+            '  stop value'//new_line('a')// &
+            'end program main', dir//'/parameter_overflow', dir, error_msg)
+        if (index(error_msg, 'malformed integer value') == 0) then
+            print *, 'FAIL: overflowing parameter value was accepted: ', &
+                trim(error_msg)
+            return
+        end if
+
+        call execute_command_line('rm -rf '//dir)
+        ok = .true.
+    end function test_fmod_rejects_malformed_numeric_headers
+
+    function signature_fixture(schema, nargs, ranks, extents, optionals, values) &
+        result(text)
+        character(len=*), intent(in) :: schema, nargs, ranks, extents
+        character(len=*), intent(in), optional :: optionals, values
+        character(len=:), allocatable :: text
+        character(len=:), allocatable :: optional_text, value_text
+
+        optional_text = '0'
+        if (present(optionals)) optional_text = optionals
+        value_text = '0'
+        if (present(values)) value_text = values
+
+        text = '[module]'//new_line('a')// &
+            'name = "bad_numeric"'//new_line('a')// &
+            'ffc_version = "0.1.0"'//new_line('a')// &
+            'fmod_schema = '//schema//new_line('a')//new_line('a')// &
+            '[[procedure]]'//new_line('a')// &
+            'name = "touch"'//new_line('a')// &
+            'kind = "subroutine"'//new_line('a')// &
+            'nargs = '//nargs//new_line('a')// &
+            'arg_kinds = "integer"'//new_line('a')// &
+            'arg_names = "value"'//new_line('a')// &
+            'arg_intents = "in"'//new_line('a')// &
+            'arg_optionals = "'//optional_text//'"'//new_line('a')// &
+            'arg_values = "'//value_text//'"'//new_line('a')// &
+            'arg_ranks = "'//ranks//'"'//new_line('a')// &
+            'arg_extents = "'//extents//'"'//new_line('a')// &
+            'arg_classes = "0"'//new_line('a')// &
+            'arg_class_types = "-"'//new_line('a')// &
+            'callable = 1'//new_line('a')
+    end function signature_fixture
+
+    function parameter_fixture(value) result(text)
+        character(len=*), intent(in) :: value
+        character(len=:), allocatable :: text
+
+        text = '[module]'//new_line('a')// &
+            'name = "bad_numeric"'//new_line('a')// &
+            'ffc_version = "0.1.0"'//new_line('a')// &
+            'fmod_schema = 14'//new_line('a')//new_line('a')// &
+            '[[parameter]]'//new_line('a')// &
+            'name = "value"'//new_line('a')// &
+            'kind = "integer"'//new_line('a')// &
+            'value = "'//value//'"'//new_line('a')
+    end function parameter_fixture
+
+    function replace_text(text, old, new) result(out)
+        character(len=*), intent(in) :: text, old, new
+        character(len=:), allocatable :: out
+        integer :: position
+
+        position = index(text, old)
+        if (position <= 0) then
+            out = text
+        else
+            out = text(:position - 1)//new//text(position + len(old):)
+        end if
+    end function replace_text
 
     subroutine compile_with_include(source, exe_path, include_dir, error_msg)
         character(len=*), intent(in) :: source

@@ -194,7 +194,96 @@
                 return
             end if
         end do
+        do i = 1, context%derived_type_alias_count
+            if (same_name(context%derived_type_alias_names(i), name)) then
+                type_index = context%derived_type_alias_indices(i)
+                return
+            end if
+        end do
     end function find_derived_type
+
+    integer function find_canonical_derived_type(context, name, identity) &
+            result(type_index)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        character(len=*), intent(in), optional :: identity
+        integer :: i
+
+        type_index = 0
+        do i = 1, context%derived_type_count
+            if (.not. same_name(context%derived_types(i)%name, name)) cycle
+            if (present(identity)) then
+                if (len_trim(identity) > 0) then
+                    if (len_trim(context%derived_types(i)%canonical_identity) == 0) cycle
+                    if (.not. same_name(context%derived_types(i)%canonical_identity, &
+                                        identity)) cycle
+                end if
+            end if
+            type_index = i
+            return
+        end do
+    end function find_canonical_derived_type
+
+    integer function find_derived_type_identity(context, identity) result(type_index)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: identity
+        integer :: i
+
+        type_index = 0
+        if (len_trim(identity) == 0) return
+        do i = 1, context%derived_type_count
+            if (len_trim(context%derived_types(i)%canonical_identity) == 0) cycle
+            if (same_name(context%derived_types(i)%canonical_identity, identity)) then
+                type_index = i
+                return
+            end if
+        end do
+    end function find_derived_type_identity
+
+    subroutine register_derived_type_alias(context, alias_name, type_index, &
+                                           error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: alias_name
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=64), allocatable :: old_names(:), new_names(:)
+        integer, allocatable :: old_indices(:), new_indices(:)
+        integer :: i, n
+
+        call set_empty(error_msg)
+        if (len_trim(alias_name) == 0) return
+        if (type_index <= 0 .or. type_index > context%derived_type_count) then
+            error_msg = 'cannot alias an invalid derived type index'
+            return
+        end if
+        if (same_name(alias_name, context%derived_types(type_index)%name)) return
+        do i = 1, context%derived_type_alias_count
+            if (.not. same_name(context%derived_type_alias_names(i), alias_name)) cycle
+            if (context%derived_type_alias_indices(i) /= type_index) then
+                error_msg = 'derived type alias "'//trim(alias_name)// &
+                    '" refers to conflicting types'
+            end if
+            return
+        end do
+        if (find_canonical_derived_type(context, alias_name) > 0) then
+            error_msg = 'derived type alias "'//trim(alias_name)// &
+                '" conflicts with a canonical type name'
+            return
+        end if
+        n = context%derived_type_alias_count + 1
+        allocate(new_names(n), new_indices(n))
+        if (context%derived_type_alias_count > 0) then
+            old_names = context%derived_type_alias_names
+            old_indices = context%derived_type_alias_indices
+            new_names(1:n - 1) = old_names
+            new_indices(1:n - 1) = old_indices
+        end if
+        new_names(n) = trim(alias_name)
+        new_indices(n) = type_index
+        call move_alloc(new_names, context%derived_type_alias_names)
+        call move_alloc(new_indices, context%derived_type_alias_indices)
+        context%derived_type_alias_count = n
+    end subroutine register_derived_type_alias
 
     integer function find_derived_component(context, type_index, name) &
         result(component_index)
@@ -354,7 +443,9 @@
                             if (.not. allocated(info%procedures(j)%name)) cycle
                             if (.not. same_name(info%procedures(j)%name, target)) cycle
                             call import_fmod_procedure(use_node, name, &
-                                info%procedures(j), context, error_msg, force=.true.)
+                                info%procedures(j), context, error_msg, force=.true., &
+                                require_class_identities= &
+                                    info%fmod_schema == FMOD_SCHEMA_VERSION)
                             if (len_trim(error_msg) > 0) return
                             exit
                         end do
@@ -379,7 +470,9 @@
         if (allocated(info%procedures)) then
             do i = 1, size(info%procedures)
                 call import_fmod_procedure(use_node, name, info%procedures(i), &
-                                           context, error_msg)
+                                           context, error_msg, &
+                                           require_class_identities= &
+                                               info%fmod_schema == FMOD_SCHEMA_VERSION)
                 if (len_trim(error_msg) > 0) return
             end do
         end if
@@ -403,30 +496,69 @@
         type(module_info_t), intent(in) :: info
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i
+        integer :: i, j
+        character(len=:), allocatable :: local_name
+        logical :: imported
 
         call set_empty(error_msg)
         if (.not. allocated(info%derived_types)) return
         do i = 1, size(info%derived_types)
             if (.not. fmod_derived_type_dependencies_available(info%derived_types(i), &
-                                                               context) .and. &
+                                                               context, &
+                                                               require_canonical_identity= &
+                                                                   info%fmod_schema == &
+                                                                   FMOD_SCHEMA_VERSION) .and. &
                 .not. allocated(use_node%only_list)) cycle
+            call resolve_fmod_import_name(use_node, trim(info%derived_types(i)%name), &
+                                          local_name, imported)
+            if (.not. imported) local_name = trim(info%derived_types(i)%name)
             call import_fmod_derived_type(use_node, info%derived_types(i), &
-                                          context, error_msg)
+                                          context, error_msg, local_name, &
+                                          module_name=trim(info%name), &
+                                          require_canonical_identity= &
+                                              info%fmod_schema == FMOD_SCHEMA_VERSION)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine import_fmod_derived_types
 
-    logical function fmod_derived_type_dependencies_available(dtype, context) &
+    logical function fmod_derived_type_dependencies_available(dtype, context, &
+                                                              require_canonical_identity) &
             result(available)
         type(fmod_derived_type_t), intent(in) :: dtype
         type(lowering_context_t), intent(in) :: context
+        logical, intent(in), optional :: require_canonical_identity
         integer :: i
+        logical :: require_identity
 
         available = .true.
+        require_identity = .false.
+        if (present(require_canonical_identity)) require_identity = &
+            require_canonical_identity
         if (.not. allocated(dtype%components)) return
         do i = 1, size(dtype%components)
             if (trim(dtype%components(i)%kind) /= 'derived') cycle
+            if (require_identity) then
+                if (.not. allocated(dtype%components(i)%type_identity)) then
+                    available = .false.
+                    return
+                end if
+                if (len_trim(dtype%components(i)%type_identity) == 0) then
+                    available = .false.
+                    return
+                end if
+                if (find_derived_type_identity(context, trim( &
+                        dtype%components(i)%type_identity)) <= 0) then
+                    available = .false.
+                    return
+                end if
+                cycle
+            end if
+            if (allocated(dtype%components(i)%type_identity)) then
+                if (len_trim(dtype%components(i)%type_identity) > 0) then
+                    if (find_derived_type_identity(context, trim( &
+                            dtype%components(i)%type_identity)) > 0) cycle
+                end if
+            end if
             if (find_derived_type(context, trim(dtype%components(i)%type_name)) <= 0) then
                 available = .false.
                 return
@@ -434,49 +566,183 @@
         end do
     end function fmod_derived_type_dependencies_available
 
-    subroutine import_fmod_derived_type(use_node, dtype, context, error_msg)
+    subroutine import_fmod_derived_type(use_node, dtype, context, error_msg, &
+                                        local_name, module_name, &
+                                        require_canonical_identity)
         ! Reconstruct one derived type's layout from its artefact record.
         type(use_statement_node), intent(in) :: use_node
         type(fmod_derived_type_t), intent(in) :: dtype
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: type_index_new, k, offset, nested, value_kind
-        integer(c_int64_t) :: no_default
+        character(len=*), intent(in), optional :: local_name
+        character(len=*), intent(in), optional :: module_name
+        logical, intent(in), optional :: require_canonical_identity
+        integer :: type_index_new, k, nested, value_kind
+        integer :: canonical_index, name_index, registered_index, parent_index
+        integer(c_int64_t) :: no_default, slot_product, offset
+        character(len=:), allocatable :: registered_name, canonical_name, &
+            canonical_identity, record_name
+        logical :: require_identity
 
         call set_empty(error_msg)
+        require_identity = .false.
+        if (present(require_canonical_identity)) require_identity = &
+            require_canonical_identity
         if (.not. allocated(dtype%name)) return
         if (len_trim(dtype%name) == 0) return
-        if (find_derived_type(context, trim(dtype%name)) > 0) return
+        registered_name = trim(dtype%name)
+        if (present(local_name)) then
+            if (len_trim(local_name) > 0) registered_name = trim(local_name)
+        end if
+        canonical_name = trim(dtype%name)
+        if (allocated(dtype%canonical_name)) then
+            if (len_trim(dtype%canonical_name) > 0) then
+                canonical_name = trim(dtype%canonical_name)
+            end if
+        end if
+        canonical_identity = ''
+        if (allocated(dtype%canonical_identity)) then
+            if (len_trim(dtype%canonical_identity) > 0) &
+                canonical_identity = trim(dtype%canonical_identity)
+        end if
+        if (len_trim(canonical_identity) == 0) then
+            if (require_identity) then
+                canonical_identity = '__missing_canonical_identity__'// &
+                    trim(canonical_name)
+            else
+                if (present(module_name)) then
+                    if (len_trim(module_name) > 0) canonical_identity = &
+                        trim(module_name)//'::'//trim(canonical_name)
+                end if
+            end if
+        end if
+        if (len_trim(canonical_identity) == 0) canonical_identity = canonical_name
+        canonical_index = find_derived_type_identity(context, canonical_identity)
+        if (canonical_index > 0) then
+            if (.not. same_name(registered_name, context%derived_types( &
+                    canonical_index)%name)) then
+                call register_derived_type_alias(context, registered_name, &
+                                                 canonical_index, error_msg)
+            end if
+            return
+        end if
+        name_index = find_canonical_derived_type(context, canonical_name)
+        if (name_index > 0 .and. same_name(registered_name, canonical_name)) then
+            error_msg = 'derived type "'//trim(canonical_name)//'" from '// &
+                trim(canonical_identity)//' conflicts with the imported type from '// &
+                trim(context%derived_types(name_index)%canonical_identity)
+            return
+        end if
+        registered_index = find_derived_type(context, trim(registered_name))
+        if (registered_index > 0) then
+            error_msg = 'derived type import name "'//trim(registered_name)// &
+                '" conflicts with an existing derived type'
+            return
+        end if
         if (.not. allocated(dtype%components)) return
 
+        record_name = trim(registered_name)
         call grow_derived_types(context)
         type_index_new = context%derived_type_count + 1
-        context%derived_types(type_index_new)%name = trim(dtype%name)
+        context%derived_types(type_index_new)%name = trim(record_name)
+        context%derived_types(type_index_new)%canonical_name = trim(canonical_name)
+        context%derived_types(type_index_new)%canonical_identity = &
+            trim(canonical_identity)
         context%derived_types(type_index_new)%component_count = 0
         context%derived_types(type_index_new)%parent_name = ''
         context%derived_types(type_index_new)%is_imported = .true.
-        if (allocated(dtype%parent_name)) &
+        parent_index = 0
+        if (require_identity) then
+            if (allocated(dtype%parent_name)) then
+                if (len_trim(dtype%parent_name) > 0) then
+                    if (allocated(dtype%parent_identity)) then
+                        if (len_trim(dtype%parent_identity) > 0) parent_index = &
+                            find_derived_type_identity(context, &
+                                                       trim(dtype%parent_identity))
+                    end if
+                end if
+            end if
+        else
+            if (allocated(dtype%parent_identity)) then
+                if (len_trim(dtype%parent_identity) > 0) parent_index = &
+                    find_derived_type_identity(context, trim(dtype%parent_identity))
+            end if
+        end if
+        if (parent_index > 0) then
+            context%derived_types(type_index_new)%parent_name = &
+                trim(context%derived_types(parent_index)%name)
+        else if (.not. require_identity .and. allocated(dtype%parent_name)) then
             context%derived_types(type_index_new)%parent_name = &
                 trim(dtype%parent_name)
+        end if
         context%derived_type_count = type_index_new
 
         no_default = 0_c_int64_t
-        offset = 0
+        offset = 0_c_int64_t
         do k = 1, size(dtype%components)
             associate (comp => dtype%components(k))
-                if (comp%slot_offset /= offset) then
+                if (comp%numeric_metadata_invalid) then
+                    error_msg = 'corrupt .fmod derived layout: component '// &
+                        trim(comp%name)//' of '//trim(dtype%name)// &
+                        ' contains an unreadable numeric field'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                if ((comp%is_pointer .and. (comp%is_allocatable .or. &
+                                            comp%is_alloc_array)) .or. &
+                    (comp%is_allocatable .and. comp%is_alloc_array)) then
+                    error_msg = 'corrupt .fmod derived layout: component '// &
+                        trim(comp%name)//' of '//trim(dtype%name)// &
+                        ' has inconsistent component flags'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                if (comp%alloc_rank < 0 .or. comp%alloc_rank > ARRAY_MAX_RANK) then
+                    error_msg = 'corrupt .fmod derived layout: component '// &
+                        trim(comp%name)//' of '//trim(dtype%name)// &
+                        ' has an unsupported allocatable rank'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                if (comp%is_alloc_array) then
+                    if (comp%alloc_rank < 1) then
+                        error_msg = 'corrupt .fmod derived layout: component '// &
+                            trim(comp%name)//' of '//trim(dtype%name)// &
+                            ' has an invalid allocatable array rank'
+                        context%derived_type_count = type_index_new - 1
+                        return
+                    end if
+                else
+                    if (comp%alloc_rank /= 0) then
+                        error_msg = 'corrupt .fmod derived layout: component '// &
+                            trim(comp%name)//' of '//trim(dtype%name)// &
+                            ' has an allocatable rank without an array descriptor'
+                        context%derived_type_count = type_index_new - 1
+                        return
+                    end if
+                end if
+                if (int(comp%slot_offset, c_int64_t) /= offset) then
                     error_msg = 'corrupt .fmod derived layout: component '// &
                         trim(comp%name)//' of '//trim(dtype%name)// &
                         ' records slot offset '//integer_text(comp%slot_offset)// &
                         ' where its own component slot counts give '// &
-                        integer_text(offset)
+                        integer64_text(offset)
                     context%derived_type_count = type_index_new - 1
                     return
                 end if
-                if (comp%slot_count < 1 .or. comp%elem_count < 1) then
+                if (offset > huge(offset) - int(comp%slot_count, c_int64_t)) then
+                    error_msg = 'corrupt .fmod derived layout: slot offset accumulation overflow'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                slot_product = int(comp%elem_count, c_int64_t) * &
+                               int(comp%slot_width, c_int64_t)
+                if (comp%slot_count < 1 .or. comp%elem_count < 1 .or. &
+                    comp%slot_width < 1 .or. &
+                    int(comp%slot_count, c_int64_t) /= slot_product) then
                     error_msg = 'corrupt .fmod derived layout: component '// &
                         trim(comp%name)//' of '//trim(dtype%name)// &
-                        ' occupies no storage'
+                        ' has inconsistent slot counts'
                     context%derived_type_count = type_index_new - 1
                     return
                 end if
@@ -490,7 +756,29 @@
                 end if
                 nested = 0
                 if (value_kind == VALUE_DERIVED) then
-                    nested = find_derived_type(context, trim(comp%type_name))
+                    if (require_identity) then
+                        if (allocated(comp%type_identity)) then
+                            if (len_trim(comp%type_identity) > 0) nested = &
+                                find_derived_type_identity(context, &
+                                                           trim(comp%type_identity))
+                        end if
+                        if (nested <= 0) then
+                            error_msg = 'unknown component identity for '// &
+                                trim(comp%name)// &
+                                ' of '//trim(dtype%name)//' (unknown derived type "'// &
+                                trim(comp%type_name)//'")'
+                            context%derived_type_count = type_index_new - 1
+                            return
+                        end if
+                    else
+                        if (allocated(comp%type_identity)) then
+                            if (len_trim(comp%type_identity) > 0) nested = &
+                                find_derived_type_identity(context, &
+                                                           trim(comp%type_identity))
+                        end if
+                        if (nested <= 0) nested = find_derived_type(context, &
+                                                                      trim(comp%type_name))
+                    end if
                     if (nested <= 0) then
                         error_msg = 'unknown derived type "'// &
                             trim(comp%type_name)//'" for component '// &
@@ -516,9 +804,75 @@
                 end if
                 context%derived_types(type_index_new)%component_dim1(k) = &
                     comp%dim1
-                offset = offset + comp%slot_count
+                offset = offset + int(comp%slot_count, c_int64_t)
             end associate
         end do
+        ! Report identity omissions after structural validation. This keeps a
+        ! more specific corruption diagnostic (unknown nested type, bad
+        ! offsets, or inconsistent slot counts) useful for malformed artefacts,
+        ! while still rejecting schema-14 records before they are promoted.
+        if (require_identity) then
+            if (.not. allocated(dtype%canonical_identity)) then
+                error_msg = 'malformed .fmod derived type "'//trim(dtype%name)// &
+                    '": missing canonical identity'
+                context%derived_type_count = type_index_new - 1
+                return
+            end if
+            if (len_trim(dtype%canonical_identity) == 0) then
+                error_msg = 'malformed .fmod derived type "'//trim(dtype%name)// &
+                    '": missing canonical identity'
+                context%derived_type_count = type_index_new - 1
+                return
+            end if
+            if (allocated(dtype%parent_name)) then
+                if (len_trim(dtype%parent_name) > 0) then
+                    if (.not. allocated(dtype%parent_identity)) then
+                        error_msg = 'malformed .fmod derived type "'// &
+                            trim(dtype%name)//'": missing parent identity'
+                        context%derived_type_count = type_index_new - 1
+                        return
+                    end if
+                    if (len_trim(dtype%parent_identity) == 0) then
+                        error_msg = 'malformed .fmod derived type "'// &
+                            trim(dtype%name)//'": missing parent identity'
+                        context%derived_type_count = type_index_new - 1
+                        return
+                    end if
+                    if (find_derived_type_identity(context, trim( &
+                            dtype%parent_identity)) <= 0) then
+                        error_msg = 'unknown parent identity for '//trim(dtype%name)
+                        context%derived_type_count = type_index_new - 1
+                        return
+                    end if
+                end if
+            end if
+            if (allocated(dtype%components)) then
+                do k = 1, size(dtype%components)
+                    if (trim(dtype%components(k)%kind) /= 'derived') cycle
+                    if (.not. allocated(dtype%components(k)%type_identity)) then
+                        error_msg = 'malformed .fmod derived type "'// &
+                            trim(dtype%name)//'": missing component identity'
+                        context%derived_type_count = type_index_new - 1
+                        return
+                    end if
+                    if (len_trim(dtype%components(k)%type_identity) == 0) then
+                        error_msg = 'malformed .fmod derived type "'// &
+                            trim(dtype%name)//'": missing component identity'
+                        context%derived_type_count = type_index_new - 1
+                        return
+                    end if
+                    if (find_derived_type_identity(context, trim( &
+                            dtype%components(k)%type_identity)) <= 0) then
+                        error_msg = 'unknown component identity for '// &
+                            trim(dtype%components(k)%name)//' of '//trim(dtype%name)// &
+                            ' (unknown derived type "'// &
+                            trim(dtype%components(k)%type_name)//'")'
+                        context%derived_type_count = type_index_new - 1
+                        return
+                    end if
+                end do
+            end if
+        end if
         if (allocated(dtype%bindings)) then
             if (size(dtype%bindings) > 0) then
                 context%derived_types(type_index_new)%binding_count = &
@@ -547,6 +901,10 @@
                 end do
             end if
         end if
+        if (.not. same_name(registered_name, canonical_name)) then
+            call register_derived_type_alias(context, registered_name, &
+                                             type_index_new, error_msg)
+        end if
     end subroutine import_fmod_derived_type
 
     function integer_text(value) result(text)
@@ -557,6 +915,15 @@
         write (buffer, '(I0)') value
         text = trim(buffer)
     end function integer_text
+
+    function integer64_text(value) result(text)
+        integer(c_int64_t), intent(in) :: value
+        character(len=:), allocatable :: text
+        character(len=64) :: buffer
+
+        write (buffer, '(I0)') value
+        text = trim(buffer)
+    end function integer64_text
 
     subroutine import_fmod_generic(use_node, module_name, gen, info, context, &
                                    error_msg)
@@ -604,7 +971,9 @@
                 if (.not. allocated(info%procedures(p)%name)) cycle
                 if (same_name(info%procedures(p)%name, token)) then
                     call import_fmod_procedure(use_node, module_name, &
-                        info%procedures(p), context, error_msg, force=.true.)
+                        info%procedures(p), context, error_msg, force=.true., &
+                        require_class_identities= &
+                            info%fmod_schema == FMOD_SCHEMA_VERSION)
                     if (len_trim(error_msg) > 0) return
                     exit
                 end if
@@ -654,7 +1023,7 @@
     end subroutine add_generic_specific_from_external
 
     subroutine import_fmod_procedure(use_node, module_name, proc, context, &
-                                     error_msg, force)
+                                     error_msg, force, require_class_identities)
         ! Register a separately compiled procedure from a .fmod. Module
         ! procedures use __<module>_MOD_<name>; public plain INTERFACE
         ! procedures retain their unmangled external symbol (#284). The
@@ -670,19 +1039,26 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         logical, intent(in), optional :: force
+        logical, intent(in), optional :: require_class_identities
         character(len=:), allocatable :: mangled
         character(len=:), allocatable :: local_name
         integer, allocatable :: arg_kinds(:)
         character(len=64), allocatable :: arg_names(:)
         logical, allocatable :: arg_optionals(:), arg_values(:)
         logical, allocatable :: arg_opaque(:)
+        logical, allocatable :: arg_class(:)
+        character(len=64), allocatable :: arg_class_types(:)
+        character(len=:), allocatable :: arg_class_type_identities(:)
         integer, allocatable :: arg_intents(:), arg_ranks(:), arg_extents(:)
         integer :: return_kind
-        logical :: forced, imported
+        logical :: forced, imported, require_identities
 
         call set_empty(error_msg)
         forced = .false.
         if (present(force)) forced = force
+        require_identities = .false.
+        if (present(require_class_identities)) require_identities = &
+            require_class_identities
         if (.not. allocated(proc%name)) return
         if (len_trim(proc%name) == 0) return
         if (.not. proc%callable) return
@@ -717,15 +1093,38 @@
         else
             return
         end if
+        call validate_fmod_procedure_metadata(proc, error_msg, &
+                                              require_class_identities)
+        if (len_trim(error_msg) > 0) return
         call parse_fmod_arg_kinds(proc, arg_kinds, error_msg)
         if (len_trim(error_msg) > 0) return
         call parse_fmod_arg_names(proc, arg_names)
-        call parse_fmod_arg_flags(proc%arg_optionals, proc%nargs, arg_optionals)
-        call parse_fmod_arg_flags(proc%arg_values, proc%nargs, arg_values)
+        call parse_fmod_arg_flags(proc%arg_optionals, proc%nargs, arg_optionals, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call parse_fmod_arg_flags(proc%arg_values, proc%nargs, arg_values, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
         call parse_fmod_arg_opaque(proc, arg_opaque)
+        call parse_fmod_arg_classes(proc, arg_class)
+        call parse_fmod_arg_class_types(proc, arg_class_types)
+        call parse_fmod_arg_class_type_identities(proc, &
+                                                  arg_class_type_identities)
         call parse_fmod_arg_intents(proc, arg_intents)
-        call parse_fmod_arg_integers(proc%arg_ranks, proc%nargs, arg_ranks)
-        call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents)
+        call parse_fmod_arg_integers(proc%arg_ranks, proc%nargs, arg_ranks, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (any(arg_ranks < 0) .or. any(arg_ranks > ARRAY_MAX_RANK)) then
+            error_msg = 'malformed .fmod rank metadata'
+            return
+        end if
+        if (any(arg_extents < 0)) then
+            error_msg = 'malformed .fmod extent metadata'
+            return
+        end if
         if (proc%external_binding) then
             if (allocated(proc%external_name) .and. &
                 len_trim(proc%external_name) > 0) then
@@ -742,8 +1141,151 @@
                                     arg_names, arg_optionals, arg_values, &
                                     arg_intents, arg_ranks, arg_extents, &
                                     is_bind_c=proc%external_binding, &
-                                    arg_opaque=arg_opaque)
+                                    arg_opaque=arg_opaque, &
+                                    arg_class=arg_class, &
+                                    arg_class_types=arg_class_types, &
+                                    arg_class_type_identities= &
+                                        arg_class_type_identities, &
+                                    require_class_type_identities= &
+                                        require_identities)
     end subroutine import_fmod_procedure
+
+    subroutine validate_fmod_procedure_metadata(proc, error_msg, &
+                                                require_class_identities)
+        ! Schema 13+ class metadata is an ABI contract, not a hint. Reject a
+        ! partial or contradictory pair before the importer can default a
+        ! malformed class dummy to the raw-storage ABI.
+        type(fmod_procedure_t), intent(in) :: proc
+        character(len=:), allocatable, intent(out) :: error_msg
+        logical, intent(in), optional :: require_class_identities
+        logical :: have_classes, have_class_types
+        logical :: have_class_identities
+        logical :: require_identities
+        logical, allocatable :: classes(:)
+        character(len=64), allocatable :: class_types(:)
+        character(len=:), allocatable :: class_identities(:)
+        integer :: i
+
+        call set_empty(error_msg)
+        require_identities = .false.
+        if (present(require_class_identities)) require_identities = &
+            require_class_identities
+        if (proc%nargs < 0 .or. proc%nargs > MAX_PROC_ARGS) then
+            error_msg = 'malformed .fmod procedure "'//trim(proc%name)// &
+                '" has an invalid argument count'
+            return
+        end if
+        have_classes = .false.
+        if (allocated(proc%arg_classes)) then
+            if (len_trim(proc%arg_classes) > 0) have_classes = .true.
+        end if
+        have_class_types = .false.
+        if (allocated(proc%arg_class_types)) then
+            if (len_trim(proc%arg_class_types) > 0) have_class_types = .true.
+        end if
+        have_class_identities = .false.
+        if (allocated(proc%arg_class_type_identities)) then
+            if (len_trim(proc%arg_class_type_identities) > 0) &
+                have_class_identities = .true.
+        end if
+        if (have_classes .neqv. have_class_types) then
+            error_msg = 'malformed .fmod class metadata for procedure "'// &
+                trim(proc%name)//'": flags and declared types must both be present'
+            return
+        end if
+        if (.not. have_classes) return
+        if (fmod_token_count(proc%arg_classes) /= proc%nargs .or. &
+            fmod_token_count(proc%arg_class_types) /= proc%nargs) then
+            error_msg = 'malformed .fmod class metadata for procedure "'// &
+                trim(proc%name)//'": one value is required per argument'
+            return
+        end if
+        if (have_class_identities) then
+            if (fmod_token_count(proc%arg_class_type_identities) /= proc%nargs) then
+                error_msg = 'malformed .fmod class metadata for procedure "'// &
+                    trim(proc%name)//'": one identity is required per argument'
+                return
+            end if
+        end if
+        call validate_fmod_flag_tokens(proc%arg_classes, proc%nargs, &
+                                        trim(proc%name), error_msg)
+        if (len_trim(error_msg) > 0) return
+        call parse_fmod_arg_classes(proc, classes)
+        call parse_fmod_arg_class_types(proc, class_types)
+        call parse_fmod_arg_class_type_identities(proc, class_identities)
+        if (require_identities .and. any(classes)) then
+            if (.not. have_class_identities) then
+                error_msg = 'malformed .fmod class metadata for procedure "'// &
+                    trim(proc%name)//'": canonical identities are required'
+                return
+            end if
+        end if
+        do i = 1, proc%nargs
+            if (classes(i)) then
+                if (len_trim(class_types(i)) == 0) then
+                    error_msg = 'malformed .fmod class metadata for procedure "'// &
+                        trim(proc%name)//'": a class argument needs a declared type'
+                    return
+                end if
+                if (require_identities) then
+                    if (len_trim(class_identities(i)) == 0) then
+                        error_msg = 'malformed .fmod class metadata for procedure "'// &
+                            trim(proc%name)//'": a class argument needs a canonical identity'
+                        return
+                    end if
+                end if
+            else
+                if (len_trim(class_types(i)) > 0) then
+                    error_msg = 'malformed .fmod class metadata for procedure "'// &
+                        trim(proc%name)//'": a non-class argument has a class type'
+                    return
+                end if
+            end if
+        end do
+    end subroutine validate_fmod_procedure_metadata
+
+    subroutine validate_fmod_flag_tokens(text, nargs, procedure_name, error_msg)
+        character(len=:), allocatable, intent(in) :: text
+        integer, intent(in) :: nargs
+        character(len=*), intent(in) :: procedure_name
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: rest, token
+        integer :: i, sep
+
+        call set_empty(error_msg)
+        rest = trim(adjustl(text))
+        do i = 1, nargs
+            sep = index(rest, ' ')
+            if (sep == 0) then
+                token = rest
+                rest = ''
+            else
+                token = trim(rest(1:sep - 1))
+                rest = adjustl(rest(sep + 1:))
+            end if
+            if (token /= '0' .and. token /= '1') then
+                error_msg = 'malformed .fmod class metadata for procedure "'// &
+                    trim(procedure_name)//'": flags must be 0 or 1'
+                return
+            end if
+        end do
+    end subroutine validate_fmod_flag_tokens
+
+    integer function fmod_token_count(text) result(count)
+        character(len=:), allocatable, intent(in) :: text
+        character(len=:), allocatable :: rest
+        integer :: sep
+
+        count = 0
+        if (.not. allocated(text)) return
+        rest = trim(adjustl(text))
+        do while (len_trim(rest) > 0)
+            count = count + 1
+            sep = index(rest, ' ')
+            if (sep == 0) exit
+            rest = adjustl(rest(sep + 1:))
+        end do
+    end function fmod_token_count
 
     subroutine parse_fmod_arg_opaque(proc, opaque)
         ! Opaque procedures may still carry precise per-dummy kinds. Preserve
@@ -778,46 +1320,139 @@
         if (i /= proc%nargs) opaque = proc%opaque
     end subroutine parse_fmod_arg_opaque
 
-    subroutine parse_fmod_arg_flags(text, nargs, flags)
+    subroutine parse_fmod_arg_classes(proc, classes)
+        type(fmod_procedure_t), intent(in) :: proc
+        logical, allocatable, intent(out) :: classes(:)
+
+        call parse_fmod_arg_flags(proc%arg_classes, proc%nargs, classes)
+    end subroutine parse_fmod_arg_classes
+
+    subroutine parse_fmod_arg_class_types(proc, class_types)
+        type(fmod_procedure_t), intent(in) :: proc
+        character(len=64), allocatable, intent(out) :: class_types(:)
+        character(len=:), allocatable :: rest, token
+        integer :: i, sep
+
+        allocate(class_types(max(proc%nargs, 0)))
+        class_types = ''
+        if (proc%nargs <= 0) return
+        if (.not. allocated(proc%arg_class_types)) return
+        rest = trim(adjustl(proc%arg_class_types))
+        i = 0
+        do while (len_trim(rest) > 0 .and. i < proc%nargs)
+            sep = index(rest, ' ')
+            i = i + 1
+            if (sep == 0) then
+                token = rest
+                rest = ''
+            else
+                token = trim(rest(1:sep - 1))
+                rest = adjustl(rest(sep + 1:))
+            end if
+            if (trim(token) /= '-') class_types(i) = trim(token)
+        end do
+    end subroutine parse_fmod_arg_class_types
+
+    subroutine parse_fmod_arg_class_type_identities(proc, identities)
+        type(fmod_procedure_t), intent(in) :: proc
+        character(len=:), allocatable, intent(out) :: identities(:)
+        character(len=:), allocatable :: rest, token
+        integer :: i, sep, identity_length
+
+        identity_length = 1
+        if (allocated(proc%arg_class_type_identities)) identity_length = max( &
+            identity_length, len_trim(proc%arg_class_type_identities))
+        allocate (character(len=identity_length) :: identities(max(proc%nargs, 0)))
+        identities = ''
+        if (proc%nargs <= 0) return
+        if (.not. allocated(proc%arg_class_type_identities)) return
+        rest = trim(adjustl(proc%arg_class_type_identities))
+        i = 0
+        do while (len_trim(rest) > 0 .and. i < proc%nargs)
+            sep = index(rest, ' ')
+            i = i + 1
+            if (sep == 0) then
+                token = rest
+                rest = ''
+            else
+                token = trim(rest(1:sep - 1))
+                rest = adjustl(rest(sep + 1:))
+            end if
+            if (trim(token) /= '-') identities(i) = trim(token)
+        end do
+    end subroutine parse_fmod_arg_class_type_identities
+
+    subroutine parse_fmod_arg_flags(text, nargs, flags, error_msg)
         ! Split a .fmod per-dummy '0'/'1' attribute list (OPTIONAL, VALUE) into
         ! logicals. A shorter or absent list leaves the remaining dummies
         ! without the attribute (#397).
         character(len=:), allocatable, intent(in) :: text
         integer, intent(in) :: nargs
         logical, allocatable, intent(out) :: flags(:)
+        character(len=:), allocatable, intent(out), optional :: error_msg
         character(len=:), allocatable :: rest
-        integer :: n, sep
+        character(len=:), allocatable :: token
+        integer :: n, sep, value
 
+        if (present(error_msg)) error_msg = ''
         allocate (flags(max(nargs, 0)))
-        if (nargs <= 0) return
+        if (nargs <= 0) then
+            if (present(error_msg)) then
+                if (allocated(text)) then
+                    if (len_trim(text) > 0) &
+                        error_msg = 'malformed .fmod integer flag metadata'
+                end if
+            end if
+            return
+        end if
         flags = .false.
         if (.not. allocated(text)) return
         rest = trim(adjustl(text))
         n = 0
-        do while (len_trim(rest) > 0 .and. n < nargs)
+        do while (len_trim(rest) > 0)
+            if (n >= nargs) then
+                if (present(error_msg)) &
+                    error_msg = 'malformed .fmod integer flag metadata'
+                return
+            end if
             sep = index(rest, ' ')
             n = n + 1
             if (sep == 0) then
-                flags(n) = trim(rest) == '1'
+                token = trim(rest)
                 rest = ''
             else
-                flags(n) = rest(1:sep - 1) == '1'
+                token = trim(rest(1:sep - 1))
                 rest = adjustl(rest(sep + 1:))
             end if
+            if (.not. parse_strict_integer(token, value) .or. &
+                (value /= 0 .and. value /= 1)) then
+                if (present(error_msg)) &
+                    error_msg = 'malformed .fmod integer flag metadata'
+                return
+            end if
+            flags(n) = value /= 0
         end do
     end subroutine parse_fmod_arg_flags
 
-    subroutine parse_fmod_arg_integers(text, nargs, values)
+    subroutine parse_fmod_arg_integers(text, nargs, values, error_msg)
         ! Split a .fmod per-dummy integer list (ranks, extents) into values. An
         ! absent or short list leaves the remaining dummies at 0 (#415).
         character(len=:), allocatable, intent(in) :: text
         integer, intent(in) :: nargs
         integer, allocatable, intent(out) :: values(:)
+        character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: rest, token
-        integer :: n, sep, io_stat
+        integer :: n, sep, value
 
+        call set_empty(error_msg)
         allocate (values(max(nargs, 0)))
-        if (nargs <= 0) return
+        if (nargs <= 0) then
+            if (allocated(text)) then
+                if (len_trim(text) > 0) &
+                    error_msg = 'malformed .fmod integer argument metadata'
+            end if
+            return
+        end if
         values = 0
         if (.not. allocated(text)) return
         rest = trim(adjustl(text))
@@ -832,9 +1467,14 @@
                 token = rest(1:sep - 1)
                 rest = adjustl(rest(sep + 1:))
             end if
-            read (token, *, iostat=io_stat) values(n)
-            if (io_stat /= 0) values(n) = 0
+            if (.not. parse_strict_integer(token, value)) then
+                error_msg = 'malformed .fmod integer argument metadata'
+                return
+            end if
+            values(n) = value
         end do
+        if (len_trim(rest) > 0) &
+            error_msg = 'malformed .fmod integer argument metadata'
     end subroutine parse_fmod_arg_integers
 
     subroutine parse_fmod_arg_intents(proc, intents)
@@ -1014,7 +1654,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int64_t) :: constant_value
-        integer :: index, io_stat, existing_idx
+        integer :: index, existing_idx
         character(len=:), allocatable :: local_name
         logical :: imported
         logical :: rebind, skip
@@ -1035,8 +1675,7 @@
         ! independent USE list (#584).
         if (.not. allocated(param%value)) return
         if (len_trim(param%value) == 0) return
-        read (param%value, *, iostat=io_stat) constant_value
-        if (io_stat /= 0) then
+        if (.not. parse_strict_int64(param%value, constant_value)) then
             error_msg = 'malformed integer value in .fmod for parameter '// &
                         trim(param%name)
             return

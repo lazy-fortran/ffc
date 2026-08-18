@@ -1476,6 +1476,23 @@
             destination%derived_types(i) = source%derived_types(i)
         end do
         destination%derived_type_count = source%derived_type_count
+        if (allocated(destination%derived_type_alias_names)) then
+            deallocate(destination%derived_type_alias_names)
+        end if
+        if (allocated(destination%derived_type_alias_indices)) then
+            deallocate(destination%derived_type_alias_indices)
+        end if
+        if (source%derived_type_alias_count > 0) then
+            allocate(destination%derived_type_alias_names( &
+                source%derived_type_alias_count))
+            allocate(destination%derived_type_alias_indices( &
+                source%derived_type_alias_count))
+            destination%derived_type_alias_names = &
+                source%derived_type_alias_names
+            destination%derived_type_alias_indices = &
+                source%derived_type_alias_indices
+        end if
+        destination%derived_type_alias_count = source%derived_type_alias_count
     end subroutine copy_derived_type_table
 
     subroutine copy_module_exports(source, destination)

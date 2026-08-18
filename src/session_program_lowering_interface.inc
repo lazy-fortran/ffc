@@ -839,7 +839,10 @@
                                       return_kind, arg_count, by_reference, &
                                       arg_kinds, arg_names, arg_optionals, &
                                       arg_values, arg_intents, arg_ranks, &
-                                      arg_extents, is_bind_c, arg_opaque)
+                                      arg_extents, is_bind_c, arg_opaque, &
+                                      arg_class, arg_class_types, &
+                                      arg_class_type_identities, &
+                                      require_class_type_identities)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: fortran_name, c_name
         integer, intent(in) :: return_kind, arg_count
@@ -853,7 +856,11 @@
         integer, intent(in), optional :: arg_extents(:)
         logical, intent(in), optional :: is_bind_c
         logical, intent(in), optional :: arg_opaque(:)
-        integer :: j
+        logical, intent(in), optional :: arg_class(:)
+        character(len=*), intent(in), optional :: arg_class_types(:)
+        character(len=*), intent(in), optional :: arg_class_type_identities(:)
+        logical, intent(in), optional :: require_class_type_identities
+        integer :: j, identity_length
 
         if (external_procedure_index(context, trim(fortran_name)) > 0) return
         call grow_external_procedures(context)
@@ -868,6 +875,9 @@
             if (present(by_reference)) ep%by_reference = by_reference
             ep%is_bind_c = .false.
             if (present(is_bind_c)) ep%is_bind_c = is_bind_c
+            ep%require_class_type_identities = .false.
+            if (present(require_class_type_identities)) ep% &
+                require_class_type_identities = require_class_type_identities
             do j = 1, arg_count
                 ep%arg_value_kinds(j) = VALUE_I32
             end do
@@ -916,6 +926,34 @@
             if (present(arg_opaque)) then
                 do j = 1, min(arg_count, size(arg_opaque))
                     ep%arg_is_opaque(j) = arg_opaque(j)
+                end do
+            end if
+            ep%arg_is_class = .false.
+            ep%arg_class_types = ''
+            if (allocated(ep%arg_class_type_identities)) &
+                deallocate(ep%arg_class_type_identities)
+            identity_length = 1
+            if (present(arg_class_type_identities)) then
+                if (size(arg_class_type_identities) > 0) identity_length = max( &
+                    identity_length, maxval(len_trim(arg_class_type_identities)))
+            end if
+            allocate(character(len=identity_length) :: &
+                     ep%arg_class_type_identities(MAX_PROC_ARGS))
+            ep%arg_class_type_identities = ''
+            if (present(arg_class)) then
+                do j = 1, min(arg_count, size(arg_class))
+                    ep%arg_is_class(j) = arg_class(j)
+                end do
+            end if
+            if (present(arg_class_types)) then
+                do j = 1, min(arg_count, size(arg_class_types))
+                    ep%arg_class_types(j) = trim(arg_class_types(j))
+                end do
+            end if
+            if (present(arg_class_type_identities)) then
+                do j = 1, min(arg_count, size(arg_class_type_identities))
+                    ep%arg_class_type_identities(j) = trim( &
+                        arg_class_type_identities(j))
                 end do
             end if
         end associate

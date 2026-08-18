@@ -461,6 +461,10 @@ module session_program_lowering_types
 
     type, public :: derived_type_info_t
         character(len=64) :: name = ''
+        character(len=64) :: canonical_name = ''
+        ! Module-qualified identity for imported types. Local source types may
+        ! leave this empty until their .fmod export is formed.
+        character(len=128) :: canonical_identity = ''
         logical :: layout_registered = .false.
         integer :: component_count = 0
         character(len=64), allocatable :: component_names(:)
@@ -609,8 +613,8 @@ module session_program_lowering_types
     end type lazy_specialization_t
 
     type, public :: external_procedure_t
-        character(len=64) :: fortran_name = ''
-        character(len=64) :: c_name = ''
+        character(len=:), allocatable :: fortran_name
+        character(len=:), allocatable :: c_name
         integer :: return_value_kind = VALUE_I32
         integer :: arg_value_kinds(MAX_PROC_ARGS) = VALUE_I32
         ! Declared dummy names, when the signature carried them, so a call
@@ -641,6 +645,14 @@ module session_program_lowering_types
         ! An opaque imported dummy has no scalar kind claim. Its actual is
         ! accepted only by a dedicated ABI lowering path.
         logical :: arg_is_opaque(MAX_PROC_ARGS) = .false.
+        ! A separately compiled class(t) dummy receives a scalar class
+        ! descriptor; type(t) passed-object dummies receive the raw object
+        ! address. The declared type spelling is retained for class dummies
+        ! so inherited bindings use the parent's descriptor type.
+        logical :: arg_is_class(MAX_PROC_ARGS) = .false.
+        character(len=64) :: arg_class_types(MAX_PROC_ARGS) = ''
+        character(len=:), allocatable :: arg_class_type_identities(:)
+        logical :: require_class_type_identities = .false.
     end type external_procedure_t
 
     integer, parameter, public :: MAX_NAMELIST_MEMBERS = 32
@@ -718,6 +730,12 @@ module session_program_lowering_types
         integer :: current_declaration_index = 0
         type(derived_type_info_t), allocatable :: derived_types(:)
         integer :: derived_type_count = 0
+        ! Local spellings imported through USE renames map to one canonical
+        ! derived-type record. Keeping aliases out of derived_types preserves
+        ! type identity for inheritance, nested components, and descriptors.
+        character(len=64), allocatable :: derived_type_alias_names(:)
+        integer, allocatable :: derived_type_alias_indices(:)
+        integer :: derived_type_alias_count = 0
         ! Parameterized derived types (#411). A PDT definition registers its
         ! name here as a template instead of a concrete layout; every distinct
         ! tuple of constant actual type parameters instantiates one concrete
@@ -866,5 +884,27 @@ module session_program_lowering_types
         integer(c_int32_t) :: predecessor_block_id = 0_c_int32_t
         logical :: terminated = .false.
     end type branch_result_t
+
+    public :: abi_mangle_identity
+
+contains
+
+    function abi_mangle_identity(identity) result(mangled)
+        ! Encode a Fortran identity into a linker-safe, self-delimiting
+        ! spelling. Every source byte is represented by exactly two lowercase
+        ! hexadecimal digits, so punctuation, separators, and source
+        ! underscores cannot become token boundaries or collide.
+        character(len=*), intent(in) :: identity
+        character(len=:), allocatable :: mangled
+        integer :: i, code
+        character(len=16), parameter :: hex_digits = '0123456789abcdef'
+
+        mangled = 'h'
+        do i = 1, len_trim(identity)
+            code = iachar(identity(i:i))
+            mangled = mangled//hex_digits(code/16 + 1:code/16 + 1)// &
+                hex_digits(mod(code, 16) + 1:mod(code, 16) + 1)
+        end do
+    end function abi_mangle_identity
 
 end module session_program_lowering_types
