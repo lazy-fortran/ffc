@@ -13,6 +13,7 @@ module ffc_test_support
 
     public :: expect_exit_status
     public :: expect_output
+    public :: expect_output_matches_gfortran
     public :: expect_error_contains
     public :: expect_cli_error_contains
     public :: expect_cli_error_on_stderr
@@ -303,6 +304,94 @@ contains
         call execute_command_line('rm -f '//exe_path//' '//stdout_path)
         ok = .true.
     end function expect_output
+
+    logical function expect_output_matches_gfortran(source, stem) result(ok)
+        ! Compile and run one source through both independent frontends.  The
+        ! emitted programs must agree on both status and stdout.
+        character(len=*), intent(in) :: source
+        character(len=*), intent(in) :: stem
+        character(len=:), allocatable :: base, source_path, ffc_exe
+        character(len=:), allocatable :: gfortran_exe, ffc_out, gfortran_out
+        character(len=:), allocatable :: error_msg
+        integer :: unit, ffc_status, gfortran_status, cmd_stat, diff_status
+
+        ok = .false.
+        base = '/tmp/ffc_gfortran_'//trim(stem)
+        source_path = base//'.f90'
+        ffc_exe = base//'.ffc'
+        gfortran_exe = base//'.gfortran'
+        ffc_out = base//'.ffc.out'
+        gfortran_out = base//'.gfortran.out'
+
+        call compile_to_exe(source, ffc_exe, error_msg)
+        if (allocated(error_msg)) then
+            if (len_trim(error_msg) > 0) then
+                print *, 'FAIL[', trim(stem), ']: ', trim(error_msg)
+                call execute_command_line('rm -f '//base//'*')
+                return
+            end if
+        end if
+
+        open (newunit=unit, file=source_path, status='replace', action='write', &
+            iostat=cmd_stat)
+        if (cmd_stat /= 0) then
+            print *, 'FAIL[', trim(stem), ']: could not write gfortran source'
+            call execute_command_line('rm -f '//base//'*')
+            return
+        end if
+        write (unit, '(A)') source
+        close (unit)
+
+        call execute_command_line('gfortran -std=f2018 -w '//source_path// &
+            ' -o '//gfortran_exe, exitstat=gfortran_status, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) then
+            print *, 'FAIL[', trim(stem), ']: gfortran rejected source'
+            call execute_command_line('rm -f '//base//'*')
+            return
+        end if
+        if (gfortran_status /= 0) then
+            print *, 'FAIL[', trim(stem), ']: gfortran rejected source'
+            call execute_command_line('rm -f '//base//'*')
+            return
+        end if
+
+        call execute_command_line(ffc_exe//' > '//ffc_out//' 2>&1', &
+            exitstat=ffc_status, cmdstat=cmd_stat)
+        call execute_command_line(gfortran_exe//' > '//gfortran_out//' 2>&1', &
+            exitstat=gfortran_status, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) then
+            print *, 'FAIL[', trim(stem), ']: gfortran executable did not run'
+            call execute_command_line('rm -f '//base//'*')
+            return
+        end if
+        if (ffc_status /= gfortran_status) then
+            print *, 'FAIL[', trim(stem), ']: exit status differs from gfortran', &
+                ffc_status, gfortran_status
+            call execute_command_line('rm -f '//base//'*')
+            return
+        end if
+        if (ffc_status /= 0) then
+            print *, 'FAIL[', trim(stem), ']: both executables failed'
+            call execute_command_line('rm -f '//base//'*')
+            return
+        end if
+
+        call execute_command_line('diff -u '//ffc_out//' '//gfortran_out, &
+            exitstat=diff_status, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) then
+            print *, 'FAIL[', trim(stem), ']: could not compare output with gfortran'
+            call execute_command_line('rm -f '//base//'*')
+            return
+        end if
+        if (diff_status /= 0) then
+            print *, 'FAIL[', trim(stem), ']: output differs from gfortran'
+            call execute_command_line('rm -f '//base//'*')
+            return
+        end if
+
+        call execute_command_line('rm -f '//base//'*')
+        ok = .true.
+    end function expect_output_matches_gfortran
 
     logical function expect_output_with_stdin(source, stdin_input, expected, exe_path) result(ok)
         ! Like expect_output but pipes stdin_input to the executable via echo.

@@ -913,7 +913,7 @@
     end subroutine runtime_guard_match_ids
 
     subroutine bind_runtime_guard_symbol(context, sel_index, assoc_name, &
-                                         guard_type_index, exact, &
+                                         guard_type_index, exact, error_msg, &
                                          selector_element_address)
         ! Bind the associate name inside a guard's arm. It aliases the
         ! selector's storage (same element_address), so writes in the arm reach
@@ -921,15 +921,28 @@
         ! type, which is what component access inside the arm resolves against.
         ! After TYPE IS the dynamic type is known exactly, so the associate name
         ! is no longer polymorphic; after CLASS IS it still is.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: sel_index
         character(len=*), intent(in) :: assoc_name
         integer, intent(in) :: guard_type_index
         logical, intent(in) :: exact
+        character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t), intent(in), optional :: selector_element_address
         integer :: idx
+        type(lr_operand_desc_t) :: data_field, data_value
 
-        idx = find_symbol_compat(context, assoc_name)
+        call set_empty(error_msg)
+
+        ! With the shorthand SELECT TYPE (x), the associate entity is the
+        ! selector itself. Reusing sel_index is important when an older
+        ! construct left a same-named temporary at a newer slot; textual lookup
+        ! would otherwise narrow that stale slot and shadow the host selector.
+        if (same_name(assoc_name, context%symbols(sel_index)%name)) then
+            idx = sel_index
+        else
+            idx = find_symbol_compat(context, assoc_name)
+        end if
         if (idx <= 0) then
             call grow_symbols(context)
             idx = context%symbol_count + 1
@@ -938,6 +951,20 @@
         context%symbols(idx) = context%symbols(sel_index)
         context%symbols(idx)%name = trim(assoc_name)
         context%symbols(idx)%derived_type_index = guard_type_index
+        if (.not. present(selector_element_address)) then
+            if (.not. context%symbols(idx)%has_address) then
+                if (context%symbols(idx)%has_dynamic_type_address) then
+                    if (.not. emit_ptr_offset(context%session, &
+                            context%symbols(idx)%class_descriptor_address, &
+                            int(POLYMORPHIC_DESCRIPTOR_DATA_OFFSET, c_int64_t), &
+                            data_field, error_msg)) return
+                    if (.not. emit_ptr_load(context%session, data_field, &
+                            data_value, error_msg)) return
+                    context%symbols(idx)%element_address = data_value
+                    context%symbols(idx)%has_address = .true.
+                end if
+            end if
+        end if
         if (.not. context%symbols(idx)%is_array) then
             context%symbols(idx)%array_size = &
                 total_component_slots(context, guard_type_index)
@@ -1203,12 +1230,13 @@
             call restore_symbols(context, baseline, baseline_count)
             if (selector_is_element) then
                 call bind_runtime_guard_symbol(context, sel_index, assoc_name, &
-                    guard_type_index, trim(guard_kind) == 'type_is', &
+                    guard_type_index, trim(guard_kind) == 'type_is', error_msg, &
                     selector_element_address)
             else
                 call bind_runtime_guard_symbol(context, sel_index, assoc_name, &
-                    guard_type_index, trim(guard_kind) == 'type_is')
+                    guard_type_index, trim(guard_kind) == 'type_is', error_msg)
             end if
+            if (len_trim(error_msg) > 0) return
             call select_type_guard_body(arena, ordered(g), body)
             terminated = .false.
             if (allocated(body)) then

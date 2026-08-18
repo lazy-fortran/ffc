@@ -1,5 +1,6 @@
 program test_session_select_type_compiler
-    use ffc_test_support, only: expect_exit_status, expect_output
+    use ffc_test_support, only: expect_exit_status, expect_output, &
+        expect_output_matches_gfortran
     implicit none
 
     logical :: all_passed
@@ -15,6 +16,7 @@ program test_session_select_type_compiler
     if (.not. test_select_type_class_default_matches_neither()) all_passed = .false.
     if (.not. test_host_select_type_class_is()) all_passed = .false.
     if (.not. test_host_select_type_type_is()) all_passed = .false.
+    if (.not. test_host_select_type_extension()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: class(*) and select type lower through direct LIRIC'
@@ -141,6 +143,52 @@ contains
             source, ' type is t'//new_line('a'), &
             '/tmp/ffc_session_host_type_select')
     end function test_host_select_type_type_is
+
+    logical function test_host_select_type_extension()
+        ! A contained procedure must preserve the dynamic extension type of a
+        ! host-associated CLASS(base_t) allocatable across SELECT TYPE.  The
+        ! separate arms distinguish CLASS IS from TYPE IS semantics.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: base_t'//new_line('a')// &
+            '    integer :: marker'//new_line('a')// &
+            '  end type base_t'//new_line('a')// &
+            '  type, extends(base_t) :: child_t'//new_line('a')// &
+            '    integer :: extra'//new_line('a')// &
+            '  end type child_t'//new_line('a')// &
+            '  class(base_t), allocatable :: x'//new_line('a')// &
+            '  allocate (child_t :: x)'//new_line('a')// &
+            '  call inspect'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine inspect'//new_line('a')// &
+            '    integer :: class_base, type_base, class_child'//new_line('a')// &
+            '    class_base = 0'//new_line('a')// &
+            '    type_base = 0'//new_line('a')// &
+            '    class_child = 0'//new_line('a')// &
+            '    select type (x)'//new_line('a')// &
+            '    class is (child_t)'//new_line('a')// &
+            '      x%marker = 17'//new_line('a')// &
+            '      x%extra = 29'//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '    select type (x)'//new_line('a')// &
+            '    class is (base_t)'//new_line('a')// &
+            '      class_base = x%marker'//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '    select type (x)'//new_line('a')// &
+            '    type is (base_t)'//new_line('a')// &
+            '      type_base = 1'//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '    select type (x)'//new_line('a')// &
+            '    class is (child_t)'//new_line('a')// &
+            '      class_child = x%extra'//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '    print *, class_base, type_base, class_child'//new_line('a')// &
+            '  end subroutine inspect'//new_line('a')// &
+            'end program main'
+
+        test_host_select_type_extension = expect_output_matches_gfortran( &
+            source, 'host_extension_select')
+    end function test_host_select_type_extension
 
     function two_arm_source(actual) result(source)
         ! integer arm -> 1, real arm -> 2, class default -> 9.
