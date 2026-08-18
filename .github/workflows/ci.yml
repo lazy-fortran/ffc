@@ -122,18 +122,21 @@ jobs:
         working-directory: ffc
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
+          LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
         run: fpm build
 
       - name: Run ffc tests
         working-directory: ffc
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
+          LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
         run: fpm test
 
       - name: Run pinned corpus buckets
         working-directory: ffc
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
+          LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
           FFC_LFORTRAN_DIR: ${{ github.workspace }}/lfortran
           FFC_GFORTRAN_DG_DIR: ${{ github.workspace }}/gcc/gcc/testsuite/gfortran.dg
         run: |
@@ -151,6 +154,7 @@ jobs:
         working-directory: ffc
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
+          LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
         run: |
           set -euo pipefail
           # `fo lint` exits 1 on any finding, so capture the report first and
@@ -180,6 +184,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: ffc
+          fetch-depth: 0
 
       - name: Checkout fo
         uses: actions/checkout@v4
@@ -206,9 +211,9 @@ jobs:
           fpm install --prefix "$HOME/.local"
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-      # main is clean under `fo fmt --check` today, so this gate blocks from
-      # the start. It covers *.f90 only; fo's formatter does not read the
-      # *.inc lowering fragments.
-      - name: Check formatting
+      # Compare changed sources with the base revision. This prevents new
+      # formatting regressions without making every feature PR inherit the
+      # existing whole-tree formatter debt. *.inc fragments remain excluded.
+      - name: Check changed-file formatting
         working-directory: ffc
-        run: fo fmt --check
+        run: scripts/check_changed_format.sh

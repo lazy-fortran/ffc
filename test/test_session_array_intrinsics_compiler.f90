@@ -109,11 +109,11 @@ contains
     end function test_ubound_nondefault
 
     logical function test_count_true_elements()
-        ! count(mask) with 3 nonzero elements in a 4-element integer array.
+        ! count(mask) with 3 true elements in a 4-element logical array.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: mask(4)'//new_line('a')// &
-            '  mask = [1, 0, 1, 1]'//new_line('a')// &
+            '  logical :: mask(4)'//new_line('a')// &
+            '  mask = [.true., .false., .true., .true.]'//new_line('a')// &
             '  stop count(mask)'//new_line('a')// &
             'end program main'
         test_count_true_elements = expect_exit_status( &
@@ -121,11 +121,11 @@ contains
     end function test_count_true_elements
 
     logical function test_any_returns_nonzero()
-        ! any(mask) returns nonzero when at least one element is nonzero.
+        ! any(mask) returns true when at least one element is true.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: mask(3)'//new_line('a')// &
-            '  mask = [0, 1, 0]'//new_line('a')// &
+            '  logical :: mask(3)'//new_line('a')// &
+            '  mask = [.false., .true., .false.]'//new_line('a')// &
             '  stop any(mask)'//new_line('a')// &
             'end program main'
         ! stop exits with 1 (any returns nonzero OR of elements).
@@ -134,11 +134,11 @@ contains
     end function test_any_returns_nonzero
 
     logical function test_any_all_false_returns_zero()
-        ! any(mask) returns 0 when all elements are 0.
+        ! any(mask) returns false when all elements are false.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: mask(3)'//new_line('a')// &
-            '  mask = [0, 0, 0]'//new_line('a')// &
+            '  logical :: mask(3)'//new_line('a')// &
+            '  mask = [.false., .false., .false.]'//new_line('a')// &
             '  stop any(mask)'//new_line('a')// &
             'end program main'
         test_any_all_false_returns_zero = expect_exit_status( &
@@ -146,11 +146,11 @@ contains
     end function test_any_all_false_returns_zero
 
     logical function test_all_all_true()
-        ! all(mask) returns 1 when every element is nonzero.
+        ! all(mask) returns true when every element is true.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: mask(3)'//new_line('a')// &
-            '  mask = [1, 1, 1]'//new_line('a')// &
+            '  logical :: mask(3)'//new_line('a')// &
+            '  mask = [.true., .true., .true.]'//new_line('a')// &
             '  stop all(mask)'//new_line('a')// &
             'end program main'
         test_all_all_true = expect_exit_status( &
@@ -158,11 +158,11 @@ contains
     end function test_all_all_true
 
     logical function test_all_mixed_returns_zero()
-        ! all(mask) returns 0 when any element is 0.
+        ! all(mask) returns false when any element is false.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: mask(3)'//new_line('a')// &
-            '  mask = [1, 0, 1]'//new_line('a')// &
+            '  logical :: mask(3)'//new_line('a')// &
+            '  mask = [.true., .false., .true.]'//new_line('a')// &
             '  stop all(mask)'//new_line('a')// &
             'end program main'
         test_all_mixed_returns_zero = expect_exit_status( &

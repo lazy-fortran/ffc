@@ -78,7 +78,7 @@ contains
             'end program main'
 
         test_missing_binding_is_diagnosed = expect_error_contains( &
-            source, 'integer identifier was not declared: missing', &
+            source, 'Name ''missing'' is not declared', &
             '/tmp/ffc_session_declaration_missing_binding_test')
     end function test_missing_binding_is_diagnosed
 

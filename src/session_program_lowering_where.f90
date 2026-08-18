@@ -227,6 +227,11 @@ contains
         call build_array_expression(context, target_symbol, value_index, plan, &
                                     error_msg)
         if (len_trim(error_msg) > 0) return
+        do i = 1, size(masks)
+            call where_mask_shape_check(arena, masks(i), target_symbol, &
+                                        context, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
         n = plan%element_count()
         allocate (selected(n))
 
@@ -259,6 +264,40 @@ contains
         end do
         call set_empty(error_msg)
     end subroutine lower_where_selected_assignment
+
+    subroutine where_mask_shape_check(arena, mask_index, target_symbol, &
+                                      context, error_msg)
+        ! A WHERE mask is evaluated at the same linear elements as the target,
+        ! so it must conform to the target's shape (Fortran 2018 clause
+        ! 10.2.3.1). A mask that is a different rank or a different extent is
+        ! rejected before any element is lowered, rather than reading past the
+        ! mask's declared elements.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: mask_index
+        integer, intent(in) :: target_symbol
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: bin_op
+        integer :: bin_left, bin_right, bin_line, bin_col
+        integer :: mask_symbol, other_symbol
+
+        call set_empty(error_msg)
+        if (.not. is_binary_op(arena, mask_index)) return
+        call get_binary_op_info(arena, mask_index, bin_op, bin_left, bin_right, &
+                                bin_line, bin_col, error_msg)
+        if (len_trim(error_msg) > 0) return
+        mask_symbol = where_array_operand_symbol(arena, bin_left, context)
+        other_symbol = where_array_operand_symbol(arena, bin_right, context)
+        if (mask_symbol > 0) then
+            call ensure_array_shapes_match(context, target_symbol, mask_symbol, &
+                                           error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (other_symbol > 0 .and. other_symbol /= mask_symbol) then
+            call ensure_array_shapes_match(context, target_symbol, other_symbol, &
+                                           error_msg)
+        end if
+    end subroutine where_mask_shape_check
 
     subroutine lower_where_mask_conjunction(arena, masks, linear_index, &
                                             context, cond, error_msg)

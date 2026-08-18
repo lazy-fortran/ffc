@@ -191,7 +191,7 @@ contains
             'end program main'
 
         test_interface_constructor_unsupported = expect_error_contains( &
-            source, 'unsupported derived type constructor', &
+            source, 'Derived type ''twoint'' is not accessible', &
             '/tmp/ffc_session_ctor_interface')
     end function test_interface_constructor_unsupported
 

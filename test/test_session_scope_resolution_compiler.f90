@@ -193,7 +193,7 @@ contains
 
         test_unresolved_binding_is_not_synthesized_from_text = &
             expect_error_contains(source, &
-            'integer identifier was not declared: token', &
+            'Name ''token'' is not declared', &
             '/tmp/ffc_session_scope_unresolved_binding_test')
     end function test_unresolved_binding_is_not_synthesized_from_text
 

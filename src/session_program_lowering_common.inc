@@ -175,10 +175,13 @@
                 if (len_trim(slot%array_init_values(k)) == 0) cycle
                 off = slot%byte_offset + (k - 1)*elem_bytes
                 select case (slot%value_kind)
-                case (VALUE_I32, VALUE_LOGICAL)
+                case (VALUE_I32)
                     call fold_array_element_i32(slot%array_init_values(k), &
                                                 init_i32, error_msg)
                     if (len_trim(error_msg) > 0) return
+                    call put_bytes(buffer, off, transfer(init_i32, buffer, 4))
+                case (VALUE_LOGICAL)
+                    init_i32 = logical_literal_to_i32(slot%array_init_values(k))
                     call put_bytes(buffer, off, transfer(init_i32, buffer, 4))
                 case (VALUE_F32)
                     read (slot%array_init_values(k), *, iostat=io_stat) init_f32

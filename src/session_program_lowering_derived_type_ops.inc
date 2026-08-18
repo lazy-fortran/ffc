@@ -1252,6 +1252,58 @@
                 call set_empty(error_msg)
                 return
             end if
+            ! Lazy executable references are seeded before the declaration
+            ! walk.  FortFront may expose the constructor target as an
+            ! integer-valued inferred expression at that stage, so the seed
+            ! is only a name/value placeholder: it has no binding or storage.
+            ! Upgrade that placeholder in place once the constructor reveals
+            ! the derived layout.  Explicit declarations and procedure
+            ! arguments remain conflicts here; silently changing either would
+            ! hide a real redeclaration or ABI mismatch.
+            if (.not. context%symbols(index)%is_derived .and. &
+                .not. context%symbols(index)%has_binding .and. &
+                .not. context%symbols(index)%is_parameter .and. &
+                .not. context%symbols(index)%is_dummy_argument) then
+                slot_count = total_component_slots(context, derived_type_index)
+                context%symbols(index)%value_kind = VALUE_DERIVED
+                context%symbols(index)%is_derived = .true.
+                context%symbols(index)%derived_type_index = derived_type_index
+                context%symbols(index)%array_size = slot_count
+                if (node%is_pointer) then
+                    context%symbols(index)%is_pointer = .true.
+                    context%symbols(index)%is_associated = .false.
+                end if
+                if (declaration_is_class_pointer(node)) then
+                    context%symbols(index)%is_class_pointer = .true.
+                    call bind_class_allocatable_descriptor(context, index, &
+                                                           derived_type_index, &
+                                                           error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+                if (node%is_target) then
+                    context%symbols(index)%is_target = .true.
+                end if
+                if (node%is_pointer .and. .not. node%is_target) then
+                    call set_empty(error_msg)
+                    return
+                end if
+                if (.not. emit_i32_array_alloca(context%session, slot_count, &
+                        context%symbols(index)%element_address, error_msg)) then
+                    error_msg = 'derived_alloca['//trim(name)//']: '//error_msg
+                    return
+                end if
+                if (node%is_target) then
+                    context%symbols(index)%address = &
+                        context%symbols(index)%element_address
+                    context%symbols(index)%has_address = .true.
+                    context%symbols(index)%is_reference = .true.
+                end if
+                call init_derived_component_defaults(context, index, &
+                                                     derived_type_index, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call set_empty(error_msg)
+                return
+            end if
             ! A derived dummy: the parameter pointer is the base address of the
             ! caller's derived storage; component access reads through it.
             if (context%symbols(index)%is_parameter .and. &
@@ -1278,7 +1330,7 @@
             error_msg = 'duplicate derived type declaration: '//trim(name)
             return
         end if
-      call grow_symbols(context)
+        call grow_symbols(context)
 
         slot_count = total_component_slots(context, derived_type_index)
         index = context%symbol_count + 1
