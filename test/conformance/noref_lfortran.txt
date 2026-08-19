@@ -6,3 +6,4 @@ modules_15b.f90 # noref=compile-only; reason=module interface companion has no p
 modules_25_module.f90 # noref=compile-only; reason=module interface companion has no program unit
 modules_25_module1.f90 # noref=compile-only; reason=module interface companion has no program unit
 minpack_01_func.f90 # noref=compile-only; reason=EXTRAFILES companion is linked into minpack_01 rather than a standalone test
+cpu_time_01.f90 # noref=nondeterministic-runtime-value; reason=CPU_TIME output depends on processor timing and is not byte-stable across independent runs

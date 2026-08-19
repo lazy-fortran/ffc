@@ -25,7 +25,6 @@ PR96727.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length chara
 PR96728.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 PR97046.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 access_spec_3.f90 # owner=lazy-fortran/ffc#584; reason=resolve same-unit USE export identity
-achar_1.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 achar_2.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 actual_array_constructor_1.f90 # owner=lazy-fortran/ffc#540; reason=preserve mixed-width COMMON byte layout
 actual_array_constructor_2.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
