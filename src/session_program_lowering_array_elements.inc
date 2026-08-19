@@ -2035,6 +2035,12 @@
 
         select type (call_node => arena%entries(expr_index)%node)
         type is (call_or_subscript_node)
+            if (is_fixed_rank1_vector_gather_candidate(arena, expr_index, &
+                                                       context)) then
+                call materialize_fixed_rank1_vector_gather(arena, expr_index, &
+                                                           context, error_msg)
+                return
+            end if
             if (is_array_result_call(arena, expr_index, context)) then
                 cached = cached_array_expression_symbol(context, expr_index)
                 if (cached > 0) return
@@ -2083,6 +2089,233 @@
             end if
         end select
     end subroutine materialize_array_expression_calls
+
+    subroutine describe_fixed_rank1_vector_gather(arena, node_index, context, &
+                                                  source_index, index_vector_index, &
+                                                  extent, handled, error_msg)
+        !! Recognize only `fixed_rank1_source(fixed_rank1_integer_vector)`.
+        !!
+        !! This deliberately does not share the vector-subscript assignment
+        !! classifier: read gathers need a contiguous expression temporary and
+        !! runtime bounds checks, while scatter assignment has separate rules.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: source_index
+        integer, intent(out) :: index_vector_index
+        integer, intent(out) :: extent
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source_name, index_name
+        integer :: subscript_index
+
+        source_index = 0
+        index_vector_index = 0
+        extent = 0
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node_index)) return
+
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. node%is_array_access) return
+            if (.not. allocated(node%name)) return
+            if (.not. allocated(node%arg_indices)) return
+            if (size(node%arg_indices) /= 1) return
+            subscript_index = node%arg_indices(1)
+            if (.not. is_identifier(arena, subscript_index)) return
+            call get_identifier_name(arena, subscript_index, index_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            source_name = trim(node%name)
+            source_index = resolve_symbol_at_node(context, node_index, source_name)
+            if (source_index <= 0) return
+            if (.not. context%symbols(source_index)%is_array) return
+            index_vector_index = resolve_symbol_at_node(context, subscript_index, &
+                                                        index_name)
+            handled = .true.
+            if (index_vector_index <= 0) then
+                error_msg = 'vector subscript index vector was not declared: '// &
+                            trim(index_name)
+                return
+            end if
+            if (.not. context%symbols(index_vector_index)%is_array) then
+                handled = .false.
+                return
+            end if
+
+            if (context%symbols(source_index)%is_allocatable .or. &
+                context%symbols(source_index)%is_pointer .or. &
+                context%symbols(source_index)%is_runtime_array .or. &
+                context%symbols(source_index)%has_runtime_array_stride .or. &
+                any(context%symbols(source_index)%has_runtime_dim_size)) then
+                error_msg = 'vector gather requires a fixed-size source array'
+                return
+            end if
+            if (context%symbols(source_index)%array_rank /= 1) then
+                error_msg = 'vector gather requires a fixed-size rank-1 source array'
+                return
+            end if
+            select case (context%symbols(source_index)%value_kind)
+            case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+                ! These scalar intrinsic kinds have direct array load paths.
+            case default
+                error_msg = 'vector gather supports integer, logical, and real arrays'
+                return
+            end select
+
+            if (context%symbols(index_vector_index)%is_allocatable .or. &
+                context%symbols(index_vector_index)%is_pointer .or. &
+                context%symbols(index_vector_index)%is_runtime_array .or. &
+                context%symbols(index_vector_index)%has_runtime_array_stride .or. &
+                any(context%symbols(index_vector_index)%has_runtime_dim_size)) then
+                error_msg = 'vector gather requires a fixed-size index vector'
+                return
+            end if
+            if (context%symbols(index_vector_index)%array_rank /= 1) then
+                error_msg = 'vector gather requires a rank-1 index vector'
+                return
+            end if
+            if (context%symbols(index_vector_index)%value_kind /= VALUE_I32) then
+                error_msg = 'vector subscript requires an integer index vector: '// &
+                            trim(index_name)
+                return
+            end if
+            extent = context%symbols(index_vector_index)%array_size
+            if (extent <= 0) then
+                extent = context%symbols(index_vector_index)%array_dim_sizes(1)
+            end if
+            if (extent <= 0) then
+                error_msg = 'vector gather requires a positive index-vector extent'
+                return
+            end if
+        end select
+    end subroutine describe_fixed_rank1_vector_gather
+
+    logical function is_fixed_rank1_vector_gather_candidate(arena, node_index, &
+                                                             context) result(candidate)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: source_index, index_vector_index, extent
+        logical :: handled
+        character(len=:), allocatable :: error_msg
+
+        call describe_fixed_rank1_vector_gather(arena, node_index, context, &
+            source_index, index_vector_index, extent, handled, error_msg)
+        candidate = handled
+    end function is_fixed_rank1_vector_gather_candidate
+
+    subroutine materialize_fixed_rank1_vector_gather(arena, expr_index, context, &
+                                                      error_msg)
+        !! Evaluate the index vector once, then gather in vector order into a
+        !! contiguous fixed-size temporary. The cached temporary is consumed by
+        !! the ordinary array-expression element loader.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: raw_index, gathered_value
+        type(lr_operand_desc_t) :: linear_index
+        integer :: source_index, index_vector_index, extent
+        integer :: index_temp, result_temp, k
+        logical :: handled
+
+        call describe_fixed_rank1_vector_gather(arena, expr_index, context, &
+            source_index, index_vector_index, extent, handled, error_msg)
+        if (len_trim(error_msg) > 0 .or. .not. handled) return
+
+        call create_array_expression_temp(context, VALUE_I32, extent, 0, &
+                                          index_temp, error_msg)
+        if (len_trim(error_msg) > 0) return
+        do k = 0, extent - 1
+            call load_array_linear_element(context, index_vector_index, &
+                                           int(k, c_int64_t), raw_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call store_array_linear_element(context, index_temp, int(k, c_int64_t), &
+                                            raw_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+
+        call create_array_expression_temp(context, &
+            context%symbols(source_index)%value_kind, extent, 0, result_temp, &
+            error_msg)
+        if (len_trim(error_msg) > 0) return
+        do k = 0, extent - 1
+            call load_array_linear_element(context, index_temp, int(k, c_int64_t), &
+                                           raw_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_fixed_vector_subscript_check(context, raw_index, &
+                context%symbols(source_index)%array_dim_lowers(1), &
+                context%symbols(source_index)%array_dim_lowers(1) + &
+                    context%symbols(source_index)%array_dim_sizes(1) - 1, &
+                linear_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call load_array_element_at_operand(context, source_index, linear_index, &
+                                               gathered_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call store_array_linear_element(context, result_temp, int(k, c_int64_t), &
+                                            gathered_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call cache_array_expression_symbol(context, expr_index, result_temp)
+        call set_empty(error_msg)
+    end subroutine materialize_fixed_rank1_vector_gather
+
+    subroutine emit_fixed_vector_subscript_check(context, raw_index, source_lower, &
+                                                 source_upper, linear_index, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: raw_index
+        integer, intent(in) :: source_lower
+        integer, intent(in) :: source_upper
+        type(lr_operand_desc_t), intent(out) :: linear_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: below_lower, above_upper, out_of_bounds
+        type(lr_operand_desc_t) :: failure_format
+        type(lr_operand_desc_t) :: failure_args(2)
+        integer(c_int32_t) :: failure_block, valid_block
+        integer(c_int32_t) :: failure_format_id
+        character(len=64) :: failure_global_name
+
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, raw_index, &
+                i32_immediate(context%session, int(source_lower, c_int64_t)), &
+                below_lower, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGT, raw_index, &
+                i32_immediate(context%session, int(source_upper, c_int64_t)), &
+                above_upper, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_OR, below_lower, &
+                above_upper, out_of_bounds, error_msg)) return
+
+        failure_block = create_liric_block(context%session)
+        valid_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, out_of_bounds, failure_block, &
+                                    valid_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, failure_block, error_msg)) return
+        context%current_block_id = failure_block
+        context%current_block_terminated = .false.
+        context%string_literal_count = context%string_literal_count + 1
+        failure_global_name = ffc_unit_global_name(context, 'vector.error.', &
+                                                   context%string_literal_count)
+        call create_printf_format_global(context%session, trim(failure_global_name), &
+            'Fortran runtime error: Vector subscript is out of bounds'//achar(10), &
+            failure_format_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        failure_format = printf_format_ptr(context%session, failure_format_id)
+        failure_args(1) = i32_immediate(context%session, 2_c_int64_t)
+        failure_args(2) = failure_format
+        if (.not. emit_dprintf(context%session, failure_args, error_msg)) return
+        if (.not. emit_exit(context%session, &
+                i32_immediate(context%session, 2_c_int64_t), error_msg)) return
+        if (.not. emit_liric_br(context%session, valid_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, valid_block, error_msg)) return
+        context%current_block_id = valid_block
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_binary(context%session, LR_OP_SUB, raw_index, &
+                i32_immediate(context%session, int(source_lower, c_int64_t)), &
+                linear_index, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine emit_fixed_vector_subscript_check
 
     subroutine build_array_expression(context, target_symbol_index, expr_index, &
                                       plan, error_msg)

@@ -3314,6 +3314,11 @@
             scalar = .true.
             return
         type is (call_or_subscript_node)
+            if (is_fixed_rank1_vector_gather_candidate(arena, node_index, &
+                                                       context)) then
+                scalar = .false.
+                return
+            end if
             if (n%is_array_access) then
                 scalar = .true.
                 return
