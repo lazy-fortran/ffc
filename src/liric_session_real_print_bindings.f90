@@ -344,7 +344,7 @@ contains
             error_msg)) return
 
         if (.not. set_liric_block(session, finblk, error_msg)) return
-        if (.not. build_finite(session, tmp, p, ex, chkhi, eblk, error_msg)) return
+        if (.not. build_finite(session, p, ex, chkhi, eblk, error_msg)) return
 
         if (.not. set_liric_block(session, chkhi, error_msg)) return
         if (.not. branch_on_high(session, ex, fblk, eblk, error_msg)) return
@@ -415,11 +415,11 @@ contains
         build_head = .true.
     end function build_head
 
-    logical function build_finite(session, tmp, p, ex, chkhi, eblk, error_msg)
+    logical function build_finite(session, p, ex, chkhi, eblk, error_msg)
         ! ex = atoi(p+1); *p = 0 (truncate mantissa); branch to F path
         ! (ex >= -1) or fall through to the exponential path.
         type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: tmp, p
+        type(lr_operand_desc_t), intent(in) :: p
         type(lr_operand_desc_t), intent(out) :: ex
         integer(c_int32_t), intent(in) :: chkhi, eblk
         character(len=:), allocatable, intent(out) :: error_msg
@@ -756,7 +756,7 @@ contains
             nfblk, error_msg)) return
 
         if (.not. set_liric_block(session, finblk, error_msg)) return
-        if (.not. build_finite_r4(session, tmp, p, ex, chkhi, eblk, &
+        if (.not. build_finite_r4(session, p, ex, chkhi, eblk, &
             error_msg)) return
 
         if (.not. set_liric_block(session, chkhi, error_msg)) return
@@ -905,10 +905,10 @@ contains
         build_head_r4 = .true.
     end function build_head_r4
 
-    logical function build_finite_r4(session, tmp, p, ex, chkhi, eblk, error_msg)
+    logical function build_finite_r4(session, p, ex, chkhi, eblk, error_msg)
         ! Same as build_finite; threshold check is done in branch_on_high_r4.
         type(liric_session_t), intent(inout) :: session
-        type(lr_operand_desc_t), intent(in) :: tmp, p
+        type(lr_operand_desc_t), intent(in) :: p
         type(lr_operand_desc_t), intent(out) :: ex
         integer(c_int32_t), intent(in) :: chkhi, eblk
         character(len=:), allocatable, intent(out) :: error_msg
