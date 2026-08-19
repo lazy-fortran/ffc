@@ -107,7 +107,9 @@
             rank = 1
             return
         end if
-        if (actual_is_contiguous_section(arena, node_index, context)) then
+        if (actual_is_rank1_section_view(arena, node_index, context) .or. &
+            actual_is_contiguous_section(arena, node_index, context, &
+                                         allow_derived=.false.)) then
             rank = 1
             return
         end if
@@ -187,7 +189,11 @@
         else if (actual_is_allocatable_array(arena, node_index, context)) then
             call allocatable_array_actual_data_address(arena, node_index, &
                                                        context, base, error_msg)
-        else if (actual_is_contiguous_section(arena, node_index, context)) then
+        else if (actual_is_rank1_section_view(arena, node_index, context)) then
+            call rank1_section_actual_base(arena, node_index, context, base, &
+                                           error_msg)
+        else if (actual_is_contiguous_section(arena, node_index, context, &
+                                              allow_derived=.false.)) then
             call section_actual_address(arena, node_index, context, base, &
                                         error_msg)
         else if (actual_is_whole_array(arena, node_index, context)) then
@@ -198,6 +204,36 @@
                         'allocatable array, or a contiguous array section'
         end if
     end subroutine assumed_shape_actual_base
+
+    subroutine rank1_section_actual_base(arena, node_index, context, base, &
+                                         error_msg)
+        ! Return the first selected element of a rank-1 section.  Static views
+        ! use the existing linear-address helper; runtime bounds use the same
+        ! live coordinate lowering as section assignment.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: base
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_section_info_t) :: info
+
+        select type (slice => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call describe_array_section(arena, slice, context, info, error_msg, &
+                                        allow_derived=.true.)
+            if (len_trim(error_msg) > 0) return
+            if (info%has_runtime_bounds) then
+                call lower_runtime_array_section_element_address_operand(arena, slice, &
+                    i32_immediate(context%session, 0_c_int64_t), context, base, &
+                    error_msg)
+            else
+                call section_actual_address(arena, node_index, context, base, &
+                                            error_msg)
+            end if
+        class default
+            error_msg = 'assumed-shape actual expected an array section'
+        end select
+    end subroutine rank1_section_actual_base
 
     subroutine assumed_shape_actual_extent(arena, node_index, context, rank, &
                                            dim, extent, error_msg)
@@ -215,6 +251,8 @@
         character(len=:), allocatable :: id_name
         logical :: ok
         integer :: symbol_index, type_index, component_index
+        type(array_section_info_t) :: section_info
+        type(lr_operand_desc_t) :: extent_i32
 
         if (assumed_shape_empty_constructor(arena, node_index)) then
             if (dim /= 1) then
@@ -250,7 +288,26 @@
 
         extents = 0
         ok = .false.
-        if (actual_is_contiguous_section(arena, node_index, context)) then
+        if (actual_is_rank1_section_view(arena, node_index, context)) then
+            select type (slice => arena%entries(node_index)%node)
+            type is (array_slice_node)
+                call describe_array_section(arena, slice, context, section_info, &
+                                            error_msg, allow_derived=.true.)
+                if (len_trim(error_msg) > 0) return
+                if (section_info%has_runtime_bounds) then
+                    call lower_runtime_array_section_extent(arena, slice, &
+                        section_info, context, extent_i32, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_i32_to_i64(context%session, extent_i32, &
+                                                   extent, error_msg)) return
+                else
+                    extent = i64_immediate(context%session, section_info%section_extents(1))
+                end if
+                return
+            class default
+            end select
+        else if (actual_is_contiguous_section(arena, node_index, context, &
+                                              allow_derived=.false.)) then
             call section_actual_decl_extents(context, node_index, 1, extents, ok)
         else if (is_identifier(arena, node_index)) then
             symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
@@ -320,6 +377,7 @@
         type(lr_operand_desc_t) :: base, extent, stride, running
         type(lr_operand_desc_t) :: dynamic_type_addr
         type(lr_operand_desc_t) :: dynamic_type_id, dynamic_type_i32
+        type(lr_operand_desc_t) :: section_stride
         integer :: symbol_index, value_kind, actual_rank, dim
         integer :: dummy_lowers(ARRAY_MAX_RANK)
         integer :: component_type, component_index
@@ -328,6 +386,7 @@
         integer(c_int32_t) :: class_star_type_id
         logical :: is_component_projection, has_dummy_lowers, is_empty_actual
         logical :: is_class_star_dummy
+        logical :: is_section_actual, section_is_contiguous
         character(len=32) :: rank_text, actual_rank_text
         character(len=:), allocatable :: dummy_type_name
         integer :: dummy_type_index
@@ -370,6 +429,8 @@
             error_msg = 'assumed-shape actual was not declared'
             return
         end if
+        is_section_actual = actual_is_rank1_section_view(arena, node_index, context)
+        section_is_contiguous = .false.
         is_component_projection = .false.
         select type (actual => arena%entries(node_index)%node)
         type is (component_access_node)
@@ -438,6 +499,14 @@
         else
             element_bytes = int(equivalence_kind_size(value_kind), c_int64_t)
         end if
+        if (is_section_actual) then
+            call reject_side_effectful_section_bounds(arena, node_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call rank1_section_stride_bytes(arena, node_index, context, &
+                                            element_bytes, section_stride, &
+                                            section_is_contiguous, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         call assumed_shape_actual_base(arena, node_index, context, base, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -460,12 +529,15 @@
         call store_descriptor_i32(context, int(rank, c_int32_t), descriptor, &
             int(ARRAY_DESCRIPTOR_RANK_OFFSET, c_int64_t), error_msg)
         if (len_trim(error_msg) > 0) return
-        ! The dummy borrows the actual's storage: allocated and associated, and
-        ! contiguous for every actual form this ABI accepts, but never owning.
+        ! The dummy borrows the actual's storage: allocated and associated, but
+        ! never owning. A section view is contiguous only when its retained
+        ! rank-1 stride is one element.
         flags = ARRAY_FLAG_ALLOCATED + ARRAY_FLAG_ASSOCIATED
         if (.not. is_component_projection .and. .not. is_empty_actual) then
-            if (context%symbols(symbol_index)%array_stride_bytes == 0 .or. &
-                context%symbols(symbol_index)%array_stride_bytes == element_bytes) then
+            if (is_section_actual) then
+                if (section_is_contiguous) flags = flags + ARRAY_FLAG_CONTIGUOUS
+            else if (context%symbols(symbol_index)%array_stride_bytes == 0 .or. &
+                     context%symbols(symbol_index)%array_stride_bytes == element_bytes) then
                 flags = flags + ARRAY_FLAG_CONTIGUOUS
             end if
         end if
@@ -499,7 +571,9 @@
 
         ! Column-major strides: dimension 1 steps one element, dimension d steps
         ! the product of every lower dimension's extent.
-        if (is_empty_actual) then
+        if (is_section_actual) then
+            running = section_stride
+        else if (is_empty_actual) then
             running = i64_immediate(context%session, element_bytes)
         else if (is_component_projection) then
             running = i64_immediate(context%session, int( &
@@ -539,6 +613,141 @@
 
         call set_empty(error_msg)
     end subroutine build_assumed_shape_descriptor
+
+    subroutine rank1_section_stride_bytes(arena, node_index, context, element_bytes, &
+                                          stride_bytes, is_contiguous, error_msg)
+        ! Compute the view stride independently of the view base.  Bounds may
+        ! be runtime expressions, but a runtime stride is still a signed byte
+        ! stride in the canonical descriptor; no ownership or copy is involved.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        integer(c_int64_t), intent(in) :: element_bytes
+        type(lr_operand_desc_t), intent(out) :: stride_bytes
+        logical, intent(out) :: is_contiguous
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(array_section_info_t) :: info
+        type(lr_operand_desc_t) :: stride_i32, stride_i64
+        integer :: stride_index
+        integer(c_int64_t) :: static_stride
+        logical :: stride_is_runtime
+        character(len=:), allocatable :: stride_error
+
+        is_contiguous = .false.
+        select type (slice => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call describe_array_section(arena, slice, context, info, error_msg, &
+                                        allow_derived=.true.)
+            if (len_trim(error_msg) > 0) return
+            static_stride = info%section_strides(1)
+            stride_index = 0
+            if (slice%num_dimensions >= 1) then
+                if (node_exists(arena, slice%bounds_indices(1))) then
+                    select type (bounds => arena%entries( &
+                            slice%bounds_indices(1))%node)
+                    type is (range_expression_node)
+                        stride_index = bounds%stride_index
+                    type is (array_bounds_node)
+                        stride_index = bounds%stride_index
+                    class default
+                    end select
+                end if
+            end if
+            stride_is_runtime = .false.
+            if (stride_index > 0) then
+                call eval_i32_constant(arena, stride_index, context, &
+                                       static_stride, stride_error)
+                stride_is_runtime = len_trim(stride_error) > 0
+            end if
+            if (stride_is_runtime) then
+                call lower_i32_expression(arena, stride_index, context, stride_i32, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_to_i64(context%session, stride_i32, &
+                        stride_i64, error_msg, sign_extend=.true.)) return
+                if (.not. emit_i64_binary(context%session, LR_OP_MUL, stride_i64, &
+                        i64_immediate(context%session, element_bytes), stride_bytes, &
+                        error_msg)) return
+            else
+                stride_bytes = i64_immediate(context%session, &
+                                             static_stride*element_bytes)
+            end if
+            ! Runtime lower/upper bounds do not make a unit-stride view
+            ! non-contiguous. An omitted, literal, or folded unit stride is
+            ! contiguous; only a runtime-unknown stride withholds the flag.
+            is_contiguous = static_stride == 1_c_int64_t .and. &
+                            .not. stride_is_runtime
+        class default
+            error_msg = 'assumed-shape actual expected an array section'
+        end select
+    end subroutine rank1_section_stride_bytes
+
+    subroutine reject_side_effectful_section_bounds(arena, node_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: dim, bounds_index
+
+        call set_empty(error_msg)
+        select type (slice => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            do dim = 1, slice%num_dimensions
+                bounds_index = slice%bounds_indices(dim)
+                if (.not. node_exists(arena, bounds_index)) cycle
+                select type (bounds => arena%entries(bounds_index)%node)
+                type is (range_expression_node)
+                    if (section_bound_has_user_function(arena, bounds%start_index) .or. &
+                        section_bound_has_user_function(arena, bounds%end_index) .or. &
+                        section_bound_has_user_function(arena, bounds%stride_index)) then
+                        error_msg = 'side-effectful array-section bounds are not yet supported'
+                        return
+                    end if
+                type is (array_bounds_node)
+                    if (section_bound_has_user_function(arena, bounds%lower_bound_index) .or. &
+                        section_bound_has_user_function(arena, bounds%upper_bound_index) .or. &
+                        section_bound_has_user_function(arena, bounds%stride_index)) then
+                        error_msg = 'side-effectful array-section bounds are not yet supported'
+                        return
+                    end if
+                end select
+            end do
+        end select
+    end subroutine reject_side_effectful_section_bounds
+
+    recursive logical function section_bound_has_user_function(arena, node_index) &
+            result(found)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer :: left_index, right_index, line, column, i
+        character(len=:), allocatable :: op, error_msg
+
+        found = .false.
+        if (node_index <= 0 .or. .not. node_exists(arena, node_index)) return
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, op, left_index, right_index, &
+                                    line, column, error_msg)
+            if (len_trim(error_msg) > 0) return
+            found = section_bound_has_user_function(arena, left_index) .or. &
+                    section_bound_has_user_function(arena, right_index)
+            return
+        end if
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. node%is_array_access .and. allocated(node%name) .and. &
+                arena_has_function_def_named(arena, node%name)) then
+                found = .true.
+                return
+            end if
+            if (allocated(node%arg_indices)) then
+                do i = 1, size(node%arg_indices)
+                    if (section_bound_has_user_function(arena, node%arg_indices(i))) then
+                        found = .true.
+                        return
+                    end if
+                end do
+            end if
+        end select
+    end function section_bound_has_user_function
 
     subroutine bind_assumed_shape_descriptor_params(arena, param_indices, &
                                                     context, callee_name, &

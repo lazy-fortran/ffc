@@ -219,9 +219,12 @@ associated, and every subscript is out of bounds.
 ## Scope
 
 Migrated onto this contract so far: assumed-shape dummy arguments (#334),
-runtime-sized automatic arrays (#335), and allocatable arrays (#336). Pointer
-arrays and section views migrate in their own issues, as does retiring the
-last of the legacy runtime-shape metadata.
+runtime-sized automatic arrays (#335), allocatable arrays (#336), and the
+rank-1 intrinsic section views documented in `RUNTIME_ABI.md`. Pointer arrays,
+higher-rank and derived-type section views, forwarding a whole pointer or
+already-strided assumed-shape dummy to another assumed-shape dummy, and the
+side-effectful section-bound expressions, and the last legacy runtime-shape
+metadata migrate in their own issues.
 
 The declaration-shape classifier is now isolated in the typed
 `session_program_lowering_array_shape.f90` descendant. It preserves the

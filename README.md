@@ -114,10 +114,15 @@ array descriptor boundary. The same boundary accepts rank-2, rank-3, and
 rank-4 whole REAL actuals with one matching `RANK (2)`, `RANK (3)`, or
 `RANK (4)` arm and uses descriptor-driven column-major scalar addressing. Rank
 default/star, scalar or rank-5-and-higher actuals, dynamic shapes, sections,
-global storage, aliases, and ownership are refused. The actual may also be a contiguous
-rank-1 array section with compile-time bounds -- a stride-1 slice `a(2:4)` or a
-whole column `m(:,j)` (integer, `real`, `real(8)`) -- whose extent folds from
-the section and whose first-element address binds the dummy in place. A rank-1
+global storage, aliases, and ownership are refused. The actual may also be a rank-1
+section of a fixed, contiguous intrinsic rank-1 parent (integer, `real`, or
+`real(8)`). Its compile-time or runtime lower/upper bounds and signed, nonzero
+stride bind a borrowed descriptor view whose base is the first selected element,
+whose extent is the live trip count, and whose byte stride is signed; only a
+known unit stride is marked contiguous. Sections of allocatable, pointer,
+runtime-shaped, descriptor-backed, or already-strided parents, higher-rank or
+derived sections, and side-effectful bound expressions remain explicit refusals.
+A rank-1
 through rank-4 assumed-shape dummy of a
 subroutine also accepts an allocatable actual of runtime-only extent:
 the per-dimension extents travel in the canonical array descriptor, so `size(a)`,

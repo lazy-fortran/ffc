@@ -359,6 +359,12 @@
                 ! base address, element size and type, rank, extents, and
                 ! column-major byte strides, so the callee needs no hidden
                 ! extent arguments and no compile-time knowledge of the actual.
+                if (actual_is_unsupported_assumed_shape_forward(arena, &
+                        arg_indices(i), context, callee_name, &
+                        call_arg_param_pos(i, sp))) then
+                    error_msg = 'assumed-shape descriptor forwarding is not yet supported'
+                    return
+                end if
                 call build_assumed_shape_descriptor(arena, arg_indices(i), &
                     context, callee_dummy_assumed_shape_dims(arena, &
                         callee_name, call_arg_param_pos(i, sp)), callee_name, &
@@ -1424,6 +1430,42 @@
                                 .not. context%symbols(symbol_index)%is_allocatable
     end function actual_is_whole_array
 
+    logical function actual_is_unsupported_assumed_shape_forward(arena, &
+                                                                 node_index, context, &
+                                                                 callee_name, param_pos)
+        ! A descriptor-backed or pointer whole-array actual needs descriptor
+        ! composition when it is forwarded to another assumed-shape dummy.
+        ! Refuse that boundary until the composed view ABI is implemented;
+        ! otherwise the forwarding path can silently replace a runtime stride
+        ! with the element size and produce wrong values.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        character(len=:), allocatable :: id_name, id_err
+        character(len=:), allocatable :: dummy_intent
+        integer :: symbol_index
+        logical :: dummy_pointer
+
+        actual_is_unsupported_assumed_shape_forward = .false.
+        if (.not. actual_is_whole_array(arena, node_index, context)) return
+        call get_identifier_name(arena, node_index, id_name, id_err)
+        if (len_trim(id_err) > 0) return
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
+        if (symbol_index <= 0) return
+        call dummy_pointer_intent(arena, callee_name, param_pos, dummy_pointer, &
+                                  dummy_intent)
+        ! The forwarding boundary depends on POINTER, while the shared query
+        ! also returns INTENT for other callers. Read the latter explicitly so
+        ! this narrow predicate does not create a new unused-result warning.
+        if (allocated(dummy_intent)) dummy_intent = trim(dummy_intent)
+        actual_is_unsupported_assumed_shape_forward = &
+            (context%symbols(symbol_index)%is_pointer .and. .not. dummy_pointer) .or. &
+            (context%symbols(symbol_index)%is_assumed_shape_dummy .and. &
+             context%symbols(symbol_index)%has_runtime_array_stride)
+    end function actual_is_unsupported_assumed_shape_forward
+
     logical function actual_is_definite_scalar(arena, node_index, context)
         ! Whether an actual argument is statically certain to be scalar (rank 0):
         ! a plain scalar literal, or an identifier bound to a non-array symbol.
@@ -1474,7 +1516,8 @@
         call set_empty(error_msg)
     end subroutine whole_array_actual_address
 
-    logical function actual_is_contiguous_section(arena, node_index, context)
+    logical function actual_is_contiguous_section(arena, node_index, context, &
+                                                  allow_derived)
         ! Whether an actual argument is a rank-1 array section whose elements are
         ! adjacent in storage: a stride-1 subscript triplet on a rank-1 array
         ! (a(lo:hi)) or a whole leading dimension of a rank-2 array (a(:,j)).
@@ -1484,17 +1527,29 @@
         type(lowering_context_t), intent(in) :: context
         type(array_section_info_t) :: info
         character(len=:), allocatable :: err
-        integer :: keep, dd
+        integer :: keep, dd, value_kind
         integer(c_int64_t) :: step
+        logical, intent(in), optional :: allow_derived
+        logical :: derived_ok
 
         actual_is_contiguous_section = .false.
+        derived_ok = .true.
+        if (present(allow_derived)) derived_ok = allow_derived
         if (.not. node_exists(arena, node_index)) return
         select type (slice => arena%entries(node_index)%node)
         type is (array_slice_node)
             call describe_array_section(arena, slice, context, info, err, &
-                                        allow_derived=.true.)
+                                        allow_derived=derived_ok)
             if (len_trim(err) > 0) return
             if (info%result_rank /= 1) return
+            value_kind = context%symbols(info%source_index)%value_kind
+            if (context%symbols(info%source_index)%is_allocatable .or. &
+                context%symbols(info%source_index)%is_pointer .or. &
+                context%symbols(info%source_index)%has_runtime_array_stride .or. &
+                any(context%symbols(info%source_index)%has_runtime_dim_size)) return
+            if (context%symbols(info%source_index)%array_stride_bytes /= 0 .and. &
+                context%symbols(info%source_index)%array_stride_bytes /= &
+                    equivalence_kind_size(value_kind)) return
             keep = info%kept_dims(1)
             if (info%section_strides(keep) /= 1_c_int64_t) return
             step = 1_c_int64_t
