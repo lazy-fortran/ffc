@@ -5,7 +5,7 @@ program test_session_derived_alloc_char_component_compiler
     ! the RHS length and deep-copies the bytes, whole-derived assignment leaves
     ! the destination independent of the source, and deallocate frees the owned
     ! data exactly once and restores the unallocated state.
-    use ffc_test_support, only: expect_output, expect_exit_status
+    use ffc_test_support, only: expect_output
     implicit none
 
     logical :: all_passed
