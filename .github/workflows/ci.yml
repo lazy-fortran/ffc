@@ -119,6 +119,7 @@ jobs:
           ls -la build/libliric.a
 
       - name: Build ffc
+        id: build_ffc
         working-directory: ffc
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
@@ -130,9 +131,25 @@ jobs:
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
           LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
-        run: fpm test
+        run: |
+          set +e
+          timeout --verbose --signal=TERM --kill-after=30s 30m \
+            fpm test 2>&1 | tee "$RUNNER_TEMP/ffc-fpm-test.log"
+          status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$status" -eq 124 ]; then
+            echo "::error::fpm test exceeded 30 minutes"
+            echo "Last visible test marker:"
+            grep -E '=== ' "$RUNNER_TEMP/ffc-fpm-test.log" | tail -1 || true
+            echo "Process tree at timeout:"
+            ps -eo pid,ppid,pgid,stat,etime,args --forest || true
+          fi
+
+          exit "$status"
 
       - name: Run pinned corpus buckets
+        if: ${{ always() && steps.build_ffc.outcome == 'success' }}
         working-directory: ffc
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
@@ -151,6 +168,7 @@ jobs:
       # almost nothing; and putting it after the test and corpus steps keeps a
       # lint failure from cancelling their result.
       - name: Lint (fo)
+        if: ${{ always() && steps.build_ffc.outcome == 'success' }}
         working-directory: ffc
         env:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
@@ -160,6 +178,8 @@ jobs:
           # `fo lint` exits 1 on any finding, so capture the report first and
           # decide below which half of it gates.
           fo lint --json > "$RUNNER_TEMP/fo-lint.json" || true
+          jq -r '.unused_imports[]? | "\(.file):\(.line): unused import \(.module)::\(.symbol)"' \
+            "$RUNNER_TEMP/fo-lint.json"
           jq -r '.warnings[] | "\(.file):\(.line):\(.column): \(.message)"' \
             "$RUNNER_TEMP/fo-lint.json"
           unused=$(jq '.unused_imports | length' "$RUNNER_TEMP/fo-lint.json")
