@@ -438,7 +438,11 @@ must supply at least as many elements as the result. `open`/`close`/`rewind` map
 `close` accepts `status='keep'` (the default) or `status='delete'`, and
 reports invalid status values through `iostat=`/`iomsg=`;
 a file unit's list-directed and numeric-edit-descriptor `read` covers
-integer, real, and fixed-length character scalars. Internal `read (buf, *)
+integer, real, and fixed-length character scalars. In the reduced same-source
+module-NAMELIST leaf, a plain `use` imports fixed-length character scalar
+storage and group metadata, and a same-name scalar group merges its members;
+arrays, derived types, internal-character NAMELIST, separate `.fmod` metadata,
+and general NAMELIST writing remain unsupported. Internal `read (buf, *)
 value` (list-directed) and `write (buf, fmt) value` with a compound literal
 format (`I`/`A` descriptors) are supported. `inquire` covers `exist=`,
 `opened=`, and `iostat=` on `file=` and `unit=`. Invalid programs are

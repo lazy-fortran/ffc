@@ -557,6 +557,10 @@ module session_program_lowering_types
         ! can host-associate the enumerators (#1826).
         integer, allocatable :: enum_indices(:)
         integer :: enum_count = 0
+        ! NAMELIST declarations exported for an in-unit USE association.  The
+        ! .fmod schema deliberately does not carry these in this leaf.
+        integer, allocatable :: namelist_indices(:)
+        integer :: namelist_count = 0
     end type module_exports_t
 
     integer, parameter, public :: MAX_PROC_ARGS = 16
