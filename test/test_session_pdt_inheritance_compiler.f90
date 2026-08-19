@@ -4,7 +4,7 @@ program test_session_pdt_inheritance_compiler
     ! formals followed by its own, so one instance of the child pins one
     ! instance of the parent: the parent instance is laid out first and the
     ! child inherits its components ahead of its own.
-    use ffc_test_support, only: expect_output, expect_exit_status, &
+    use ffc_test_support, only: expect_output, &
         expect_error_contains
     implicit none
 
