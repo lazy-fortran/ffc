@@ -434,7 +434,9 @@ reinterpretation runs elementwise for a whole-array `transfer` assignment
 (`a = transfer(r, a)`), including a compile-time constant `size` argument that
 must match the result array's size; `size` must not be negative and the source
 must supply at least as many elements as the result. `open`/`close`/`rewind` map to `fopen`/`fclose`/
-`rewind`, preserving an existing file's content when `status=` is omitted;
+`rewind`, preserving an existing file's content when `status=` is omitted.
+`close` accepts `status='keep'` (the default) or `status='delete'`, and
+reports invalid status values through `iostat=`/`iomsg=`;
 a file unit's list-directed and numeric-edit-descriptor `read` covers
 integer, real, and fixed-length character scalars. Internal `read (buf, *)
 value` (list-directed) and `write (buf, fmt) value` with a compound literal

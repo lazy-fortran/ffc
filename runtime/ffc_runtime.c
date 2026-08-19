@@ -76,10 +76,12 @@ int _ffc_runtime_probe(void) {
 #define FFC_IOSTAT_INUSE 5003
 #define FFC_IOSTAT_OPEN 5004
 #define FFC_IOSTAT_NOSPACE 5005
+#define FFC_IOSTAT_BADSTATUS 5007
 
 struct ffc_unit {
     FILE *fp;
     int connected;
+    char path[FFC_PATH_MAX];
 };
 
 static struct ffc_unit ffc_units[FFC_UNIT_MAX + 1];
@@ -218,6 +220,11 @@ int _ffc_unit_open(int unit, const char *path,
     }
     ffc_units[unit].fp = fp;
     ffc_units[unit].connected = 1;
+    if (n > 0) {
+        memcpy(ffc_units[unit].path, name, (size_t)n + 1);
+    } else {
+        ffc_units[unit].path[0] = '\0';
+    }
     ffc_unit_last_status = 0;
     return 0;
 }
@@ -268,6 +275,7 @@ FILE *_ffc_unit_file(int unit) {
     }
     ffc_units[unit].fp = fp;
     ffc_units[unit].connected = 1;
+    memcpy(ffc_units[unit].path, name, strlen(name) + 1);
     ffc_unit_last_status = 0;
     return fp;
 }
@@ -285,8 +293,15 @@ int _ffc_unit_rewind(int unit) {
 
 /* Disconnects the unit. CLOSE on a unit that is not connected is
  * not an error in Fortran, so it reports success and leaves the
- * unit free; only a bad unit number fails. */
-int _ffc_unit_close(int unit) {
+ * unit free; only a bad unit number fails. STATUS='DELETE'
+ * removes a named file after flushing and closing it. */
+int _ffc_unit_close_status(int unit, const char *status) {
+    int remove_status;
+    if (status != NULL && status[0] != '\0' &&
+        (!ffc_streq(status, "keep") &&
+         !ffc_streq(status, "delete"))) {
+        return ffc_unit_fail(FFC_IOSTAT_BADSTATUS);
+    }
     if (!ffc_unit_valid(unit)) {
         return ffc_unit_fail(FFC_IOSTAT_BADUNIT);
     }
@@ -294,9 +309,22 @@ int _ffc_unit_close(int unit) {
         fclose(ffc_units[unit].fp);
         ffc_units[unit].fp = NULL;
         ffc_units[unit].connected = 0;
+        remove_status = 0;
+        if (ffc_streq(status, "delete") &&
+            ffc_units[unit].path[0] != '\0') {
+            remove_status = remove(ffc_units[unit].path);
+        }
+        ffc_units[unit].path[0] = '\0';
+        if (remove_status != 0) {
+            return ffc_unit_fail(FFC_IOSTAT_OPEN);
+        }
     }
     ffc_unit_last_status = 0;
     return 0;
+}
+
+int _ffc_unit_close(int unit) {
+    return _ffc_unit_close_status(unit, "keep");
 }
 
 /* Returns the byte size of a named file, or -1 when the file
@@ -531,6 +559,8 @@ static const char *ffc_iostat_text(int status) {
         return "Cannot open file";
     case FFC_IOSTAT_NOSPACE:
         return "No free unit for NEWUNIT";
+    case FFC_IOSTAT_BADSTATUS:
+        return "Bad STATUS parameter in CLOSE statement";
     case FFC_IOSTAT_WRITE:
         return "Write failed";
     default:

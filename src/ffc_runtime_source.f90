@@ -171,6 +171,8 @@ contains
             '#define FFC_IOSTAT_OPEN 5004'//NL
         text = text// &
             '#define FFC_IOSTAT_NOSPACE 5005'//NL
+        text = text// &
+            '#define FFC_IOSTAT_BADSTATUS 5007'//NL
         text = text//NL
         text = text// &
             'struct ffc_unit {'//NL
@@ -178,6 +180,8 @@ contains
             '    FILE *fp;'//NL
         text = text// &
             '    int connected;'//NL
+        text = text// &
+            '    char path[FFC_PATH_MAX];'//NL
         text = text// &
             '};'//NL
         text = text//NL
@@ -446,6 +450,16 @@ contains
         text = text// &
             '    ffc_units[unit].connected = 1;'//NL
         text = text// &
+            '    if (n > 0) {'//NL
+        text = text// &
+            '        memcpy(ffc_units[unit].path, name, (size_t)n + 1);'//NL
+        text = text// &
+            '    } else {'//NL
+        text = text// &
+            '        ffc_units[unit].path[0] = ''\0'';'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
             '    ffc_unit_last_status = 0;'//NL
         text = text// &
             '    return 0;'//NL
@@ -544,6 +558,8 @@ contains
         text = text// &
             '    ffc_units[unit].connected = 1;'//NL
         text = text// &
+            '    memcpy(ffc_units[unit].path, name, strlen(name) + 1);'//NL
+        text = text// &
             '    ffc_unit_last_status = 0;'//NL
         text = text// &
             '    return fp;'//NL
@@ -576,9 +592,23 @@ contains
         text = text// &
             ' * not an error in Fortran, so it reports success and leaves the'//NL
         text = text// &
-            ' * unit free; only a bad unit number fails. */'//NL
+            ' * unit free; only a bad unit number fails. STATUS=''DELETE'''//NL
         text = text// &
-            'int _ffc_unit_close(int unit) {'//NL
+            ' * removes a named file after flushing and closing it. */'//NL
+        text = text// &
+            'int _ffc_unit_close_status(int unit, const char *status) {'//NL
+        text = text// &
+            '    int remove_status;'//NL
+        text = text// &
+            '    if (status != NULL && status[0] != ''\0'' &&'//NL
+        text = text// &
+            '        (!ffc_streq(status, "keep") &&'//NL
+        text = text// &
+            '         !ffc_streq(status, "delete"))) {'//NL
+        text = text// &
+            '        return ffc_unit_fail(FFC_IOSTAT_BADSTATUS);'//NL
+        text = text// &
+            '    }'//NL
         text = text// &
             '    if (!ffc_unit_valid(unit)) {'//NL
         text = text// &
@@ -594,11 +624,36 @@ contains
         text = text// &
             '        ffc_units[unit].connected = 0;'//NL
         text = text// &
+            '        remove_status = 0;'//NL
+        text = text// &
+            '        if (ffc_streq(status, "delete") &&'//NL
+        text = text// &
+            '            ffc_units[unit].path[0] != ''\0'') {'//NL
+        text = text// &
+            '            remove_status = remove(ffc_units[unit].path);'//NL
+        text = text// &
+            '        }'//NL
+        text = text// &
+            '        ffc_units[unit].path[0] = ''\0'';'//NL
+        text = text// &
+            '        if (remove_status != 0) {'//NL
+        text = text// &
+            '            return ffc_unit_fail(FFC_IOSTAT_OPEN);'//NL
+        text = text// &
+            '        }'//NL
+        text = text// &
             '    }'//NL
         text = text// &
             '    ffc_unit_last_status = 0;'//NL
         text = text// &
             '    return 0;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            'int _ffc_unit_close(int unit) {'//NL
+        text = text// &
+            '    return _ffc_unit_close_status(unit, "keep");'//NL
         text = text// &
             '}'//NL
         text = text//NL
@@ -1036,6 +1091,10 @@ contains
             '    case FFC_IOSTAT_NOSPACE:'//NL
         text = text// &
             '        return "No free unit for NEWUNIT";'//NL
+        text = text// &
+            '    case FFC_IOSTAT_BADSTATUS:'//NL
+        text = text// &
+            '        return "Bad STATUS parameter in CLOSE statement";'//NL
         text = text// &
             '    case FFC_IOSTAT_WRITE:'//NL
         text = text// &
