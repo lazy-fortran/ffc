@@ -106,3 +106,5 @@ used_types_21.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure 
 used_types_23.f90 # owner=lazy-fortran/fortfront#2951; reason=reject unresolved and use-before-definition symbols
 userdef_operator_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 write_check2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
+directive_unroll_5.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
+select_6.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
