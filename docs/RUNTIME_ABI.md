@@ -816,7 +816,8 @@ The complete runtime ABI. Adding an entry point means editing
 | `_ffc_unit_is_open` | `int _ffc_unit_is_open(int unit)` | 1 when the unit is connected, 0 otherwise. Never fails. |
 | `_ffc_unit_file` | `FILE *_ffc_unit_file(int unit)` | The stream behind a unit, connecting an unopened numeric unit to `fort.<N>` on first use. NULL only when the unit is unusable. |
 | `_ffc_unit_rewind` | `int _ffc_unit_rewind(int unit)` | Repositions to the first record. |
-| `_ffc_unit_close` | `int _ffc_unit_close(int unit)` | Disconnects the unit. Succeeds on a unit that is not connected. |
+| `_ffc_unit_close` | `int _ffc_unit_close(int unit)` | Disconnects the unit with the default `STATUS='KEEP'`. Succeeds on a unit that is not connected. |
+| `_ffc_unit_close_status` | `int _ffc_unit_close_status(int unit, const char *status)` | Disconnects the unit, removing a named file for `STATUS='DELETE'`; succeeds on an unconnected unit. |
 | `_ffc_inquire_file_size` | `long long _ffc_inquire_file_size(const char *path)` | Returns the filesystem byte size, or -1 when `path` cannot be stat'ed. |
 | `_ffc_inquire_unit_size` | `long long _ffc_inquire_unit_size(int unit)` | Flushes and returns the connected stream's byte size while restoring its position, or -1 when the unit is unusable or not seekable. |
 | `_ffc_unit_status` | `int _ffc_unit_status(void)` | Status of the most recent unit operation. |
@@ -847,6 +848,7 @@ Status codes are stable. They are the values `IOSTAT=` reports:
 | 5003 | `OPEN` on a unit that is already connected |
 | 5004 | the file could not be opened |
 | 5005 | no free unit left for `NEWUNIT=` |
+| 5007 | invalid `CLOSE(STATUS=...)` value |
 
 ### Scalar formatted output (#423)
 

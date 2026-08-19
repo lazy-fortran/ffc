@@ -432,7 +432,10 @@ contains
         ! connection. Closing a unit that is not connected is not an error in
         ! Fortran, and the runtime reports success for it, so the guard the
         ! compiler used to emit around fclose is gone (#396).
-        type(lr_operand_desc_t) :: args(1), unused
+        type(lr_operand_desc_t) :: args(2), status_op
+        character(len=:), allocatable :: status_text, iostat_name, iomsg_name
+        logical :: status_quoted
+        integer :: i
 
         call set_empty(error_msg)
         if (.not. allocated(node%unit_spec)) then
@@ -442,9 +445,47 @@ contains
         end if
         call unit_number_operand(node%unit_spec, context, args(1), error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_i32_call(context%session, '_ffc_unit_close', args, &
-                                unused, error_msg)) return
-        call set_empty(error_msg)
+        status_text = ''
+        status_quoted = .false.
+        iostat_name = ''
+        iomsg_name = ''
+        if (allocated(node%specifiers)) then
+            do i = 1, size(node%specifiers)
+                if (.not. allocated(node%specifiers(i)%name)) cycle
+                select case (trim(node%specifiers(i)%name))
+                case ('status')
+                    if (allocated(node%specifiers(i)%value)) then
+                        status_text = trim(node%specifiers(i)%value)
+                        if (len(status_text) >= 2) then
+                            if (status_text(1:1) == "'") then
+                                status_quoted = &
+                                    status_text(len(status_text):len(status_text)) == "'"
+                            else if (status_text(1:1) == '"') then
+                                status_quoted = &
+                                    status_text(len(status_text):len(status_text)) == '"'
+                            end if
+                            if (status_quoted) then
+                                status_quoted = .true.
+                                status_text = status_text(2:len(status_text) - 1)
+                            end if
+                        end if
+                    end if
+                case ('iostat')
+                    if (allocated(node%specifiers(i)%value)) &
+                        iostat_name = trim(node%specifiers(i)%value)
+                case ('iomsg')
+                    if (allocated(node%specifiers(i)%value)) &
+                        iomsg_name = trim(node%specifiers(i)%value)
+                end select
+            end do
+        end if
+        call open_status_operand(context, status_text, status_quoted, args(2), &
+                                 error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i32_call(context%session, '_ffc_unit_close_status', args, &
+                                status_op, error_msg)) return
+        call store_io_status(context, iostat_name, iomsg_name, status_op, &
+                             error_msg)
     end procedure lower_close
     module procedure unit_number_operand
         ! Resolve unit_spec (raw OPEN/CLOSE/REWIND specifier text, e.g. "u",
