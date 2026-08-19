@@ -143,6 +143,22 @@
                     stride_value = 1_c_int64_t
                     call set_empty(error_msg)
                 end if
+                if (bounds_node%start_index <= 0) then
+                    if (stride_value > 0_c_int64_t) then
+                        lower_value = info%source_lowers(dim)
+                    else
+                        lower_value = info%source_lowers(dim) + &
+                                      info%source_sizes(dim) - 1_c_int64_t
+                    end if
+                end if
+                if (bounds_node%end_index <= 0) then
+                    if (stride_value > 0_c_int64_t) then
+                        upper_value = info%source_lowers(dim) + &
+                                      info%source_sizes(dim) - 1_c_int64_t
+                    else
+                        upper_value = info%source_lowers(dim)
+                    end if
+                end if
             type is (array_bounds_node)
                 if (bounds_node%is_assumed_rank .or. bounds_node%is_assumed_size .or. &
                     bounds_node%is_assumed_shape .or. bounds_node%is_deferred_shape) then
@@ -176,6 +192,22 @@
                         info%has_runtime_bounds = .true.
                         stride_value = 1_c_int64_t
                         call set_empty(error_msg)
+                    end if
+                    if (bounds_node%lower_bound_index <= 0) then
+                        if (stride_value > 0_c_int64_t) then
+                            lower_value = info%source_lowers(dim)
+                        else
+                            lower_value = info%source_lowers(dim) + &
+                                          info%source_sizes(dim) - 1_c_int64_t
+                        end if
+                    end if
+                    if (bounds_node%upper_bound_index <= 0) then
+                        if (stride_value > 0_c_int64_t) then
+                            upper_value = info%source_lowers(dim) + &
+                                          info%source_sizes(dim) - 1_c_int64_t
+                        else
+                            upper_value = info%source_lowers(dim)
+                        end if
                     end if
                 end if
             class default
@@ -249,6 +281,41 @@
         info%result_rank = kept_dim
         call set_empty(error_msg)
     end subroutine describe_array_section
+
+    logical function actual_is_rank1_section_view(arena, node_index, context) &
+            result(is_view)
+        ! A rank-1 section actual can be represented by one borrowed descriptor:
+        ! its first selected element is the base and its section stride is the
+        ! descriptor's byte stride.  Keep this predicate narrower than the
+        ! general section evaluator so rank-2 and derived views
+        ! continue to decline at the call boundary.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        type(array_section_info_t) :: info
+        character(len=:), allocatable :: error_msg
+        integer :: value_kind
+
+        is_view = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (slice => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call describe_array_section(arena, slice, context, info, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (info%source_rank /= 1 .or. info%result_rank /= 1) return
+            value_kind = context%symbols(info%source_index)%value_kind
+            if (context%symbols(info%source_index)%is_allocatable .or. &
+                context%symbols(info%source_index)%is_pointer .or. &
+                context%symbols(info%source_index)%has_runtime_array_stride .or. &
+                any(context%symbols(info%source_index)%has_runtime_dim_size)) return
+            if (context%symbols(info%source_index)%array_stride_bytes /= 0 .and. &
+                context%symbols(info%source_index)%array_stride_bytes /= &
+                    equivalence_kind_size(value_kind)) return
+            if (value_kind == VALUE_DERIVED) return
+            is_view = .true.
+        class default
+        end select
+    end function actual_is_rank1_section_view
 
     subroutine resolve_section_range_bound(arena, context, node_index, default_value, &
                                            bound_value, error_msg)
@@ -697,6 +764,7 @@
         logical :: use_generic
         type(lr_operand_desc_t) :: lower_op(2), upper_op(2), stride_op(2)
         type(lr_operand_desc_t) :: extent_op(2), source_extent_op(2), coord_op(2)
+        type(lr_operand_desc_t) :: source_lower_op, source_upper_op
         type(lr_operand_desc_t) :: temp_op, diff_op, term_op, source_linear
         integer(c_int64_t) :: source_lower, source_extent
 
@@ -767,6 +835,7 @@
                                      c_int64_t)
                 source_extent_op(dim) = i32_immediate(context%session, source_extent)
             end if
+            source_lower_op = i32_immediate(context%session, source_lower)
 
             if (dim > slice_node%num_dimensions .or. &
                 slice_node%bounds_indices(dim) <= 0) then
@@ -791,13 +860,6 @@
             type is (range_expression_node)
                 keep_dim(dim) = .true.
                 kept_dim = kept_dim + 1
-                if (bounds_node%start_index > 0) then
-                    call lower_i32_expression(arena, bounds_node%start_index, context, &
-                                              lower_op(dim), error_msg)
-                    if (len_trim(error_msg) > 0) return
-                else
-                    lower_op(dim) = i32_immediate(context%session, source_lower)
-                end if
                 if (bounds_node%stride_index > 0) then
                     call lower_i32_expression(arena, bounds_node%stride_index, context, &
                                               stride_op(dim), error_msg)
@@ -805,17 +867,35 @@
                 else
                     stride_op(dim) = i32_immediate(context%session, 1_c_int64_t)
                 end if
+                if (bounds_node%start_index > 0) then
+                    call lower_i32_expression(arena, bounds_node%start_index, context, &
+                                              lower_op(dim), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                else
+                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                            source_lower_op, source_extent_op(dim), temp_op, &
+                            error_msg)) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
+                            i32_immediate(context%session, 1_c_int64_t), source_upper_op, &
+                            error_msg)) return
+                    call lower_runtime_section_default_bound(context, stride_op(dim), &
+                        source_lower_op, source_upper_op, lower_op(dim), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
                 if (bounds_node%end_index > 0) then
                     call lower_i32_expression(arena, bounds_node%end_index, context, &
                                               upper_op(dim), error_msg)
                     if (len_trim(error_msg) > 0) return
                 else
                     if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
-                        i32_immediate(context%session, source_lower), &
-                        source_extent_op(dim), temp_op, error_msg)) return
+                            source_lower_op, source_extent_op(dim), temp_op, &
+                            error_msg)) return
                     if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
-                        i32_immediate(context%session, 1_c_int64_t), upper_op(dim), &
-                        error_msg)) return
+                            i32_immediate(context%session, 1_c_int64_t), source_upper_op, &
+                            error_msg)) return
+                    call lower_runtime_section_default_bound(context, stride_op(dim), &
+                        source_upper_op, source_lower_op, upper_op(dim), error_msg)
+                    if (len_trim(error_msg) > 0) return
                 end if
             type is (array_bounds_node)
                 if (bounds_node%is_assumed_rank .or. bounds_node%is_assumed_size .or. &
@@ -833,12 +913,27 @@
                 else
                     keep_dim(dim) = .true.
                     kept_dim = kept_dim + 1
+                    if (bounds_node%stride_index > 0) then
+                        call lower_i32_expression(arena, bounds_node%stride_index, &
+                            context, stride_op(dim), error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    else
+                        stride_op(dim) = i32_immediate(context%session, 1_c_int64_t)
+                    end if
                     if (bounds_node%lower_bound_index > 0) then
                         call lower_i32_expression(arena, bounds_node%lower_bound_index, &
                             context, lower_op(dim), error_msg)
                         if (len_trim(error_msg) > 0) return
                     else
-                        lower_op(dim) = i32_immediate(context%session, source_lower)
+                        if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                                source_lower_op, source_extent_op(dim), temp_op, &
+                                error_msg)) return
+                        if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
+                                i32_immediate(context%session, 1_c_int64_t), source_upper_op, &
+                                error_msg)) return
+                        call lower_runtime_section_default_bound(context, stride_op(dim), &
+                            source_lower_op, source_upper_op, lower_op(dim), error_msg)
+                        if (len_trim(error_msg) > 0) return
                     end if
                     if (bounds_node%upper_bound_index > 0) then
                         call lower_i32_expression(arena, bounds_node%upper_bound_index, &
@@ -846,18 +941,14 @@
                         if (len_trim(error_msg) > 0) return
                     else
                         if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
-                            i32_immediate(context%session, source_lower), &
-                            source_extent_op(dim), temp_op, error_msg)) return
+                                source_lower_op, source_extent_op(dim), temp_op, &
+                                error_msg)) return
                         if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
-                            i32_immediate(context%session, 1_c_int64_t), upper_op(dim), &
-                            error_msg)) return
-                    end if
-                    if (bounds_node%stride_index > 0) then
-                        call lower_i32_expression(arena, bounds_node%stride_index, &
-                            context, stride_op(dim), error_msg)
+                                i32_immediate(context%session, 1_c_int64_t), source_upper_op, &
+                                error_msg)) return
+                        call lower_runtime_section_default_bound(context, stride_op(dim), &
+                            source_upper_op, source_lower_op, upper_op(dim), error_msg)
                         if (len_trim(error_msg) > 0) return
-                    else
-                        stride_op(dim) = i32_immediate(context%session, 1_c_int64_t)
                     end if
                 end if
             class default
@@ -867,13 +958,9 @@
             end select
 
             if (keep_dim(dim)) then
-                if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_op(dim), &
-                    lower_op(dim), temp_op, error_msg)) return
-                if (.not. emit_i32_binary(context%session, LR_OP_SDIV, temp_op, &
-                    stride_op(dim), diff_op, error_msg)) return
-                if (.not. emit_i32_binary(context%session, LR_OP_ADD, diff_op, &
-                    i32_immediate(context%session, 1_c_int64_t), extent_op(dim), &
-                    error_msg)) return
+                call lower_runtime_section_trip_count(context, lower_op(dim), &
+                    upper_op(dim), stride_op(dim), extent_op(dim), error_msg)
+                if (len_trim(error_msg) > 0) return
             end if
         end do
 
@@ -927,6 +1014,7 @@
         type(lr_operand_desc_t) :: upper_op(ARRAY_MAX_RANK)
         type(lr_operand_desc_t) :: stride_op(ARRAY_MAX_RANK)
         type(lr_operand_desc_t) :: extent_op(ARRAY_MAX_RANK)
+        type(lr_operand_desc_t) :: safe_extent_op(ARRAY_MAX_RANK)
         type(lr_operand_desc_t) :: source_extent_op(ARRAY_MAX_RANK)
         type(lr_operand_desc_t) :: coord_op(ARRAY_MAX_RANK)
         type(lr_operand_desc_t) :: temp_op, diff_op, term_op, source_linear
@@ -934,6 +1022,7 @@
         type(lr_operand_desc_t) :: quotient, position
         type(lr_operand_desc_t) :: source_stride, next_source_stride
         type(lr_operand_desc_t) :: next_source_linear
+        type(lr_operand_desc_t) :: source_lower_op, source_upper_op
         integer(c_int64_t) :: source_lower, source_extent
 
         call identifier_name(arena, slice_node%array_index, source_name, error_msg)
@@ -966,6 +1055,7 @@
                                     c_int64_t)
                 source_extent_op(dim) = i32_immediate(context%session, source_extent)
             end if
+            source_lower_op = i32_immediate(context%session, source_lower)
 
             bounds_index = 0
             if (dim <= slice_node%num_dimensions) then
@@ -982,6 +1072,9 @@
                         i32_immediate(context%session, 1_c_int64_t), upper_op(dim), &
                         error_msg)) return
                 extent_op(dim) = source_extent_op(dim)
+                call lower_runtime_section_safe_extent(context, extent_op(dim), &
+                    safe_extent_op(dim), error_msg)
+                if (len_trim(error_msg) > 0) return
                 cycle
             end if
 
@@ -993,13 +1086,6 @@
             type is (range_expression_node)
                 keep_dim(dim) = .true.
                 kept_dim = kept_dim + 1
-                if (bounds_node%start_index > 0) then
-                    call lower_i32_expression(arena, bounds_node%start_index, context, &
-                                              lower_op(dim), error_msg)
-                else
-                    lower_op(dim) = i32_immediate(context%session, source_lower)
-                end if
-                if (len_trim(error_msg) > 0) return
                 if (bounds_node%stride_index > 0) then
                     call lower_i32_expression(arena, bounds_node%stride_index, context, &
                                               stride_op(dim), error_msg)
@@ -1007,16 +1093,31 @@
                     stride_op(dim) = i32_immediate(context%session, 1_c_int64_t)
                 end if
                 if (len_trim(error_msg) > 0) return
+                if (bounds_node%start_index > 0) then
+                    call lower_i32_expression(arena, bounds_node%start_index, context, &
+                                              lower_op(dim), error_msg)
+                else
+                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                            source_lower_op, source_extent_op(dim), temp_op, error_msg)) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
+                            i32_immediate(context%session, 1_c_int64_t), source_upper_op, &
+                            error_msg)) return
+                    call lower_runtime_section_default_bound(context, stride_op(dim), &
+                        source_lower_op, source_upper_op, lower_op(dim), error_msg)
+                end if
+                if (len_trim(error_msg) > 0) return
                 if (bounds_node%end_index > 0) then
                     call lower_i32_expression(arena, bounds_node%end_index, context, &
                                               upper_op(dim), error_msg)
                 else
                     if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
-                            i32_immediate(context%session, source_lower), &
-                            source_extent_op(dim), temp_op, error_msg)) return
+                            source_lower_op, source_extent_op(dim), temp_op, error_msg)) return
                     if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
-                            i32_immediate(context%session, 1_c_int64_t), upper_op(dim), &
+                            i32_immediate(context%session, 1_c_int64_t), source_upper_op, &
                             error_msg)) return
+                    call lower_runtime_section_default_bound(context, stride_op(dim), &
+                        source_upper_op, source_lower_op, upper_op(dim), error_msg)
+                    if (len_trim(error_msg) > 0) return
                 end if
             type is (array_bounds_node)
                 keep_dim(dim) = .true.
@@ -1032,11 +1133,25 @@
                             i32_immediate(context%session, 1_c_int64_t), upper_op(dim), &
                             error_msg)) return
                 else
+                    if (bounds_node%stride_index > 0) then
+                        call lower_i32_expression(arena, bounds_node%stride_index, &
+                            context, stride_op(dim), error_msg)
+                    else
+                        stride_op(dim) = i32_immediate(context%session, 1_c_int64_t)
+                    end if
+                    if (len_trim(error_msg) > 0) return
                     if (bounds_node%lower_bound_index > 0) then
                         call lower_i32_expression(arena, bounds_node%lower_bound_index, &
                             context, lower_op(dim), error_msg)
                     else
-                        lower_op(dim) = i32_immediate(context%session, source_lower)
+                        if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                                source_lower_op, source_extent_op(dim), temp_op, error_msg)) return
+                        if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
+                                i32_immediate(context%session, 1_c_int64_t), source_upper_op, &
+                                error_msg)) return
+                        call lower_runtime_section_default_bound(context, stride_op(dim), &
+                            source_lower_op, source_upper_op, lower_op(dim), error_msg)
+                        if (len_trim(error_msg) > 0) return
                     end if
                     if (len_trim(error_msg) > 0) return
                     if (bounds_node%upper_bound_index > 0) then
@@ -1044,18 +1159,14 @@
                             context, upper_op(dim), error_msg)
                     else
                         if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
-                                i32_immediate(context%session, source_lower), &
+                                source_lower_op, &
                                 source_extent_op(dim), temp_op, error_msg)) return
                         if (.not. emit_i32_binary(context%session, LR_OP_SUB, temp_op, &
                                 i32_immediate(context%session, 1_c_int64_t), &
-                                upper_op(dim), error_msg)) return
-                    end if
-                    if (len_trim(error_msg) > 0) return
-                    if (bounds_node%stride_index > 0) then
-                        call lower_i32_expression(arena, bounds_node%stride_index, &
-                            context, stride_op(dim), error_msg)
-                    else
-                        stride_op(dim) = i32_immediate(context%session, 1_c_int64_t)
+                                source_upper_op, error_msg)) return
+                        call lower_runtime_section_default_bound(context, stride_op(dim), &
+                            source_upper_op, source_lower_op, upper_op(dim), error_msg)
+                        if (len_trim(error_msg) > 0) return
                     end if
                 end if
             class default
@@ -1065,13 +1176,12 @@
             end select
 
             if (keep_dim(dim)) then
-                if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_op(dim), &
-                        lower_op(dim), temp_op, error_msg)) return
-                if (.not. emit_i32_binary(context%session, LR_OP_SDIV, temp_op, &
-                        stride_op(dim), diff_op, error_msg)) return
-                if (.not. emit_i32_binary(context%session, LR_OP_ADD, diff_op, &
-                        i32_immediate(context%session, 1_c_int64_t), extent_op(dim), &
-                        error_msg)) return
+                call lower_runtime_section_trip_count(context, lower_op(dim), &
+                    upper_op(dim), stride_op(dim), extent_op(dim), error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_runtime_section_safe_extent(context, extent_op(dim), &
+                    safe_extent_op(dim), error_msg)
+                if (len_trim(error_msg) > 0) return
             end if
         end do
 
@@ -1086,13 +1196,13 @@
                 if (.not. emit_i32_binary(context%session, LR_OP_SDIV, linear_index, &
                         stride_product, quotient, error_msg)) return
                 if (.not. emit_i32_binary(context%session, LR_OP_SREM, quotient, &
-                        extent_op(dim), position, error_msg)) return
+                        safe_extent_op(dim), position, error_msg)) return
                 if (.not. emit_i32_binary(context%session, LR_OP_MUL, position, &
                         stride_op(dim), temp_op, error_msg)) return
                 if (.not. emit_i32_binary(context%session, LR_OP_ADD, lower_op(dim), &
                         temp_op, coord_op(dim), error_msg)) return
                 if (.not. emit_i32_binary(context%session, LR_OP_MUL, stride_product, &
-                        extent_op(dim), next_stride_product, error_msg)) return
+                        safe_extent_op(dim), next_stride_product, error_msg)) return
                 stride_product = next_stride_product
             end if
         end do
@@ -1122,6 +1232,43 @@
         call lower_runtime_descriptor_array_element_address(context, source_index, &
             source_linear, element_address, error_msg)
     end subroutine lower_runtime_array_section_element_address_operand_generic
+
+    subroutine lower_runtime_section_safe_extent(context, extent, safe_extent, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: extent
+        type(lr_operand_desc_t), intent(out) :: safe_extent
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: positive
+        integer(c_int32_t) :: positive_block, zero_block, merge_block
+        type(lr_operand_desc_t) :: one
+
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGT, extent, &
+                i32_immediate(context%session, 0_c_int64_t), positive, error_msg)) &
+            return
+        positive_block = create_liric_block(context%session)
+        zero_block = create_liric_block(context%session)
+        merge_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, positive, positive_block, &
+                zero_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, positive_block, error_msg)) return
+        context%current_block_id = positive_block
+        context%current_block_terminated = .false.
+        if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, zero_block, error_msg)) return
+        context%current_block_id = zero_block
+        context%current_block_terminated = .false.
+        one = i32_immediate(context%session, 1_c_int64_t)
+        if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, merge_block, error_msg)) return
+        context%current_block_id = merge_block
+        context%current_block_terminated = .false.
+        if (.not. emit_liric_i32_phi(context%session, extent, positive_block, &
+                one, zero_block, safe_extent, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_runtime_section_safe_extent
 
     recursive integer function array_expression_symbol(arena, node_index, context) &
             result(symbol_index)
@@ -3076,9 +3223,12 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: bounds_index
         type(lr_operand_desc_t) :: lower_op, upper_op, stride_op, upper_with_extent
-        type(lr_operand_desc_t) :: difference, quotient, raw_extent, condition
-        type(lr_operand_desc_t) :: zero_extent
-        integer(c_int32_t) :: nonempty_block, empty_block, merge_block
+        type(lr_operand_desc_t) :: source_lower_op, source_upper_op
+        type(lr_operand_desc_t) :: zero_stride
+        type(lr_operand_desc_t) :: failure_args(2), failure_format
+        integer(c_int32_t) :: zero_stride_block, nonzero_stride_block
+        integer(c_int32_t) :: failure_format_id
+        character(len=64) :: failure_global_name
 
         bounds_index = 0
         if (dim <= target%num_dimensions) bounds_index = target%bounds_indices(dim)
@@ -3097,104 +3247,174 @@
             error_msg = 'array section bound index does not reference an AST node'
             return
         end if
+        source_lower_op = i32_immediate(context%session, int( &
+            context%symbols(tinfo%source_index)%array_dim_lowers(dim), c_int64_t))
+        if (context%symbols(tinfo%source_index)%has_runtime_dim_size(dim)) then
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, source_lower_op, &
+                    context%symbols(tinfo%source_index)%runtime_dim_size(dim), &
+                    upper_with_extent, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_with_extent, &
+                    i32_immediate(context%session, 1_c_int64_t), source_upper_op, &
+                    error_msg)) return
+        else
+            source_upper_op = i32_immediate(context%session, int( &
+                context%symbols(tinfo%source_index)%array_dim_lowers(dim) + &
+                context%symbols(tinfo%source_index)%array_dim_sizes(dim) - 1, c_int64_t))
+        end if
         select type (bounds_node => arena%entries(bounds_index)%node)
         type is (range_expression_node)
+            if (bounds_node%stride_index > 0) then
+                call lower_i32_expression(arena, bounds_node%stride_index, context, &
+                                          stride_op, error_msg)
+            else
+                stride_op = i32_immediate(context%session, 1_c_int64_t)
+            end if
+            if (len_trim(error_msg) > 0) return
             if (bounds_node%start_index > 0) then
                 call lower_i32_expression(arena, bounds_node%start_index, context, &
                                           lower_op, error_msg)
             else
-                lower_op = i32_immediate(context%session, int( &
-                    context%symbols(tinfo%source_index)%array_dim_lowers(dim), c_int64_t))
+                call lower_runtime_section_default_bound(context, stride_op, &
+                    source_lower_op, source_upper_op, lower_op, error_msg)
             end if
             if (len_trim(error_msg) > 0) return
             if (bounds_node%end_index > 0) then
                 call lower_i32_expression(arena, bounds_node%end_index, context, &
                                           upper_op, error_msg)
-            else if (context%symbols(tinfo%source_index)%has_runtime_dim_size(dim)) then
-                if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
-                        i32_immediate(context%session, int( &
-                            context%symbols(tinfo%source_index)%array_dim_lowers(dim), &
-                            c_int64_t)), &
-                        context%symbols(tinfo%source_index)%runtime_dim_size(dim), &
-                        upper_with_extent, error_msg)) return
-                if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_with_extent, &
-                        i32_immediate(context%session, 1_c_int64_t), upper_op, &
-                        error_msg)) return
             else
-                upper_op = i32_immediate(context%session, int( &
-                    context%symbols(tinfo%source_index)%array_dim_lowers(dim) + &
-                    context%symbols(tinfo%source_index)%array_dim_sizes(dim) - 1, &
-                    c_int64_t))
+                call lower_runtime_section_default_bound(context, stride_op, &
+                    source_upper_op, source_lower_op, upper_op, error_msg)
             end if
             if (len_trim(error_msg) > 0) return
-            if (bounds_node%stride_index > 0) then
-                call lower_i32_expression(arena, bounds_node%stride_index, context, &
-                                          stride_op, error_msg)
-            else
-                stride_op = i32_immediate(context%session, 1_c_int64_t)
-            end if
         type is (array_bounds_node)
-            if (bounds_node%lower_bound_index > 0) then
-                call lower_i32_expression(arena, bounds_node%lower_bound_index, context, &
-                                          lower_op, error_msg)
-            else
-                lower_op = i32_immediate(context%session, int( &
-                    context%symbols(tinfo%source_index)%array_dim_lowers(dim), c_int64_t))
-            end if
-            if (len_trim(error_msg) > 0) return
-            if (bounds_node%upper_bound_index > 0) then
-                call lower_i32_expression(arena, bounds_node%upper_bound_index, context, &
-                                          upper_op, error_msg)
-            else if (context%symbols(tinfo%source_index)%has_runtime_dim_size(dim)) then
-                if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
-                        i32_immediate(context%session, int( &
-                            context%symbols(tinfo%source_index)%array_dim_lowers(dim), &
-                            c_int64_t)), &
-                        context%symbols(tinfo%source_index)%runtime_dim_size(dim), &
-                        upper_with_extent, error_msg)) return
-                if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_with_extent, &
-                        i32_immediate(context%session, 1_c_int64_t), upper_op, &
-                        error_msg)) return
-            else
-                upper_op = i32_immediate(context%session, int( &
-                    context%symbols(tinfo%source_index)%array_dim_lowers(dim) + &
-                    context%symbols(tinfo%source_index)%array_dim_sizes(dim) - 1, &
-                    c_int64_t))
-            end if
-            if (len_trim(error_msg) > 0) return
-            if (bounds_node%stride_index > 0) then
-                call lower_i32_expression(arena, bounds_node%stride_index, context, &
-                                          stride_op, error_msg)
-            else
+            if (bounds_node%is_assumed_rank .or. bounds_node%is_assumed_size .or. &
+                bounds_node%is_assumed_shape .or. bounds_node%is_deferred_shape) then
+                lower_op = source_lower_op
                 stride_op = i32_immediate(context%session, 1_c_int64_t)
+                upper_op = source_upper_op
+            else
+                if (bounds_node%stride_index > 0) then
+                    call lower_i32_expression(arena, bounds_node%stride_index, context, &
+                                              stride_op, error_msg)
+                else
+                    stride_op = i32_immediate(context%session, 1_c_int64_t)
+                end if
+                if (len_trim(error_msg) > 0) return
+                if (bounds_node%lower_bound_index > 0) then
+                    call lower_i32_expression(arena, bounds_node%lower_bound_index, context, &
+                                              lower_op, error_msg)
+                else
+                    call lower_runtime_section_default_bound(context, stride_op, &
+                        source_lower_op, source_upper_op, lower_op, error_msg)
+                end if
+                if (len_trim(error_msg) > 0) return
+                if (bounds_node%upper_bound_index > 0) then
+                    call lower_i32_expression(arena, bounds_node%upper_bound_index, context, &
+                                              upper_op, error_msg)
+                else
+                    call lower_runtime_section_default_bound(context, stride_op, &
+                        source_upper_op, source_lower_op, upper_op, error_msg)
+                end if
             end if
         class default
             error_msg = 'runtime scalar section broadcast requires a range bound'
             return
         end select
         if (len_trim(error_msg) > 0) return
+        zero_stride_block = create_liric_block(context%session)
+        nonzero_stride_block = create_liric_block(context%session)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, stride_op, &
+                i32_immediate(context%session, 0_c_int64_t), zero_stride, &
+                error_msg)) return
+        if (.not. emit_liric_condbr(context%session, zero_stride, &
+                zero_stride_block, nonzero_stride_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, zero_stride_block, error_msg)) return
+        context%current_block_id = zero_stride_block
+        context%string_literal_count = context%string_literal_count + 1
+        failure_global_name = ffc_unit_global_name(context, 'section.error.', &
+                                                   context%string_literal_count)
+        call create_printf_format_global(context%session, trim(failure_global_name), &
+            'Fortran runtime error: Zero stride is not allowed'//achar(10), &
+            failure_format_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        failure_format = printf_format_ptr(context%session, failure_format_id)
+        failure_args(1) = i32_immediate(context%session, 2_c_int64_t)
+        failure_args(2) = failure_format
+        if (.not. emit_dprintf(context%session, failure_args, error_msg)) return
+        if (.not. emit_exit(context%session, &
+                i32_immediate(context%session, 2_c_int64_t), error_msg)) return
+        ! exit() does not return; close the block with a branch so the emitted
+        ! function remains well formed if a backend treats the call as returning.
+        if (.not. emit_liric_br(context%session, nonzero_stride_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, nonzero_stride_block, error_msg)) return
+        context%current_block_id = nonzero_stride_block
+        context%current_block_terminated = .false.
+        call lower_runtime_section_trip_count(context, lower_op, upper_op, stride_op, &
+                                              extent, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call set_empty(error_msg)
+    end subroutine lower_runtime_array_section_dimension_extent
+
+    subroutine lower_runtime_section_trip_count(context, lower_op, upper_op, stride_op, &
+                                                extent, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: lower_op, upper_op, stride_op
+        type(lr_operand_desc_t), intent(out) :: extent
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: difference, quotient, raw_extent
+        type(lr_operand_desc_t) :: stride_positive, stride_negative
+        type(lr_operand_desc_t) :: difference_nonnegative, difference_nonpositive
+        type(lr_operand_desc_t) :: positive_valid, negative_valid, valid_direction
+        type(lr_operand_desc_t) :: raw_positive, zero_extent
+        integer(c_int32_t) :: valid_block, raw_positive_block
+        integer(c_int32_t) :: empty_block, merge_block
+
         if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_op, lower_op, &
                 difference, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGT, stride_op, &
+                i32_immediate(context%session, 0_c_int64_t), stride_positive, &
+                error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, stride_op, &
+                i32_immediate(context%session, 0_c_int64_t), stride_negative, &
+                error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGE, difference, &
+                i32_immediate(context%session, 0_c_int64_t), difference_nonnegative, &
+                error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, difference, &
+                i32_immediate(context%session, 0_c_int64_t), difference_nonpositive, &
+                error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, stride_positive, &
+                difference_nonnegative, positive_valid, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, stride_negative, &
+                difference_nonpositive, negative_valid, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_OR, positive_valid, &
+                negative_valid, valid_direction, error_msg)) return
+
+        valid_block = create_liric_block(context%session)
+        empty_block = create_liric_block(context%session)
+        merge_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, valid_direction, valid_block, &
+                empty_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, valid_block, error_msg)) return
+        context%current_block_id = valid_block
+        context%current_block_terminated = .false.
         if (.not. emit_i32_binary(context%session, LR_OP_SDIV, difference, stride_op, &
                 quotient, error_msg)) return
         if (.not. emit_i32_binary(context%session, LR_OP_ADD, quotient, &
                 i32_immediate(context%session, 1_c_int64_t), raw_extent, &
                 error_msg)) return
-
-        ! A runtime section can be empty when the bound direction disagrees
-        ! with the stride.  Clamp the trip count before the loop so the LIR
-        ! extent itself remains nonnegative.
-        nonempty_block = create_liric_block(context%session)
-        empty_block = create_liric_block(context%session)
-        merge_block = create_liric_block(context%session)
+        raw_positive_block = create_liric_block(context%session)
         if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGT, raw_extent, &
-                i32_immediate(context%session, 0_c_int64_t), condition, &
+                i32_immediate(context%session, 0_c_int64_t), raw_positive, &
                 error_msg)) return
-        if (.not. emit_liric_condbr(context%session, condition, nonempty_block, &
+        if (.not. emit_liric_condbr(context%session, raw_positive, raw_positive_block, &
                 empty_block, error_msg)) return
 
-        if (.not. set_liric_block(context%session, nonempty_block, error_msg)) return
-        context%current_block_id = nonempty_block
+        if (.not. set_liric_block(context%session, raw_positive_block, error_msg)) return
+        context%current_block_id = raw_positive_block
         context%current_block_terminated = .false.
         if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
 
@@ -3207,10 +3427,51 @@
         if (.not. set_liric_block(context%session, merge_block, error_msg)) return
         context%current_block_id = merge_block
         context%current_block_terminated = .false.
-        if (.not. emit_liric_i32_phi(context%session, raw_extent, nonempty_block, &
+        if (.not. emit_liric_i32_phi(context%session, raw_extent, raw_positive_block, &
                 zero_extent, empty_block, extent, error_msg)) return
         call set_empty(error_msg)
-    end subroutine lower_runtime_array_section_dimension_extent
+    end subroutine lower_runtime_section_trip_count
+
+    subroutine lower_runtime_section_default_bound(context, stride_op, positive_value, &
+                                                   negative_value, result, error_msg)
+        !! For an omitted section bound, Fortran selects the source lower bound
+        !! for a positive stride and the source upper bound for a negative
+        !! stride.  The caller passes those two values in the order appropriate
+        !! for the bound being lowered.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: stride_op, positive_value, negative_value
+        type(lr_operand_desc_t), intent(out) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: positive, positive_result, negative_result
+        integer(c_int32_t) :: positive_block, negative_block, merge_block
+
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGT, stride_op, &
+                i32_immediate(context%session, 0_c_int64_t), positive, error_msg)) return
+        positive_block = create_liric_block(context%session)
+        negative_block = create_liric_block(context%session)
+        merge_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, positive, positive_block, &
+                negative_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, positive_block, error_msg)) return
+        context%current_block_id = positive_block
+        context%current_block_terminated = .false.
+        positive_result = positive_value
+        if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, negative_block, error_msg)) return
+        context%current_block_id = negative_block
+        context%current_block_terminated = .false.
+        negative_result = negative_value
+        if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, merge_block, error_msg)) return
+        context%current_block_id = merge_block
+        context%current_block_terminated = .false.
+        if (.not. emit_liric_i32_phi(context%session, positive_result, positive_block, &
+                negative_result, negative_block, result, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_runtime_section_default_bound
 
     subroutine store_section_elements(context, tinfo, values, error_msg)
         !! Store an already-evaluated rank-1 right-hand side into a rank-1

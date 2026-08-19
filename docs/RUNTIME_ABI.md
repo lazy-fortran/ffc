@@ -341,6 +341,27 @@ keep the pre-existing "assumed-shape dummy extent must come from a
 whole-array actual of compile-time size" diagnostic (or the relevant
 whole-array diagnostic).
 
+A rank-1 section of a fixed, contiguous intrinsic rank-1 parent is the one
+supported exception to that
+restriction. The caller builds a borrowed canonical descriptor view whose base
+is the first selected element, whose extent is the live section trip count,
+and whose signed byte stride is the section stride times the element size.
+Compile-time and runtime lower/upper bounds are supported, including a
+runtime negative stride; a runtime stride is sign-extended and does not claim
+contiguity. A runtime-bounded unit-stride view retains the contiguous flag.
+The runtime stride must be nonzero; a zero runtime stride reports
+`Fortran runtime error: Zero stride is not allowed` and exits with status 2.
+The view never owns or frees the parent storage. Sections of allocatable,
+pointer, runtime-shaped, descriptor-backed, or already-strided parents,
+rank-2-and-higher sections, array constructors, derived-type runtime sections,
+and unsupported actual/dummy kind combinations remain explicit refusals.
+Forwarding a whole pointer or already-strided assumed-shape dummy to another
+assumed-shape dummy is also refused until descriptor composition is implemented.
+Side-effectful user-function calls in section bounds are refused until triplet
+operands are lowered once and reused.
+The independent differential and refusal oracle is
+`test_session_array_section_descriptor_compiler`.
+
 Scalar `norm2(a)` also admits rank-1 through rank-4 runtime automatic arrays
 and assumed-shape real dummies. It walks the contiguous descriptor-backed
 elements with a runtime loop, accumulates the sum of squares, and applies the

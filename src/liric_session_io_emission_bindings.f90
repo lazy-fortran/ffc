@@ -334,7 +334,7 @@ contains
         if (len_trim(error_msg) > 0) return
 
         unused_vreg = emit_call_ptr(session%handle, callee, unit, format_ptr, &
-                                    string_ptr, error)
+            string_ptr, error)
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -415,7 +415,7 @@ contains
         end if
 
         operand = global_operand_session(session, symbol_id, &
-                                         lr_type_ptr_s(session%handle))
+            lr_type_ptr_s(session%handle))
         call set_empty(error_msg)
     end subroutine make_runtime_callee
 
@@ -1118,11 +1118,13 @@ contains
         emit_liric_store_char_byte = .true.
     end function emit_liric_store_char_byte
 
-    logical function emit_liric_i32_to_i64(session, source, result, error_msg)
+    logical function emit_liric_i32_to_i64(session, source, result, error_msg, &
+            sign_extend)
         type(liric_session_t), intent(inout) :: session
         type(lr_operand_desc_t), intent(in) :: source
         type(lr_operand_desc_t), intent(out) :: result
         character(len=:), allocatable, intent(out) :: error_msg
+        logical, intent(in), optional :: sign_extend
         type(lr_error_t) :: error
         type(lr_operand_desc_t), target :: operands(1)
         type(lr_inst_desc_t) :: inst
@@ -1133,6 +1135,9 @@ contains
 
         operands(1) = source
         inst%op = LR_OP_ZEXT
+        if (present(sign_extend)) then
+            if (sign_extend) inst%op = LR_OP_SEXT
+        end if
         inst%typ = lr_type_i64_s(session%handle)
         inst%operands = c_loc(operands)
         inst%num_operands = 1_c_int32_t
