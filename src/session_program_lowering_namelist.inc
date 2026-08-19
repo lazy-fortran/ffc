@@ -5,36 +5,53 @@
     ! banner, one ` NAME= value,` line per member, and a closing ` /` line,
     ! reusing the scalar value formatting of list-directed and file output.
     !
-    ! Scope: scalar integer, real, and logical members. Array, character, and
-    ! derived members raise a clean diagnostic rather than mis-emitting.
+    ! Scope: write remains scalar integer, real, and logical members. Read also
+    ! accepts fixed-length character members, including one same-unit module
+    ! group imported by a plain USE. Array and derived members remain outside
+    ! this leaf.
 
     subroutine record_namelist_group(node, context, error_msg)
         type(namelist_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(namelist_group_t), allocatable :: grown(:)
-        integer :: idx, i, n
+        logical :: duplicate
+        integer :: idx, i, j, n
 
         call set_empty(error_msg)
         if (.not. allocated(node%group_name)) return
 
-        if (.not. allocated(context%namelist_groups)) then
-            allocate (context%namelist_groups(4))
-        else if (context%namelist_group_count >= size(context%namelist_groups)) then
-            allocate (grown(size(context%namelist_groups) * 2))
-            grown(1:context%namelist_group_count) = &
-                context%namelist_groups(1:context%namelist_group_count)
-            call move_alloc(grown, context%namelist_groups)
+        idx = find_namelist_group(context, trim(node%group_name))
+        if (idx <= 0) then
+            if (.not. allocated(context%namelist_groups)) then
+                allocate (context%namelist_groups(4))
+            else if (context%namelist_group_count >= &
+                     size(context%namelist_groups)) then
+                allocate (grown(size(context%namelist_groups) * 2))
+                grown(1:context%namelist_group_count) = &
+                    context%namelist_groups(1:context%namelist_group_count)
+                call move_alloc(grown, context%namelist_groups)
+            end if
+            context%namelist_group_count = context%namelist_group_count + 1
+            idx = context%namelist_group_count
+            context%namelist_groups(idx)%group_name = trim(node%group_name)
+            context%namelist_groups(idx)%member_count = 0
         end if
-
-        context%namelist_group_count = context%namelist_group_count + 1
-        idx = context%namelist_group_count
-        context%namelist_groups(idx)%group_name = trim(node%group_name)
-        context%namelist_groups(idx)%member_count = 0
         if (.not. allocated(node%variable_names)) return
         n = min(size(node%variable_names), MAX_NAMELIST_MEMBERS)
         do i = 1, n
             if (.not. allocated(node%variable_names(i)%s)) cycle
+            duplicate = .false.
+            do j = 1, context%namelist_groups(idx)%member_count
+                if (upcase(trim(context%namelist_groups(idx)%member_names(j))) == &
+                    upcase(trim(node%variable_names(i)%s))) then
+                    duplicate = .true.
+                    exit
+                end if
+            end do
+            if (duplicate) cycle
+            if (context%namelist_groups(idx)%member_count >= &
+                MAX_NAMELIST_MEMBERS) exit
             context%namelist_groups(idx)%member_count = &
                 context%namelist_groups(idx)%member_count + 1
             context%namelist_groups(idx)%member_names( &
@@ -676,12 +693,14 @@
         if (.not. emit_liric_condbr(context%session, cond, done_blk, val_blk, &
                                     error_msg)) return
 
-        ! The value text runs to the next comma, slash, or end of line; a
-        ! trailing comma is consumed so the next name token starts clean.
+        ! The scalar value text ends at a comma, slash, whitespace, or end of
+        ! line. Whitespace is a valid separator between assignments in the
+        ! pinned module witness; a trailing comma is consumed when present.
         if (.not. set_liric_block(context%session, val_blk, error_msg)) return
         context%current_block_id = val_blk
         call namelist_read_token(context, fp, &
-            ' = %255[^,/'//achar(10)//']%*[,]', val_buf, count, error_msg)
+            ' = %255[^,/'//achar(9)//achar(10)//' ]%*[ '//achar(9)//',]', &
+            val_buf, count, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, count, &
                 i32_immediate(context%session, 1_c_int64_t), cond, &
@@ -949,7 +968,16 @@
             if (.not. emit_liric_f64_load(context%session, slot, &
                     context%symbols(sym)%value, error_msg)) return
         case (VALUE_CHARACTER)
-            context%symbols(sym)%value = slot
+            if (context%symbols(sym)%has_address) then
+                if (.not. emit_memcpy(context%session, &
+                        context%symbols(sym)%address, slot, &
+                        i64_immediate(context%session, int( &
+                            context%symbols(sym)%character_length + 1, &
+                            c_int64_t)), error_msg)) return
+                context%symbols(sym)%value = context%symbols(sym)%address
+            else
+                context%symbols(sym)%value = slot
+            end if
             context%symbols(sym)%has_character_value = .true.
         end select
     end subroutine namelist_read_reload

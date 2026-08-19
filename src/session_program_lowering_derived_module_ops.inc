@@ -363,6 +363,9 @@
         call import_module_variables(arena, export_idx, use_node, context, &
                                      error_msg)
         if (len_trim(error_msg) > 0) return
+        call import_module_namelists(arena, export_idx, use_node, context, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
         call validate_use_only_names(arena, export_idx, use_node, context, &
                                      error_msg)
         if (len_trim(error_msg) > 0) return
@@ -2605,6 +2608,32 @@
             end block
         end do
     end subroutine import_module_variables
+
+    subroutine import_module_namelists(arena, export_idx, use_node, context, &
+                                       error_msg)
+        ! Import NAMELIST group metadata for a same-unit, plain USE.  The
+        ! witness relies on the module group being visible before its program
+        ! declaration extends the same group; separate .fmod metadata is kept
+        ! out of this leaf.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: export_idx
+        type(use_statement_node), intent(in) :: use_node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, nml_idx
+
+        call set_empty(error_msg)
+        if (use_node%has_only) return
+        do i = 1, context%module_exports(export_idx)%namelist_count
+            nml_idx = context%module_exports(export_idx)%namelist_indices(i)
+            if (.not. node_exists(arena, nml_idx)) cycle
+            select type (node => arena%entries(nml_idx)%node)
+            type is (namelist_statement_node)
+                call record_namelist_group(node, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
+    end subroutine import_module_namelists
 
     subroutine add_derived_type_from_arena(arena, type_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena

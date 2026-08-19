@@ -3,7 +3,7 @@
     ! carrying its declared initializer. Module procedures bind the same global
     ! as an addressed reference symbol; a using program imports it via
     ! import_module_variables. Supported scalar kinds are integer(4), real(4),
-    ! real(8), and logical; fixed-size complex arrays use parallel real and
+    ! real(8), logical, and fixed-length character; fixed-size complex arrays use parallel real and
     ! imaginary globals. Multi-declarations and other kinds stay xfail with a
     ! clean diagnostic.
 
@@ -62,15 +62,62 @@
         select case (value_kind)
         case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
             status = MODVAR_OK
+        case (VALUE_CHARACTER)
+            block
+                integer :: character_length
+                if (get_declaration_has_initializer(arena, var_idx)) then
+                    call unsupported_feature_error('module variable', line, &
+                        column, 'fixed-length character module initializers '// &
+                        'are outside this leaf', error_msg)
+                    return
+                end if
+                call module_character_length(arena, var_idx, context, &
+                                             character_length, kind_err)
+                if (len_trim(kind_err) > 0) then
+                    error_msg = kind_err
+                    return
+                end if
+                if (character_length <= 0) then
+                    call get_declaration_var_name(arena, var_idx, var_name, &
+                                                  kind_err)
+                    if (len_trim(kind_err) > 0) var_name = '<unknown>'
+                    call unsupported_feature_error('module variable', line, &
+                        column, 'only fixed-length character scalar module '// &
+                        'variables are supported; '//trim(var_name)// &
+                        ' has a deferred or invalid length', error_msg)
+                    return
+                end if
+            end block
+            status = MODVAR_OK
         case default
             call get_declaration_var_name(arena, var_idx, var_name, kind_err)
             if (len_trim(kind_err) > 0) var_name = '<unknown>'
             call unsupported_feature_error('module variable', line, column, &
-                'direct LIRIC session stores only integer(4), real, and '// &
-                'logical scalar module variables; '//trim(var_name)// &
-                ' has an unsupported kind', error_msg)
+                'direct LIRIC session stores integer(4), real, logical, and '// &
+                'fixed-length character scalar module variables; '// &
+                trim(var_name)//' has an unsupported kind', error_msg)
         end select
     end subroutine module_variable_kind
+
+    subroutine module_character_length(arena, var_idx, context, character_length, &
+                                       error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: var_idx
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: character_length
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        character_length = -1
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, var_idx)) return
+        select type (decl => arena%entries(var_idx)%node)
+        type is (declaration_node)
+            call declaration_character_length(context, decl, character_length, &
+                                              error_msg, var_idx)
+        class default
+            error_msg = 'module character export is not a declaration'
+        end select
+    end subroutine module_character_length
 
     logical function module_declaration_is_array(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
@@ -467,11 +514,12 @@
     subroutine emit_module_variable_global(arena, var_idx, value_kind, &
                                            var_name, module_name, context, &
                                            error_msg)
-        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
-                                               c_loc, c_size_t, c_ptr, c_double, &
-                                               c_float, c_int32_t
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int8_t, &
+                                               c_int32_t, c_loc, c_size_t, &
+                                               c_ptr, c_double, c_float
         use liric_session_bindings, only: lr_type_i32_s, lr_type_f32_s, &
-                                          lr_type_f64_s
+                                          lr_type_f64_s, lr_type_i8_s, &
+                                          lr_type_array_s
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: var_idx
         integer, intent(in) :: value_kind
@@ -481,6 +529,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: mangled
         character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int8_t), allocatable, target :: init_char(:)
         integer(c_int32_t), target :: init_i32
         real(c_float), target :: init_f32
         real(c_double), target :: init_f64
@@ -488,6 +537,7 @@
         integer(c_size_t) :: init_size
         integer(c_int32_t) :: global_id
         logical(c_bool) :: c_false_local
+        integer :: character_length
 
         c_false_local = .false.
         if (value_kind == VALUE_DERIVED) then
@@ -508,6 +558,26 @@
         call set_empty(error_msg)
         mangled = module_procedure_mangled(module_name, trim(var_name))
         call to_c_chars(mangled, c_name)
+        if (value_kind == VALUE_CHARACTER) then
+            call module_character_length(arena, var_idx, context, &
+                                         character_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            allocate(init_char(character_length + 1))
+            init_char = int(iachar(' '), c_int8_t)
+            init_char(character_length + 1) = 0_c_int8_t
+            gtype = lr_type_array_s(context%session%handle, &
+                                    lr_type_i8_s(context%session%handle), &
+                                    int(character_length + 1, c_int64_t))
+            global_id = lr_session_global(context%session%handle, c_name, &
+                                          gtype, c_false_local, c_loc(init_char), &
+                                          int(character_length + 1, c_size_t))
+            deallocate(init_char)
+            if (global_id < 0_c_int32_t) then
+                error_msg = 'LIRIC could not create module character global: '// &
+                            trim(mangled)
+            end if
+            return
+        end if
         call fold_module_variable_initializer(arena, var_idx, value_kind, &
             init_i32, init_f32, init_f64, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -1272,12 +1342,22 @@
         sym_idx = context%symbol_count + 1
         context%symbols(sym_idx)%name = trim(var_name)
         context%symbols(sym_idx)%value_kind = value_kind
+        if (value_kind == VALUE_CHARACTER) then
+            call module_character_length(arena, var_idx, context, &
+                                         context%symbols(sym_idx)%character_length, &
+                                         error_msg)
+            if (len_trim(error_msg) > 0) return
+            context%symbols(sym_idx)%has_character_value = .true.
+        end if
         context%symbols(sym_idx)%has_address = .true.
         context%symbols(sym_idx)%is_reference = .true.
         context%symbols(sym_idx)%address%kind = LR_OP_KIND_GLOBAL
         context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
         context%symbols(sym_idx)%address%typ = lr_type_ptr_s(context%session%handle)
         context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
+        if (value_kind == VALUE_CHARACTER) then
+            context%symbols(sym_idx)%value = context%symbols(sym_idx)%address
+        end if
         context%symbol_count = sym_idx
         call set_empty(error_msg)
     end subroutine bind_one_module_variable

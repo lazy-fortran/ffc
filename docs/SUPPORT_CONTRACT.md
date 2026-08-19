@@ -241,6 +241,16 @@ flows remain outside this slice and are rejected.
 Unsupported features must fail during parsing, semantic analysis, or
 lowering with a diagnostic. Silent partial lowering is a bug.
 
+### Reduced scalar module-NAMELIST leaf (#628)
+
+In a single source containing both units, a plain `use module` imports module
+NAMELIST group metadata and fixed-length character scalar storage. A program
+NAMELIST declaration with the same group name merges additional scalar
+integer, real, logical, or fixed-length character members. This leaf covers
+the pinned `namelist_use.f90` shape only: arrays, derived types, internal
+character NAMELIST, separate `.fmod` metadata, and general NAMELIST writing
+remain unsupported.
+
 Generic specialization and cross-module inference wait for FortFront and
 package-level orchestration contracts.
 
