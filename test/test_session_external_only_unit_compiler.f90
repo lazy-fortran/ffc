@@ -12,6 +12,7 @@ program test_session_external_only_unit_compiler
 
     all_passed = .true.
     if (.not. test_procedure_only_object_links_with_driver()) all_passed = .false.
+    if (.not. test_default_driver_falls_back_to_object()) all_passed = .false.
     if (.not. test_executable_without_main_is_rejected()) all_passed = .false.
     if (.not. test_multiple_procedures_keep_their_order()) all_passed = .false.
 
@@ -90,6 +91,48 @@ contains
             ' '//drv_exe//' '//out_file)
         ok = .true.
     end function test_procedure_only_object_links_with_driver
+
+    logical function test_default_driver_falls_back_to_object() result(ok)
+        ! A compile-only source from the gfortran dg suite is commonly passed
+        ! to a driver without an explicit -c.  ffc must turn only its
+        ! procedure-only no-main result into object emission, matching gfortran.
+        character(len=*), parameter :: src = '/tmp/ffc_ext416_default.f90'
+        character(len=*), parameter :: ffc_obj = '/tmp/ffc_ext416_default.o'
+        character(len=*), parameter :: gcc_obj = '/tmp/ffc_ext416_gfortran.o'
+        integer :: exit_stat, cmd_stat
+
+        ok = .false.
+        if (.not. write_file(src, &
+            'integer function twice(x)'//new_line('a')// &
+            '    integer, intent(in) :: x'//new_line('a')// &
+            '    twice = 2 * x'//new_line('a')// &
+            'end function twice')) return
+        call execute_command_line('rm -f '//ffc_obj//' '//gcc_obj)
+        call execute_command_line( &
+            "sh -c 'exe=build/fo/bin/ffc; test -x $exe || exit 90; "// &
+            '"$exe" '//src//' -o '//ffc_obj//' || exit 91; '// &
+            'gfortran -c '//src//' -o '//gcc_obj//"'", &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. exit_stat /= 0) then
+            print *, 'FAIL: default driver procedure-only fallback failed, code ', &
+                exit_stat
+            return
+        end if
+        call execute_command_line('test -s '//ffc_obj//' && test -s '//gcc_obj, &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. exit_stat /= 0) then
+            print *, 'FAIL: fallback did not produce and gfortran did not control an object'
+            return
+        end if
+        call execute_command_line('nm '//ffc_obj//' | grep -q " T main"', &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat == 0 .and. exit_stat == 0) then
+            print *, 'FAIL: fallback object defines main'
+            return
+        end if
+        call execute_command_line('rm -f '//src//' '//ffc_obj//' '//gcc_obj)
+        ok = .true.
+    end function test_default_driver_falls_back_to_object
 
     logical function test_executable_without_main_is_rejected() result(ok)
         ! An executable build request needs a main program unit; a

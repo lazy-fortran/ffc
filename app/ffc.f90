@@ -132,11 +132,35 @@ contains
                 lazy_mode=input_mode == INPUT_MODE_LAZY)
         end if
         if (len_trim(error_msg) > 0) then
+            ! A procedure-only source is a valid compile-only translation unit,
+            ! even when the caller did not spell out -c (as in gfortran's
+            ! dg-do compile tests).  The lowering layer deliberately rejects
+            ! an executable request without a main; retry only that diagnostic
+            ! as object emission so unrelated source errors remain errors.
+            if (.not. opts%emit_object .and. procedure_only_object_diagnostic( &
+                    error_msg)) then
+                if (len_trim(opts%output_file) == 0) then
+                    output_file = default_output_name(.true.)
+                end if
+                call lower_program_to_liric_object(frontend_result%arena, &
+                    frontend_result%root_index, trim(output_file), error_msg, &
+                    search_paths, backend=opts%backend, opt_level=opts%opt_level, &
+                    lazy_mode=input_mode == INPUT_MODE_LAZY)
+            end if
+        end if
+        if (len_trim(error_msg) > 0) then
             diag_msg = trim(error_msg)
             return
         end if
         ok = .true.
     end function try_compile
+
+    logical function procedure_only_object_diagnostic(message) result(matches)
+        character(len=*), intent(in) :: message
+
+        matches = index(trim(message), &
+            'no main program unit: a procedure-only translation unit') == 1
+    end function procedure_only_object_diagnostic
 
     logical function derived_type_accessibility_only(message) result(allowed)
         character(len=*), intent(in) :: message
