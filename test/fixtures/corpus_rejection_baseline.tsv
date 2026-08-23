@@ -186,7 +186,7 @@ ACCEPTED	fortfront/examples/f90/issue_1611_allocate_type_typespec.f90
 ACCEPTED	fortfront/examples/f90/issue_1614_character_deferred_length.f90
 ACCEPTED	fortfront/examples/f90/issue_1614_character_function_result.f90
 ACCEPTED	fortfront/examples/f90/issue_1614_character_mixed_attributes.f90
-REJECTED	fortfront/examples/f90/issue_1614_character_module_variable.f90
+ACCEPTED	fortfront/examples/f90/issue_1614_character_module_variable.f90
 ACCEPTED	fortfront/examples/f90/issue_1614_character_parameter_length.f90
 REJECTED	fortfront/examples/f90/issue_1615_target_attribute.f90
 ACCEPTED	fortfront/examples/f90/issue_1616_polymorphic_arrays.f90

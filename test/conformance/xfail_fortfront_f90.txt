@@ -20,7 +20,6 @@ issue_1353_class_pointer_declaration.f90 # owner=lazy-fortran/ffc#540; reason=lo
 issue_1570_pure_elemental_preservation.f90 # owner=lazy-fortran/ffc#579; reason=lower elemental procedures through array expressions
 issue_1607_final_procedures.f90 # owner=lazy-fortran/ffc#422; reason=invoke scalar final procedures once
 issue_1611_allocate_no_typespec.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-issue_1614_character_module_variable.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 issue_1615_target_attribute.f90 # owner=lazy-fortran/ffc#540; reason=lower scalar data-pointer association
 issue_1619_nested_types_complex.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 issue_1738_derived_type_allocatable.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable arrays to descriptors
