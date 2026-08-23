@@ -28,7 +28,7 @@ program test_session_integer_intrinsic_compiler
     if (.not. test_real_intrinsic_values()) all_passed = .false.
     if (.not. test_real_conversion_intrinsic()) all_passed = .false.
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
-    if (.not. test_unsupported_real_intrinsic_diagnostic()) all_passed = .false.
+    if (.not. test_real_modulo_sign_of_divisor()) all_passed = .false.
     if (.not. test_user_function_shadowing()) all_passed = .false.
     if (.not. test_integer_modulo_positive()) all_passed = .false.
     if (.not. test_integer_modulo_negative_divisor()) all_passed = .false.
@@ -319,20 +319,18 @@ contains
             '/tmp/ffc_session_unsupported_intrinsic_test')
     end function test_unsupported_intrinsic_diagnostic
 
-    logical function test_unsupported_real_intrinsic_diagnostic()
+    logical function test_real_modulo_sign_of_divisor()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  real :: x'//new_line('a')// &
-            '  x = modulo(5.5, 2.0)'//new_line('a')// &
+            '  if (modulo(-8.0, -5.0) /= -3.0) error stop 1'//new_line('a')// &
+            '  if (modulo(-8.0, 5.0) /= 2.0) error stop 2'//new_line('a')// &
+            '  if (modulo(8.0, -5.0) /= -2.0) error stop 3'//new_line('a')// &
+            '  if (modulo(8.0, 5.0) /= 3.0) error stop 4'//new_line('a')// &
             'end program main'
 
-        ! modulo is now in the f64 lookup table so the error comes from the
-        ! intrinsic dispatcher rather than the generic "unsupported function call"
-        ! path; check for the common prefix only.
-        test_unsupported_real_intrinsic_diagnostic = expect_error_contains( &
-            source, 'unsupported', &
-            '/tmp/ffc_session_unsupported_real_intrinsic_test')
-    end function test_unsupported_real_intrinsic_diagnostic
+        test_real_modulo_sign_of_divisor = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_real_modulo_test')
+    end function test_real_modulo_sign_of_divisor
 
     logical function test_user_function_shadowing()
         character(len=*), parameter :: source = &

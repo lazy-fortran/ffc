@@ -414,6 +414,9 @@
         case (F64_INTRINSIC_HYPOT)
             call lower_f32_libm_call(arena, node, 'hypotf', 2, context, value, &
                                      error_msg)
+        case (F64_INTRINSIC_MODULO)
+            call lower_f32_modulo_intrinsic(arena, node, context, value, &
+                                            error_msg)
         case (F64_INTRINSIC_AINT)
             call lower_f32_real_conversion(arena, node, 'truncf', context, &
                                            value, error_msg)
@@ -501,6 +504,35 @@
         if (.not. emit_liric_f32_call(context%session, libm_name, args, value, &
                                       error_msg)) return
     end subroutine lower_f32_libm_call
+
+    ! modulo(a, p) = a - floor(a / p) * p for default-real arguments.
+    subroutine lower_f32_modulo_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: a, p, quotient, floored, product
+        type(lr_operand_desc_t) :: args(1)
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call lower_f32_intrinsic_arg(arena, node%arg_indices(1), context, a, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_f32_intrinsic_arg(arena, node%arg_indices(2), context, p, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_liric_f32_binary(context%session, LR_OP_FDIV, a, p, &
+                                        quotient, error_msg)) return
+        args(1) = quotient
+        if (.not. emit_liric_f32_call(context%session, 'floorf', args, floored, &
+                                      error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, floored, p, &
+                                        product, error_msg)) return
+        if (.not. emit_liric_f32_binary(context%session, LR_OP_FSUB, a, product, &
+                                        value, error_msg)) return
+    end subroutine lower_f32_modulo_intrinsic
 
     subroutine lower_f32_sign_intrinsic(arena, node, context, value, error_msg)
         use, intrinsic :: iso_c_binding, only: c_float
