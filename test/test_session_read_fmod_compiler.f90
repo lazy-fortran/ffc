@@ -21,6 +21,9 @@ program test_session_read_fmod_compiler
         all_passed = .false.
     if (.not. test_fmod_preserves_unsupported_public_function()) &
         all_passed = .false.
+    if (.not. test_sibling_module_derived_consumer()) all_passed = .false.
+    if (.not. test_sibling_module_missing_binding_rejected()) &
+        all_passed = .false.
     if (.not. test_fmod_optional_dummy_separate_compilation()) all_passed = .false.
     if (.not. test_fmod_value_dummy_separate_compilation()) all_passed = .false.
     if (.not. test_fmod_intent_out_rejects_literal()) all_passed = .false.
@@ -352,6 +355,113 @@ contains
         call execute_command_line('rm -rf '//dir)
         ok = .true.
     end function test_fmod_preserves_unsupported_public_function
+
+    logical function test_sibling_module_derived_consumer() result(ok)
+        ! The defining type, the opaque derived-dummy procedure, and the
+        ! USE-only consumer are three independent compilation units. This is
+        ! the sibling-module witness for the imported procedure-dummy
+        ! identity contract (#584).
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod584_sibling'
+        character(len=*), parameter :: log_path = dir//'/log'
+        integer :: ffc_status, gf_status, cmd_stat
+
+        ok = .false.
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+        if (.not. write_file(dir//'/m1.f90', &
+            'module sibling_type'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: token_t'//new_line('a')// &
+            '    integer :: value'//new_line('a')// &
+            '  end type token_t'//new_line('a')// &
+            'end module sibling_type')) return
+        if (.not. write_file(dir//'/m2.f90', &
+            'module sibling_consumer'//new_line('a')// &
+            '  use sibling_type, only: token_t'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine inspect(token)'//new_line('a')// &
+            '    type(token_t), intent(in) :: token'//new_line('a')// &
+            '  end subroutine inspect'//new_line('a')// &
+            'end module sibling_consumer')) return
+        if (.not. write_file(dir//'/p.f90', &
+            'program main'//new_line('a')// &
+            '  use sibling_consumer, only: inspect'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
+            'end program main')) return
+
+        call execute_command_line( &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
+            'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
+            'cd '//dir//' || exit 90; '// &
+            '"$exe" -c m1.f90 -o m1.o >>log 2>&1 || exit 91; '// &
+            '"$exe" -c m2.f90 -I . -o m2.o >>log 2>&1 || exit 92; '// &
+            '"$exe" p.f90 m2.o -I . -o p >>log 2>&1 || exit 93; '// &
+            './p; exit $((100 + $?))'//achar(39), &
+            exitstat=ffc_status, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. ffc_status /= 100) then
+            print *, 'FAIL: sibling derived consumer FFC pipeline, status ', &
+                ffc_status
+            call execute_command_line('cat '//log_path)
+            return
+        end if
+
+        call execute_command_line( &
+            'sh -c "cd '//dir//' && gfortran m1.f90 m2.f90 p.f90 -o gf && ./gf"', &
+            exitstat=gf_status, cmdstat=cmd_stat)
+        call execute_command_line('rm -rf '//dir)
+        if (cmd_stat /= 0 .or. gf_status /= 0) then
+            print *, 'FAIL: gfortran sibling derived consumer oracle, status ', &
+                gf_status
+            return
+        end if
+        ok = .true.
+    end function test_sibling_module_derived_consumer
+
+    logical function test_sibling_module_missing_binding_rejected() result(ok)
+        ! The same valid module artefacts must not make a missing USE ONLY name
+        ! callable. Both compilers provide the rejection oracle.
+        character(len=*), parameter :: dir = '/tmp/ffc_fmod584_sibling_bad'
+        integer :: ffc_status, gf_status, cmd_stat
+
+        ok = .false.
+        call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
+        if (.not. write_file(dir//'/m.f90', &
+            'module sibling_bad_export'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: token_t'//new_line('a')// &
+            '    integer :: value'//new_line('a')// &
+            '  end type token_t'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine inspect(token)'//new_line('a')// &
+            '    type(token_t), intent(in) :: token'//new_line('a')// &
+            '  end subroutine inspect'//new_line('a')// &
+            'end module sibling_bad_export')) return
+        if (.not. write_file(dir//'/p.f90', &
+            'program main'//new_line('a')// &
+            '  use sibling_bad_export, only: missing_inspect'//new_line('a')// &
+            'end program main')) return
+
+        call execute_command_line( &
+            "sh -c 'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc 2>/dev/null | "// &
+            'head -n 1); test -n "$exe" || exit 90; exe=$PWD/$exe; '// &
+            'cd '//dir//' || exit 90; '// &
+            '"$exe" -c m.f90 -o m.o >>log 2>&1 || exit 91; '// &
+            '"$exe" p.f90 m.o -I . -o p >>log 2>&1; test $? -ne 0'//achar(39), &
+            exitstat=ffc_status, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. ffc_status /= 0) then
+            print *, 'FAIL: FFC missing-binding negative control, status ', &
+                ffc_status
+            return
+        end if
+        call execute_command_line( &
+            'sh -c "cd '//dir//' && gfortran m.f90 p.f90 -o gf"', &
+            exitstat=gf_status, cmdstat=cmd_stat)
+        call execute_command_line('rm -rf '//dir)
+        if (cmd_stat /= 0 .or. gf_status == 0) then
+            print *, 'FAIL: gfortran accepted missing-binding negative control'
+            return
+        end if
+        ok = .true.
+    end function test_sibling_module_missing_binding_rejected
 
     subroutine write_rename_matrix_fmod(dir, error_msg)
         ! A module exporting two distinct integer constants, so a rename
