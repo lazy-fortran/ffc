@@ -1827,7 +1827,6 @@ simplify_cshift_2.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSH
 simplify_cshift_3.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 simplify_cshift_4.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 simplify_eoshift_1.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
-simplify_modulo.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 size_dim.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 size_kind.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 sizeof.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape arrays by descriptor
