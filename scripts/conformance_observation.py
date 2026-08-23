@@ -299,6 +299,14 @@ def validate_case_provenance(
     for key in CASE_METRIC_FIELDS:
         nonnegative_int(record, key, location)
 
+    flags_payload = (
+        f"ffc:{record['ffc_flags']}\nref:{record['ref_flags']}\n"
+    ).encode("utf-8")
+    if record["compiler_flags_sha256"] != hashlib.sha256(flags_payload).hexdigest():
+        raise ObservationError(
+            f"{location}: compiler_flags_sha256 does not match row flags"
+        )
+
     target_triple = record["target_triple"]
     if not TARGET_TRIPLE.fullmatch(target_triple):
         raise ObservationError(f"{location}: invalid target_triple")
@@ -441,7 +449,7 @@ def validate_case(
     if require_exact_type(record, "suite", str, location) != suite:
         raise ObservationError(f"{location}: mixed or unexpected suite")
     file_name = require_exact_type(record, "file", str, location)
-    if not file_name or "\n" in file_name or "\r" in file_name:
+    if not file_name or "\0" in file_name or "\n" in file_name or "\r" in file_name:
         raise ObservationError(f"{location}: invalid file field")
     status = require_exact_type(record, "status", str, location)
     if status not in RAW_STATUSES:
@@ -643,6 +651,13 @@ def validate_summary_case_provenance(
                 raise ObservationError(
                     f"{location}: case {index} differs from SUMMARY: {key}"
                 )
+    cache_hits = sum(case["ref_compile_action"] == "cache-hit" for case in cases)
+    if cache_hits > 0 and not summary["reference_cache_enabled"]:
+        raise ObservationError(
+            f"{location}: cache-hit evidence while reference cache is disabled"
+        )
+    if summary["reference_cache_hits"] != cache_hits:
+        raise ObservationError(f"{location}: SUMMARY reference_cache_hits mismatch")
 
 
 def validate_summary(
@@ -794,6 +809,7 @@ def load_observation(path: Path, suite: str) -> tuple[bytes, list[dict[str, Any]
         len(cases),
     )
     validate_summary_case_provenance(cases, summary, str(path))
+    validate_execution_epoch(cases, summary, str(path))
     flaky_cases = [case for case in cases if case["status"] == "FLAKY"]
     if flaky_cases and "attempt_count" not in summary:
         raise ObservationError(f"{path}: FLAKY observation lacks attempt_count")
@@ -857,6 +873,7 @@ def load_classification(
         len(cases),
     )
     validate_summary_case_provenance(cases, summary, str(path))
+    validate_execution_epoch(cases, summary, str(path))
     flaky_cases = [case for case in cases if case["status"] == "FLAKY"]
     if flaky_cases and "attempt_count" not in summary:
         raise ObservationError(f"{path}: FLAKY classification lacks attempt_count")
@@ -873,6 +890,59 @@ def load_classification(
 def identity(summary: dict[str, Any]) -> str:
     values = {key: summary.get(key) for key in IDENTITY_FIELDS}
     return json.dumps(values, sort_keys=True, separators=(",", ":"))
+
+
+def selection_bytes(file_names: list[str]) -> bytes:
+    return "".join(f"{file_name}\n" for file_name in file_names).encode("utf-8")
+
+
+def selection_sha256(file_names: list[str]) -> str:
+    return hashlib.sha256(selection_bytes(file_names)).hexdigest()
+
+
+def execution_epoch_sha256(
+    summary: dict[str, Any], selection_digest: str, full_run: bool
+) -> str:
+    """Reconstruct conformance_gauntlet.sh's schema-2 execution epoch."""
+    cache = "enabled" if summary["reference_cache_enabled"] else "disabled"
+    payload = (
+        "epoch_schema:2\n"
+        f"suite:{summary['suite']}\n"
+        f"selection:{selection_digest}\n"
+        f"corpus:{summary['corpus_revision']}:{summary['corpus_tree']}:"
+        f"{summary['corpus_files_sha256']}\n"
+        f"ffc:{summary['ffc_revision']}:{summary['ffc_source_sha256']}:"
+        f"{summary['ffc_binary_sha256']}\n"
+        f"fortfront:{summary['fortfront_revision']}:"
+        f"{summary['fortfront_tree']}\n"
+        f"liric:{summary['liric_revision']}:{summary['liric_tree']}\n"
+        f"target:{summary['target_triple']}\n"
+        f"environment:{summary['environment_sha256']}\n"
+        f"runtime:{summary['runtime_abi_sha256']}\n"
+        f"harness:{summary['harness_sha256']}\n"
+        f"toolchain:{summary['toolchain_sha256']}\n"
+        f"flags:{summary['compiler_flags_sha256']}\n"
+        f"timeout:{summary['timeout_seconds']}\n"
+        f"skip:{summary['skip_manifest_sha256']}\n"
+        f"noref:{summary['noref_manifest_sha256']}\n"
+        f"cache:{cache}\n"
+        f"full_run:{str(full_run).lower()}\n"
+        f"worktree:{summary['worktree']}\n"
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def validate_execution_epoch(
+    cases: list[dict[str, Any]], summary: dict[str, Any], location: str
+) -> None:
+    digest = selection_sha256([case["file"] for case in cases])
+    if summary["full_run"] and digest != summary["corpus_files_sha256"]:
+        raise ObservationError(
+            f"{location}: full-run selection differs from corpus identity"
+        )
+    expected = execution_epoch_sha256(summary, digest, summary["full_run"])
+    if summary["epoch_sha256"] != expected:
+        raise ObservationError(f"{location}: execution epoch does not reconstruct")
 
 
 def write_atomic_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
@@ -1012,6 +1082,7 @@ def validate_in_memory_observation(
         len(cases),
     )
     validate_summary_case_provenance(cases, summary, "merged observation")
+    validate_execution_epoch(cases, summary, "merged observation")
 
 
 def validate_in_memory_classification(
@@ -1041,6 +1112,7 @@ def validate_in_memory_classification(
         len(cases),
     )
     validate_summary_case_provenance(cases, summary, "classification")
+    validate_execution_epoch(cases, summary, "classification")
 
 
 def command_validate(args: argparse.Namespace) -> int:
@@ -1169,7 +1241,142 @@ def aggregate_attempt_digests(
     return hashlib.sha256(payload).hexdigest()
 
 
-def command_merge(args: argparse.Namespace) -> int:
+def load_expected_selection(path: Path, expected_sha256: str) -> tuple[list[str], str]:
+    if not HEX64.fullmatch(expected_sha256):
+        raise ObservationError("expected selection SHA-256 is malformed")
+    try:
+        data = path.read_bytes()
+    except OSError as error:
+        raise ObservationError(f"cannot read expected selection: {error}") from error
+    actual_sha256 = hashlib.sha256(data).hexdigest()
+    if actual_sha256 != expected_sha256:
+        raise ObservationError("expected selection SHA-256 does not match file")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError as error:
+        raise ObservationError(f"expected selection is not UTF-8: {error}") from error
+    file_names = text.splitlines()
+    if selection_bytes(file_names) != data:
+        raise ObservationError(
+            "expected selection is not canonical newline-terminated UTF-8"
+        )
+    if not file_names:
+        raise ObservationError("expected selection is empty")
+    seen: set[str] = set()
+    for file_name in file_names:
+        parts = file_name.split("/")
+        if (
+            not file_name
+            or "\0" in file_name
+            or file_name.startswith("/")
+            or any(part in {"", ".", ".."} for part in parts)
+        ):
+            raise ObservationError(
+                f"invalid expected selection entry: {file_name!r}"
+            )
+        if file_name in seen:
+            raise ObservationError(
+                f"duplicate expected selection entry: {file_name}"
+            )
+        seen.add(file_name)
+    return file_names, actual_sha256
+
+
+def command_shard_merge(args: argparse.Namespace) -> int:
+    if len(args.observations) < 2:
+        raise ObservationError("shard merge requires at least two observations")
+    expected_files, expected_digest = load_expected_selection(
+        args.expected_selection.resolve(), args.expected_selection_sha256
+    )
+    loaded = [
+        load_observation(path.resolve(), args.suite) for path in args.observations
+    ]
+    common_fields = tuple(
+        field for field in IDENTITY_FIELDS if field != "epoch_sha256"
+    )
+    first_summary = loaded[0][2]
+    for shard, (_, cases, summary) in enumerate(loaded, 1):
+        if not cases:
+            raise ObservationError(f"shard {shard} is empty")
+        if summary["full_run"]:
+            raise ObservationError(f"shard {shard} is already a full run")
+        if not summary["provenance_verified"]:
+            raise ObservationError(f"shard {shard} lacks verified provenance")
+        if summary.get("sampled", False):
+            raise ObservationError(f"shard {shard} is sampled")
+        if "attempt_count" in summary:
+            raise ObservationError(f"shard {shard} is already repeat-merged")
+        if shard == 1:
+            continue
+        for field in common_fields:
+            if summary.get(field) != first_summary.get(field):
+                raise ObservationError(
+                    f"shard {shard} provenance differs from shard 1: {field}"
+                )
+
+    if expected_digest != first_summary["corpus_files_sha256"]:
+        raise ObservationError(
+            "expected selection SHA-256 differs from locked corpus identity"
+        )
+
+    case_by_name: dict[str, dict[str, Any]] = {}
+    extra_order: list[str] = []
+    expected_set = set(expected_files)
+    for shard, (_, cases, _) in enumerate(loaded, 1):
+        for case in cases:
+            file_name = case["file"]
+            if file_name in case_by_name:
+                raise ObservationError(
+                    f"duplicate shard case: {file_name} (shard {shard})"
+                )
+            case_by_name[file_name] = case
+            if file_name not in expected_set:
+                extra_order.append(file_name)
+    missing = [
+        file_name for file_name in expected_files if file_name not in case_by_name
+    ]
+    if missing or extra_order:
+        differences: list[str] = []
+        if missing:
+            differences.append(f"missing={','.join(missing)}")
+        if extra_order:
+            differences.append(f"extra={','.join(extra_order)}")
+        raise ObservationError(
+            "shard union differs from expected selection: " + "; ".join(differences)
+        )
+
+    summary = dict(first_summary)
+    summary["full_run"] = True
+    for field in (
+        "sampled",
+        "sample_size",
+        "sample_population",
+        "sample_seed",
+        "sample_margin_pct",
+    ):
+        summary.pop(field, None)
+    merged_cases = [dict(case_by_name[file_name]) for file_name in expected_files]
+    summary["reference_cache_hits"] = sum(
+        case["ref_compile_action"] == "cache-hit" for case in merged_cases
+    )
+    aggregate_epoch = execution_epoch_sha256(summary, expected_digest, True)
+    summary["epoch_sha256"] = aggregate_epoch
+    for case in merged_cases:
+        case["epoch_sha256"] = aggregate_epoch
+    update_summary_counts(summary, merged_cases)
+
+    output_path = args.output.resolve()
+    input_paths = {path.resolve() for path in args.observations}
+    if output_path in input_paths:
+        raise ObservationError("merged output must not overwrite a shard")
+    if output_path == args.expected_selection.resolve():
+        raise ObservationError("merged output must not overwrite expected selection")
+    validate_in_memory_observation(merged_cases, summary, args.suite)
+    write_atomic_jsonl(output_path, [*merged_cases, summary])
+    return 0
+
+
+def command_repeat_merge(args: argparse.Namespace) -> int:
     if len(args.observations) < 2:
         raise ObservationError("repeat merge requires at least two observations")
     loaded = [load_observation(path.resolve(), args.suite) for path in args.observations]
@@ -1261,7 +1468,7 @@ def command_merge(args: argparse.Namespace) -> int:
     update_summary_counts(summary, merged_cases)
     summary["attempt_count"] = len(loaded)
     summary["reference_cache_hits"] = sum(
-        entry[2]["reference_cache_hits"] for entry in loaded
+        case["ref_compile_action"] == "cache-hit" for case in merged_cases
     )
     output_path = args.output.resolve()
     if output_path in {path.resolve() for path in args.observations}:
@@ -1269,6 +1476,25 @@ def command_merge(args: argparse.Namespace) -> int:
     validate_in_memory_observation(merged_cases, summary, args.suite)
     write_atomic_jsonl(output_path, [*merged_cases, summary])
     return 0
+
+
+def command_merge(args: argparse.Namespace) -> int:
+    has_shard_argument = (
+        args.expected_selection is not None
+        or args.expected_selection_sha256 is not None
+    )
+    if args.mode == "repeat":
+        if has_shard_argument:
+            raise ObservationError(
+                "expected selection arguments require --mode shards"
+            )
+        return command_repeat_merge(args)
+    if args.expected_selection is None or args.expected_selection_sha256 is None:
+        raise ObservationError(
+            "shard merge requires --expected-selection and "
+            "--expected-selection-sha256"
+        )
+    return command_shard_merge(args)
 
 
 def parser() -> argparse.ArgumentParser:
@@ -1308,6 +1534,9 @@ def parser() -> argparse.ArgumentParser:
 
     merge = subparsers.add_parser("merge")
     merge.add_argument("--suite", choices=sorted(SUITES), required=True)
+    merge.add_argument("--mode", choices=("repeat", "shards"), default="repeat")
+    merge.add_argument("--expected-selection", type=Path)
+    merge.add_argument("--expected-selection-sha256")
     merge.add_argument("--output", type=Path, required=True)
     merge.add_argument("observations", nargs="+", type=Path)
     merge.set_defaults(function=command_merge)

@@ -284,6 +284,39 @@ check exit nonzero, and a FLAKY case is never reported as promotable XPASS.
 Never stabilise such a case by raising a timeout; reduce it and fix the
 underlying nondeterminism.
 
+## Merging disjoint observation shards
+
+`conformance_observation.py merge` defaults to the repeat merge described
+above. Its separate `shards` mode reconstructs one full observation from
+disjoint, provenance-verified named selections:
+
+```bash
+selection_sha256=$(sha256sum full-selection.txt | cut -d ' ' -f 1)
+python3 scripts/conformance_observation.py merge \
+    --mode shards --suite lfortran \
+    --expected-selection full-selection.txt \
+    --expected-selection-sha256 "$selection_sha256" \
+    --output full.observations.jsonl \
+    shard-00.observations.jsonl shard-01.observations.jsonl
+```
+
+The expected selection is canonical UTF-8 with one NUL-free suite-relative
+name per line and a final newline. Its supplied SHA-256 must match both its
+exact bytes and the shards' common `corpus_files_sha256`; a subset cannot
+therefore be relabeled as a full run. Each input must be a nonempty, unsampled,
+`full_run:false`, `provenance_verified:true` observation rather than a prior
+repeat merge. Before considering the union, the tool reconstructs every
+shard's schema-2 epoch from its row order and checks common schema, compiler,
+dependency, corpus, harness, toolchain, flags, target, environment, manifests,
+cache policy, timeout, and producing worktree.
+
+The merge rejects a duplicate case or any missing or extra name. On success it
+orders rows exactly like the expected selection, recomputes counts and cache
+hits from row action evidence, rejects cache-hit rows under a disabled cache
+policy, changes every row to the newly computed full-selection epoch, and
+emits a `full_run:true` SUMMARY only after validating the resulting
+observation. It does not classify the observation or publish a dashboard.
+
 The script auto-detects available suites by checking the suite root
 directories. If a suite root does not exist, it prints a SKIP message and
 continues with the remaining suites. Only `fortfront-f90` and `fortfront-lf`
@@ -392,7 +425,7 @@ Fields:
 | `noref` | boolean | `true` when the case has no behavioral oracle; omitted otherwise |
 | `noref_reason` | string | Required with `noref`: an approved manifest category, `reference-rejected`, or `reference-runtime-failure` |
 | `source_sha256`, `dependency_closure_sha256` | SHA-256 | Main source and canonical, recursively resolved source/INCLUDE closure compiled from the per-case snapshot |
-| `ffc_flags`, `ref_flags`, `compiler_flags_sha256` | string/SHA-256 | Canonical compiler arguments and their joint digest |
+| `ffc_flags`, `ref_flags`, `compiler_flags_sha256` | string/SHA-256 | Canonical compiler arguments and SHA-256 of `ffc:<ffc_flags>\nref:<ref_flags>\n` |
 | `environment_sha256`, `target_triple` | SHA-256/string | Declared compile/run environment and target |
 | `runtime_abi_sha256`, `harness_sha256`, `toolchain_sha256` | SHA-256 | Runtime contract, harness implementation, and exact compiler toolchain |
 | `phase` | string | Last decisive phase: compile, run, reference, compare, skip, directive, or complete |
@@ -434,8 +467,11 @@ digest, or a different selected compiler binary.
 
 The epoch digest binds the selection, corpus/compiler revisions, input and
 tool hashes, flags, target, environment, timeout, cache policy, manifests, and
-worktree. Every row must match the SUMMARY epoch. Compile and run exits are
-never overloaded: `ffc_exit` and `ref_exit` remain only as strictly validated
+worktree. Every row must match the SUMMARY epoch, and validation reconstructs
+that schema-2 epoch from the ordered rows and SUMMARY metadata rather than
+trusting the supplied digest. For `full_run:true`, the ordered row-list digest
+must also equal `corpus_files_sha256`. Compile and run exits are never
+overloaded: `ffc_exit` and `ref_exit` remain only as strictly validated
 projections for older consumers. The action supervisor observes the OS return
 code directly, so deliberate exits 124 or 137 remain `exit`; only an expired
 deadline is `timeout`, and only termination by a signal is `signal`. A timeout
