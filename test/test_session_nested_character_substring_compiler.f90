@@ -24,6 +24,11 @@ program test_session_nested_character_substring_compiler
         '  c(2)(1:3) = "XYZ"'//new_line('a')// &
         '  ok = ok .and. c(2) == "XYZjkl"'//new_line('a')// &
         '  c(2) = "ghijkl"'//new_line('a')// &
+        '  c(2)(1:3) = "Q"'//new_line('a')// &
+        '  ok = ok .and. c(2) == "Q  jkl"'//new_line('a')// &
+        '  c(2)(1:3) = "WXYZ"'//new_line('a')// &
+        '  ok = ok .and. c(2) == "WXYjkl"'//new_line('a')// &
+        '  c(2) = "ghijkl"'//new_line('a')// &
         '  c(2)(1:3) = c(2)(2:4)'//new_line('a')// &
         '  ok = ok .and. c(2) == "hijjkl"'//new_line('a')// &
         '  call consume(c(2)(2:5), ok)'//new_line('a')// &
