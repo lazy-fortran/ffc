@@ -755,7 +755,7 @@ contains
     end procedure file_write_value_kind
     module procedure lower_file_write_item
         use, intrinsic :: iso_c_binding, only: c_int64_t
-        type(lr_operand_desc_t) :: val, fmtop
+        type(lr_operand_desc_t) :: val, fmtop, char_len
         type(lr_operand_desc_t), allocatable :: fa(:)
         integer(c_int32_t) :: fgid
         character(len=64) :: fgn
@@ -774,6 +774,8 @@ contains
             fmts = ' %g'
         case (VALUE_F64)
             fmts = ' %.15g'
+        case (VALUE_CHARACTER)
+            fmts = ' %.*s'
         case default
             fmts = ' %d'
         end select
@@ -787,6 +789,9 @@ contains
             call lower_f32_expression(arena, node_index, context, val, error_msg)
         case (VALUE_F64)
             call lower_f64_expression(arena, node_index, context, val, error_msg)
+        case (VALUE_CHARACTER)
+            call char_expr_operands(arena, node_index, context, val, char_len, &
+                                    error_msg)
         case default
             call lower_i32_expression(arena, node_index, context, val, error_msg)
         end select
@@ -800,10 +805,18 @@ contains
         if (len_trim(error_msg) > 0) return
         fmtop = printf_format_ptr(context%session, fgid)
 
-        allocate (fa(3))
-        fa(1) = fp
-        fa(2) = fmtop
-        fa(3) = val
+        if (vk == VALUE_CHARACTER) then
+            allocate (fa(4))
+            fa(1) = fp
+            fa(2) = fmtop
+            fa(3) = char_len
+            fa(4) = val
+        else
+            allocate (fa(3))
+            fa(1) = fp
+            fa(2) = fmtop
+            fa(3) = val
+        end if
         if (.not. emit_fprintf(context%session, fa, error_msg)) return
         call set_empty(error_msg)
     end procedure lower_file_write_item
