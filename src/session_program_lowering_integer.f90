@@ -248,6 +248,7 @@ contains
     integer :: call_arg_count
     integer :: call_arg_kinds(MAX_PROC_ARGS)
     integer :: call_arg_ranks(MAX_PROC_ARGS)
+    integer(c_int64_t) :: constant_value
 
     if (node%base_expr_index > 0) then
         call lower_derived_component_element_load(arena, node, context, value, &
@@ -338,6 +339,35 @@ contains
     if (same_name(node%name, 'kind') .and. .not. &
         is_contained_i32_function(context, node%name)) then
         call lower_kind_intrinsic(arena, node, context, value, error_msg)
+        return
+    end if
+    if (same_name(node%name, 'huge') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        if (.not. allocated(node%arg_indices) .or. &
+            size(node%arg_indices) /= 1) then
+            error_msg = 'huge requires one argument'
+            return
+        end if
+        if (is_literal(arena, node%arg_indices(1))) then
+            if (is_real_literal(arena, node%arg_indices(1)) .or. &
+                is_character_literal(arena, node%arg_indices(1)) .or. &
+                is_logical_literal(arena, node%arg_indices(1)) .or. &
+                node_is_boz_literal(arena, node%arg_indices(1))) then
+                error_msg = 'HUGE argument must be INTEGER scalar'
+                return
+            end if
+        else if (.not. is_integer_operand(arena, node%arg_indices(1), context)) then
+            error_msg = 'HUGE argument must be INTEGER scalar'
+            return
+        end if
+        call eval_huge_constant(arena, node, context, constant_value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (constant_value > 2147483647_c_int64_t) then
+            error_msg = 'HUGE result exceeds INTEGER(4) lowering range'
+            return
+        end if
+        value = i32_immediate(context%session, constant_value)
+        call set_empty(error_msg)
         return
     end if
     if (same_name(node%name, 'sum') .and. .not. &
