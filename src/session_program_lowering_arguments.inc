@@ -1461,9 +1461,7 @@
         ! this narrow predicate does not create a new unused-result warning.
         if (allocated(dummy_intent)) dummy_intent = trim(dummy_intent)
         actual_is_unsupported_assumed_shape_forward = &
-            (context%symbols(symbol_index)%is_pointer .and. .not. dummy_pointer) .or. &
-            (context%symbols(symbol_index)%is_assumed_shape_dummy .and. &
-             context%symbols(symbol_index)%has_runtime_array_stride)
+            (context%symbols(symbol_index)%is_pointer .and. .not. dummy_pointer)
     end function actual_is_unsupported_assumed_shape_forward
 
     logical function actual_is_definite_scalar(arena, node_index, context)

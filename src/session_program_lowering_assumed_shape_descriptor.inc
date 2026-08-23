@@ -76,6 +76,55 @@
         end select
     end function assumed_shape_actual_symbol
 
+    logical function assumed_shape_descriptor_forward_actual(arena, node_index, &
+                                                             context, source_symbol) &
+            result(is_forward)
+        ! A rank-1 assumed-shape dummy or its identity section is already a
+        ! descriptor-backed view. Forwarding it composes only the dummy bound;
+        ! base, extent, and signed byte stride remain those of the incoming
+        ! borrowed descriptor.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: source_symbol
+        integer :: bounds_index
+
+        is_forward = .false.
+        source_symbol = 0
+        if (.not. node_exists(arena, node_index)) return
+        if (is_identifier(arena, node_index)) then
+            source_symbol = assumed_shape_actual_symbol(arena, node_index, context)
+        else
+            select type (slice => arena%entries(node_index)%node)
+            type is (array_slice_node)
+                if (slice%num_dimensions /= 1) return
+                source_symbol = assumed_shape_actual_symbol(arena, &
+                    slice%array_index, context)
+                if (source_symbol <= 0) return
+                bounds_index = slice%bounds_indices(1)
+                if (.not. node_exists(arena, bounds_index)) return
+                select type (bounds => arena%entries(bounds_index)%node)
+                type is (array_bounds_node)
+                    if (.not. bounds%is_assumed_shape .and. &
+                        .not. bounds%is_deferred_shape) return
+                type is (range_expression_node)
+                    if (bounds%start_index > 0) return
+                    if (bounds%end_index > 0) return
+                    if (bounds%stride_index > 0) return
+                class default
+                    return
+                end select
+            class default
+                return
+            end select
+        end if
+        if (source_symbol <= 0) return
+        if (.not. context%symbols(source_symbol)%is_assumed_shape_dummy) return
+        if (context%symbols(source_symbol)%array_rank /= 1) return
+        if (.not. context%symbols(source_symbol)%has_runtime_descriptor) return
+        is_forward = .true.
+    end function assumed_shape_descriptor_forward_actual
+
     logical function assumed_shape_empty_constructor(arena, node_index) &
             result(is_empty)
         type(ast_arena_t), intent(in) :: arena
@@ -390,6 +439,16 @@
         character(len=32) :: rank_text, actual_rank_text
         character(len=:), allocatable :: dummy_type_name
         integer :: dummy_type_index
+        integer :: forwarded_symbol
+
+        if (rank == 1) then
+            if (assumed_shape_descriptor_forward_actual(arena, node_index, context, &
+                                                        forwarded_symbol)) then
+                call build_forwarded_assumed_shape_descriptor(arena, context, rank, &
+                    callee_name, param_pos, forwarded_symbol, descriptor, error_msg)
+                return
+            end if
+        end if
 
         actual_rank = assumed_shape_actual_rank(arena, node_index, context)
         if (actual_rank /= rank) then
@@ -614,6 +673,104 @@
         call set_empty(error_msg)
     end subroutine build_assumed_shape_descriptor
 
+    subroutine build_forwarded_assumed_shape_descriptor(arena, context, rank, &
+                                                        callee_name, param_pos, &
+                                                        source_symbol, descriptor, &
+                                                        error_msg)
+        ! Compose a rank-1 descriptor for a forwarded assumed-shape dummy. The
+        ! source descriptor is borrowed and remains the owner of no storage;
+        ! the new stack descriptor copies its base, element metadata, extent,
+        ! and signed stride, changing only the callee's lower bound.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: rank
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer, intent(in) :: source_symbol
+        type(lr_operand_desc_t), intent(out) :: descriptor
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: source_descriptor, value_i64
+        integer :: dummy_lowers(ARRAY_MAX_RANK)
+        logical :: has_dummy_lowers
+
+        if (rank /= 1) then
+            error_msg = 'assumed-shape descriptor forwarding supports rank 1 only'
+            return
+        end if
+        source_descriptor = context%symbols(source_symbol)%runtime_descriptor_address
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, int(ARRAY_DESCRIPTOR_BYTES, &
+                                                     c_int64_t)), descriptor, &
+                error_msg)) return
+
+        if (.not. emit_i64_load_at(context%session, source_descriptor, &
+                0_c_int64_t, value_i64, &
+                error_msg)) return
+        if (.not. emit_i64_store_at(context%session, value_i64, descriptor, &
+                0_c_int64_t, error_msg)) return
+        if (.not. emit_i64_load_at(context%session, source_descriptor, &
+                int(ARRAY_DESCRIPTOR_ELEMENT_SIZE_OFFSET, c_int64_t), value_i64, &
+                error_msg)) return
+        if (.not. emit_i64_store_at(context%session, value_i64, descriptor, &
+                int(ARRAY_DESCRIPTOR_ELEMENT_SIZE_OFFSET, c_int64_t), error_msg)) return
+        call copy_forwarded_descriptor_i32(context, source_descriptor, descriptor, &
+            int(ARRAY_DESCRIPTOR_ELEMENT_TYPE_OFFSET, c_int64_t), error_msg)
+        if (len_trim(error_msg) > 0) return
+        call copy_forwarded_descriptor_i32(context, source_descriptor, descriptor, &
+            int(ARRAY_DESCRIPTOR_RANK_OFFSET, c_int64_t), error_msg)
+        if (len_trim(error_msg) > 0) return
+        call copy_forwarded_descriptor_i32(context, source_descriptor, descriptor, &
+            int(ARRAY_DESCRIPTOR_FLAGS_OFFSET, c_int64_t), error_msg)
+        if (len_trim(error_msg) > 0) return
+        call copy_forwarded_descriptor_i32(context, source_descriptor, descriptor, &
+            int(ARRAY_DESCRIPTOR_RESERVED_OFFSET, c_int64_t), error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        call callee_dummy_assumed_shape_lowers(arena, callee_name, param_pos, &
+                                               context, rank, dummy_lowers, &
+                                               has_dummy_lowers, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. has_dummy_lowers) dummy_lowers(1) = 1
+        if (.not. emit_i64_store_at(context%session, &
+                i64_immediate(context%session, int(dummy_lowers(1), c_int64_t)), &
+                descriptor, assumed_shape_dim_field_offset(1, &
+                    int(ARRAY_DIMENSION_LOWER_OFFSET, c_int64_t)), error_msg)) return
+        if (.not. emit_i64_load_at(context%session, source_descriptor, &
+                assumed_shape_dim_field_offset(1, &
+                    int(ARRAY_DIMENSION_EXTENT_OFFSET, c_int64_t)), value_i64, &
+                error_msg)) return
+        if (.not. emit_i64_store_at(context%session, value_i64, descriptor, &
+                assumed_shape_dim_field_offset(1, &
+                    int(ARRAY_DIMENSION_EXTENT_OFFSET, c_int64_t)), error_msg)) return
+        if (.not. emit_i64_load_at(context%session, source_descriptor, &
+                assumed_shape_dim_field_offset(1, &
+                    int(ARRAY_DIMENSION_STRIDE_OFFSET, c_int64_t)), value_i64, &
+                error_msg)) return
+        if (.not. emit_i64_store_at(context%session, value_i64, descriptor, &
+                assumed_shape_dim_field_offset(1, &
+                    int(ARRAY_DIMENSION_STRIDE_OFFSET, c_int64_t)), error_msg)) return
+        call set_empty(error_msg)
+    end subroutine build_forwarded_assumed_shape_descriptor
+
+    subroutine copy_forwarded_descriptor_i32(context, source_descriptor, descriptor, &
+                                             offset, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: source_descriptor, descriptor
+        integer(c_int64_t), intent(in) :: offset
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: source_field, target_field, value
+
+        if (.not. emit_ptr_offset(context%session, source_descriptor, offset, &
+                                  source_field, error_msg)) return
+        if (.not. emit_i32_load(context%session, source_field, value, error_msg)) &
+            return
+        if (.not. emit_ptr_offset(context%session, descriptor, offset, target_field, &
+                                  error_msg)) return
+        if (.not. emit_i32_store(context%session, value, target_field, error_msg)) &
+            return
+        call set_empty(error_msg)
+    end subroutine copy_forwarded_descriptor_i32
+
     subroutine rank1_section_stride_bytes(arena, node_index, context, element_bytes, &
                                           stride_bytes, is_contiguous, error_msg)
         ! Compute the view stride independently of the view base.  Bounds may
@@ -795,6 +952,8 @@
             end if
             if (.not. emit_ptr_load(context%session, descriptor, base, &
                                     error_msg)) return
+            context%symbols(sym_index)%runtime_descriptor_address = descriptor
+            context%symbols(sym_index)%has_runtime_descriptor = .true.
             context%symbols(sym_index)%address = base
             context%symbols(sym_index)%element_address = base
             context%symbols(sym_index)%has_address = .true.
