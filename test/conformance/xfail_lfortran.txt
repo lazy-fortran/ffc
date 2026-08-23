@@ -1029,7 +1029,6 @@ file_30.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG 
 file_31.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
 file_32.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
 file_34.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
-file_35.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
 file_36.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 file_38.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
 file_39.f90 # owner=lazy-fortran/ffc#628; reason=move file-unit state behind the runtime ABI
