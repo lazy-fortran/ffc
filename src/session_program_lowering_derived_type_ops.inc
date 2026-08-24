@@ -59,6 +59,12 @@
             component_slot_width = 4
             return
         end if
+        if (component_is_polymorphic(context, type_index, comp_index)) then
+            ! A scalar polymorphic allocatable component carries the same
+            ! canonical class descriptor as a scalar class allocatable.
+            component_slot_width = 8
+            return
+        end if
         if (component_is_allocatable(context, type_index, comp_index) .or. &
             component_is_pointer(context, type_index, comp_index)) then
             component_slot_width = 2
@@ -141,6 +147,20 @@
         component_is_allocatable = &
             context%derived_types(type_index)%component_is_allocatable(comp_index)
     end function component_is_allocatable
+
+    logical function component_is_polymorphic(context, type_index, comp_index)
+        ! True for a scalar polymorphic allocatable component. Its inline
+        ! storage is the canonical 32-byte class descriptor.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer, intent(in) :: comp_index
+
+        component_is_polymorphic = .false.
+        if (.not. allocated(context%derived_types(type_index)% &
+                            component_is_polymorphic)) return
+        component_is_polymorphic = context%derived_types(type_index)% &
+            component_is_polymorphic(comp_index)
+    end function component_is_polymorphic
 
     logical function component_is_alloc_char(context, type_index, comp_index)
         ! True for a scalar allocatable deferred-length character component,
@@ -2208,7 +2228,9 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value, addr
-        integer :: comp_kind, base_type, comp_index
+        integer :: comp_kind, base_type, comp_index, base_symbol
+        type(lr_operand_desc_t) :: base_address
+        character(len=:), allocatable :: base_error
 
         if (.not. allocated(target%arg_indices) .or. &
             (size(target%arg_indices) < 1 .or. size(target%arg_indices) > 4)) then
@@ -2263,6 +2285,24 @@
                 return
             end select
         else
+            select type (base => arena%entries(target%base_expr_index)%node)
+            type is (component_access_node)
+                if (component_access_is_polymorphic(arena, base, context)) then
+                    call resolve_component_base(arena, base%base_expr_index, context, &
+                        base_symbol, base_type, base_address, base_error)
+                    if (len_trim(base_error) > 0) base_type = 0
+                    comp_index = 0
+                    if (base_type > 0) comp_index = find_derived_component(context, &
+                        base_type, base%component_name)
+                    if (base_type > 0) then
+                        if (comp_index > 0) then
+                            call lower_polymorphic_component_assignment(arena, node, &
+                                base, context, base_type, comp_index, error_msg)
+                            return
+                        end if
+                    end if
+                end if
+            end select
             call derived_component_element_address(arena, target%base_expr_index, &
                 target%arg_indices(1), context, addr, error_msg, comp_kind)
         end if
@@ -3053,7 +3093,9 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: component_address
         integer :: comp_kind
-        integer :: type_index, comp_index, dest_len
+        integer :: type_index, comp_index, dest_len, base_symbol
+        type(lr_operand_desc_t) :: base_address
+        character(len=:), allocatable :: base_error
         logical :: is_array_component, is_array_projection
 
         if (component_access_is_alloc_array(arena, target, context)) then
@@ -3083,6 +3125,21 @@
             value = i32_immediate(context%session, 0_c_int64_t)
             call lower_derived_component_array_assignment(arena, node, context, &
                                                           error_msg)
+            return
+        end if
+
+        call resolve_component_base(arena, target%base_expr_index, context, &
+            base_symbol, type_index, base_address, base_error)
+        if (len_trim(base_error) > 0) type_index = 0
+        comp_index = 0
+        if (type_index > 0) comp_index = find_derived_component(context, type_index, &
+            target%component_name)
+        if (comp_index > 0 .and. component_is_polymorphic(context, type_index, &
+                comp_index)) then
+            value = i32_immediate(context%session, 0_c_int64_t)
+            call lower_polymorphic_component_assignment(arena, node, target, &
+                                                        context, type_index, &
+                                                        comp_index, error_msg)
             return
         end if
 
@@ -3143,6 +3200,114 @@
         call emit_typed_component_store(context, comp_kind, value, &
                                         component_address, error_msg)
     end subroutine lower_derived_component_assignment
+
+    subroutine lower_polymorphic_component_assignment(arena, node, target, &
+                                                      context, base_type, &
+                                                      component_index, error_msg)
+        ! Assign a scalar polymorphic allocatable component from a derived
+        ! actual. The component itself is an inline class descriptor; its data
+        ! block has the RHS dynamic layout and is independently owned.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(component_access_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: base_type, component_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source_name, id_error
+        integer :: source_index, declared_type, dynamic_type
+        type(lr_operand_desc_t) :: descriptor, source_data, old_data
+        type(lr_operand_desc_t) :: data_ptr, dynamic_id, size_bytes, field_addr
+
+        call set_empty(error_msg)
+        if (.not. is_identifier(arena, node%value_index)) then
+            call unsupported_feature_error('polymorphic allocatable component '// &
+                'assignment', node%line, node%column, &
+                'the rhs must be a derived actual', error_msg)
+            return
+        end if
+        call get_identifier_name(arena, node%value_index, source_name, id_error)
+        if (len_trim(id_error) > 0) then
+            error_msg = id_error
+            return
+        end if
+        source_index = find_symbol_compat(context, source_name)
+        if (source_index <= 0) then
+            call unsupported_feature_error('polymorphic allocatable component '// &
+                'assignment', node%line, node%column, &
+                'the rhs is not a derived actual', error_msg)
+            return
+        end if
+        if (.not. context%symbols(source_index)%is_derived) then
+            call unsupported_feature_error('polymorphic allocatable component '// &
+                'assignment', node%line, node%column, &
+                'the rhs is not a derived actual', error_msg)
+            return
+        end if
+
+        declared_type = context%derived_types(base_type)%component_type_index( &
+            component_index)
+        dynamic_type = context%symbols(source_index)%derived_type_index
+        if (declared_type <= 0 .or. dynamic_type <= 0) then
+            error_msg = 'polymorphic component assignment has no derived type'
+            return
+        end if
+        if (.not. derived_type_extends(context, dynamic_type, declared_type)) then
+            call unsupported_feature_error('polymorphic allocatable component '// &
+                'assignment', node%line, node%column, &
+                'the rhs dynamic type is incompatible with the component', error_msg)
+            return
+        end if
+
+        call lower_derived_component_address(arena, target, context, descriptor, &
+            error_msg, 'polymorphic component assignment target')
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_load(context%session, descriptor, old_data, error_msg)) &
+            return
+        if (.not. emit_free(context%session, old_data, error_msg)) return
+
+        if (context%symbols(source_index)%is_polymorphic .and. &
+            context%symbols(source_index)%has_dynamic_type_address) then
+            if (.not. emit_i64_load(context%session, &
+                    context%symbols(source_index)%dynamic_type_address, dynamic_id, &
+                    error_msg)) return
+            call dynamic_type_size_bytes(context, source_index, dynamic_id, &
+                dynamic_type, size_bytes, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            dynamic_id = i64_immediate(context%session, int(dynamic_type, c_int64_t))
+            size_bytes = i64_immediate(context%session, int( &
+                total_component_slots(context, dynamic_type), c_int64_t) * 4_c_int64_t)
+        end if
+        source_data = context%symbols(source_index)%element_address
+        if (.not. emit_malloc(context%session, size_bytes, data_ptr, error_msg)) return
+        if (.not. emit_memcpy(context%session, data_ptr, source_data, size_bytes, &
+                error_msg)) return
+        if (.not. context%symbols(source_index)%is_polymorphic) then
+            call deep_copy_derived_array_element_components(context, data_ptr, &
+                source_data, dynamic_type, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+
+        if (.not. emit_ptr_store(context%session, data_ptr, descriptor, error_msg)) &
+            return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_DECLARED_TYPE_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, i64_immediate(context%session, &
+                int(declared_type, c_int64_t)), field_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_DYNAMIC_TYPE_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, dynamic_id, field_addr, &
+                error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_OWNERSHIP_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, i32_immediate(context%session, &
+                int(POLYMORPHIC_OWNERSHIP_OWNED, c_int64_t)), field_addr, &
+                error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_polymorphic_component_assignment
 
     subroutine lower_derived_array_component_assignment(arena, node, context, &
                                                         error_msg)
@@ -3593,6 +3758,11 @@
         select type (target => arena%entries(target_index)%node)
         type is (component_access_node)
             if (.not. component_access_is_allocatable(arena, target, context)) return
+            if (component_access_is_polymorphic(arena, target, context)) then
+                call lower_allocate_polymorphic_component(arena, target, context, &
+                    handled, error_msg)
+                return
+            end if
             comp_kind = derived_component_access_kind(arena, target, context)
             call lower_derived_component_address(arena, target, context, &
                 slot_address, error_msg, 'allocate component target')
@@ -3606,6 +3776,56 @@
             handled = .true.
         end select
     end subroutine lower_allocate_scalar_component
+
+    subroutine lower_allocate_polymorphic_component(arena, target, context, &
+                                                     handled, error_msg)
+        ! Allocate a polymorphic component at its declared type. A later
+        ! intrinsic assignment may replace the data block with an extension.
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr, field_addr
+        integer :: base_type, component_index, declared_type
+        integer(c_int64_t) :: bytes
+
+        handled = .false.
+        call set_empty(error_msg)
+        base_type = component_base_type_index(arena, target%base_expr_index, context)
+        if (base_type <= 0) return
+        component_index = find_derived_component(context, base_type, &
+            target%component_name)
+        if (component_index <= 0) return
+        declared_type = context%derived_types(base_type)%component_type_index( &
+            component_index)
+        bytes = int(total_component_slots(context, declared_type), c_int64_t) * &
+            4_c_int64_t
+        call lower_derived_component_address(arena, target, context, descriptor, &
+            error_msg, 'allocate polymorphic component target')
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_malloc(context%session, i64_immediate(context%session, bytes), &
+                data_ptr, error_msg)) return
+        if (.not. emit_ptr_store(context%session, data_ptr, descriptor, error_msg)) &
+            return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_DECLARED_TYPE_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, i64_immediate(context%session, &
+                int(declared_type, c_int64_t)), field_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_DYNAMIC_TYPE_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, i64_immediate(context%session, &
+                int(declared_type, c_int64_t)), field_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                int(POLYMORPHIC_DESCRIPTOR_OWNERSHIP_OFFSET, c_int64_t), &
+                field_addr, error_msg)) return
+        if (.not. emit_i32_store(context%session, i32_immediate(context%session, &
+                int(POLYMORPHIC_OWNERSHIP_OWNED, c_int64_t)), field_addr, &
+                error_msg)) return
+        handled = .true.
+    end subroutine lower_allocate_polymorphic_component
 
     subroutine lower_allocate_array_component(arena, target_index, context, &
                                               handled, error_msg)
@@ -4440,6 +4660,26 @@
         if (component_index <= 0) return
         is_alloc = component_is_allocatable(context, type_index, component_index)
     end function component_access_is_allocatable
+
+    logical function component_access_is_polymorphic(arena, node, context) &
+            result(is_polymorphic)
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer :: type_index, component_index, base_symbol
+        type(lr_operand_desc_t) :: base_address
+        character(len=:), allocatable :: base_error
+
+        is_polymorphic = .false.
+        call resolve_component_base(arena, node%base_expr_index, context, &
+            base_symbol, type_index, base_address, base_error)
+        if (len_trim(base_error) > 0) type_index = 0
+        if (type_index <= 0) return
+        component_index = find_derived_component(context, type_index, &
+                                                 node%component_name)
+        if (component_index <= 0) return
+        is_polymorphic = component_is_polymorphic(context, type_index, component_index)
+    end function component_access_is_polymorphic
 
     logical function component_access_is_alloc_array(arena, node, context) &
             result(is_alloc)
