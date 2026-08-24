@@ -807,6 +807,11 @@
         character(len=:), allocatable :: source_name
         integer :: source_index
         integer :: element_length
+        type(lr_operand_desc_t) :: source_data, source_length
+        type(lr_operand_desc_t) :: source_copy, target_length
+        type(lr_operand_desc_t) :: copy_length, copy_length64, source_fits
+        type(lr_operand_desc_t) :: element_index, slot_addr
+        integer(c_int64_t) :: k, n
 
         handled = .false.
         call set_empty(error_msg)
@@ -815,6 +820,42 @@
         element_length = context%symbols(symbol_index)%character_length
         if (element_length <= 0) return
         if (.not. node_exists(arena, node%value_index)) return
+
+        ! A scalar character value broadcasts to every element of a fixed
+        ! character array.  The contiguous representation still needs one
+        ! padded/truncated copy per element; a single block copy would only
+        ! initialize the first element.
+        if (is_character_literal(arena, node%value_index)) then
+            call char_expr_operands(arena, node%value_index, context, source_data, &
+                                    source_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call materialize_character_view(context, source_data, source_length, &
+                                            source_copy, error_msg)
+            if (len_trim(error_msg) > 0) return
+            target_length = i32_immediate(context%session, &
+                int(element_length, c_int64_t))
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, &
+                    source_length, target_length, source_fits, error_msg)) return
+            call select_value(context, source_fits, source_length, target_length, &
+                              copy_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_i64(context%session, copy_length, &
+                    copy_length64, error_msg)) return
+            n = int(context%symbols(symbol_index)%array_size, c_int64_t)
+            do k = 0_c_int64_t, n - 1_c_int64_t
+                element_index = i32_immediate(context%session, k)
+                call character_array_element_address(context, symbol_index, &
+                                                     element_index, slot_addr, &
+                                                     error_msg)
+                if (len_trim(error_msg) > 0) return
+                call fill_spaces(context, slot_addr, target_length, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_memcpy(context%session, slot_addr, source_copy, &
+                        copy_length64, error_msg)) return
+            end do
+            handled = .true.
+            return
+        end if
         if (.not. is_identifier(arena, node%value_index)) return
 
         call get_identifier_name(arena, node%value_index, source_name, error_msg)
