@@ -590,13 +590,13 @@
         if (len_trim(error_msg) > 0) return
 
         zero = liric_f32_immediate(context%session, 0.0_c_float)
-        if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGE, a, zero, &
+        if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OGE, a, zero, &
                                       a_nonneg, error_msg)) return
         if (.not. emit_liric_f32_binary(context%session, LR_OP_FSUB, zero, a, &
                                         neg_a, error_msg)) return
         call select_value(context, a_nonneg, a, neg_a, magnitude, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGE, b, zero, &
+        if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OGE, b, zero, &
                                       b_nonneg, error_msg)) return
         if (.not. emit_liric_f32_binary(context%session, LR_OP_FSUB, zero, &
                                         magnitude, neg_magnitude, error_msg)) &
@@ -636,7 +636,7 @@
         if (len_trim(error_msg) > 0) return
 
         zero = liric_f32_immediate(context%session, 0.0_c_float)
-        if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGE, arg, zero, &
+        if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OGE, arg, zero, &
                                       condition, error_msg)) return
         if (.not. emit_liric_f32_binary(context%session, LR_OP_FSUB, zero, &
                                         arg, negative, error_msg)) return
@@ -733,7 +733,7 @@
             call lower_f32_intrinsic_arg(arena, node%arg_indices(i), context, &
                                          candidate, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_f64_fcmp(context%session, predicate, value, &
+            if (.not. emit_liric_f32_fcmp(context%session, predicate, value, &
                                           candidate, condition, error_msg)) return
             call select_value(context, condition, value, candidate, selected, &
                               error_msg)
