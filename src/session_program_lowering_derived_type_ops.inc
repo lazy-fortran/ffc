@@ -3383,6 +3383,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: addr
         integer :: sym, type_index, comp_index, comp_kind
+        logical :: alloc_array
 
         handled = .false.
         call set_empty(error_msg)
@@ -3395,6 +3396,37 @@
             end if
             call load_derived_array_component_linear(context, sym, type_index, &
                 comp_index, zero_based, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            handled = .true.
+            return
+        end if
+        alloc_array = .false.
+        if (node_exists(arena, access_index)) then
+            select type (access => arena%entries(access_index)%node)
+            type is (component_access_node)
+                alloc_array = component_access_is_alloc_array(arena, access, context)
+            end select
+        end if
+        if (alloc_array) then
+            select type (access => arena%entries(access_index)%node)
+            type is (component_access_node)
+                type_index = component_base_type_index(arena, access%base_expr_index, &
+                                                       context)
+                comp_index = find_derived_component(context, type_index, &
+                                                    access%component_name)
+            class default
+                return
+            end select
+            if (component_alloc_rank_at(context, type_index, comp_index) /= 1) return
+            comp_kind = derived_component_access_kind_at(arena, access_index, context)
+            if (comp_kind == VALUE_CHARACTER) return
+            call alloc_array_component_descriptor(arena, access_index, context, &
+                                                  addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call load_alloc_component_element(context, addr, comp_kind, &
+                                              i32_immediate(context%session, &
+                                                            int(zero_based, c_int64_t)), &
+                                              value, error_msg)
             if (len_trim(error_msg) > 0) return
             handled = .true.
             return

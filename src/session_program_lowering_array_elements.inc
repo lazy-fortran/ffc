@@ -1447,6 +1447,9 @@
 
         handled = .false.
         call set_empty(error_msg)
+        call emit_allocatable_component_print_items(arena, expr_index, context, &
+                                                    handled, error_msg)
+        if (handled .or. len_trim(error_msg) > 0) return
         if (.not. is_identifier(arena, expr_index)) then
             call emit_whole_array_expr_print_items(arena, expr_index, context, &
                                                    handled, error_msg)
@@ -1529,6 +1532,41 @@
         end do
         call set_empty(error_msg)
     end subroutine emit_whole_array_print_items
+
+    subroutine emit_allocatable_component_print_items(arena, expr_index, context, &
+                                                      handled, error_msg)
+        ! Print a whole rank-1 intrinsic allocatable component through its
+        ! inline descriptor. Element addressing and formatting remain shared
+        ! with standalone allocatable arrays.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor
+        integer :: vk, type_index, component_index
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, expr_index)) return
+        select type (node => arena%entries(expr_index)%node)
+        type is (component_access_node)
+            if (.not. component_access_is_alloc_array(arena, node, context)) return
+            type_index = component_base_type_index(arena, node%base_expr_index, context)
+            component_index = find_derived_component(context, type_index, &
+                                                     node%component_name)
+            if (component_alloc_rank_at(context, type_index, component_index) /= 1) &
+                return
+            vk = derived_component_access_kind(arena, node, context)
+            if (vk == VALUE_CHARACTER) return
+            call alloc_array_component_descriptor(arena, expr_index, context, &
+                                                  descriptor, error_msg)
+            if (len_trim(error_msg) > 0) return
+            handled = .true.
+            call emit_runtime_alloc_component_print(context, descriptor, vk, &
+                                                    error_msg)
+        end select
+    end subroutine emit_allocatable_component_print_items
 
     subroutine emit_typed_array_print_value(context, vk, value, error_msg)
         !! Emit one array element already loaded into value, formatted by its

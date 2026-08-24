@@ -342,6 +342,72 @@
         call set_empty(error_msg)
     end subroutine emit_runtime_alloc_print
 
+    subroutine emit_runtime_alloc_component_print(context, desc_addr, vk, error_msg)
+        ! List-directed whole-array print of a rank-1 allocatable component.
+        ! The component descriptor is supplied by the derived-type access path;
+        ! its runtime extent and data pointer use the same ABI as a standalone
+        ! allocatable array.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: desc_addr
+        integer, intent(in) :: vk
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: extent, entry_idx, header_idx, backedge_idx
+        type(lr_operand_desc_t) :: condition, element, next_idx
+        integer(c_int32_t) :: entry_block, header_block, body_block, &
+                              latch_block, exit_block, idx_vreg
+
+        call alloc_component_extent_i32(context, desc_addr, extent, error_msg)
+        if (len_trim(error_msg) > 0) return
+        entry_idx = i32_immediate(context%session, 0_c_int64_t)
+        entry_block = context%current_block_id
+        header_block = create_liric_block(context%session)
+        body_block = create_liric_block(context%session)
+        latch_block = create_liric_block(context%session)
+        exit_block = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, header_block, error_msg)) return
+        context%current_block_id = header_block
+        context%current_block_terminated = .false.
+        idx_vreg = reserve_i32_vreg(context%session)
+        if (idx_vreg == 0_c_int32_t) idx_vreg = reserve_i32_vreg(context%session)
+        if (idx_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve a positive component backedge vreg'
+            return
+        end if
+        backedge_idx = i32_vreg(context%session, idx_vreg)
+        if (.not. emit_liric_i32_phi(context%session, entry_idx, entry_block, &
+                backedge_idx, latch_block, header_idx, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_idx, &
+                extent, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, body_block, &
+                exit_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, body_block, error_msg)) return
+        context%current_block_id = body_block
+        context%current_block_terminated = .false.
+        if (.not. emit_liric_print_space(context%session, error_msg)) return
+        call load_alloc_component_element(context, desc_addr, vk, header_idx, &
+                                          element, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call emit_runtime_alloc_print_one(context, vk, element, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+        context%current_block_id = latch_block
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_idx, &
+                i32_immediate(context%session, 1_c_int64_t), idx_vreg, next_idx, &
+                error_msg)) return
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, exit_block, error_msg)) return
+        context%current_block_id = exit_block
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine emit_runtime_alloc_component_print
+
     subroutine emit_runtime_alloc_print_one(context, vk, value, error_msg)
         ! Print one already-loaded allocatable element in its own kind.
         type(lowering_context_t), intent(inout) :: context
