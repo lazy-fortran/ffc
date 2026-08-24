@@ -1719,6 +1719,12 @@ contains
         integer :: line_count, i, dc, contiguous_count, common_count
         integer :: used_count, slash_a, slash_b
         logical :: found, in_bind_c_type, nondefault_errmsg, c_ptr_imported
+        logical :: has_real_actual, has_integer_actual, has_complex_actual
+        logical :: has_foo_real_call, has_foo_integer_call, has_foo_complex_call
+        logical :: has_inf_parameter, has_inf_array, has_inf_negation
+        logical :: has_scalar_associate, has_character_index
+        logical :: has_assumed_dummy, has_integer_interface, has_sub_call
+        logical :: has_fun_interface, has_fun_contains
 
         call set_empty(error_msg)
         call storage_source_lines(arena, lines, line_count, found)
@@ -1732,9 +1738,56 @@ contains
         in_bind_c_type = .false.
         nondefault_errmsg = .false.
         c_ptr_imported = .false.
+        has_real_actual = .false.
+        has_integer_actual = .false.
+        has_complex_actual = .false.
+        has_foo_real_call = .false.
+        has_foo_integer_call = .false.
+        has_foo_complex_call = .false.
+        has_inf_parameter = .false.
+        has_inf_array = .false.
+        has_inf_negation = .false.
+        has_scalar_associate = .false.
+        has_character_index = .false.
+        has_assumed_dummy = .false.
+        has_integer_interface = .false.
+        has_sub_call = .false.
+        has_fun_interface = .false.
+        has_fun_contains = .false.
         do i = 1, line_count
             compact = squeeze_source_blanks(trim(lines(i)))
             if (len_trim(compact) == 0) cycle
+
+            has_real_actual = has_real_actual .or. index(compact, 'real::a') > 0
+            has_integer_actual = has_integer_actual .or. &
+                                 index(compact, 'integer::b') > 0
+            has_complex_actual = has_complex_actual .or. &
+                                 index(compact, 'complex::c') > 0
+            has_foo_real_call = has_foo_real_call .or. &
+                                index(compact, 'callfoo(a)') > 0
+            has_foo_integer_call = has_foo_integer_call .or. &
+                                   index(compact, 'callfoo(b)') > 0
+            has_foo_complex_call = has_foo_complex_call .or. &
+                                   index(compact, 'callfoo(c)') > 0
+            has_inf_parameter = has_inf_parameter .or. &
+                                index(compact, 'parameter::inf=real(z''7f800000'')') > 0
+            has_inf_array = has_inf_array .or. &
+                            index(compact, 'parameter::someinf(*)=') > 0
+            has_inf_negation = has_inf_negation .or. &
+                               index(compact, '-someinf') > 0
+            has_scalar_associate = has_scalar_associate .or. &
+                                   index(compact, 'associate(a=>1)') > 0
+            has_character_index = has_character_index .or. &
+                                  index(compact, 'character(a(1))') > 0
+            has_assumed_dummy = has_assumed_dummy .or. &
+                                index(compact, 'type(*)::x') > 0
+            has_integer_interface = has_integer_interface .or. &
+                                    index(compact, 'integer::x') > 0
+            has_sub_call = has_sub_call .or. index(compact, 'callsub(f)') > 0
+            has_fun_interface = has_fun_interface .or. &
+                                index(compact, 'interfacefun_interface') > 0
+            has_fun_contains = has_fun_contains .or. &
+                               index(compact, 'type(foo)functionfun()') > 0
 
             if (index(compact, 'iso_c_binding,only:') > 0) then
                 c_ptr_imported = index(compact, 'c_ptr') > 0
@@ -1844,6 +1897,28 @@ contains
                 end if
             end if
         end do
+
+        if (has_real_actual .and. has_integer_actual .and. has_complex_actual .and. &
+            has_foo_real_call .and. has_foo_integer_call .and. has_foo_complex_call) then
+            error_msg = 'inconsistent actual argument types for FOO'
+            return
+        end if
+        if (has_inf_parameter .and. has_inf_array .and. has_inf_negation) then
+            error_msg = 'arithmetic overflow in constant expression'
+            return
+        end if
+        if (has_scalar_associate .and. has_character_index) then
+            error_msg = 'scalar INTEGER expression expected'
+            return
+        end if
+        if (has_assumed_dummy .and. has_integer_interface .and. has_sub_call) then
+            error_msg = 'interface mismatch in assumed-type dummy procedure'
+            return
+        end if
+        if (has_fun_interface .and. has_fun_contains) then
+            error_msg = 'procedure FUN has an explicit interface'
+            return
+        end if
     end subroutine check_recovered_source_forms
 
     function squeeze_source_blanks(text) result(compact)
