@@ -205,6 +205,8 @@
         integer, intent(in) :: source_index
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: source_data, source_len_i32, source_len_i64
+        type(lr_operand_desc_t) :: buffer_size, buffer, null_pos
+        integer(c_int64_t) :: storage_class
 
         context%symbols(symbol_index)%is_runtime_fixed_character = .true.
         call char_length_operands(context, source_index, source_data, &
@@ -215,6 +217,41 @@
         if (.not. emit_i64_store(context%session, source_len_i64, &
                 context%symbols(symbol_index)%deferred_length, error_msg)) &
             return
+
+        ! Runtime-fixed character results and locals need storage before a
+        ! substring assignment can address one of their bytes.  Contained
+        ! function results outlive this frame; ordinary top-level locals do
+        ! not, so retain the matching ownership class in the descriptor.
+        if (.not. context%symbols(symbol_index)%has_character_value) then
+            if (.not. emit_i64_binary(context%session, LR_OP_ADD, &
+                    source_len_i64, i64_immediate(context%session, 1_c_int64_t), &
+                    buffer_size, error_msg)) return
+            if (context%in_internal_function) then
+                if (.not. emit_malloc(context%session, buffer_size, buffer, &
+                        error_msg)) return
+                storage_class = LOWERING_CHARACTER_STORAGE_OWNED
+            else
+                if (.not. emit_alloca_bytes(context%session, buffer_size, buffer, &
+                        error_msg)) return
+                storage_class = LOWERING_CHARACTER_STORAGE_STACK
+            end if
+            call fill_spaces(context, buffer, source_len_i32, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i64_binary(context%session, LR_OP_ADD, buffer, &
+                    source_len_i64, null_pos, error_msg)) return
+            if (.not. emit_liric_store_char_byte(context%session, null_pos, &
+                    i32_immediate(context%session, 0_c_int64_t), &
+                    i32_immediate(context%session, 0_c_int64_t), error_msg)) &
+                return
+            if (.not. emit_ptr_store(context%session, buffer, &
+                    context%symbols(symbol_index)%deferred_data, error_msg)) &
+                return
+            call set_character_storage(context, symbol_index, source_len_i64, &
+                                       storage_class, error_msg)
+            if (len_trim(error_msg) > 0) return
+            context%symbols(symbol_index)%value = buffer
+            context%symbols(symbol_index)%has_character_value = .true.
+        end if
         call set_empty(error_msg)
     end subroutine capture_runtime_fixed_character_length
 

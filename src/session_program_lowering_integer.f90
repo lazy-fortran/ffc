@@ -328,7 +328,8 @@ contains
             error_msg)
         return
     end if
-    if (same_name(node%name, 'iachar') .and. .not. &
+    if ((same_name(node%name, 'iachar') .or. &
+         same_name(node%name, 'ichar')) .and. .not. &
         is_contained_i32_function(context, node%name)) then
         call lower_iachar_intrinsic(arena, node, context, value, error_msg)
         return
