@@ -11,7 +11,8 @@
     ! a terminated copy of exactly the element length.
     !
     ! Scope: local rank-1 and rank-2 arrays with a compile-time length and
-    ! extent; dummy and parameter character arrays stay unsupported.
+    ! extent; dummy character arrays stay unsupported. A character parameter
+    ! array may infer its element length from its folded constructor.
 
     subroutine lower_character_array_declaration(node, context, error_msg)
         type(declaration_node), intent(in) :: node
@@ -59,10 +60,16 @@
         call declaration_character_length(context, node, character_length, error_msg)
         if (len_trim(error_msg) > 0) return
         if (character_length <= 0) then
-            call unsupported_feature_error('character array declaration', &
-                node%line, node%column, 'direct LIRIC session supports only a '// &
-                'compile-time character length for character arrays', error_msg)
-            return
+            if (.not. node%is_parameter .or. .not. node%has_initializer .or. &
+                node%initializer_index <= 0) then
+                call unsupported_feature_error('character array declaration', &
+                    node%line, node%column, 'direct LIRIC session supports only a '// &
+                    'compile-time character length for character arrays', error_msg)
+                return
+            end if
+            call infer_character_array_initializer_length(context, node, &
+                character_length, error_msg)
+            if (len_trim(error_msg) > 0) return
         end if
         call get_array_bounds(node, context, array_lower_bound, array_size, &
                               error_msg)
@@ -200,8 +207,58 @@
         if (.not. allocated(node%var_name)) return
         index = find_symbol_compat(context, node%var_name)
         if (index <= 0) return
-        if (context%symbols(index)%is_parameter) is_dummy = .true.
+        is_dummy = context%symbols(index)%is_dummy_argument
     end function character_array_is_dummy
+
+    subroutine infer_character_array_initializer_length(context, node, length, &
+                                                         error_msg)
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_node), intent(in) :: node
+        integer, intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer, allocatable :: flat(:)
+        character(len=:), allocatable :: folded_text
+        logical :: ok
+        integer :: i
+
+        length = 0
+        call set_empty(error_msg)
+        if (.not. node_exists(context%arena, node%initializer_index)) then
+            error_msg = 'character parameter initializer does not exist'
+            return
+        end if
+        select type (init => context%arena%entries(node%initializer_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(init%element_indices)) then
+                error_msg = 'character parameter initializer has no elements'
+                return
+            end if
+            allocate (flat(0))
+            call flatten_constructor_elements(context%arena, init%element_indices, &
+                                              flat, error_msg)
+            if (len_trim(error_msg) > 0) return
+            do i = 1, size(flat)
+                call concat_character_literals(context%arena, flat(i), &
+                                               folded_text, ok)
+                if (.not. ok) then
+                    error_msg = 'character parameter initializer is not foldable'
+                    return
+                end if
+                length = max(length, len(folded_text))
+            end do
+        class default
+            call concat_character_literals(context%arena, node%initializer_index, &
+                                           folded_text, ok)
+            if (.not. ok) then
+                error_msg = 'character parameter initializer is not foldable'
+                return
+            end if
+            length = len(folded_text)
+        end select
+        if (length <= 0) then
+            error_msg = 'character parameter initializer has zero length'
+        end if
+    end subroutine infer_character_array_initializer_length
 
     subroutine define_character_array_symbol(context, node, name, character_length, &
                                              array_lower_bound, array_size, &
