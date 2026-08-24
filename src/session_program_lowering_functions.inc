@@ -1844,6 +1844,14 @@
                         if (len_trim(error_msg) > 0) return
                         cycle
                     end if
+                    if (.not. decl%is_array .and. .not. decl%is_pointer .and. &
+                            .not. decl%is_allocatable .and. &
+                            declaration_derived_type_index(context, decl) > 0) then
+                        call register_host_derived_global_symbol(context, binding, &
+                            name, decl, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        cycle
+                    end if
                 class default
                     continue
                 end select
@@ -2168,6 +2176,78 @@
         context%symbol_count = index
         call attach_symbol_binding(context, index, binding)
     end subroutine register_host_class_allocatable_global
+
+    subroutine register_host_derived_global_symbol(context, binding, name, decl, &
+                                                   error_msg)
+        ! A contained procedure needs the same flat component storage as its
+        ! host.  Materialise one binding-keyed global before either body is
+        ! lowered; the host declaration then finds this symbol and does not
+        ! allocate a private copy.
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
+            c_int64_t, c_loc, c_ptr, c_size_t
+        use liric_session_bindings, only: lr_type_array_s, lr_type_i32_s, &
+            lr_type_ptr_s
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_binding_t), intent(in) :: binding
+        character(len=*), intent(in) :: name
+        type(declaration_node), intent(in) :: decl
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: global_name
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t), allocatable, target :: init_slots(:)
+        type(c_ptr) :: global_type
+        integer(c_int32_t) :: global_id
+        integer :: type_index, slot_count, index
+        logical(c_bool) :: c_false_local
+
+        call set_empty(error_msg)
+        if (find_symbol_for_binding(context, binding) > 0) return
+        type_index = declaration_derived_type_index(context, decl)
+        if (type_index <= 0) return
+        slot_count = total_component_slots(context, type_index)
+        if (slot_count <= 0) then
+            error_msg = 'host-associated derived declaration has no storage: '// &
+                trim(name)
+            return
+        end if
+        allocate (init_slots(slot_count))
+        init_slots = 0_c_int32_t
+        call fill_type_default_slots(context, type_index, 0, init_slots)
+        global_name = host_global_name(binding, name)
+        call to_c_chars(global_name, c_name)
+        global_type = lr_type_array_s(context%session%handle, &
+            lr_type_i32_s(context%session%handle), int(slot_count, c_int64_t))
+        c_false_local = .false.
+        global_id = lr_session_global(context%session%handle, c_name, global_type, &
+            c_false_local, c_loc(init_slots), int(slot_count * 4, c_size_t))
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create host-associated derived global: '// &
+                trim(name)
+            return
+        end if
+        global_id = lr_session_intern(context%session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not intern host-associated derived global: '// &
+                trim(name)
+            return
+        end if
+
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index) = symbol_t()
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_DERIVED
+        context%symbols(index)%is_derived = .true.
+        context%symbols(index)%derived_type_index = type_index
+        context%symbols(index)%array_size = slot_count
+        context%symbols(index)%element_address%kind = LR_OP_KIND_GLOBAL
+        context%symbols(index)%element_address%payload = int(global_id, c_int64_t)
+        context%symbols(index)%element_address%typ = &
+            lr_type_ptr_s(context%session%handle)
+        context%symbols(index)%element_address%global_offset = 0_c_int64_t
+        context%symbol_count = index
+        call attach_symbol_binding(context, index, binding)
+    end subroutine register_host_derived_global_symbol
 
     subroutine register_host_array_global_symbol(context, binding, name, record, &
                                                  error_msg)
