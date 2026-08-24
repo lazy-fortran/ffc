@@ -1255,7 +1255,7 @@ contains
         type(lr_operand_desc_t) :: value
         logical :: terminated
         integer, allocatable :: arm_ranks(:)
-        type(lr_operand_desc_t) :: descriptor, runtime_rank_i64, runtime_rank
+        type(lr_operand_desc_t) :: descriptor, rank_addr, runtime_rank
         type(lr_operand_desc_t) :: expected_rank, cond
         integer(c_int32_t) :: arm_block, next_block, merge_block
         type(symbol_t), allocatable :: baseline(:)
@@ -1330,11 +1330,11 @@ contains
             ! construct. Dispatch on its runtime rank so one procedure can be
             ! called with different-rank actuals at different call sites.
             descriptor = context%symbols(sel_index)%runtime_descriptor_address
-            if (.not. emit_i64_load_at(context%session, descriptor, &
-                    int(ARRAY_DESCRIPTOR_RANK_OFFSET, c_int64_t), &
-                    runtime_rank_i64, error_msg)) return
-            if (.not. emit_liric_i64_to_i32(context%session, runtime_rank_i64, &
-                                            runtime_rank, error_msg)) return
+            if (.not. emit_ptr_offset(context%session, descriptor, &
+                    int(ARRAY_DESCRIPTOR_RANK_OFFSET, c_int64_t), rank_addr, &
+                    error_msg)) return
+            if (.not. emit_i32_load(context%session, rank_addr, runtime_rank, &
+                                    error_msg)) return
             merge_block = create_liric_block(context%session)
             call snapshot_symbols(context, baseline, baseline_count)
             nresults = 0
