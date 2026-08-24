@@ -2421,6 +2421,10 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value, descriptor, data_ptr, addr
+        type(lr_operand_desc_t) :: extent, entry_idx, header_idx, backedge_idx
+        type(lr_operand_desc_t) :: condition, next_idx
+        integer(c_int32_t) :: entry_block, header_block, body_block, &
+            latch_block, exit_block, idx_vreg
         integer :: vk, n, i
         integer(c_int64_t) :: stride
 
@@ -2434,12 +2438,6 @@
                         'allocatable is not supported'
             return
         end if
-        n = context%symbols(symbol_index)%allocatable_static_size
-        if (n <= 0) then
-            error_msg = 'allocatable scalar broadcast requires a constant extent'
-            return
-        end if
-
         vk = context%symbols(symbol_index)%value_kind
         call lower_allocatable_element_value(arena, value_index, vk, context, &
                                              value, error_msg)
@@ -2449,6 +2447,63 @@
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
         if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
             return
+
+        n = context%symbols(symbol_index)%allocatable_static_size
+        if (n <= 0) then
+            ! A runtime-sized allocation keeps its extent in the descriptor.
+            ! Use a counted loop here so assignment remains valid for both a
+            ! zero-sized allocation and an extent that was not foldable when
+            ! ALLOCATE was lowered.
+            call alloc_runtime_extent_i32(context, symbol_index, extent, error_msg)
+            if (len_trim(error_msg) > 0) return
+            entry_idx = i32_immediate(context%session, 0_c_int64_t)
+            entry_block = context%current_block_id
+            header_block = create_liric_block(context%session)
+            body_block = create_liric_block(context%session)
+            latch_block = create_liric_block(context%session)
+            exit_block = create_liric_block(context%session)
+            if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+            if (.not. set_liric_block(context%session, header_block, error_msg)) return
+            context%current_block_id = header_block
+            context%current_block_terminated = .false.
+            idx_vreg = reserve_i32_vreg(context%session)
+            if (idx_vreg == 0_c_int32_t) idx_vreg = reserve_i32_vreg(context%session)
+            if (idx_vreg <= 0_c_int32_t) then
+                error_msg = 'LIRIC could not reserve a positive backedge vreg'
+                return
+            end if
+            backedge_idx = i32_vreg(context%session, idx_vreg)
+            if (.not. emit_liric_i32_phi(context%session, entry_idx, entry_block, &
+                    backedge_idx, latch_block, header_idx, error_msg)) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_idx, &
+                    extent, condition, error_msg)) return
+            if (.not. emit_liric_condbr(context%session, condition, body_block, &
+                    exit_block, error_msg)) return
+
+            if (.not. set_liric_block(context%session, body_block, error_msg)) return
+            context%current_block_id = body_block
+            context%current_block_terminated = .false.
+            call store_array_element_at_operand(context, symbol_index, header_idx, &
+                                                value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+
+            if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+            context%current_block_id = latch_block
+            context%current_block_terminated = .false.
+            if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_idx, &
+                    i32_immediate(context%session, 1_c_int64_t), idx_vreg, next_idx, &
+                    error_msg)) return
+            if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+            if (.not. set_liric_block(context%session, exit_block, error_msg)) return
+            context%current_block_id = exit_block
+            context%current_block_terminated = .false.
+            call set_empty(error_msg)
+            return
+        end if
+
         do i = 0, n - 1
             if (.not. emit_ptr_offset(context%session, data_ptr, &
                     int(i, c_int64_t) * stride, addr, error_msg)) return

@@ -523,24 +523,24 @@
         integer :: index, rank, d
         integer :: lowers(ARRAY_MAX_RANK)
         type(lr_operand_desc_t) :: extents_i32(ARRAY_MAX_RANK)
-        type(lr_operand_desc_t) :: count_i32, count_i64, bytes, storage
-        type(lr_operand_desc_t) :: product_i32
-        type(lr_operand_desc_t) :: descriptor, extent_i64, extent_i32
+        type(lr_operand_desc_t) :: count_i64, extent_i64, bytes, storage
+        type(lr_operand_desc_t) :: product_i64
+        type(lr_operand_desc_t) :: descriptor, extent_i32
 
         call runtime_array_shape(context, node, rank, lowers, extents_i32, &
                                  error_msg)
         if (len_trim(error_msg) > 0) return
 
         ! Total element count is the product of the per-dimension extents.
-        count_i32 = extents_i32(1)
+        if (.not. emit_liric_i32_to_i64(context%session, extents_i32(1), &
+                count_i64, error_msg)) return
         do d = 2, rank
-            if (.not. emit_i32_binary(context%session, LR_OP_MUL, count_i32, &
-                    extents_i32(d), product_i32, error_msg)) return
-            count_i32 = product_i32
+            if (.not. emit_liric_i32_to_i64(context%session, extents_i32(d), &
+                    extent_i64, error_msg)) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, count_i64, &
+                    extent_i64, product_i64, error_msg)) return
+            count_i64 = product_i64
         end do
-
-        if (.not. emit_liric_i32_to_i64(context%session, count_i32, count_i64, &
-                error_msg)) return
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, count_i64, &
                 i64_immediate(context%session, allocatable_elem_size(value_kind)), &
                 bytes, error_msg)) return
