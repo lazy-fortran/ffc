@@ -1435,6 +1435,7 @@ contains
             return
         end if
         context%symbols(sym_index)%is_array = .true.
+        context%symbols(sym_index)%is_runtime_array = .true.
         context%symbols(sym_index)%is_assumed_rank = .false.
         context%symbols(sym_index)%array_rank = selected_rank
         context%symbols(sym_index)%array_size = 0
