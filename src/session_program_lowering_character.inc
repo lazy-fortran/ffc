@@ -981,6 +981,11 @@
     end subroutine parse_character_length
 
     subroutine define_deferred_character_symbol(context, name, error_msg)
+        use ffc_character_descriptor, only: CHARACTER_DESCRIPTOR_SIZE, &
+            CHARACTER_DESCRIPTOR_DATA_OFFSET, &
+            CHARACTER_DESCRIPTOR_LENGTH_OFFSET, &
+            CHARACTER_DESCRIPTOR_CAPACITY_OFFSET, &
+            CHARACTER_DESCRIPTOR_STORAGE_OFFSET
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
@@ -1003,7 +1008,7 @@
         context%symbols(index)%is_deferred_character = .true.
         context%symbols(index)%has_character_value = .false.
 
-        ! One contiguous 32-byte canonical character descriptor
+        ! One contiguous canonical character descriptor
         ! {i8* data; i64 length; i64 capacity; i32 storage_class}, laid out as
         ! docs/CHARACTER_DESCRIPTOR_ABI.md specifies. The {data, length} prefix
         ! is unchanged, so the descriptor's address is still what a
@@ -1012,15 +1017,20 @@
         ! the ABI's null state: no data, zero length, zero capacity, storage
         ! class CHARACTER_STORAGE_NULL.
         if (.not. emit_alloca_bytes(context%session, &
-                i64_immediate(context%session, 32_c_int64_t), descriptor, &
+                i64_immediate(context%session, int(CHARACTER_DESCRIPTOR_SIZE, &
+                    c_int64_t)), descriptor, &
                 error_msg)) return
-        if (.not. emit_ptr_offset(context%session, descriptor, 0_c_int64_t, &
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                                  CHARACTER_DESCRIPTOR_DATA_OFFSET, &
                                   data_addr, error_msg)) return
-        if (.not. emit_ptr_offset(context%session, descriptor, 8_c_int64_t, &
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                                  CHARACTER_DESCRIPTOR_LENGTH_OFFSET, &
                                   len_addr, error_msg)) return
-        if (.not. emit_ptr_offset(context%session, descriptor, 16_c_int64_t, &
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                                  CHARACTER_DESCRIPTOR_CAPACITY_OFFSET, &
                                   capacity_addr, error_msg)) return
-        if (.not. emit_ptr_offset(context%session, descriptor, 24_c_int64_t, &
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                                  CHARACTER_DESCRIPTOR_STORAGE_OFFSET, &
                                   storage_addr, error_msg)) return
         if (.not. emit_i64_store(context%session, &
                                  i64_immediate(context%session, 0_c_int64_t), &

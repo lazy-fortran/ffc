@@ -420,6 +420,11 @@ integer function resolve_concat_operand(arena, node_index, context, &
         ! so an actual-argument descriptor still matches what a
         ! character(len=*) dummy binds against.
         use, intrinsic :: iso_c_binding, only: c_int64_t
+        use ffc_character_descriptor, only: CHARACTER_DESCRIPTOR_SIZE, &
+            CHARACTER_DESCRIPTOR_DATA_OFFSET, &
+            CHARACTER_DESCRIPTOR_LENGTH_OFFSET, &
+            CHARACTER_DESCRIPTOR_CAPACITY_OFFSET, &
+            CHARACTER_DESCRIPTOR_STORAGE_OFFSET
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: descriptor_ptr
         type(lr_operand_desc_t), intent(out) :: data_addr
@@ -430,16 +435,21 @@ integer function resolve_concat_operand(arena, node_index, context, &
         type(lr_operand_desc_t) :: capacity_slot, storage_slot
 
         if (.not. emit_alloca_bytes(context%session, &
-            i64_immediate(context%session, 32_c_int64_t), descriptor_ptr, &
+            i64_immediate(context%session, int(CHARACTER_DESCRIPTOR_SIZE, &
+                c_int64_t)), descriptor_ptr, &
             error_msg)) return
-        if (.not. emit_ptr_offset(context%session, descriptor_ptr, 0_c_int64_t, &
-            data_addr, error_msg)) return
-        if (.not. emit_ptr_offset(context%session, descriptor_ptr, 8_c_int64_t, &
-            len_addr, error_msg)) return
-        if (.not. emit_ptr_offset(context%session, descriptor_ptr, 16_c_int64_t, &
-            capacity_slot, error_msg)) return
-        if (.not. emit_ptr_offset(context%session, descriptor_ptr, 24_c_int64_t, &
-            storage_slot, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor_ptr, &
+                CHARACTER_DESCRIPTOR_DATA_OFFSET, &
+                data_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor_ptr, &
+                CHARACTER_DESCRIPTOR_LENGTH_OFFSET, &
+                len_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor_ptr, &
+                CHARACTER_DESCRIPTOR_CAPACITY_OFFSET, &
+                capacity_slot, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor_ptr, &
+                CHARACTER_DESCRIPTOR_STORAGE_OFFSET, &
+                storage_slot, error_msg)) return
         if (.not. emit_i64_store(context%session, &
             i64_immediate(context%session, 0_c_int64_t), data_addr, &
             error_msg)) return
