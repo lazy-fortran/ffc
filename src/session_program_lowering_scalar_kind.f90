@@ -37,7 +37,7 @@ contains
         select case (kind_number)
         case (4)
             vk = VALUE_F32
-        case (8)
+        case (8, 16)
             vk = VALUE_F64
         case default
             vk = SCALAR_REAL_NONE

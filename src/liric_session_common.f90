@@ -22,9 +22,9 @@ module liric_session_common
     ! ffc refuses to emit instructions against a library that reports anything
     ! else, because a shifted layout would silently corrupt every descriptor
     ! passed across the ISO_C_BINDING boundary.
-    integer(c_int), parameter :: FFC_EXPECTED_LIRIC_ABI_VERSION = 1_c_int
+    integer(c_int), parameter :: FFC_EXPECTED_LIRIC_ABI_VERSION = 2_c_int
     integer(c_int), parameter :: FFC_EXPECTED_OPCODE_COUNT = 47_c_int
-    integer(c_int), parameter :: FFC_EXPECTED_OPERAND_KIND_COUNT = 7_c_int
+    integer(c_int), parameter :: FFC_EXPECTED_OPERAND_KIND_COUNT = 8_c_int
 
     integer(c_int), parameter :: LR_OK = 0_c_int
     integer(c_int), parameter :: LR_OP_RET = 0_c_int
@@ -48,6 +48,7 @@ module liric_session_common
     type, bind(c), public :: lr_operand_desc_t
         integer(c_int) :: kind = LR_OP_KIND_IMM_I64
         integer(c_int64_t) :: payload = 0_c_int64_t
+        integer(c_int64_t) :: payload_hi = 0_c_int64_t
         type(c_ptr) :: typ = c_null_ptr
         integer(c_int64_t) :: global_offset = 0_c_int64_t
     end type lr_operand_desc_t

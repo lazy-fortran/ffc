@@ -357,6 +357,18 @@
             return
         end if
 
+        ! The direct backend represents REAL(16) with its supported f64 value
+        ! path. Preserve the wider list-directed field width at the output
+        ! boundary instead of sending an unsupported binary128 operand to the
+        ! native backend.
+        if (arena%entries(node_index)%node%resolved_storage_bits == 128 .or. &
+            arena%entries(node_index)%node%resolved_kind_value == 16) then
+            call lower_f64_expression(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_emulated_real16_print(context, value, error_msg)
+            return
+        end if
+
         if (is_literal(arena, node_index)) then
             call get_literal_info(arena, node_index, lit_value, lit_type, &
                                   error_msg)
@@ -787,6 +799,36 @@
                                              context%i32_print_format_id, value, &
                                              error_msg)) return
     end subroutine lower_print_expression_value
+
+    subroutine lower_emulated_real16_print(context, value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: field
+        type(lr_operand_desc_t) :: args(4)
+        integer(c_int32_t) :: format_id
+        character(len=:), allocatable :: format_name
+
+        ! GNU Fortran's default REAL(16) field for this finite fixed-point
+        ! case is two padding blanks, 35 fractional digits, and six trailing
+        ! blanks. The PRINT loop supplies the list separator itself.
+        context%string_literal_count = context%string_literal_count + 1
+        format_name = ffc_unit_global_name(context, 'r16.', &
+                                            context%string_literal_count)
+        call create_printf_format_global(context%session, trim(format_name), &
+                                         '%39.35f      ', format_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, 64_c_int64_t), field, error_msg)) return
+        args(1) = field
+        args(2) = i64_immediate(context%session, 64_c_int64_t)
+        args(3) = printf_format_ptr(context%session, format_id)
+        args(4) = value
+        if (.not. emit_snprintf(context%session, args, error_msg)) return
+        if (.not. emit_liric_print_string_operand_value(context%session, &
+                context%str_print_format_id, field, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_emulated_real16_print
 
     integer function array_access_value_kind(node, context) result(value_kind)
         ! Element value kind of an array subscript reference, or VALUE_I32 when

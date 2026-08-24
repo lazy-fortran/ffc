@@ -411,7 +411,7 @@ contains
         end if
 
         select case (trim(suffix))
-        case ('8', 'real64', 'c_double', 'c_long_double')
+        case ('8', '16', 'real64', 'c_double', 'c_long_double')
             literal_is_f64 = .true.
         case ('')
             literal_is_f64 = .false.
@@ -431,7 +431,7 @@ contains
             call fold_scoped_i32_name(context%arena, context, reference_index, &
                                       suffix, folded, found, fold_error)
             if (len_trim(fold_error) == 0) then
-                is_f64 = folded == 8_c_int64_t
+                is_f64 = folded == 8_c_int64_t .or. folded == 16_c_int64_t
                 return
             end if
             if (found) then
@@ -442,7 +442,8 @@ contains
         sym = find_symbol_compat(context, suffix)
         if (sym > 0) then
             if (context%symbols(sym)%has_i32_constant) then
-                is_f64 = context%symbols(sym)%i32_constant == 8_c_int64_t
+                is_f64 = context%symbols(sym)%i32_constant == 8_c_int64_t .or. &
+                          context%symbols(sym)%i32_constant == 16_c_int64_t
                 return
             end if
         end if

@@ -1062,10 +1062,11 @@
         if (.not. has_value) return
         if (kind_value == 4_c_int64_t) return
         if (kind_value == 8_c_int64_t) return
+        if (kind_value == 16_c_int64_t) return
         write (kind_text, '(I0)') kind_value
         call unsupported_feature_error(trim(base)//' kind', line, column, &
             'direct LIRIC session supports '//trim(base)// &
-            ' kinds 4 (single) and 8 (double); kind '// &
+            ' kinds 4 (single), 8 (double), and 16 (emulated quad); kind '// &
             trim(adjustl(kind_text))//' is not supported', error_msg)
     end subroutine check_float_kind_supported
 
@@ -1125,19 +1126,21 @@
 
         real_kind_is_f64 = .false.
         if (resolve_selected_real_kind_spec(kind_spec, resolved_value)) then
-            real_kind_is_f64 = resolved_value == 8_c_int64_t
+            real_kind_is_f64 = resolved_value == 8_c_int64_t .or. &
+                               resolved_value == 16_c_int64_t
             return
         end if
         if (present(context)) then
             call resolve_kind_parameter_value(context, kind_spec, resolved, &
                                               resolved_value, reference_index)
             if (resolved) then
-                real_kind_is_f64 = (resolved_value == 8_c_int64_t)
+                real_kind_is_f64 = (resolved_value == 8_c_int64_t .or. &
+                                    resolved_value == 16_c_int64_t)
                 return
             end if
         end if
         select case (trim(kind_spec))
-        case ('8', 'real64', 'c_double', 'c_long_double', 'dp', 'wp')
+        case ('8', '16', 'real64', 'c_double', 'c_long_double', 'dp', 'wp')
             ! dp/wp are the conventional double-precision kind parameters
             ! (dp/wp => real64 or selected_real_kind(15)); sp/default stay f32.
             real_kind_is_f64 = .true.
