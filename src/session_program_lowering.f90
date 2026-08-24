@@ -930,6 +930,15 @@ module session_program_lowering_impl
             character(len=*), intent(in) :: format_body
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_compound_formatted_print
+        module subroutine lower_formatted_io_implied_do(arena, node, context, &
+                format_body, handled, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(print_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: format_body
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_formatted_io_implied_do
         recursive module subroutine lower_next_compound_descriptor(arena, node, &
                 context, format_body, pos, item_index, exhausted, error_msg)
             type(ast_arena_t), intent(in) :: arena

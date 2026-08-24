@@ -182,8 +182,22 @@ contains
         integer :: pass_start_index
         integer :: item_total
         logical :: exhausted
+        logical :: implied_do_handled
 
         call set_empty(error_msg)
+        implied_do_handled = .false.
+        if (allocated(node%expression_indices)) then
+            if (size(node%expression_indices) == 1) then
+                call lower_formatted_io_implied_do(arena, node, context, format_body, &
+                                                   implied_do_handled, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (implied_do_handled) then
+                    if (.not. emit_liric_print_newline(context%session, error_msg)) &
+                        return
+                    return
+                end if
+            end if
+        end if
         item_index = 1
         exhausted = .false.
         if (allocated(node%expression_indices)) then
@@ -216,6 +230,84 @@ contains
         end do
         call set_empty(error_msg)
     end subroutine lower_compound_formatted_print
+
+    module subroutine lower_formatted_io_implied_do(arena, node, context, &
+                                                    format_body, handled, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(print_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: format_body
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: lo, hi, step, ival
+        integer :: item_index, pos, vsym
+        logical :: created_temp, exhausted
+        type(symbol_t) :: saved_sym
+        type(print_statement_node) :: one_node
+        integer, allocatable :: objects(:)
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(node%expression_indices)) return
+        if (size(node%expression_indices) /= 1) return
+        if (.not. node_exists(arena, node%expression_indices(1))) return
+
+        select type (idn => arena%entries(node%expression_indices(1))%node)
+        type is (io_implied_do_node)
+            if (.not. allocated(idn%var_name)) return
+            if (allocated(idn%object_indices)) then
+                objects = idn%object_indices
+            else if (idn%expr_index > 0) then
+                allocate (objects(1))
+                objects(1) = idn%expr_index
+            else
+                return
+            end if
+            if (size(objects) == 0) return
+            call eval_i32_constant(arena, idn%start_expr_index, context, lo, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) return
+            call eval_i32_constant(arena, idn%end_expr_index, context, hi, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) return
+            step = 1_c_int64_t
+            if (idn%step_expr_index > 0) then
+                call eval_i32_constant(arena, idn%step_expr_index, context, step, &
+                                       error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            if (step == 0_c_int64_t) then
+                error_msg = 'io implied-do step is zero'
+                return
+            end if
+
+            one_node%expression_indices = objects
+            call bind_io_implied_do_var(context, idn%var_name, vsym, &
+                                        created_temp, saved_sym)
+            ival = lo
+            do while ((step > 0_c_int64_t .and. ival <= hi) .or. &
+                      (step < 0_c_int64_t .and. ival >= hi))
+                context%symbols(vsym)%i32_constant = ival
+                context%symbols(vsym)%value = i32_immediate(context%session, ival)
+                context%symbols(vsym)%has_address = .false.
+                context%symbols(vsym)%is_reference = .false.
+                item_index = 1
+                pos = 1
+                call lower_next_compound_descriptor(arena, one_node, context, &
+                                                    format_body, pos, item_index, &
+                                                    exhausted, error_msg)
+                if (len_trim(error_msg) > 0) then
+                    call release_io_implied_do_var(context, vsym, created_temp, &
+                                                   saved_sym)
+                    return
+                end if
+                ival = ival + step
+            end do
+            call release_io_implied_do_var(context, vsym, created_temp, saved_sym)
+            handled = .true.
+        class default
+        end select
+    end subroutine lower_formatted_io_implied_do
 
     recursive module subroutine lower_next_compound_descriptor(arena, node, context, &
                                                               format_body, pos, &
