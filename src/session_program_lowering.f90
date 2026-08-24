@@ -5840,6 +5840,9 @@ contains
                 call lower_allocate_scalar_derived(symbol_index, context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end if
+            call lower_derived_operator_assignment(arena, node, symbol_index, &
+                context, handled, error_msg)
+            if (handled .or. len_trim(error_msg) > 0) return
             if (is_derived_result_call(arena, node%value_index, context)) then
                 call lower_derived_result_call(arena, node%value_index, &
                     symbol_index, context, error_msg)

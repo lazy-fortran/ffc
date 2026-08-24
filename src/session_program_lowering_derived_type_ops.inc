@@ -4563,6 +4563,59 @@
                                       error_msg)
     end subroutine lower_derived_result_call
 
+    subroutine lower_derived_operator_assignment(arena, node, dest_symbol_index, &
+                                                  context, handled, error_msg)
+        ! A defined operator returning a derived value uses the same hidden
+        ! sret convention as an ordinary derived function.  Materialize it
+        ! directly in the assignment target instead of trying to represent a
+        ! derived aggregate as a scalar expression operand.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: dest_symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: op_name, specific
+        integer :: slot, left_index, right_index, line, column, ret_kind
+        integer, allocatable :: actual_indices(:)
+        type(lr_operand_desc_t), allocatable :: user_args(:), all_args(:)
+        integer, allocatable :: copyback_indices(:)
+        integer :: i
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node%value_index)) return
+        if (.not. is_binary_op(arena, node%value_index)) return
+        call get_binary_op_info(arena, node%value_index, op_name, left_index, &
+                                right_index, line, column, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. overloaded_operator_slot(arena, node%value_index, context, slot)) &
+            return
+        ret_kind = operator_return_kind(context, slot)
+        if (ret_kind /= VALUE_DERIVED) return
+        specific = operator_specific_name(context, slot)
+        if (left_index == 0) then
+            allocate(actual_indices(1))
+            actual_indices(1) = right_index
+        else
+            allocate(actual_indices(2))
+            actual_indices = [left_index, right_index]
+        end if
+        call prepare_reference_args(arena, actual_indices, context, VALUE_I32, &
+                                    specific, user_args, copyback_indices, &
+                                    error_msg)
+        if (len_trim(error_msg) > 0) return
+        allocate(all_args(size(user_args) + 1))
+        all_args(1) = context%symbols(dest_symbol_index)%element_address
+        do i = 1, size(user_args)
+            all_args(i + 1) = user_args(i)
+        end do
+        if (.not. emit_void_call(context%session, &
+                call_emit_name(arena, specific, context), all_args, error_msg)) return
+        call copy_back_reference_args(context, user_args, copyback_indices, error_msg)
+        handled = len_trim(error_msg) == 0
+    end subroutine lower_derived_operator_assignment
+
     recursive subroutine resolve_component_base(arena, base_index, context, &
                                       symbol_index, type_index, element_base, &
                                       error_msg)
