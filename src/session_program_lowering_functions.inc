@@ -239,7 +239,8 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: prog_name, ff_error, node_type
         integer, allocatable :: body_indices(:)
-        integer :: i
+        integer :: i, node_index
+        character(len=:), allocatable :: candidate_name
 
         call set_empty(error_msg)
         call get_program_body_info(arena, program_index, prog_name, &
@@ -248,20 +249,44 @@
             error_msg = ff_error
             return
         end if
-        if (.not. allocated(body_indices)) return
-        do i = 1, size(body_indices)
-            node_type = get_node_type_at(arena, body_indices(i))
+        if (allocated(body_indices)) then
+            do i = 1, size(body_indices)
+                node_type = get_node_type_at(arena, body_indices(i))
+                if (node_type == 'function_def_node' .or. &
+                    node_type == 'function_def') then
+                    call register_internal_function_by_index(arena, body_indices(i), &
+                                                             context, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                else if (node_type == 'subroutine_def_node' .or. &
+                         node_type == 'subroutine_def') then
+                    call register_internal_subroutine_by_index(arena, &
+                        body_indices(i), context, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+            end do
+        end if
+        ! Some multi-unit ASTs expose CONTAINS through a wrapper node that the
+        ! program-body query does not flatten. Recover direct internal
+        ! procedures by binding identity rather than leaving their calls as
+        ! unsupported external procedures.
+        do node_index = 1, arena%size
+            if (.not. procedure_unit_name(arena, node_index, candidate_name)) cycle
+            if (containing_program_or_module(arena, node_index) /= program_index) cycle
+            if (enclosing_procedure_node(arena, node_index) > 0) cycle
+            if (.not. procedure_is_internal_body(arena, node_index)) cycle
+            if (allocated(body_indices)) then
+                if (index_in_int_list(body_indices, node_index)) cycle
+            end if
+            node_type = get_node_type_at(arena, node_index)
             if (node_type == 'function_def_node' .or. &
                 node_type == 'function_def') then
-                call register_internal_function_by_index(arena, body_indices(i), &
-                                                         context, error_msg)
-                if (len_trim(error_msg) > 0) return
-            else if (node_type == 'subroutine_def_node' .or. &
-                     node_type == 'subroutine_def') then
-                call register_internal_subroutine_by_index(arena, &
-                    body_indices(i), context, error_msg)
-                if (len_trim(error_msg) > 0) return
+                call register_internal_function_by_index(arena, node_index, context, &
+                                                         error_msg)
+            else
+                call register_internal_subroutine_by_index(arena, node_index, &
+                    context, error_msg)
             end if
+            if (len_trim(error_msg) > 0) return
         end do
     end subroutine register_program_contained_procedures
 
@@ -277,7 +302,9 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: prog_name, ff_error, node_type
         integer, allocatable :: body_indices(:)
-        integer :: i
+        integer :: i, node_index
+        logical :: already_listed
+        character(len=:), allocatable :: candidate_name
 
         call set_empty(error_msg)
         call get_program_body_info(arena, program_index, prog_name, &
@@ -286,19 +313,33 @@
             error_msg = ff_error
             return
         end if
-        if (.not. allocated(body_indices)) return
-        do i = 1, size(body_indices)
-            if (procedure_node_is_interface_signature(arena, body_indices(i))) &
-                cycle
-            node_type = get_node_type_at(arena, body_indices(i))
-            if (node_type == 'function_def_node' .or. &
-                node_type == 'function_def' .or. &
-                node_type == 'subroutine_def_node' .or. &
-                node_type == 'subroutine_def') then
-                call lower_one_internal_function(arena, body_indices(i), context, &
-                                                 error_msg)
-                if (len_trim(error_msg) > 0) return
-            end if
+        if (allocated(body_indices)) then
+            do i = 1, size(body_indices)
+                if (procedure_node_is_interface_signature(arena, body_indices(i))) &
+                    cycle
+                node_type = get_node_type_at(arena, body_indices(i))
+                if (node_type == 'function_def_node' .or. &
+                    node_type == 'function_def' .or. &
+                    node_type == 'subroutine_def_node' .or. &
+                    node_type == 'subroutine_def') then
+                    call lower_one_internal_function(arena, body_indices(i), context, &
+                                                     error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+            end do
+        end if
+        do node_index = 1, arena%size
+            if (.not. procedure_unit_name(arena, node_index, candidate_name)) cycle
+            if (containing_program_or_module(arena, node_index) /= program_index) cycle
+            if (enclosing_procedure_node(arena, node_index) > 0) cycle
+            if (.not. procedure_is_internal_body(arena, node_index)) cycle
+            already_listed = .false.
+            if (allocated(body_indices)) &
+                already_listed = index_in_int_list(body_indices, node_index)
+            if (already_listed) cycle
+            if (procedure_node_is_interface_signature(arena, node_index)) cycle
+            call lower_one_internal_function(arena, node_index, context, error_msg)
+            if (len_trim(error_msg) > 0) return
         end do
     end subroutine lower_program_contained_functions
 

@@ -271,7 +271,12 @@
         ! a contained logical function has no external-table entry (#576).
         external_index = external_procedure_index(context, call_name)
         if (external_index > 0) then
-            if (context%external_procedures(external_index)%is_bind_c .or. &
+            if (context%external_procedures(external_index)%by_reference .and. &
+                .not. context%external_procedures(external_index)%is_bind_c) then
+                call lower_module_proc_i32_call(arena, node, external_index, &
+                    context, value, error_msg, call_name, VALUE_LOGICAL)
+                return
+            else if (context%external_procedures(external_index)%is_bind_c .or. &
                 .not. context%external_procedures(external_index)%by_reference) then
                 if (allocated(node%arg_indices)) then
                     call prepare_bind_c_args(arena, node%arg_indices, &
@@ -675,7 +680,12 @@
 
         external_index = external_procedure_index(context, call_name)
         if (external_index > 0) then
-            if (.not. context%external_procedures(external_index)%by_reference) then
+            if (context%external_procedures(external_index)%by_reference .and. &
+                .not. context%external_procedures(external_index)%is_bind_c) then
+                call lower_module_proc_f32_call(arena, node, external_index, &
+                    context, value, error_msg, call_name)
+                return
+            else if (.not. context%external_procedures(external_index)%by_reference) then
                 if (allocated(node%arg_indices)) then
                     call prepare_bind_c_args(arena, node%arg_indices, external_index, &
                         context, args, copyback_indices, error_msg)

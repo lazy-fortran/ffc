@@ -960,7 +960,7 @@
     end subroutine add_external_procedure
 
     subroutine lower_module_proc_i32_call(arena, node, ext_idx, context, value, &
-                                          error_msg, callee_name)
+                                          error_msg, callee_name, argument_kind)
         ! Lower a call to a separately compiled integer module function. The
         ! arguments pass by reference (Fortran ABI) and the call targets the
         ! module procedure's mangled symbol resolved from the .fmod (#284).
@@ -973,20 +973,24 @@
         ! The name the call resolved to, which differs from the written name
         ! when a use-associated generic selected a specific (#415).
         character(len=*), intent(in), optional :: callee_name
+        integer, intent(in), optional :: argument_kind
         type(lr_operand_desc_t), allocatable :: args(:)
         integer, allocatable :: copyback_indices(:)
         character(len=:), allocatable :: resolved_name
         integer :: empty_args(0)
+        integer :: actual_kind
 
         resolved_name = trim(node%name)
         if (present(callee_name)) resolved_name = trim(callee_name)
+        actual_kind = VALUE_I32
+        if (present(argument_kind)) actual_kind = argument_kind
         if (allocated(node%arg_indices)) then
             call check_module_call_arity(arena, context, ext_idx, &
                                          resolved_name, node%arg_indices, &
                                          error_msg)
             if (len_trim(error_msg) > 0) return
             call prepare_reference_args(arena, node%arg_indices, context, &
-                                        VALUE_I32, resolved_name, args, &
+                                        actual_kind, resolved_name, args, &
                                         copyback_indices, error_msg)
             if (len_trim(error_msg) > 0) return
         else
@@ -1002,6 +1006,48 @@
                 error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_module_proc_i32_call
+
+    subroutine lower_module_proc_f32_call(arena, node, ext_idx, context, value, &
+                                          error_msg, callee_name)
+        ! Lower a separately compiled real(4) module function.  Its arguments
+        ! use the ordinary Fortran by-reference ABI, while the result remains
+        ! an f32 value.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(in) :: ext_idx
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=*), intent(in), optional :: callee_name
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
+        character(len=:), allocatable :: resolved_name
+        integer :: empty_args(0)
+
+        resolved_name = trim(node%name)
+        if (present(callee_name)) resolved_name = trim(callee_name)
+        if (allocated(node%arg_indices)) then
+            call check_module_call_arity(arena, context, ext_idx, &
+                                         resolved_name, node%arg_indices, &
+                                         error_msg)
+            if (len_trim(error_msg) > 0) return
+            call prepare_reference_args(arena, node%arg_indices, context, &
+                                        VALUE_F32, resolved_name, args, &
+                                        copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            call check_module_call_arity(arena, context, ext_idx, &
+                                         resolved_name, empty_args, error_msg)
+            if (len_trim(error_msg) > 0) return
+            allocate (args(0))
+            allocate (copyback_indices(0))
+        end if
+        call pad_absent_optional_args(context, ext_idx, args, copyback_indices)
+        if (.not. emit_liric_f32_call(context%session, &
+                trim(context%external_procedures(ext_idx)%c_name), args, value, &
+                error_msg)) return
+        call copy_back_reference_args(context, args, copyback_indices, error_msg)
+    end subroutine lower_module_proc_f32_call
 
     subroutine lower_module_proc_f64_call(arena, node, ext_idx, context, value, &
                                           error_msg, callee_name)
