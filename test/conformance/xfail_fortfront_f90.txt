@@ -1,8 +1,6 @@
 # Current full-epoch expected failures for fortfront-f90.
 # Format: path # owner=ORG/REPO#N; reason=text or path # scope=TAG; reason=text
 issue_2070_entry_loses_argument_declarations.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
-issue_2078_include_statement_silently_dropped.f90 # owner=lazy-fortran/ffc#540; reason=expand Fortran INCLUDE lines
 issue_2416_io_format_variable.f90 # owner=lazy-fortran/ffc#628; reason=move file-unit state behind the runtime ABI
 issue_2416_io_formats_comprehensive.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
 issue_2455_array_constructor_arg.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
-issue_2850_bare_subroutine_interface.f90 # owner=lazy-fortran/ffc#540; reason=classify undefined and unlinked reference cases
