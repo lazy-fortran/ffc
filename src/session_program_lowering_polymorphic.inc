@@ -669,8 +669,11 @@
     subroutine reject_unsupported_runtime_binding(context, type_index, slot, &
                                                   error_msg)
         ! A runtime vtable slot has one fixed code address. Generic bindings
-        ! need call-site overload resolution and deferred bindings have no
-        ! address, so neither can be used by this scalar dispatch slice.
+        ! need call-site overload resolution. A deferred binding on the
+        ! declared abstract type is nevertheless valid when a registered
+        ! concrete extension supplies the slot: the dynamic vtable selects
+        ! that implementation. Only reject a deferred slot when no extension
+        ! in the declared hierarchy supplies an implementation.
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         integer, intent(in) :: slot
@@ -684,9 +687,30 @@
         if (allocated(context%derived_types(type_index)%binding_target_names)) then
             if (len_trim(context%derived_types(type_index)% &
                     binding_target_names(slot)) == 0) then
-                error_msg = 'deferred type-bound procedure "'//trim(method_name)// &
-                    '" is not supported by runtime dispatch'
-                return
+                block
+                    integer :: t
+                    logical :: has_implementation
+
+                    has_implementation = .false.
+                    do t = 1, context%derived_type_count
+                        if (.not. derived_type_extends(context, t, type_index)) cycle
+                        if (.not. allocated(context%derived_types(t)% &
+                                binding_target_names)) cycle
+                        if (slot > size(context%derived_types(t)% &
+                                binding_target_names)) cycle
+                        if (len_trim(context%derived_types(t)% &
+                                binding_target_names(slot)) > 0) then
+                            has_implementation = .true.
+                            exit
+                        end if
+                    end do
+                    if (.not. has_implementation) then
+                        error_msg = 'deferred type-bound procedure "'// &
+                            trim(method_name)//'" is not supported by '// &
+                            'runtime dispatch'
+                        return
+                    end if
+                end block
             end if
         end if
         if (allocated(context%derived_types(type_index)%binding_specific_names)) then
