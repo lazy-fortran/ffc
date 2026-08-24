@@ -460,7 +460,164 @@
         end do
         call deep_copy_alloc_components(context, dest_index, src_index, &
                                         type_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call apply_nested_defined_assignments(context, &
+            context%symbols(dest_index)%element_address, &
+            context%symbols(src_index)%element_address, type_index, error_msg)
     end subroutine lower_derived_scalar_copy
+
+    recursive subroutine apply_nested_defined_assignments(context, dest_base, &
+                                                          src_base, type_index, &
+                                                          error_msg)
+        ! Intrinsic assignment of an enclosing derived value still invokes a
+        ! defined assignment associated with each derived component. The flat
+        ! representation is copied first; then walk nested components and call
+        ! the registered assignment specific on each matching component. A
+        ! component without its own defined assignment is traversed so a deeper
+        ! component binding is not skipped.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: dest_base, src_base
+        integer, intent(in) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: dest_component, src_component
+        type(lr_operand_desc_t) :: dest_element, src_element
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer :: c, e, nested_type, nested_slots, count
+        integer :: assignment_slot
+        character(len=:), allocatable :: specific
+
+        call set_empty(error_msg)
+        do c = 1, context%derived_types(type_index)%component_count
+            nested_type = context%derived_types(type_index)% &
+                          component_type_index(c)
+            if (nested_type <= 0) cycle
+            if (component_is_alloc_array(context, type_index, c)) cycle
+            if (.not. emit_ptr_offset(context%session, dest_base, &
+                    int(component_start_slot(context, type_index, c) * 4, &
+                        c_int64_t), dest_component, error_msg)) return
+            if (.not. emit_ptr_offset(context%session, src_base, &
+                    int(component_start_slot(context, type_index, c) * 4, &
+                        c_int64_t), src_component, error_msg)) return
+            assignment_slot = find_nested_defined_assignment(context, nested_type)
+            count = nested_element_count(context, type_index, c)
+            nested_slots = total_component_slots(context, nested_type)
+            if (assignment_slot > 0) then
+                specific = operator_specific_name(context, assignment_slot)
+                allocate (args(2))
+                do e = 0, count - 1
+                    dest_element = dest_component
+                    src_element = src_component
+                    if (e > 0) then
+                        if (.not. emit_ptr_offset(context%session, dest_component, &
+                                int(e * nested_slots * 4, c_int64_t), &
+                                dest_element, error_msg)) return
+                        if (.not. emit_ptr_offset(context%session, src_component, &
+                                int(e * nested_slots * 4, c_int64_t), &
+                                src_element, error_msg)) return
+                    end if
+                    args(1) = dest_element
+                    args(2) = src_element
+                    if (.not. emit_void_call(context%session, &
+                            call_emit_name(context%arena, specific, context), &
+                            args, error_msg)) return
+                end do
+                deallocate (args)
+            else
+                do e = 0, count - 1
+                    dest_element = dest_component
+                    src_element = src_component
+                    if (e > 0) then
+                        if (.not. emit_ptr_offset(context%session, dest_component, &
+                                int(e * nested_slots * 4, c_int64_t), &
+                                dest_element, error_msg)) return
+                        if (.not. emit_ptr_offset(context%session, src_component, &
+                                int(e * nested_slots * 4, c_int64_t), &
+                                src_element, error_msg)) return
+                    end if
+                    call apply_nested_defined_assignments(context, dest_element, &
+                        src_element, nested_type, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end if
+        end do
+    end subroutine apply_nested_defined_assignments
+
+    integer function find_nested_defined_assignment(context, type_index) &
+            result(slot)
+        ! Operator overloads are keyed by VALUE_DERIVED rather than by the
+        ! concrete type. Select the assignment whose two dummy declarations name
+        ! this component type, so an assignment for a sibling derived type is
+        ! never applied to an enclosing copy.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index
+        integer :: i, j, fn_index
+        character(len=:), allocatable :: specific
+
+        slot = 0
+        do i = 1, context%operator_count
+            if (.not. context%operators(i)%is_assignment) cycle
+            if (.not. same_name(context%operators(i)%operator_name, '=')) cycle
+            do j = 1, context%operators(i)%specific_count
+                specific = trim(context%operators(i)%specific_names(j))
+                fn_index = find_function_index(context, specific)
+                if (fn_index <= 0) cycle
+                if (specific_argument_derived_type(context, fn_index, 1) /= &
+                        type_index) cycle
+                if (specific_argument_derived_type(context, fn_index, 2) /= &
+                        type_index) cycle
+                slot = i * 256 + j
+                return
+            end do
+        end do
+    end function find_nested_defined_assignment
+
+    integer function specific_argument_derived_type(context, fn_index, arg_pos) &
+            result(type_index)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: fn_index, arg_pos
+        integer :: node_index, i
+        integer, allocatable :: param_indices(:), body_indices(:)
+        character(len=:), allocatable :: param_name, name_error, node_type
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        type_index = 0
+        if (fn_index <= 0 .or. fn_index > context%function_count) return
+        node_index = context%function_node_indices(fn_index)
+        if (.not. node_exists(context%arena, node_index)) return
+        node_type = get_node_type_at(context%arena, node_index)
+        if (node_type == 'function_def_node' .or. node_type == 'function_def') then
+            fn_node => get_node_as_function_def(context%arena, node_index)
+            if (.not. associated(fn_node)) return
+            if (.not. allocated(fn_node%param_indices)) return
+            param_indices = fn_node%param_indices
+            body_indices = fn_node%body_indices
+        else if (node_type == 'subroutine_def_node' .or. &
+                 node_type == 'subroutine_def') then
+            sb_node => get_node_as_subroutine_def(context%arena, node_index)
+            if (.not. associated(sb_node)) return
+            if (.not. allocated(sb_node%param_indices)) return
+            param_indices = sb_node%param_indices
+            body_indices = sb_node%body_indices
+        else
+            return
+        end if
+        if (arg_pos < 1 .or. arg_pos > size(param_indices)) return
+        call parameter_name(context%arena, param_indices(arg_pos), param_name, &
+                            name_error)
+        if (len_trim(name_error) > 0) return
+        if (.not. allocated(body_indices)) return
+        do i = 1, size(body_indices)
+            if (.not. node_exists(context%arena, body_indices(i))) cycle
+            select type (decl => context%arena%entries(body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. allocated(decl%type_name)) cycle
+                if (.not. declaration_names_var(decl, param_name)) cycle
+                type_index = declaration_derived_type_index(context, decl)
+                return
+            end select
+        end do
+    end function specific_argument_derived_type
 
     subroutine deep_copy_alloc_components(context, dest_index, src_index, &
                                           type_index, error_msg)
