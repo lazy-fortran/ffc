@@ -1219,6 +1219,15 @@
             info%kept_dims(1)))
         context%symbols(ptr_index)%array_lower_bound = 1
         context%symbols(ptr_index)%array_rank = 1
+        ! Keep the descriptor's per-dimension shape in sync with array_size.
+        ! Inquiry lowering reads these fields for a pointer view, so leaving
+        ! them zero makes size/shape/lbound inquiries disagree with element
+        ! access through the same section.
+        context%symbols(ptr_index)%array_dim_lowers = 0
+        context%symbols(ptr_index)%array_dim_sizes = 0
+        context%symbols(ptr_index)%array_dim_lowers(1) = 1
+        context%symbols(ptr_index)%array_dim_sizes(1) = &
+            int(info%section_extents(info%kept_dims(1)))
         context%symbols(ptr_index)%has_runtime_array_stride = .true.
         context%symbols(ptr_index)%runtime_array_stride_bytes = &
             i64_immediate(context%session, stride_bytes)
