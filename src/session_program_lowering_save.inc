@@ -39,6 +39,12 @@
                     if (len_trim(error_msg) > 0) return
                     cycle
                 end if
+                if (declaration_derived_type_index(context, decl) > 0) then
+                    call emit_saved_derived_global(arena, decl, n, context, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    cycle
+                end if
                 call emit_saved_decl_globals(decl, n, context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end select
@@ -69,6 +75,91 @@
             error_msg = 'saved declaration did not expose a variable name'
         end if
     end subroutine emit_saved_decl_globals
+
+    subroutine emit_saved_derived_global(arena, node, node_index, context, &
+                                         error_msg)
+        ! A saved scalar derived object has the same flat storage ABI as a
+        ! module derived variable: one i32 slot per component, with defaults
+        ! and a constant constructor staged before code generation.  Keeping
+        ! this in the SAVE pre-pass makes static lifetime independent of the
+        ! spelling or fixture that introduced the declaration.
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int32_t, &
+                                               c_int64_t, c_loc, c_size_t, c_ptr
+        use liric_session_bindings, only: lr_type_i32_s, lr_type_array_s
+        type(ast_arena_t), intent(in) :: arena
+        type(declaration_node), intent(in) :: node
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int32_t), allocatable, target :: init_slots(:)
+        integer :: di, slots, i
+        logical(c_bool) :: c_false_local
+
+        call set_empty(error_msg)
+        c_false_local = .false.
+        di = declaration_derived_type_index(context, node)
+        if (di <= 0) then
+            error_msg = 'saved derived declaration lost its type index'
+            return
+        end if
+        slots = total_component_slots(context, di)
+        if (slots <= 0) then
+            error_msg = 'saved derived declaration has no storage'
+            return
+        end if
+        allocate (init_slots(slots))
+        init_slots = 0_c_int32_t
+        call fill_type_default_slots(context, di, 0, init_slots)
+        if (node%has_initializer .and. .not. node%is_multi_declaration) then
+            call fold_module_derived_constructor_slots(arena, node_index, di, &
+                                                        context, init_slots, &
+                                                        error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do i = 1, size(node%var_names)
+                call emit_saved_derived_global_one(trim(node%var_names(i)), &
+                    node_index, context, init_slots, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else if (allocated(node%var_name)) then
+            name = trim(node%var_name)
+            call emit_saved_derived_global_one(name, node_index, context, &
+                                               init_slots, error_msg)
+        else
+            error_msg = 'saved derived declaration did not expose a name'
+        end if
+    contains
+        subroutine emit_saved_derived_global_one(name, node_index, context, &
+                                                 init_slots, error_msg)
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            integer(c_int32_t), intent(in), target :: init_slots(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+            integer(c_int32_t) :: gid
+            character(len=:), allocatable :: local_gname
+            character(kind=c_char), allocatable :: local_c_name(:)
+            type(c_ptr) :: local_gtype
+
+            local_gname = saved_local_global_name(node_index, name)
+            call to_c_chars(local_gname, local_c_name)
+            local_gtype = lr_type_array_s(context%session%handle, &
+                lr_type_i32_s(context%session%handle), &
+                int(size(init_slots), c_int64_t))
+            gid = lr_session_global(context%session%handle, local_c_name, &
+                local_gtype, c_false_local, c_loc(init_slots), &
+                int(size(init_slots) * 4, c_size_t))
+            if (gid < 0_c_int32_t) then
+                error_msg = 'LIRIC could not create saved derived global: '// &
+                            local_gname
+            else
+                call set_empty(error_msg)
+            end if
+        end subroutine emit_saved_derived_global_one
+    end subroutine emit_saved_derived_global
 
     subroutine saved_scalar_value_kind(node, value_kind, error_msg, context)
         type(declaration_node), intent(in) :: node
