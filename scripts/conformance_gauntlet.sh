@@ -314,6 +314,25 @@ dg_warning_only() {
     grep -Eq 'dg-warning' "$source" && ! dg_has_active_error "$source"
 }
 
+# source_has_program_root <source>
+# LFortran's integration_tests directory contains standalone companion sources
+# (subroutines, functions and modules) beside their executable test roots.  A
+# source without PROGRAM or BLOCK DATA cannot be run as a standalone binary.
+source_has_program_root() {
+    local source="$1"
+    awk '
+        {
+            line = tolower($0)
+            sub(/!.*/, "", line)
+            if (line ~ /^[[:space:]]*[0-9]*[[:space:]]*program([[:space:]]|$)/ ||
+                line ~ /^[[:space:]]*[0-9]*[[:space:]]*block[[:space:]]+data([[:space:]]|$)/) {
+                found = 1
+            }
+        }
+        END { exit !found }
+    ' "$source"
+}
+
 # Resolve ffc
 if [ "$REQUIRE_PROVENANCE" -eq 1 ]; then
     [ -z "$FFC_BIN" ] || fail "--require-provenance cannot be combined with --ffc"
@@ -1193,6 +1212,15 @@ while IFS= read -r full_path <&3; do
         HAS_FAIL=1
         write_result_record "$rel_path" "$status" -1 -1 "$note" ""
         echo "  FAIL: $rel_path ($note)"
+        continue
+    fi
+
+    if [ "$SUITE" = "lfortran" ] && ! source_has_program_root "$full_path"; then
+        CASE_ACTION="exclude"
+        SKIP_COUNT=$((SKIP_COUNT + 1))
+        write_result_record "$rel_path" "SKIP" -1 -1 \
+            "no PROGRAM or BLOCK DATA root; standalone executable is not applicable" ""
+        echo "  SKIP: $rel_path (no PROGRAM or BLOCK DATA root; standalone executable is not applicable)"
         continue
     fi
 
