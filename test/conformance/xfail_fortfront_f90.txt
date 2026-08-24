@@ -25,11 +25,8 @@ issue_2248_read_keyword.f90 # owner=lazy-fortran/ffc#628; reason=lower scalar fo
 issue_2250_pure_interface.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 issue_2416_io_format_variable.f90 # owner=lazy-fortran/ffc#628; reason=move file-unit state behind the runtime ABI
 issue_2416_io_formats_comprehensive.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
-issue_2417_minloc_with_mask.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
-issue_2418_intrinsic_keywords_declared.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 issue_2452_roundtrip_timeout.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 issue_2455_array_constructor_arg.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
-issue_2455_nested_function_args.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape arrays by descriptor
 issue_2458_multi_array_declaration.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 issue_2489_interface_in_procedure.f90 # owner=lazy-fortran/ffc#540; reason=classify undefined and unlinked reference cases
 issue_2490_hollerith_format.f90 # scope=legacy; reason=deleted Hollerith FORMAT descriptor
