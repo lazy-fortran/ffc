@@ -1,6 +1,47 @@
 submodule (session_program_lowering_impl) session_program_lowering_open_close
     implicit none
 contains
+    module procedure format_spec_is_identifier
+        integer :: i
+        character(len=:), allocatable :: folded
+        character :: ch
+
+        is_identifier = .false.
+        folded = trim(adjustl(text))
+        if (len(folded) == 0) return
+        ch = folded(1:1)
+        if (.not. ((ch >= 'A' .and. ch <= 'Z') .or. &
+                   (ch >= 'a' .and. ch <= 'z') .or. ch == '_')) return
+        do i = 2, len(folded)
+            ch = folded(i:i)
+            if (.not. ((ch >= 'A' .and. ch <= 'Z') .or. &
+                       (ch >= 'a' .and. ch <= 'z') .or. &
+                       (ch >= '0' .and. ch <= '9') .or. ch == '_')) return
+        end do
+        is_identifier = .true.
+    end procedure format_spec_is_identifier
+
+    module procedure resolve_labeled_format
+        use ast_nodes_io, only: format_statement_node
+        integer :: i
+
+        format_spec = ''
+        found = .false.
+        do i = 1, arena%size
+            if (.not. allocated(arena%entries(i)%node)) cycle
+            select type (candidate => arena%entries(i)%node)
+            type is (format_statement_node)
+                if (.not. allocated(candidate%stmt_label)) cycle
+                if (trim(candidate%stmt_label) /= trim(label)) cycle
+                if (allocated(candidate%format_spec)) then
+                    format_spec = candidate%format_spec
+                end if
+                found = .true.
+            end select
+            if (found) return
+        end do
+    end procedure resolve_labeled_format
+
     module procedure parse_open_spec
         ! Extract keyword values from an OPEN specifier-list text.
         ! spec is the raw text inside the OPEN(...) parentheses.
@@ -607,7 +648,8 @@ contains
 
         list_dir = .not. allocated(node%format_spec)
         if (allocated(node%format_spec)) then
-            if (trim(node%format_spec) == '*') list_dir = .true.
+            if (trim(node%format_spec) == '*' .or. &
+                format_spec_is_identifier(node%format_spec)) list_dir = .true.
         end if
 
         unformatted = list_dir .and. unit_is_unformatted(node, context)

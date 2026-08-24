@@ -38,6 +38,8 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: fp, conv_ok, item_ok, merged_ok
         type(lr_operand_desc_t) :: bad, status
+        logical :: has_labeled_format
+        character(len=:), allocatable :: labeled_format
         integer :: i
 
         call set_empty(error_msg)
@@ -46,7 +48,15 @@
         ! Field widths are not enforced; whitespace- and newline-separated
         ! records read correctly, which covers the formatted-read corpus.
         if (allocated(node%format_spec)) then
-            if (.not. format_has_al_descriptor(node%format_spec)) then
+            call resolve_labeled_format(arena, node%format_spec, labeled_format, &
+                                        has_labeled_format)
+        else
+            has_labeled_format = .false.
+        end if
+        if (allocated(node%format_spec)) then
+            if (.not. format_spec_is_identifier(node%format_spec) .and. &
+                .not. has_labeled_format .and. &
+                .not. format_has_al_descriptor(node%format_spec)) then
                 call check_read_format_supported(node%format_spec, node%line, &
                                                  node%column, error_msg)
                 if (len_trim(error_msg) > 0) return
