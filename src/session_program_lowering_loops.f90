@@ -115,8 +115,9 @@ contains
             allocate(backedge_values(context%symbol_count))
         end if
         do i = 1, carried_count
-            entry_values(carried_indices(i)) = &
-                context%symbols(carried_indices(i))%value
+            call prepare_carried_entry_value(context, carried_indices(i), &
+                entry_values(carried_indices(i)), error_msg)
+            if (len_trim(error_msg) > 0) return
             call reserve_backedge_value(context, reserved_vreg, error_msg)
             if (len_trim(error_msg) > 0) return
             backedge_values(carried_indices(i)) = &
@@ -411,6 +412,42 @@ contains
             end if
         end do
     end subroutine collect_carried_symbols
+
+    module subroutine prepare_carried_entry_value(context, symbol_index, value, &
+            error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        value = context%symbols(symbol_index)%value
+        if (c_associated(value%typ)) then
+            call set_empty(error_msg)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%has_address) then
+            error_msg = 'direct LIRIC session carried symbol has no typed value: '// &
+                trim(context%symbols(symbol_index)%name)
+            return
+        end if
+
+        select case (context%symbols(symbol_index)%value_kind)
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_load(context%session, &
+                context%symbols(symbol_index)%address, value, error_msg)) return
+        case (VALUE_F64)
+            if (.not. emit_liric_f64_load(context%session, &
+                context%symbols(symbol_index)%address, value, error_msg)) return
+        case (VALUE_I32, VALUE_LOGICAL)
+            if (.not. emit_i32_load(context%session, &
+                context%symbols(symbol_index)%address, value, error_msg)) return
+        case default
+            error_msg = 'direct LIRIC session carried symbol has unsupported kind: '// &
+                trim(context%symbols(symbol_index)%name)
+            return
+        end select
+        call set_empty(error_msg)
+    end subroutine prepare_carried_entry_value
 
     module function carried_backedge_operand(context, symbol_index, reserved_vreg) &
             result(operand)
