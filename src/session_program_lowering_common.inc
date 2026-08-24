@@ -220,18 +220,6 @@
         end select
     end subroutine write_common_slot_init
 
-    subroutine put_bytes(buffer, byte_offset, bytes)
-        ! Copy value bytes into the block buffer at a zero-based byte offset.
-        use, intrinsic :: iso_c_binding, only: c_char
-        character(kind=c_char, len=1), intent(inout) :: buffer(:)
-        integer, intent(in) :: byte_offset
-        character(kind=c_char, len=1), intent(in) :: bytes(:)
-
-        if (byte_offset < 0) return
-        if (byte_offset + size(bytes) > size(buffer)) return
-        buffer(byte_offset + 1:byte_offset + size(bytes)) = bytes
-    end subroutine put_bytes
-
     subroutine put_common_i32(buffer, byte_offset, value)
         ! Copy the native byte representation of one 32-bit value without
         ! constructing an array-valued TRANSFER result.
