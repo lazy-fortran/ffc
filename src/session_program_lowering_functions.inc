@@ -1766,6 +1766,22 @@
             if (binding%binding_kind /= BINDING_DECLARATION .and. &
                 binding%binding_kind /= BINDING_NAMED_CONSTANT .and. &
                 binding%binding_kind /= BINDING_FUNCTION_RESULT) cycle
+            if (binding%binding_kind == BINDING_DECLARATION .and. &
+                    binding%declaration_node_index > 0 .and. &
+                    node_exists(arena, binding%declaration_node_index)) then
+                select type (decl => &
+                        arena%entries(binding%declaration_node_index)%node)
+                type is (declaration_node)
+                    if (decl%is_pointer .and. declaration_names_procedure(decl)) then
+                        call register_host_proc_pointer_global(context, binding, &
+                            name, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        cycle
+                    end if
+                class default
+                    continue
+                end select
+            end if
             declaration_index = find_declaration_record(context, binding)
             if (declaration_index > 0 .and. &
                     context%declaration_records(declaration_index)%is_array) then
@@ -1855,6 +1871,76 @@
         ! local symbol instead of colliding with this pre-pass storage.
         context%block_scope_floor = context%symbol_count
     end subroutine collect_host_associated_symbols
+
+    subroutine register_host_proc_pointer_global(context, binding, name, &
+                                                 error_msg)
+        ! A procedure pointer host-associated by an internal procedure needs
+        ! one shared slot.  A stack slot in the host and a second stack slot in
+        ! the contained procedure would make => and ASSOCIATED observe
+        ! different state, so materialise the binding as a pointer global just
+        ! like scalar host storage (#245).
+        use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int8_t, &
+            c_int32_t, c_int64_t, c_ptr, c_loc, c_null_ptr, c_size_t, c_sizeof
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_binding_t), intent(in) :: binding
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: global_name
+        character(kind=c_char), allocatable :: c_name(:)
+        integer(c_int8_t), target :: init_bytes(16)
+        type(c_ptr), target :: init_proc_ptr
+        type(c_ptr) :: global_type, init_ptr
+        integer(c_int32_t) :: global_id
+        integer(c_size_t) :: init_size
+        logical(c_bool) :: c_false_local
+        integer :: index
+
+        call set_empty(error_msg)
+        if (find_symbol_for_binding(context, binding) > 0) return
+        global_name = host_global_name(binding, name)
+        call to_c_chars(global_name, c_name)
+        init_bytes = 0_c_int8_t
+        init_proc_ptr = c_null_ptr
+        global_type = lr_type_ptr_s(context%session%handle)
+        init_ptr = c_loc(init_bytes)
+        init_size = c_sizeof(init_proc_ptr)
+        c_false_local = .false.
+        global_id = lr_session_global(context%session%handle, c_name, global_type, &
+            c_false_local, init_ptr, init_size)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not create host-associated procedure pointer: '// &
+                trim(global_name)
+            return
+        end if
+        global_id = lr_session_intern(context%session%handle, c_name)
+        if (global_id < 0_c_int32_t) then
+            error_msg = 'LIRIC could not intern host-associated procedure pointer: '// &
+                trim(global_name)
+            return
+        end if
+        call grow_symbols(context)
+        index = context%symbol_count + 1
+        context%symbols(index) = symbol_t()
+        context%symbols(index)%name = trim(name)
+        context%symbols(index)%value_kind = VALUE_PROC_PTR
+        context%symbols(index)%is_pointer = .true.
+        context%symbols(index)%is_proc_pointer = .true.
+        context%symbols(index)%has_address = .true.
+        context%symbols(index)%is_reference = .true.
+        context%symbols(index)%address%kind = LR_OP_KIND_GLOBAL
+        context%symbols(index)%address%payload = int(global_id, c_int64_t)
+        context%symbols(index)%address%typ = lr_type_ptr_s(context%session%handle)
+        context%symbols(index)%address%global_offset = 0_c_int64_t
+        context%symbols(index)%has_binding = .true.
+        context%symbols(index)%binding_declaration_index = &
+            binding%declaration_node_index
+        context%symbols(index)%binding_entity_index = binding%declaration_entity_index
+        context%symbols(index)%binding_scope_index = binding%scope_node_index
+        context%symbol_count = index
+        call context%binding_table%insert_binding( &
+            binding%declaration_node_index, binding%declaration_entity_index, &
+            binding%scope_node_index, index)
+    end subroutine register_host_proc_pointer_global
 
     subroutine register_host_global_symbol(context, binding, name, value_kind, &
                                            error_msg)
