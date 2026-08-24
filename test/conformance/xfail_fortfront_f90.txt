@@ -4,7 +4,6 @@ ast_coverage_control_flow.f90 # owner=lazy-fortran/ffc#584; reason=register reso
 ast_coverage_literals_calls.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 ast_forall_pointer.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 call_graph_internal_procedures.f90 # owner=lazy-fortran/ffc#628; reason=select and load the matching runtime archive
-compiler_resolved_expression_kinds.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 data_statement_scalar_upgrade.f90 # scope=harness; reason=FortFront semantic rejection fixture
 docs_unsigned_integers_out.f90 # scope=vendor; reason=nonstandard UNSIGNED extension
 dtio_interface_basic.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
@@ -20,8 +19,6 @@ issue_1740_optional_keyword_arguments.f90 # owner=lazy-fortran/ffc#540; reason=c
 issue_1827_submodule_simple.f90 # owner=lazy-fortran/ffc#584; reason=consume parent interfaces for separate submodules
 issue_1827_submodule_with_contents.f90 # owner=lazy-fortran/ffc#584; reason=consume parent interfaces for separate submodules
 issue_1960_pointer_assignment_if.f90 # owner=lazy-fortran/ffc#540; reason=lower scalar data-pointer association
-issue_2014_elemental_function_lost.f90 # owner=lazy-fortran/ffc#579; reason=lower elemental procedures through array expressions
-issue_2024_char_function_duplicate_and_missing.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 issue_2070_entry_loses_argument_declarations.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 issue_2078_include_statement_silently_dropped.f90 # owner=lazy-fortran/ffc#540; reason=expand Fortran INCLUDE lines
 issue_2162_entry_wrapping.f90 # owner=lazy-fortran/ffc#579; reason=compile procedure-only translation units
