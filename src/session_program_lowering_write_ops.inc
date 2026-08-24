@@ -44,25 +44,10 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(print_statement_node) :: pnode
-        character(len=:), allocatable :: labeled_format
-        logical :: has_labeled_format
 
         pnode%line = node%line
         pnode%column = node%column
-        if (allocated(node%format_spec)) then
-            call resolve_labeled_format(arena, node%format_spec, labeled_format, &
-                                        has_labeled_format)
-            if (has_labeled_format) then
-                pnode%format_spec = labeled_format
-            else if (format_spec_is_identifier(node%format_spec)) then
-                ! The direct backend has no dynamic descriptor parser. Keep a
-                ! variable format on the existing list-directed path instead
-                ! of interpreting its identifier as literal format text.
-                pnode%format_spec = '*'
-            else
-                pnode%format_spec = node%format_spec
-            end if
-        end if
+        if (allocated(node%format_spec)) pnode%format_spec = node%format_spec
         if (allocated(node%arg_indices)) then
             allocate (pnode%expression_indices(size(node%arg_indices)))
             pnode%expression_indices = node%arg_indices

@@ -3379,20 +3379,8 @@ module session_program_lowering_impl
     public :: store_write_iostat_success, file_write_value_kind
     public :: lower_file_write_item, lower_file_write_newline
     public :: lower_file_write_formatted, fortran_fmt_to_c, read_fmt_int
-    public :: format_spec_is_identifier
-    public :: resolve_labeled_format
 
     interface
-        module function format_spec_is_identifier(text) result(is_identifier)
-            character(len=*), intent(in) :: text
-            logical :: is_identifier
-        end function format_spec_is_identifier
-        module subroutine resolve_labeled_format(arena, label, format_spec, found)
-            type(ast_arena_t), intent(in) :: arena
-            character(len=*), intent(in) :: label
-            character(len=:), allocatable, intent(out) :: format_spec
-            logical, intent(out) :: found
-        end subroutine resolve_labeled_format
         module subroutine parse_open_spec(spec, unit_str, newunit_var, file_path, &
                                           file_quoted, status_str, status_quoted, &
                                           form_str, access_str, sign_str, &
