@@ -1793,7 +1793,8 @@ contains
     ! text needed to reject malformed formats (#391).
     module procedure check_format_specifications
         type(io_statement_query_t) :: query
-        integer :: n
+        integer :: n, i
+        character(len=:), allocatable :: value
 
         call set_empty(error_msg)
         do n = 1, arena%size
@@ -1809,6 +1810,29 @@ contains
             end if
             if (query%statement_kind /= IO_STATEMENT_WRITE .and. &
                 query%statement_kind /= IO_STATEMENT_READ) cycle
+            if (allocated(query%specifiers)) then
+                do i = 1, size(query%specifiers)
+                    if (.not. allocated(query%specifiers(i)%name)) cycle
+                    if (.not. is_character_io_spec( &
+                        query%specifiers(i)%name)) cycle
+                    if (.not. allocated(query%specifiers(i)%value)) cycle
+                    value = trim(adjustl(query%specifiers(i)%value))
+                    if (len(value) == 0) cycle
+                    if (value(1:1) == '[') then
+                        error_msg = io_spec_upper(query%specifiers(i)%name)// &
+                            ' specifier must be scalar'
+                        return
+                    end if
+                    if (len(value) >= 2) then
+                        if (value(1:2) == '(/') then
+                            error_msg = io_spec_upper( &
+                                query%specifiers(i)%name)// &
+                                ' specifier must be scalar'
+                            return
+                        end if
+                    end if
+                end do
+            end if
             call check_format_tag(arena, query, error_msg)
             if (len_trim(error_msg) > 0) return
             call check_asynchronous_specifier(query, error_msg)
