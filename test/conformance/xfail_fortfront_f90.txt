@@ -1,3 +1,2 @@
 # Current full-epoch expected failures for fortfront-f90.
 # Format: path # owner=ORG/REPO#N; reason=text or path # scope=TAG; reason=text
-issue_2070_entry_loses_argument_declarations.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
