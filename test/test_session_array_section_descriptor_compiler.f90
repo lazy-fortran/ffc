@@ -203,13 +203,8 @@ program test_session_array_section_descriptor_compiler
         trim(artifact_root)//'_forwarded', 'forwarded descriptor')) stop 1
     if (.not. gfortran_accepts(pointer_forward_source, &
         trim(artifact_root)//'_pointer.f90', 'pointer whole actual')) stop 1
-    if (.not. expect_error_contains(pointer_forward_source, &
-        'assumed-shape descriptor forwarding is not yet supported', &
-        trim(artifact_root)//'_pointer_refused')) then
-        call cleanup_artifact(trim(artifact_root)//'_pointer_refused')
-        stop 1
-    end if
-    call cleanup_artifact(trim(artifact_root)//'_pointer_refused')
+    if (.not. matches_descriptor_forwarding(pointer_forward_source, &
+        trim(artifact_root)//'_pointer', 'pointer whole actual')) stop 1
     if (.not. matches_runtime_explicit_forward()) stop 1
     if (.not. gfortran_accepts(side_effect_bound_source, &
         trim(artifact_root)//'_side_effect.f90', &
