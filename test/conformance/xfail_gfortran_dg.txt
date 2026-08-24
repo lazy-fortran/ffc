@@ -660,7 +660,6 @@ dtio_9.f90 # owner=lazy-fortran/ffc#628; reason=return stable defined-I/O status
 dummy_functions_1.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape arrays by descriptor
 dummy_procedure_3.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 dummy_procedure_7.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
-dup_save_1.f90 # owner=lazy-fortran/ffc#540; reason=preserve saved local storage across calls
 duplicate_type_3.f90 # owner=lazy-fortran/fortfront#2951; reason=reject duplicate or incompatible declaration attributes
 dynamic_dispatch_12.f90 # owner=lazy-fortran/ffc#584; reason=resolve same-unit USE export identity
 edit_real_1.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
