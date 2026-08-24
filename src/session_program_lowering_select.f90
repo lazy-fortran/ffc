@@ -809,6 +809,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: sel_name, assoc_name
         integer :: sel_index, g
+        logical :: component_selector
         type(lr_operand_desc_t) :: sel_type_id, data_ptr, cond, guard_id
         integer(c_int32_t) :: arm_block, next_block, merge_block
         type(symbol_t), allocatable :: baseline(:)
@@ -829,7 +830,12 @@ contains
         call select_type_selector(arena, selector_idx, sel_name, &
                                   assoc_name, error_msg)
         if (len_trim(error_msg) > 0) return
-        sel_index = find_symbol_compat(context, sel_name)
+        call select_type_component_selector(arena, selector_idx, context, &
+                                            sel_index, component_selector, &
+                                            error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. component_selector) sel_index = find_symbol_compat(context, &
+                                                                      sel_name)
         if (sel_index <= 0) then
             error_msg = 'select type selector was not declared: '//trim(sel_name)
             return
@@ -1027,7 +1033,7 @@ contains
         end select
     end subroutine select_type_selector
 
-    subroutine selector_base_name(arena, node_index, name, error_msg)
+    recursive subroutine selector_base_name(arena, node_index, name, error_msg)
         ! SELECT TYPE associate syntax may select an array element, e.g.
         ! `value => values(i)`. Resolve the selector's base symbol while the
         ! lowering path retains the original expression for address formation.
@@ -1053,6 +1059,9 @@ contains
             else
                 error_msg = 'select type selector array element has no base name'
             end if
+        type is (component_access_node)
+            call selector_base_name(arena, selector%base_expr_index, name, &
+                                    error_msg)
         class default
             error_msg = 'select type selector base is not a variable reference'
         end select

@@ -150,6 +150,95 @@
         call set_empty(error_msg)
     end subroutine emit_class_scalar_descriptor
 
+    subroutine select_type_component_selector(arena, selector_index, context, &
+                                             sel_index, handled, error_msg)
+        ! A polymorphic allocatable component stores a pointer to the same
+        ! scalar class descriptor used by class dummies. Materialise a symbol
+        ! for SELECT TYPE from that descriptor, preserving its declared type
+        ! and runtime data/type identity.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: selector_index
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: sel_index
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: expr_index, base_type, component_index, declared_index
+        type(lr_operand_desc_t) :: slot_address, descriptor, field_address
+        type(lr_operand_desc_t) :: data_address, data_value
+
+        sel_index = 0
+        handled = .false.
+        call set_empty(error_msg)
+        expr_index = selector_index
+        if (node_exists(arena, selector_index)) then
+            select type (selector => arena%entries(selector_index)%node)
+            type is (assignment_node)
+                expr_index = selector%value_index
+            type is (pointer_assignment_node)
+                expr_index = selector%target_index
+            class default
+            end select
+        end if
+        if (.not. node_exists(arena, expr_index)) return
+        select type (selector => arena%entries(expr_index)%node)
+        type is (component_access_node)
+            base_type = component_base_type_index(arena, &
+                selector%base_expr_index, context)
+            if (base_type <= 0) return
+            component_index = find_derived_component(context, base_type, &
+                                                     selector%component_name)
+            if (component_index <= 0) return
+            if (.not. allocated(context%derived_types(base_type)% &
+                                component_is_polymorphic)) return
+            if (.not. context%derived_types(base_type)% &
+                    component_is_polymorphic(component_index)) return
+            declared_index = context%derived_types(base_type)% &
+                component_type_index(component_index)
+            if (declared_index <= 0) then
+                error_msg = 'polymorphic component has no declared type'
+                return
+            end if
+            call lower_derived_component_address(arena, selector, context, &
+                                                 slot_address, error_msg, &
+                                                 'select type component')
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_ptr_load(context%session, slot_address, descriptor, &
+                                    error_msg)) return
+            if (.not. emit_ptr_offset(context%session, descriptor, &
+                    int(POLYMORPHIC_DESCRIPTOR_DATA_OFFSET, c_int64_t), &
+                    data_address, error_msg)) return
+            if (.not. emit_ptr_load(context%session, data_address, data_value, &
+                                    error_msg)) return
+            if (.not. emit_ptr_offset(context%session, descriptor, &
+                    int(POLYMORPHIC_DESCRIPTOR_DYNAMIC_TYPE_OFFSET, c_int64_t), &
+                    field_address, error_msg)) return
+            call grow_symbols(context)
+            sel_index = context%symbol_count + 1
+            context%symbol_count = sel_index
+            context%symbols(sel_index) = symbol_t()
+            context%symbols(sel_index)%name = '__ffc_select_type_component'
+            context%symbols(sel_index)%value_kind = VALUE_DERIVED
+            context%symbols(sel_index)%is_derived = .true.
+            context%symbols(sel_index)%derived_type_index = declared_index
+            context%symbols(sel_index)%is_polymorphic = .true.
+            context%symbols(sel_index)%is_allocatable = .false.
+            context%symbols(sel_index)%is_pointer = .false.
+            context%symbols(sel_index)%is_array = .false.
+            context%symbols(sel_index)%array_rank = 0
+            context%symbols(sel_index)%array_size = total_component_slots(context, &
+                                                                          declared_index)
+            context%symbols(sel_index)%class_descriptor_address = descriptor
+            context%symbols(sel_index)%dynamic_type_address = field_address
+            context%symbols(sel_index)%has_dynamic_type_address = .true.
+            context%symbols(sel_index)%element_address = data_value
+            context%symbols(sel_index)%has_address = .true.
+            context%symbols(sel_index)%is_reference = .true.
+            handled = .true.
+        class default
+        end select
+    end subroutine select_type_component_selector
+
     subroutine bind_class_dummy_descriptor(context, symbol_index, declared_index, &
                                            error_msg)
         ! Bind a class(t) dummy to the descriptor the caller passed. The
