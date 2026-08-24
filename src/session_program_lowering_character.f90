@@ -57,11 +57,21 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: base_name
         integer :: symbol_index, bounds_index, lower_index, upper_index
-        integer :: base_index
+        integer :: base_index, i
         type(lr_operand_desc_t) :: base_data, base_len, lower_i32, upper_i32
         type(lr_operand_desc_t) :: zero_based, span
+        type(lr_operand_desc_t) :: view_buffer
+        logical :: keep_view
 
         call set_empty(error_msg)
+        keep_view = .false.
+        do i = 1, arena%size
+            if (.not. node_exists(arena, i)) cycle
+            select type (assignment => arena%entries(i)%node)
+            type is (assignment_node)
+                if (assignment%target_index == node_index) keep_view = .true.
+            end select
+        end do
         bounds_index = 0
         base_index = 0
         lower_index = -1
@@ -152,6 +162,12 @@ contains
         if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_i32, &
                 zero_based, span, error_msg)) return
         length = span
+        if (.not. keep_view) then
+            call materialize_character_view(context, data_ptr, length, &
+                                            view_buffer, error_msg)
+            if (len_trim(error_msg) > 0) return
+            data_ptr = view_buffer
+        end if
         call set_empty(error_msg)
     end subroutine substring_operands
 

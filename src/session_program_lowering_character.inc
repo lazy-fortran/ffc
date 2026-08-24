@@ -94,6 +94,27 @@
                 end if
                 return
             end if
+            context%symbols(existing_index)%value_kind = VALUE_CHARACTER
+            ! The declaration pre-pass may already have installed a scalar
+            ! character slot (for example while resolving an allocatable
+            ! declaration).  The typed declaration is the authoritative
+            ! declaration for that same scope; do not report it as a second
+            ! Fortran declaration.  Refresh a fixed width when one is given,
+            ! while preserving a deferred descriptor's ABI.
+            call declaration_character_length(context, node, character_length, &
+                                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (node%is_allocatable .and. character_length <= 0 .and. &
+                .not. context%symbols(existing_index)%is_deferred_character) then
+                call upgrade_existing_deferred_character_symbol(context, &
+                    existing_index, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            if (character_length > 0) then
+                context%symbols(existing_index)%character_length = character_length
+            end if
+            call set_empty(error_msg)
+            return
         end if
         call declaration_character_length(context, node, character_length, &
                                           error_msg)
@@ -1053,6 +1074,50 @@
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_deferred_character_symbol
+
+    subroutine upgrade_existing_deferred_character_symbol(context, index, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        use ffc_character_descriptor, only: CHARACTER_DESCRIPTOR_SIZE, &
+            CHARACTER_DESCRIPTOR_DATA_OFFSET, CHARACTER_DESCRIPTOR_LENGTH_OFFSET, &
+            CHARACTER_DESCRIPTOR_CAPACITY_OFFSET, CHARACTER_DESCRIPTOR_STORAGE_OFFSET
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_addr, len_addr
+        type(lr_operand_desc_t) :: capacity_addr, storage_addr
+
+        call set_empty(error_msg)
+        if (index <= 0 .or. index > context%symbol_count) then
+            error_msg = 'invalid character symbol during deferred upgrade'
+            return
+        end if
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, int(CHARACTER_DESCRIPTOR_SIZE, &
+                    c_int64_t)), descriptor, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                CHARACTER_DESCRIPTOR_DATA_OFFSET, data_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                CHARACTER_DESCRIPTOR_LENGTH_OFFSET, len_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                CHARACTER_DESCRIPTOR_CAPACITY_OFFSET, capacity_addr, error_msg)) return
+        if (.not. emit_ptr_offset(context%session, descriptor, &
+                CHARACTER_DESCRIPTOR_STORAGE_OFFSET, storage_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, 0_c_int64_t), data_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, 0_c_int64_t), len_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, 0_c_int64_t), capacity_addr, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, 0_c_int64_t), storage_addr, error_msg)) return
+        context%symbols(index)%is_deferred_character = .true.
+        context%symbols(index)%character_length = 0
+        context%symbols(index)%has_character_value = .false.
+        context%symbols(index)%deferred_data = data_addr
+        context%symbols(index)%deferred_length = len_addr
+        context%symbols(index)%deferred_capacity = capacity_addr
+        context%symbols(index)%deferred_storage = storage_addr
+    end subroutine upgrade_existing_deferred_character_symbol
 
     subroutine set_character_storage(context, symbol_index, capacity, &
                                      storage_class, error_msg)
