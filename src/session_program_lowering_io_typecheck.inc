@@ -248,6 +248,7 @@
                     n = len(line)
                 end if
             end if
+            if (n == 0) cycle
             if (n > 0) then
                 if (line(n:n) == '&') then
                     stmt = stmt//' '//line(1:n - 1)
