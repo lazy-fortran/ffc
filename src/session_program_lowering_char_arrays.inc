@@ -676,44 +676,40 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index
         type(lr_operand_desc_t) :: slot_addr
-        type(lr_operand_desc_t) :: string_ptr
-        character(len=:), allocatable :: literal_text
-        character(len=64) :: string_name
-        logical :: fold_ok
+        type(lr_operand_desc_t) :: source_data, source_length
+        type(lr_operand_desc_t) :: source_copy, target_length
+        type(lr_operand_desc_t) :: copy_length, copy_length64, source_fits
 
         if (.not. node_exists(arena, node%value_index)) then
             error_msg = 'character array assignment value does not exist'
             return
         end if
-        call concat_character_literals(arena, node%value_index, literal_text, &
-                                       fold_ok)
-        if (.not. fold_ok) then
-            call unsupported_feature_error('character array assignment', &
-                node%line, node%column, 'direct LIRIC session supports only '// &
-                'character-literal assignment into character array elements', &
-                error_msg)
-            return
-        end if
-
         call lower_character_array_element_slot(arena, target, context, &
                                                 symbol_index, slot_addr, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        call normalize_character_literal(literal_text, &
-            context%symbols(symbol_index)%character_length)
-        context%string_literal_count = context%string_literal_count + 1
-        string_name = ffc_unit_global_name( &
-            context, 'char.', context%string_literal_count)
-        call materialize_liric_string(context%session, trim(string_name), &
-                                      literal_text, string_ptr, error_msg)
+        ! Evaluate the source before blank-filling the target. This preserves
+        ! Fortran's evaluate-before-store rule for aliases such as a(i)=a(j).
+        call char_expr_operands(arena, node%value_index, context, source_data, &
+                                source_length, error_msg)
         if (len_trim(error_msg) > 0) return
-        ! The element owns character_length bytes inside the array's block and
-        ! has no terminator of its own, so the normalized text is copied in at
-        ! exactly that width.
-        if (.not. emit_memcpy(context%session, slot_addr, string_ptr, &
-                i64_immediate(context%session, &
-                    int(context%symbols(symbol_index)%character_length, &
-                        c_int64_t)), error_msg)) then
+        call materialize_character_view(context, source_data, source_length, &
+                                        source_copy, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        target_length = i32_immediate(context%session, &
+            int(context%symbols(symbol_index)%character_length, c_int64_t))
+        call fill_spaces(context, slot_addr, target_length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, source_length, &
+                target_length, source_fits, error_msg)) return
+        call select_value(context, source_fits, source_length, target_length, &
+                          copy_length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, copy_length, &
+                copy_length64, error_msg)) return
+        if (.not. emit_memcpy(context%session, slot_addr, source_copy, &
+                copy_length64, error_msg)) then
             error_msg = 'char_arr_assign_store: '//error_msg
             return
         end if
