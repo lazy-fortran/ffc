@@ -504,7 +504,10 @@
         existing = find_function_index(context, node%name)
         if (existing /= 0 .and. present(node_index) .and. &
             context%function_node_indices(existing) > 0) then
-            if (.not. procedure_same_host_unit(context%arena, node_index, &
+            if ((procedure_is_internal_body(context%arena, node_index) .or. &
+                 procedure_is_internal_body(context%arena, &
+                    context%function_node_indices(existing))) .and. &
+                .not. procedure_same_host_unit(context%arena, node_index, &
                     context%function_node_indices(existing))) existing = 0
         end if
         if (existing /= 0) then
@@ -701,7 +704,10 @@
         existing = find_function_index(context, node%name)
         if (existing /= 0 .and. present(node_index) .and. &
             context%function_node_indices(existing) > 0) then
-            if (.not. procedure_same_host_unit(context%arena, node_index, &
+            if ((procedure_is_internal_body(context%arena, node_index) .or. &
+                 procedure_is_internal_body(context%arena, &
+                    context%function_node_indices(existing))) .and. &
+                .not. procedure_same_host_unit(context%arena, node_index, &
                     context%function_node_indices(existing))) existing = 0
         end if
         if (existing /= 0) then

@@ -1321,6 +1321,7 @@
             if (.not. same_name(context%function_names(i), name)) cycle
             candidate = context%function_node_indices(i)
             if (candidate <= 0) cycle
+            if (.not. procedure_is_internal_body(context%arena, candidate)) cycle
             if (procedure_same_host_unit(context%arena, candidate, &
                                          context%current_proc_node_index)) then
                 index = candidate
@@ -1366,6 +1367,16 @@
         reference_unit = containing_program_or_module(arena, reference_node_index)
         same = procedure_unit > 0 .and. procedure_unit == reference_unit
     end function procedure_same_host_unit
+
+    logical function procedure_is_internal_body(arena, procedure_node_index) &
+            result(is_internal)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: procedure_node_index
+
+        is_internal = procedure_is_internal(arena, procedure_node_index) .and. &
+                      .not. procedure_node_is_interface_signature(arena, &
+                          procedure_node_index)
+    end function procedure_is_internal_body
 
     integer function containing_program_or_module(arena, procedure_node_index) &
             result(unit_index)
