@@ -2232,8 +2232,33 @@
         type(lr_operand_desc_t) :: base_address
         character(len=:), allocatable :: base_error
 
-        if (.not. allocated(target%arg_indices) .or. &
-            (size(target%arg_indices) < 1 .or. size(target%arg_indices) > 4)) then
+        if (.not. allocated(target%arg_indices)) then
+            ! FortFront may retain a scalar component designator in a
+            ! call_or_subscript wrapper.  There is no element index in that
+            ! shape; unwrap the component before the generic scalar fallback
+            ! mistakes its derived RHS for an integer expression.
+            select type (base => arena%entries(target%base_expr_index)%node)
+            type is (component_access_node)
+                if (component_access_is_polymorphic(arena, base, context)) then
+                    call resolve_component_base(arena, base%base_expr_index, context, &
+                        base_symbol, base_type, base_address, base_error)
+                    if (len_trim(base_error) > 0) base_type = 0
+                    comp_index = 0
+                    if (base_type > 0) comp_index = find_derived_component(context, &
+                        base_type, base%component_name)
+                    if (base_type > 0 .and. comp_index > 0) then
+                        call lower_polymorphic_component_assignment(arena, node, &
+                            base, context, base_type, comp_index, error_msg)
+                        return
+                    end if
+                end if
+            end select
+            call unsupported_feature_error('derived component element', &
+                node%line, node%column, 'only rank-1 through rank-4 array component '// &
+                'access is supported', error_msg)
+            return
+        end if
+        if (size(target%arg_indices) < 1 .or. size(target%arg_indices) > 4) then
             call unsupported_feature_error('derived component element', &
                 node%line, node%column, 'only rank-1 through rank-4 array component '// &
                 'access is supported', error_msg)
