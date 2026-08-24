@@ -376,17 +376,15 @@ module session_program_lowering_types
         ! after assignment `value` holds the loaded callee ptr operand.
         logical :: is_proc_pointer = .false.
         ! File I/O (#247 B5c). When this symbol holds a Fortran unit number that
-        ! was opened via OPEN, file_ptr_address is the alloca'd ptr holding the
-        ! FILE* handle. is_file_unit is set to .true. at that point. The
-        ! form flag lets WRITE distinguish list-directed from unformatted
-        ! binary transfer for a unit opened in this lowering session.
+        ! was opened via OPEN, is_file_unit is set to .true. The form flag lets
+        ! WRITE distinguish list-directed from unformatted binary transfer for
+        ! a unit opened in this lowering session.
         logical :: is_file_unit = .false.
         logical :: is_unformatted = .false.
         ! Logical expressions use i32 semantic values internally. Keep the
         ! declared storage width separately so unformatted transfer preserves
         ! LOGICAL(KIND=...) byte size without changing expression lowering.
         integer :: logical_kind_bytes = 0
-        type(lr_operand_desc_t) :: file_ptr_address
         ! Straight-line constant integer assigned to this scalar, tracked only to
         ! link a unit number used by name (unit = 10) with WRITE/READ/REWIND that
         ! reference it by number. Kept separate from has_i32_constant so it does
