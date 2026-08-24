@@ -158,7 +158,7 @@
         end if
         if (actual_is_rank1_section_view(arena, node_index, context) .or. &
             actual_is_contiguous_section(arena, node_index, context, &
-                                         allow_derived=.false.)) then
+                                         allow_derived=.true.)) then
             rank = 1
             return
         end if
@@ -242,7 +242,7 @@
             call rank1_section_actual_base(arena, node_index, context, base, &
                                            error_msg)
         else if (actual_is_contiguous_section(arena, node_index, context, &
-                                              allow_derived=.false.)) then
+                                              allow_derived=.true.)) then
             call section_actual_address(arena, node_index, context, base, &
                                         error_msg)
         else if (actual_is_whole_array(arena, node_index, context)) then
@@ -356,7 +356,7 @@
             class default
             end select
         else if (actual_is_contiguous_section(arena, node_index, context, &
-                                              allow_derived=.false.)) then
+                                              allow_derived=.true.)) then
             call section_actual_decl_extents(context, node_index, 1, extents, ok)
         else if (is_identifier(arena, node_index)) then
             symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
