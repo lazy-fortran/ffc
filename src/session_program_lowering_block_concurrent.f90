@@ -9,6 +9,7 @@ contains
     logical :: terminated
     integer :: saved_symbol_count
     integer :: saved_floor
+    integer :: local_symbol_count
 
     call set_empty(error_msg)
     terminated = .false.
@@ -22,9 +23,17 @@ contains
         call lower_statement_list(arena, node%body_indices, context, value, &
             terminated, error_msg)
     end if
+    local_symbol_count = context%symbol_count
     ! Discard BLOCK-local symbols and their binding identities so neither
     ! a shadowed name nor a later declaration can reuse stale construct state.
     call pop_storage_scope(context, saved_symbol_count, saved_floor)
+    ! Slot allocation reuses the flat symbol array after a BLOCK. Clear the
+    ! discarded records as well as the count: declaration binding registration
+    ! treats a live binding flag as authoritative, and stale flags would make a
+    ! later block inherit the previous block's identity (#280).
+    if (local_symbol_count > saved_symbol_count) then
+        context%symbols(saved_symbol_count + 1:local_symbol_count) = symbol_t()
+    end if
     if (len_trim(error_msg) > 0) return
     if (terminated) context%current_block_terminated = terminated
     end procedure lower_block_construct
