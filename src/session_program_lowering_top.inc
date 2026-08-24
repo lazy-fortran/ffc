@@ -144,6 +144,16 @@
             call destroy(context%session)
             return
         end if
+        ! A multi-unit source stores its explicit PROGRAM below the container,
+        ! while collect_derived_type_definitions handles only the container's
+        ! direct children.  Register types declared in that nested program
+        ! before declaration metadata resolves their uses (#2888).
+        call collect_nested_program_derived_types(arena, root_index, context, &
+                                                  error_msg)
+        if (len_trim(error_msg) > 0) then
+            call destroy(context%session)
+            return
+        end if
         ! Parameterized derived types (#411): every declaration naming a PDT
         ! with constant actual parameters gets a concrete cached layout.
         call instantiate_pdt_declarations(arena, context, error_msg)
@@ -334,6 +344,50 @@
         call destroy(context%session)
         call set_empty(error_msg)
     end subroutine lower_program_to_liric_path
+
+    subroutine collect_nested_program_derived_types(arena, root_index, context, &
+                                                    error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: root_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, j, type_index
+        character(len=:), allocatable :: node_type
+        integer, allocatable :: body_indices(:)
+
+        call set_empty(error_msg)
+        do i = 1, arena%size
+            if (i == root_index .or. .not. node_exists(arena, i)) cycle
+            node_type = get_node_type_at(arena, i)
+            if (node_type /= 'program_node' .and. node_type /= 'program') cycle
+            select type (program => arena%entries(i)%node)
+            type is (program_node)
+                if (.not. allocated(program%body_indices)) cycle
+                body_indices = program%body_indices
+            class default
+                cycle
+            end select
+            ! Do not call collect_derived_type_definitions here: that routine
+            ! resets the table, which would discard module types already
+            ! registered from the other direct child of the container.
+            call reserve_derived_type_names(arena, body_indices, context)
+            do j = 1, size(body_indices)
+                if (.not. node_exists(arena, body_indices(j))) cycle
+                select type (decl => arena%entries(body_indices(j))%node)
+                type is (derived_type_node)
+                    call lower_derived_type_definition(decl, context, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    type_index = find_derived_type(context, trim(decl%name))
+                    if (type_index > 0 .and. context%derived_types(type_index)% &
+                        layout_registered) then
+                        call emit_type_info_constant(context, type_index, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end if
+                end select
+            end do
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine collect_nested_program_derived_types
 
     subroutine assert_declaration_collection_complete(context, error_msg)
         !! Executable lowering may only begin after all declaration bindings
