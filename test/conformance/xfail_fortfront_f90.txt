@@ -18,7 +18,6 @@ issue_1619_nested_types_complex.f90 # owner=lazy-fortran/ffc#540; reason=central
 issue_1740_optional_keyword_arguments.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 issue_1827_submodule_simple.f90 # owner=lazy-fortran/ffc#584; reason=consume parent interfaces for separate submodules
 issue_1827_submodule_with_contents.f90 # owner=lazy-fortran/ffc#584; reason=consume parent interfaces for separate submodules
-issue_1960_pointer_assignment_if.f90 # owner=lazy-fortran/ffc#540; reason=lower scalar data-pointer association
 issue_2070_entry_loses_argument_declarations.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 issue_2078_include_statement_silently_dropped.f90 # owner=lazy-fortran/ffc#540; reason=expand Fortran INCLUDE lines
 issue_2162_entry_wrapping.f90 # owner=lazy-fortran/ffc#579; reason=compile procedure-only translation units
