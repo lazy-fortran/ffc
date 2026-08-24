@@ -384,7 +384,7 @@
             error_msg = 'assumed-shape actual has no resolvable extent'
             return
         end if
-        if (extents(dim) < 1) then
+        if (extents(dim) < 0) then
             error_msg = 'assumed-shape actual has no resolvable extent'
             return
         end if
