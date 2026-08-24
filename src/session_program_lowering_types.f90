@@ -483,6 +483,10 @@ module session_program_lowering_types
         ! its value lives in a separately malloc'd slot reached by loading the
         ! pointer. Null pointer marks it unallocated.
         logical, allocatable :: component_is_allocatable(:)
+        ! True for a polymorphic derived allocatable component (class(t),
+        ! allocatable). component_type_index remains the declared type t;
+        ! consumers use this bit to retain dynamic type identity.
+        logical, allocatable :: component_is_polymorphic(:)
         ! True for a scalar data-pointer component (integer/real/logical).
         ! Such a component stores an 8-byte target address (two i32 slots)
         ! inline; a null address marks it disassociated. `=>` writes the

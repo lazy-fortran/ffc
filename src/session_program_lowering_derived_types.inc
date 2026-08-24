@@ -141,6 +141,9 @@
             if (allocated(context%derived_types(i)%component_type_index)) then
                 deallocate(context%derived_types(i)%component_type_index)
             end if
+            if (allocated(context%derived_types(i)%component_is_polymorphic)) then
+                deallocate(context%derived_types(i)%component_is_polymorphic)
+            end if
         end do
         context%derived_type_count = 0
         context%derived_type_alias_count = 0
@@ -908,6 +911,8 @@
             deallocate(context%derived_types(type_index)%component_type_index)
         if (allocated(context%derived_types(type_index)%component_is_allocatable)) &
             deallocate(context%derived_types(type_index)%component_is_allocatable)
+        if (allocated(context%derived_types(type_index)%component_is_polymorphic)) &
+            deallocate(context%derived_types(type_index)%component_is_polymorphic)
         if (allocated(context%derived_types(type_index)%component_is_pointer)) &
             deallocate(context%derived_types(type_index)%component_is_pointer)
         if (allocated(context%derived_types(type_index)%component_is_alloc_array)) &
@@ -1210,6 +1215,7 @@
                     parent%component_value_kind(c), error_msg, &
                     parent%component_type_index(c), &
                     is_allocatable=parent%component_is_allocatable(c), &
+                    is_polymorphic=parent%component_is_polymorphic(c), &
                     comp_char_length=parent%component_char_length(c), &
                     is_alloc_array=parent%component_is_alloc_array(c), &
                     alloc_rank=parent%component_alloc_rank(c), &
@@ -1674,14 +1680,17 @@ subroutine collect_component_declaration(component_index, parent_line, &
                     call add_derived_component(context, type_index, &
                         component%var_names(i), component%line, component%column, &
                         .false., 0_c_int64_t, 1, VALUE_DERIVED, error_msg, &
-                        nested_type_index, is_allocatable=.true.)
+                        nested_type_index, is_allocatable=.true., &
+                        is_polymorphic=is_class_derived_type_spec( &
+                            component%type_name))
                     if (len_trim(error_msg) > 0) return
                 end do
             else if (allocated(component%var_name)) then
                 call add_derived_component(context, type_index, component%var_name, &
                     component%line, component%column, .false., 0_c_int64_t, 1, &
                     VALUE_DERIVED, error_msg, nested_type_index, &
-                    is_allocatable=.true.)
+                    is_allocatable=.true., &
+                    is_polymorphic=is_class_derived_type_spec(component%type_name))
             else
                 error_msg = 'derived type component declaration did not expose a name'
             end if
@@ -2139,7 +2148,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                                      value_kind, error_msg, comp_type_index, &
                                      is_allocatable, comp_char_length, &
                                      is_alloc_array, alloc_rank, comp_dim1, &
-                                     is_pointer)
+                                     is_pointer, is_polymorphic)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: type_index
         character(len=*), intent(in) :: name
@@ -2154,6 +2163,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
         integer, intent(in), optional :: comp_type_index
         ! True for a scalar allocatable component (descriptor-in-struct pointer).
         logical, intent(in), optional :: is_allocatable
+        ! True for a polymorphic derived allocatable component (class(t)).
+        logical, intent(in), optional :: is_polymorphic
         ! True for a rank-1 allocatable array component (inline descriptor).
         logical, intent(in), optional :: is_alloc_array
         integer, intent(in), optional :: alloc_rank
@@ -2195,6 +2206,11 @@ subroutine collect_component_declaration(component_index, parent_line, &
         if (present(is_allocatable)) &
             context%derived_types(type_index)%component_is_allocatable( &
                 component_index) = is_allocatable
+        context%derived_types(type_index)%component_is_polymorphic(component_index) = &
+            .false.
+        if (present(is_polymorphic)) &
+            context%derived_types(type_index)%component_is_polymorphic( &
+                component_index) = is_polymorphic
         context%derived_types(type_index)%component_is_alloc_array(component_index) = &
             .false.
         if (present(is_alloc_array)) &
@@ -2245,6 +2261,8 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 deallocate(context%derived_types(type_index)%component_type_index)
             if (allocated(context%derived_types(type_index)%component_is_allocatable)) &
                 deallocate(context%derived_types(type_index)%component_is_allocatable)
+            if (allocated(context%derived_types(type_index)%component_is_polymorphic)) &
+                deallocate(context%derived_types(type_index)%component_is_polymorphic)
             if (allocated(context%derived_types(type_index)%component_is_alloc_array)) &
                 deallocate(context%derived_types(type_index)%component_is_alloc_array)
             if (allocated(context%derived_types(type_index)%component_alloc_rank)) &
@@ -2262,6 +2280,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             allocate(context%derived_types(type_index)%component_value_kind(8))
             allocate(context%derived_types(type_index)%component_type_index(8))
             allocate(context%derived_types(type_index)%component_is_allocatable(8))
+            allocate(context%derived_types(type_index)%component_is_polymorphic(8))
             allocate(context%derived_types(type_index)%component_is_alloc_array(8))
             allocate(context%derived_types(type_index)%component_alloc_rank(8))
             allocate(context%derived_types(type_index)%component_is_pointer(8))
@@ -2273,6 +2292,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             context%derived_types(type_index)%component_value_kind = VALUE_I32
             context%derived_types(type_index)%component_type_index = 0
             context%derived_types(type_index)%component_is_allocatable = .false.
+            context%derived_types(type_index)%component_is_polymorphic = .false.
             context%derived_types(type_index)%component_is_alloc_array = .false.
             context%derived_types(type_index)%component_alloc_rank = 0
             context%derived_types(type_index)%component_is_pointer = .false.
@@ -2295,6 +2315,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
             integer, allocatable :: old_vk(:)
             integer, allocatable :: old_ti(:)
             logical, allocatable :: old_ia(:)
+            logical, allocatable :: old_ipoly(:)
             logical, allocatable :: old_iaa(:)
             integer, allocatable :: old_ar(:)
             logical, allocatable :: old_ip(:)
@@ -2307,6 +2328,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 old_vk = dt%component_value_kind
                 old_ti = dt%component_type_index
                 old_ia = dt%component_is_allocatable
+                old_ipoly = dt%component_is_polymorphic
                 old_iaa = dt%component_is_alloc_array
                 old_ar = dt%component_alloc_rank
                 old_ip = dt%component_is_pointer
@@ -2318,6 +2340,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 deallocate(dt%component_value_kind)
                 deallocate(dt%component_type_index)
                 deallocate(dt%component_is_allocatable)
+                deallocate(dt%component_is_polymorphic)
                 deallocate(dt%component_is_alloc_array)
                 deallocate(dt%component_alloc_rank)
                 deallocate(dt%component_is_pointer)
@@ -2329,6 +2352,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 allocate(dt%component_value_kind(new_size))
                 allocate(dt%component_type_index(new_size))
                 allocate(dt%component_is_allocatable(new_size))
+                allocate(dt%component_is_polymorphic(new_size))
                 allocate(dt%component_is_alloc_array(new_size))
                 allocate(dt%component_alloc_rank(new_size))
                 allocate(dt%component_is_pointer(new_size))
@@ -2340,6 +2364,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 dt%component_value_kind = VALUE_I32
                 dt%component_type_index = 0
                 dt%component_is_allocatable = .false.
+                dt%component_is_polymorphic = .false.
                 dt%component_is_alloc_array = .false.
                 dt%component_alloc_rank = 0
                 dt%component_is_pointer = .false.
@@ -2351,6 +2376,7 @@ subroutine collect_component_declaration(component_index, parent_line, &
                 dt%component_value_kind(1:old_size) = old_vk
                 dt%component_type_index(1:old_size) = old_ti
                 dt%component_is_allocatable(1:old_size) = old_ia
+                dt%component_is_polymorphic(1:old_size) = old_ipoly
                 dt%component_is_alloc_array(1:old_size) = old_iaa
                 dt%component_alloc_rank(1:old_size) = old_ar
                 dt%component_is_pointer(1:old_size) = old_ip
