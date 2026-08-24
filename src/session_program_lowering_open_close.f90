@@ -147,7 +147,7 @@ contains
         ! F2018 12.5.6.12: OPEN with NEWUNIT= must also give FILE= or
         ! STATUS='SCRATCH'; without either there is nothing to connect to.
         if (len_trim(nuvar) > 0 .and. len_trim(fpath) == 0) then
-            if (status_quoted .and. trim(sstr) /= 'scratch') then
+            if (.not. status_quoted .or. trim(sstr) /= 'scratch') then
                 error_msg = 'NEWUNIT specifier must have FILE= or '// &
                     'STATUS=''SCRATCH'' in OPEN statement'
                 return
