@@ -805,6 +805,10 @@
 
         value_kind = VALUE_I32
         call set_empty(error_msg)
+        if (len_trim(type_name) == 0) then
+            value_kind = VALUE_I32
+            return
+        end if
         if (is_character_type_name(type_name)) then
             value_kind = VALUE_CHARACTER
             return
@@ -819,8 +823,10 @@
                 type_name(paren + 1:index(type_name, ')', back=.true.) - 1))))
             ! Normalize the explicit "kind=" keyword form so kind-name matching
             ! below sees the bare selector (kind=8 -> 8, real(kind=8) -> 8).
-            if (index(kind_spec, 'kind=') == 1) then
-                kind_spec = trim(adjustl(kind_spec(6:)))
+            if (index(kind_spec, 'kind') == 1) then
+                kind_spec = trim(adjustl(kind_spec(5:)))
+                if (index(kind_spec, '=') == 1) kind_spec = &
+                    trim(adjustl(kind_spec(2:)))
             end if
         else
             base = lowercase_text(trim(adjustl(type_name)))

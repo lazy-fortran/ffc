@@ -574,11 +574,12 @@ contains
         character(len=:), allocatable :: token
         integer, allocatable :: param_indices(:)
         integer :: nargs, i, value_kind
-        logical :: is_external, opaque_subroutine
+        logical :: is_external, opaque_subroutine, is_bind_c_procedure
         type(subroutine_def_node), pointer :: sb_node
 
         is_external = .false.
         if (present(external_binding)) is_external = external_binding
+        is_bind_c_procedure = procedure_has_bind_c(arena, node_index)
 
         call fmod_procedure_signature(arena, context, node_index, mod_node, &
                                       kind_text, nargs, arg_tokens, &
@@ -606,7 +607,7 @@ contains
                 call grow_fmod_procs(procs, count)
                 procs(count)%name = trim(sb_node%name)
                 procs(count)%external_name = ''
-                if (is_external) procs(count)%external_name = &
+                if (is_external .or. is_bind_c_procedure) procs(count)%external_name = &
                     fmod_procedure_external_name(arena, node_index)
                 procs(count)%kind = 'subroutine'
                 procs(count)%nargs = 0
@@ -625,7 +626,7 @@ contains
                 procs(count)%arg_class_type_identities = ''
                 procs(count)%opaque = .true.
                 procs(count)%callable = .true.
-                procs(count)%external_binding = is_external
+                procs(count)%external_binding = is_external .or. is_bind_c_procedure
                 procs(count)%deferred_body = deferred_body
                 if (allocated(param_indices)) then
                     nargs = size(param_indices)
@@ -689,7 +690,7 @@ contains
             call grow_fmod_procs(procs, count)
             procs(count)%name = proc_name
             procs(count)%external_name = ''
-            if (is_external) procs(count)%external_name = &
+            if (is_external .or. is_bind_c_procedure) procs(count)%external_name = &
                 fmod_procedure_external_name(arena, node_index)
             procs(count)%kind = 'unsupported'
             procs(count)%arg_kinds = ''
@@ -705,7 +706,7 @@ contains
             procs(count)%arg_class_types = ''
             procs(count)%arg_class_type_identities = ''
             procs(count)%callable = .false.
-            procs(count)%external_binding = is_external
+            procs(count)%external_binding = is_external .or. is_bind_c_procedure
             procs(count)%deferred_body = deferred_body
             procs(count)%nargs = 0
             return
@@ -714,7 +715,7 @@ contains
         call grow_fmod_procs(procs, count)
         procs(count)%name = procedure_fortran_name(arena, node_index)
         procs(count)%external_name = ''
-        if (is_external) procs(count)%external_name = &
+        if (is_external .or. is_bind_c_procedure) procs(count)%external_name = &
             fmod_procedure_external_name(arena, node_index)
         procs(count)%kind = kind_text
         procs(count)%nargs = nargs
@@ -726,7 +727,7 @@ contains
                                            procs(count)%arg_class_types, &
                                            procs(count)%arg_class_type_identities)
         procs(count)%callable = .true.
-        procs(count)%external_binding = is_external
+        procs(count)%external_binding = is_external .or. is_bind_c_procedure
         procs(count)%arg_names = fmod_procedure_arg_names(arena, node_index)
         procs(count)%deferred_body = deferred_body
         call fmod_procedure_dummy_attributes(arena, node_index, &
@@ -737,6 +738,26 @@ contains
                                    procs(count)%result_name, &
                                    procs(count)%result_kind)
     end subroutine record_fmod_procedure
+
+    logical function procedure_has_bind_c(arena, node_index) result(has_bind)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(function_def_node), pointer :: fn_node
+        type(subroutine_def_node), pointer :: sb_node
+
+        has_bind = .false.
+        fn_node => get_node_as_function_def(arena, node_index)
+        if (associated(fn_node)) then
+            if (allocated(fn_node%bind_c_clause)) has_bind = &
+                has_bind_c(fn_node%bind_c_clause)
+            return
+        end if
+        sb_node => get_node_as_subroutine_def(arena, node_index)
+        if (associated(sb_node)) then
+            if (allocated(sb_node%bind_c_clause)) has_bind = &
+                has_bind_c(sb_node%bind_c_clause)
+        end if
+    end function procedure_has_bind_c
 
     module subroutine fmod_procedure_result(arena, node_index, kind_text, result_name, &
                                      result_kind)

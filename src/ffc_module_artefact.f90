@@ -404,6 +404,7 @@ contains
                 call grow_vars(vars, nvar)
                 vars(nvar)%name = ''
                 vars(nvar)%kind = ''
+                vars(nvar)%c_name = ''
                 cycle
             else if (line == '[[procedure]]') then
                 call flush_component(comps, ncomp, dtypes, ndtype)
