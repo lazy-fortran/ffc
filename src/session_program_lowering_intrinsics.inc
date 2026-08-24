@@ -930,6 +930,12 @@
         case (F64_INTRINSIC_HYPOT)
             call lower_f64_libm_call(arena, node, 'hypot', 2, context, value, &
                                      error_msg)
+        case (F64_INTRINSIC_MOD)
+            call lower_f64_remainder_intrinsic(arena, node, 'trunc', context, &
+                                               value, error_msg)
+        case (F64_INTRINSIC_MODULO)
+            call lower_f64_remainder_intrinsic(arena, node, 'floor', context, &
+                                               value, error_msg)
         case (F64_INTRINSIC_AINT)
             call lower_f64_real_conversion(arena, node, 'trunc', context, &
                                            value, error_msg)
@@ -1540,6 +1546,38 @@
         if (.not. emit_liric_f64_call(context%session, libm_name, args, value, &
                                       error_msg)) return
     end subroutine lower_f64_libm_call
+
+    ! MOD uses truncation toward zero; MODULO uses floor so the result has
+    ! the divisor's sign.
+    subroutine lower_f64_remainder_intrinsic(arena, node, rounding_name, &
+                                             context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        character(len=*), intent(in) :: rounding_name
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: a, p, quotient, rounded, product
+        type(lr_operand_desc_t) :: args(1)
+
+        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        call lower_f64_intrinsic_arg(arena, node%arg_indices(1), context, a, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_f64_intrinsic_arg(arena, node%arg_indices(2), context, p, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        if (.not. emit_liric_f64_binary(context%session, LR_OP_FDIV, a, p, &
+                                        quotient, error_msg)) return
+        args(1) = quotient
+        if (.not. emit_liric_f64_call(context%session, rounding_name, args, &
+                                      rounded, error_msg)) return
+        if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, rounded, &
+                                        p, product, error_msg)) return
+        if (.not. emit_liric_f64_binary(context%session, LR_OP_FSUB, a, product, &
+                                        value, error_msg)) return
+    end subroutine lower_f64_remainder_intrinsic
 
     recursive subroutine lower_f64_intrinsic_arg(arena, node_index, context, value, &
                                        error_msg)

@@ -1,6 +1,6 @@
 program test_session_integer_intrinsic_compiler
     use ffc_test_support, only: expect_exit_status, expect_output, &
-        expect_error_contains
+        expect_error_contains, expect_output_matches_gfortran
     implicit none
 
     logical :: all_passed
@@ -29,6 +29,7 @@ program test_session_integer_intrinsic_compiler
     if (.not. test_real_conversion_intrinsic()) all_passed = .false.
     if (.not. test_unsupported_intrinsic_diagnostic()) all_passed = .false.
     if (.not. test_real_modulo_sign_of_divisor()) all_passed = .false.
+    if (.not. test_double_remainder_matches_gfortran()) all_passed = .false.
     if (.not. test_user_function_shadowing()) all_passed = .false.
     if (.not. test_integer_modulo_positive()) all_passed = .false.
     if (.not. test_integer_modulo_negative_divisor()) all_passed = .false.
@@ -331,6 +332,19 @@ contains
         test_real_modulo_sign_of_divisor = expect_exit_status( &
             source, 0, '/tmp/ffc_session_real_modulo_test')
     end function test_real_modulo_sign_of_divisor
+
+    logical function test_double_remainder_matches_gfortran()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  print *, mod(-8.5d0, 5.0d0), modulo(-8.5d0, 5.0d0)'// &
+            new_line('a')// &
+            '  print *, mod(8.5d0, -5.0d0), modulo(8.5d0, -5.0d0)'// &
+            new_line('a')// &
+            'end program main'
+
+        test_double_remainder_matches_gfortran = &
+            expect_output_matches_gfortran(source, 'double_remainder_intrinsics')
+    end function test_double_remainder_matches_gfortran
 
     logical function test_user_function_shadowing()
         character(len=*), parameter :: source = &
