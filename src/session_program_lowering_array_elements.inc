@@ -1374,20 +1374,6 @@
         end select
     end subroutine array_section_assignment_rhs_extent
 
-    subroutine lower_array_section_print(arena, slice_node, context, error_msg)
-        type(ast_arena_t), intent(in) :: arena
-        type(array_slice_node), intent(in) :: slice_node
-        type(lowering_context_t), intent(inout) :: context
-        character(len=:), allocatable, intent(out) :: error_msg
-        logical :: handled
-
-        call emit_array_section_print_items(arena, slice_node, context, handled, &
-                                            error_msg)
-        if (.not. handled .or. len_trim(error_msg) > 0) return
-        if (.not. emit_liric_print_newline(context%session, error_msg)) return
-        call set_empty(error_msg)
-    end subroutine lower_array_section_print
-
     subroutine emit_array_section_print_items(arena, slice_node, context, handled, &
                                               error_msg)
         !! Emit every element of an array-section print item (a(lo:hi:st)) in
@@ -1438,23 +1424,6 @@
         end do
         call set_empty(error_msg)
     end subroutine emit_array_section_print_items
-
-    subroutine lower_whole_array_print(arena, expr_index, context, handled, error_msg)
-        !! print *, a for a bare integer or real array: emit each element in
-        !! storage order with list-directed spacing, matching gfortran. handled
-        !! stays false when expr is not a bare supported-array identifier.
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: expr_index
-        type(lowering_context_t), intent(inout) :: context
-        logical, intent(out) :: handled
-        character(len=:), allocatable, intent(out) :: error_msg
-
-        call emit_whole_array_print_items(arena, expr_index, context, handled, &
-                                          error_msg)
-        if (.not. handled .or. len_trim(error_msg) > 0) return
-        if (.not. emit_liric_print_newline(context%session, error_msg)) return
-        call set_empty(error_msg)
-    end subroutine lower_whole_array_print
 
     subroutine emit_whole_array_print_items(arena, expr_index, context, handled, &
                                             error_msg, prev_is_char)
