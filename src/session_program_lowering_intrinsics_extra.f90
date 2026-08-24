@@ -219,8 +219,13 @@ contains
         integer(c_int) :: predicate
         integer :: vk
 
-        call load_array_linear_element(context, mask_sym, linear_index, elem, &
-            error_msg)
+        if (context%symbols(mask_sym)%has_runtime_dim_size(1)) then
+            call load_array_element_at_operand(context, mask_sym, &
+                i32_immediate(context%session, linear_index), elem, error_msg)
+        else
+            call load_array_linear_element(context, mask_sym, linear_index, elem, &
+                error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
         vk = context%symbols(mask_sym)%value_kind
         select case (vk)
@@ -262,6 +267,126 @@ contains
                 value, error_msg)) return
         end select
     end subroutine lower_comparison_mask_element
+
+    subroutine lower_runtime_comparison_reduction(arena, context, mask_sym, &
+            scalar_index, array_on_left, source_op, reduction_name, value, &
+            error_msg)
+        ! Runtime-extent whole-array comparisons use the same descriptor-aware
+        ! element loader as bare logical reductions.  Keep this deliberately
+        ! rank-1: resolve_comparison_mask only admits one array operand, and
+        ! higher-rank comparison masks remain an explicit unsupported form.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: mask_sym, scalar_index
+        logical, intent(in) :: array_on_left
+        character(len=*), intent(in) :: source_op, reduction_name
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: extent, accumulator, identity, element, &
+            condition, next_accumulator, entry_index, header_index, &
+            backedge_index, next_index
+        integer(c_int32_t) :: entry_block, header_block, body_block, &
+            latch_block, exit_block, index_vreg
+
+        call set_empty(error_msg)
+        if (context%symbols(mask_sym)%array_rank /= 1) then
+            error_msg = trim(reduction_name)// &
+                ' over runtime comparison masks supports rank 1 only'
+            return
+        end if
+        extent = context%symbols(mask_sym)%runtime_dim_size(1)
+        call runtime_reduction_accumulator_slot(context, VALUE_I32, &
+            reduction_name, accumulator, identity, error_msg)
+        if (len_trim(error_msg) > 0) return
+        value = identity
+
+        entry_index = i32_immediate(context%session, 0_c_int64_t)
+        entry_block = context%current_block_id
+        header_block = create_liric_block(context%session)
+        body_block = create_liric_block(context%session)
+        latch_block = create_liric_block(context%session)
+        exit_block = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, header_block, error_msg)) return
+        context%current_block_id = header_block
+        context%current_block_terminated = .false.
+        index_vreg = reserve_i32_vreg(context%session)
+        if (index_vreg == 0_c_int32_t) index_vreg = reserve_i32_vreg(context%session)
+        if (index_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve a positive backedge vreg'
+            return
+        end if
+        backedge_index = i32_vreg(context%session, index_vreg)
+        if (.not. emit_liric_i32_phi(context%session, entry_index, entry_block, &
+            backedge_index, latch_block, header_index, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_index, &
+            extent, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, body_block, &
+            exit_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, body_block, error_msg)) return
+        context%current_block_id = body_block
+        context%current_block_terminated = .false.
+        call load_array_element_at_operand(context, mask_sym, header_index, &
+            element, error_msg)
+        if (len_trim(error_msg) > 0) return
+        block
+            type(lr_operand_desc_t) :: scalar, lhs, rhs
+            integer(c_int) :: predicate
+            integer :: vk
+            vk = context%symbols(mask_sym)%value_kind
+            select case (vk)
+            case (VALUE_F32)
+                call lower_f32_expression(arena, scalar_index, context, scalar, error_msg)
+            case (VALUE_F64)
+                call lower_f64_expression(arena, scalar_index, context, scalar, error_msg)
+            case default
+                call lower_i32_expression(arena, scalar_index, context, scalar, error_msg)
+            end select
+            if (len_trim(error_msg) > 0) return
+            if (array_on_left) then
+                lhs = element
+                rhs = scalar
+            else
+                lhs = scalar
+                rhs = element
+            end if
+            select case (vk)
+            case (VALUE_F32)
+                call real_compare_predicate(source_op, predicate, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f32_fcmp(context%session, predicate, lhs, rhs, &
+                    condition, error_msg)) return
+            case (VALUE_F64)
+                call real_compare_predicate(source_op, predicate, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_f64_fcmp(context%session, predicate, lhs, rhs, &
+                    condition, error_msg)) return
+            case default
+                call integer_compare_predicate(source_op, predicate, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, predicate, lhs, rhs, &
+                    condition, error_msg)) return
+            end select
+        end block
+        call runtime_reduction_accumulate(context, VALUE_I32, reduction_name, &
+            accumulator, condition, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+        if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+        context%current_block_id = latch_block
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_index, &
+            i32_immediate(context%session, 1_c_int64_t), index_vreg, next_index, &
+            error_msg)) return
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+        if (.not. set_liric_block(context%session, exit_block, error_msg)) return
+        context%current_block_id = exit_block
+        context%current_block_terminated = .false.
+        call runtime_sum_result(context, VALUE_I32, reduction_name, accumulator, &
+            value, error_msg)
+    end subroutine lower_runtime_comparison_reduction
 
     ! Float comparison predicate mirroring integer_compare_predicate. Uses the
     ! ordered float predicates so NaN compares false, matching Fortran.
@@ -341,6 +466,12 @@ contains
             error_msg)
         if (len_trim(error_msg) > 0) return
         if (sym > 0) then
+            if (context%symbols(sym)%has_runtime_dim_size(1)) then
+                call lower_runtime_comparison_reduction(arena, context, sym, &
+                    scalar_index, array_on_left, source_op, 'count', value, &
+                    error_msg)
+                return
+            end if
             array_size = context%symbols(sym)%array_size
             total = i32_immediate(context%session, 0_c_int64_t)
             do i = 0, array_size - 1
@@ -427,7 +558,9 @@ contains
         if (len_trim(error_msg) > 0) return
         if (sym > 0) then
             if (context%symbols(sym)%has_runtime_dim_size(1)) then
-                error_msg = 'any over runtime-extent array comparisons is not supported'
+                call lower_runtime_comparison_reduction(arena, context, sym, &
+                    scalar_index, array_on_left, source_op, 'any', value, &
+                    error_msg)
                 return
             end if
         end if
@@ -517,7 +650,9 @@ contains
         if (len_trim(error_msg) > 0) return
         if (sym > 0) then
             if (context%symbols(sym)%has_runtime_dim_size(1)) then
-                error_msg = 'all over runtime-extent array comparisons is not supported'
+                call lower_runtime_comparison_reduction(arena, context, sym, &
+                    scalar_index, array_on_left, source_op, 'all', value, &
+                    error_msg)
                 return
             end if
         end if

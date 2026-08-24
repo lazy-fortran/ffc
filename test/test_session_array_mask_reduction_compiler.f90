@@ -14,6 +14,7 @@ program test_session_array_mask_reduction_compiler
     if (.not. test_elemental_abs_mask()) all_passed = .false.
     if (.not. test_complex_allocatable_abs_mask()) all_passed = .false.
     if (.not. test_user_elemental_abs_mask()) all_passed = .false.
+    if (.not. test_runtime_comparison_mask()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: any/all over whole-array comparisons lower correctly'
@@ -137,5 +138,21 @@ contains
         test_user_elemental_abs_mask = expect_error_contains( &
             source, 'AST node is not an identifier', '/tmp/ffc_mask_user_abs')
     end function test_user_elemental_abs_mask
+
+    logical function test_runtime_comparison_mask()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '    integer, allocatable :: a(:)'//new_line('a')// &
+            '    allocate(a(4))'//new_line('a')// &
+            '    a = [1, 3, 5, 2]'//new_line('a')// &
+            '    if (count(a > 2) /= 2) error stop 1'//new_line('a')// &
+            '    if (.not. any(a == 5)) error stop 2'//new_line('a')// &
+            '    if (all(a > 2)) error stop 3'//new_line('a')// &
+            '    print *, "ok"'//new_line('a')// &
+            'end program main'
+
+        test_runtime_comparison_mask = expect_output( &
+            source, ' ok'//new_line('a'), '/tmp/ffc_mask_runtime_comparison')
+    end function test_runtime_comparison_mask
 
 end program test_session_array_mask_reduction_compiler
