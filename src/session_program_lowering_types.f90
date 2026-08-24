@@ -140,18 +140,19 @@ module session_program_lowering_types
     integer, parameter, public :: F64_INTRINSIC_MODULO = 29
     integer, parameter, public :: F64_INTRINSIC_AINT = 30
     integer, parameter, public :: F64_INTRINSIC_ANINT = 31
-    character(len=18), parameter, public :: I32_INTRINSIC_NAMES(28) = &
+    character(len=18), parameter, public :: I32_INTRINSIC_NAMES(29) = &
         [character(len=18) :: 'abs', 'min', 'max', 'mod', &
-        'iand', 'ior', 'ieor', 'not', 'ishft', &
+        'iand', 'ior', 'ieor', 'xor', 'not', 'ishft', &
         'ishftc', 'sign', 'int', 'nint', 'floor', &
         'ceiling', 'matmul', 'transpose', &
         'dot_product', 'reshape', 'selected_int_kind', &
         'selected_real_kind', 'modulo', 'dim', 'iabs', &
         'ibits', 'ibset', 'ibclr', 'bit_size']
-    integer, parameter, public :: I32_INTRINSIC_IDS(28) = &
+    integer, parameter, public :: I32_INTRINSIC_IDS(29) = &
         [I32_INTRINSIC_ABS, I32_INTRINSIC_MIN, I32_INTRINSIC_MAX, &
         I32_INTRINSIC_MOD, I32_INTRINSIC_IAND, I32_INTRINSIC_IOR, &
-        I32_INTRINSIC_IEOR, I32_INTRINSIC_NOT, I32_INTRINSIC_ISHFT, &
+        I32_INTRINSIC_IEOR, I32_INTRINSIC_IEOR, I32_INTRINSIC_NOT, &
+        I32_INTRINSIC_ISHFT, &
         I32_INTRINSIC_ISHFTC, I32_INTRINSIC_SIGN, I32_INTRINSIC_INT, &
         I32_INTRINSIC_NINT, I32_INTRINSIC_FLOOR, &
         I32_INTRINSIC_CEILING, I32_INTRINSIC_MATMUL, &

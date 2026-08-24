@@ -249,6 +249,7 @@ contains
     integer :: call_arg_kinds(MAX_PROC_ARGS)
     integer :: call_arg_ranks(MAX_PROC_ARGS)
     integer(c_int64_t) :: constant_value
+    character(len=:), allocatable :: fold_error
 
     if (node%base_expr_index > 0) then
         call lower_derived_component_element_load(arena, node, context, value, &
@@ -278,6 +279,18 @@ contains
     if (len_trim(error_msg) > 0) return
     call_name = degeneric_call_name(context, node%name, &
         call_arg_count, call_arg_kinds, call_arg_ranks)
+
+    if (same_name(node%name, 'merge') .or. same_name(node%name, 'product') .or. &
+        same_name(node%name, 'dot_product') .or. same_name(node%name, 'sum') .or. &
+        same_name(node%name, 'maxval') .or. same_name(node%name, 'minval')) then
+        call eval_kind_inquiry_constant(arena, node, context, constant_value, &
+            fold_error)
+        if (len_trim(fold_error) == 0) then
+            value = i32_immediate(context%session, constant_value)
+            call set_empty(error_msg)
+            return
+        end if
+    end if
 
     ! A use-associated generic resolves to one of its specifics first, so the
     ! external lookup uses the resolved name (#415).
