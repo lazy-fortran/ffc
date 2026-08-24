@@ -268,7 +268,8 @@
                 ! An unlimited-polymorphic assumed-shape dummy uses the array
                 ! descriptor ABI, not the scalar {data,type_id} box. The
                 ! descriptor's reserved word carries the runtime type id.
-                if (.not. actual_is_whole_array(arena, arg_indices(i), context)) then
+                if (.not. actual_is_whole_array(arena, arg_indices(i), context) .and. &
+                    .not. actual_is_array_expression(arena, arg_indices(i), context)) then
                     if (actual_is_allocatable_array(arena, arg_indices(i), context)) then
                         error_msg = 'unsupported class(*) assumed-shape actual in '// &
                             trim(callee_name)//': allocatable ownership is refused'
@@ -2371,6 +2372,23 @@ recursive integer function expression_value_kind(arena, node_index, context, &
         end if
 
         select type (node => arena%entries(node_index)%node)
+        type is (array_literal_node)
+            ! An explicit constructor type-spec is authoritative for an
+            ! array-valued actual.  Without this, the descriptor materializer's
+            ! VALUE_F32 default turns integer constructors into real storage.
+            if (allocated(node%type_spec)) then
+                if (index(lowercase_text(node%type_spec), 'integer') > 0) then
+                    value_kind = VALUE_I32
+                else if (index(lowercase_text(node%type_spec), 'real') > 0) then
+                    value_kind = VALUE_F32
+                end if
+            else if (allocated(node%element_type)) then
+                if (index(lowercase_text(node%element_type), 'integer') > 0) then
+                    value_kind = VALUE_I32
+                else if (index(lowercase_text(node%element_type), 'real') > 0) then
+                    value_kind = VALUE_F32
+                end if
+            end if
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
                 ! Generic interface: resolve full call signature and look up the

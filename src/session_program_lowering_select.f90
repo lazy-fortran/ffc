@@ -1150,6 +1150,13 @@ contains
         call select_type_guard_kind(arena, guard_index, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
         selector_is_array = context%symbols(sel_index)%is_array
+        if (selector_is_array .and. value_kind == VALUE_F64) then
+            ! `type is (real)` denotes default REAL.  The class(*) array
+            ! descriptor carries the actual's byte stride, while the typed
+            ! arm must load default-real elements as f32 rather than widening
+            ! their four-byte storage to f64.
+            value_kind = VALUE_F32
+        end if
         idx = find_symbol_compat(context, assoc_name)
         if (selector_is_array) then
             ! SELECT TYPE on class(*) assumed-shape keeps the descriptor-backed
@@ -1163,6 +1170,7 @@ contains
             context%symbols(idx) = context%symbols(sel_index)
             context%symbols(idx)%name = trim(assoc_name)
             context%symbols(idx)%value_kind = value_kind
+            context%symbols(idx)%is_runtime_array = .true.
             context%symbols(idx)%is_class_pointer = .false.
             context%symbols(idx)%is_polymorphic = .false.
             context%symbols(idx)%has_dynamic_type_address = .false.
