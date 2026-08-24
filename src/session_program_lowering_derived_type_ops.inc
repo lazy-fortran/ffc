@@ -1318,6 +1318,7 @@
                     context%symbols(index)%is_pointer = .true.
                     context%symbols(index)%is_associated = .true.
                 end if
+                if (node%is_target) context%symbols(index)%is_target = .true.
                 if (declaration_is_class_polymorphic(node)) then
                     ! class(t) dummy: the parameter pointer is the caller's
                     ! borrowed scalar class descriptor, not the storage. Take

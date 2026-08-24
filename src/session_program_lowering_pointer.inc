@@ -643,6 +643,12 @@
             error_msg = 'pointer and target character lengths do not match'
             return
         end if
+        if (context%symbols(ptr_index)%is_parameter .and. &
+            context%symbols(ptr_index)%is_pointer) then
+            if (.not. emit_ptr_store(context%session, &
+                    context%symbols(target_index)%element_address, &
+                    context%symbols(ptr_index)%address, error_msg)) return
+        end if
         context%symbols(ptr_index)%address = context%symbols(target_index)%address
         if (context%symbols(ptr_index)%is_derived) then
             context%symbols(ptr_index)%element_address = &

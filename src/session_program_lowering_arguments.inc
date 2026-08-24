@@ -52,6 +52,7 @@
         integer :: explicit_param_count
         logical :: handled_by_value
         logical :: supplied, is_optional, is_value
+        logical :: dummy_pointer
         integer :: intent_code, p
         integer :: assumed_rank_actual_symbol
         ! Actual arguments in dummy-argument order: keyword actuals are moved
@@ -59,6 +60,7 @@
         ! holds 0 (an omitted optional, passed as a null reference).
         integer, allocatable :: arg_indices(:)
         character(len=:), allocatable :: proc_actual
+        character(len=:), allocatable :: dummy_intent
 
         sp = 0
         if (present(self_position)) sp = self_position
@@ -211,6 +213,8 @@
                                            callee_name, &
                                            call_arg_param_pos(i, sp), error_msg)
             if (len_trim(error_msg) > 0) return
+            call dummy_pointer_intent(arena, callee_name, call_arg_param_pos(i, sp), &
+                                     dummy_pointer, dummy_intent)
             ! An allocatable array actual has a descriptor ABI even when its
             ! element kind is CHARACTER. Handle this before the scalar
             ! character descriptor path, which otherwise reinterprets the
@@ -236,6 +240,13 @@
                           call_arg_param_pos(i, sp)) == VALUE_CHARACTER)) then
                 call char_actual_descriptor(arena, arg_indices(i), context, &
                                             args(i), error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (actual_is_derived(arena, arg_indices(i), context) .and. &
+                     actual_is_pointer(arena, arg_indices(i), context) .and. &
+                     dummy_pointer .and. trim(dummy_intent) /= 'in') then
+                call pointer_actual_argument(arena, arg_indices(i), context, &
+                                             args(i), copyback_indices(i), &
+                                             error_msg)
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_derived(arena, arg_indices(i), context) .and. &
                      .not. actual_is_whole_array(arena, arg_indices(i), context) .and. &
@@ -479,6 +490,43 @@
                 component_alloc_rank_at(context, base_type, component_index) == 2
         end select
     end function actual_is_rank2_allocatable_component
+
+    subroutine pointer_actual_argument(arena, node_index, context, address, &
+                                        copyback_index, error_msg)
+        ! An INTENT(OUT/INOUT) POINTER dummy receives the caller's pointer
+        ! association slot, rather than the current pointee address. The
+        ! negative copyback marker reloads that slot after the call.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: address
+        integer, intent(out) :: copyback_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name, id_err
+        integer :: symbol_index
+
+        copyback_index = 0
+        call get_identifier_name(arena, node_index, id_name, id_err)
+        if (len_trim(id_err) > 0) then
+            error_msg = id_err
+            return
+        end if
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
+        if (symbol_index <= 0 .or. .not. context%symbols(symbol_index)%is_pointer) then
+            error_msg = 'pointer dummy actual was not a data pointer: '//trim(id_name)
+            return
+        end if
+        if (.not. emit_ptr_alloca(context%session, address, error_msg)) return
+        if (context%symbols(symbol_index)%has_address) then
+            if (.not. emit_ptr_store(context%session, &
+                    context%symbols(symbol_index)%address, address, error_msg)) return
+        else
+            if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+                                     address, error_msg)) return
+        end if
+        copyback_index = -symbol_index
+        call set_empty(error_msg)
+    end subroutine pointer_actual_argument
 
     recursive logical function actual_is_array_expression(arena, node_index, context) &
             result(is_array)
@@ -1410,6 +1458,22 @@
         if (symbol_index > 0) actual_is_derived = &
             context%symbols(symbol_index)%is_derived
     end function actual_is_derived
+
+    logical function actual_is_pointer(arena, node_index, context)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: id_name, id_err
+        integer :: symbol_index
+
+        actual_is_pointer = .false.
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, id_name, id_err)
+        if (len_trim(id_err) > 0) return
+        symbol_index = resolve_symbol_at_node(context, node_index, id_name)
+        if (symbol_index > 0) actual_is_pointer = &
+            context%symbols(symbol_index)%is_pointer
+    end function actual_is_pointer
 
     logical function actual_is_whole_array(arena, node_index, context)
         ! Whether an actual argument is a plain whole-array identifier (not an
@@ -2504,7 +2568,20 @@ recursive integer function expression_value_kind(arena, node_index, context, &
         integer :: i
 
         do i = 1, size(copyback_indices)
-            if (copyback_indices(i) <= 0) cycle
+            if (copyback_indices(i) < 0) then
+                if (.not. emit_ptr_load(context%session, args(i), value, &
+                                         error_msg)) return
+                context%symbols(-copyback_indices(i))%address = value
+                if (context%symbols(-copyback_indices(i))%is_derived) then
+                    context%symbols(-copyback_indices(i))%element_address = value
+                end if
+                context%symbols(-copyback_indices(i))%has_address = .true.
+                context%symbols(-copyback_indices(i))%is_reference = .true.
+                context%symbols(-copyback_indices(i))%is_associated = .true.
+                context%symbols(-copyback_indices(i))%has_runtime_association = .true.
+                cycle
+            end if
+            if (copyback_indices(i) == 0) cycle
             select case (context%symbols(copyback_indices(i))%value_kind)
             case (VALUE_F32)
                 if (.not. emit_liric_f32_load(context%session, args(i), value, &
