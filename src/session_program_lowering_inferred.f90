@@ -326,10 +326,15 @@ contains
     case (TLOGICAL)
         vk = VALUE_LOGICAL
     case (TCOMPLEX)
-        vk = VALUE_C4
+        ! Complex storage must be created after the procedure's LIRIC block
+        ! is active; leave FortFront's inferred declaration for normal
+        ! lowering instead of allocating it in this metadata prepass.
+        vk = 0
     case (TCHAR)
-        ! Character scalars from inference: supported as fixed-length.
-        vk = VALUE_CHARACTER
+        ! The declaration carries the literal length and is lowered after the
+        ! procedure block starts.  Seeding it here makes that declaration
+        ! appear duplicate and loses its length.
+        vk = 0
     case (TARRAY)
         ! Array: extract element kind from the first type argument.
         if (inferred%has_args() .and. inferred%get_args_count() > 0) then
@@ -346,7 +351,7 @@ contains
             case (TLOGICAL)
                 vk = VALUE_LOGICAL
             case (TCOMPLEX)
-                vk = VALUE_C4
+                vk = 0
             case default
                 vk = 0
             end select
