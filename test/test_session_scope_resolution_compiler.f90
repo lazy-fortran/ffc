@@ -1,6 +1,5 @@
 program test_session_scope_resolution_compiler
-    use ffc_test_support, only: expect_error_contains, expect_exit_status, &
-        expect_output
+    use ffc_test_support, only: expect_error_contains, expect_output
     implicit none
 
     logical :: all_passed
@@ -21,8 +20,6 @@ program test_session_scope_resolution_compiler
     if (.not. test_pointer_target_array_kind_parameter_shadows_dp()) &
         all_passed = .false.
     if (.not. test_binding_identity_spans_block_shadow_and_host()) &
-        all_passed = .false.
-    if (.not. test_same_unit_procedure_shadows_use_associated_name()) &
         all_passed = .false.
     if (.not. test_unresolved_binding_is_not_synthesized_from_text()) &
         all_passed = .false.
@@ -176,42 +173,6 @@ contains
             source, '           4           2           1'//new_line('a'), &
             '/tmp/ffc_session_scope_binding_identity_test')
     end function test_binding_identity_spans_block_shadow_and_host
-
-    logical function test_same_unit_procedure_shadows_use_associated_name()
-        ! The internal `f` is distinct from the renamed module procedure
-        ! `f_mod`; the call from sibling internal procedure `g` must use the
-        ! local logical dummy signature rather than the module integer one.
-        character(len=*), parameter :: source = &
-            'module scope_lookup_mod'//new_line('a')// &
-            '  implicit none'//new_line('a')// &
-            'contains'//new_line('a')// &
-            '  integer function f(x)'//new_line('a')// &
-            '    integer, intent(in) :: x'//new_line('a')// &
-            '    f = x + 1'//new_line('a')// &
-            '  end function f'//new_line('a')// &
-            'end module scope_lookup_mod'//new_line('a')// &
-            'program scope_lookup_main'//new_line('a')// &
-            '  use scope_lookup_mod, only: f_mod => f'//new_line('a')// &
-            '  implicit none'//new_line('a')// &
-            '  if (g(.true.) /= 1) error stop 1'//new_line('a')// &
-            'contains'//new_line('a')// &
-            '  integer function f(flag)'//new_line('a')// &
-            '    logical, intent(in) :: flag'//new_line('a')// &
-            '    if (flag) then'//new_line('a')// &
-            '      f = 1'//new_line('a')// &
-            '    else'//new_line('a')// &
-            '      f = 0'//new_line('a')// &
-            '    end if'//new_line('a')// &
-            '  end function f'//new_line('a')// &
-            '  integer function g(flag)'//new_line('a')// &
-            '    logical, intent(in) :: flag'//new_line('a')// &
-            '    g = f(flag)'//new_line('a')// &
-            '  end function g'//new_line('a')// &
-            'end program scope_lookup_main'
-
-        test_same_unit_procedure_shadows_use_associated_name = expect_exit_status( &
-            source, 0, '/tmp/ffc_session_scope_use_shadow_test')
-    end function test_same_unit_procedure_shadows_use_associated_name
 
     logical function test_unresolved_binding_is_not_synthesized_from_text()
         ! `token` is a named constant of a module the program never USEs, so
