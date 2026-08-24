@@ -45,7 +45,6 @@ advance_6.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expre
 aliasing_array_result_1.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 aliasing_complex_pointer.f90 # owner=lazy-fortran/ffc#337; reason=migrate pointer arrays to descriptors
 aliasing_dummy_4.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
-aliasing_dummy_5.f90 # owner=lazy-fortran/ffc#337; reason=migrate pointer arrays to descriptors
 alloc_alloc_expr_2.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 alloc_comp_assign_1.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
 alloc_comp_assign_10.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
