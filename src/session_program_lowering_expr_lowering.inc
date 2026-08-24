@@ -143,7 +143,11 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            if (node%base_expr_index > 0) then
+            if (node%base_expr_index > 0 .and. &
+                is_type_bound_method_call(arena, node, context)) then
+                call lower_method_call_value(arena, node, context, VALUE_LOGICAL, &
+                                             value, error_msg)
+            else if (node%base_expr_index > 0) then
                 call lower_derived_component_element_load(arena, node, context, &
                                                           value, error_msg)
             else if (.not. is_contained_function_reference(node, context) .and. &
@@ -581,7 +585,11 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            if (node%base_expr_index > 0) then
+            if (node%base_expr_index > 0 .and. &
+                is_type_bound_method_call(arena, node, context)) then
+                call lower_method_call_value(arena, node, context, VALUE_F32, &
+                                             value, error_msg)
+            else if (node%base_expr_index > 0) then
                 call lower_derived_component_element_load(arena, node, context, &
                                                           value, error_msg)
             else
@@ -894,7 +902,11 @@
 
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
-            if (node%base_expr_index > 0) then
+            if (node%base_expr_index > 0 .and. &
+                is_type_bound_method_call(arena, node, context)) then
+                call lower_method_call_value(arena, node, context, VALUE_F64, &
+                                             value, error_msg)
+            else if (node%base_expr_index > 0) then
                 call lower_derived_component_element_load(arena, node, context, &
                                                           value, error_msg)
             else

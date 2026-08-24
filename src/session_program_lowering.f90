@@ -553,6 +553,7 @@ module session_program_lowering_impl
     public :: lower_logical_array_all_intrinsic
     public :: lower_logical_array_any_intrinsic
     public :: lower_logical_array_count_intrinsic, lower_method_call_i32
+    public :: lower_method_call_value
     public :: lower_module_proc_i32_call, lower_overloaded_operator
     public :: lower_scan_intrinsic, lower_statement_function_call
     public :: lower_ubound_intrinsic

@@ -2823,6 +2823,22 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
+
+        call lower_method_call_value(arena, node, context, VALUE_I32, value, &
+                                     error_msg)
+    end subroutine lower_method_call_i32
+
+    subroutine lower_method_call_value(arena, node, context, value_kind, value, &
+                                       error_msg)
+        ! Lower a scalar type-bound function for any supported intrinsic result
+        ! kind.  The receiver and generic-resolution path are shared with the
+        ! integer method path; only the result ABI and actual argument kind vary.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
         integer :: base_var_index, position, receiver_symbol, slot
         character(len=:), allocatable :: impl_name, pass_name
         logical :: found, pass_arg
@@ -2846,7 +2862,7 @@
         end if
         position = impl_pass_position(arena, impl_name, pass_name, pass_arg)
         call method_call_arg_indices(node, base_var_index, position, combined)
-        call prepare_reference_args(arena, combined, context, VALUE_I32, &
+        call prepare_reference_args(arena, combined, context, value_kind, &
                                     impl_name, args, copyback_indices, error_msg)
         if (len_trim(error_msg) > 0) return
         if (pass_arg .and. slot > 0 .and. &
@@ -2854,15 +2870,33 @@
             call class_dispatch_callee(context, receiver_symbol, slot, &
                                        callee_ptr, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_i32_indirect_call(context%session, callee_ptr, args, &
-                    value, error_msg)) return
+            if (value_kind == VALUE_F64) then
+                if (.not. emit_f64_indirect_call(context%session, callee_ptr, &
+                        args, value, error_msg)) return
+            else if (value_kind == VALUE_F32) then
+                if (.not. emit_f32_indirect_call(context%session, callee_ptr, &
+                        args, value, error_msg)) return
+            else
+                if (.not. emit_i32_indirect_call(context%session, callee_ptr, &
+                        args, value, error_msg)) return
+            end if
         else
-            if (.not. emit_i32_call(context%session, &
-                    type_bound_emit_name(arena, impl_name, context), args, value, &
-                    error_msg)) return
+            if (value_kind == VALUE_F64) then
+                if (.not. emit_liric_f64_call(context%session, &
+                        type_bound_emit_name(arena, impl_name, context), args, &
+                        value, error_msg)) return
+            else if (value_kind == VALUE_F32) then
+                if (.not. emit_liric_f32_call(context%session, &
+                        type_bound_emit_name(arena, impl_name, context), args, &
+                        value, error_msg)) return
+            else
+                if (.not. emit_i32_call(context%session, &
+                        type_bound_emit_name(arena, impl_name, context), args, &
+                        value, error_msg)) return
+            end if
         end if
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
-    end subroutine lower_method_call_i32
+    end subroutine lower_method_call_value
 
     subroutine lower_derived_component_element_load(arena, node, context, value, &
                                                     error_msg)
