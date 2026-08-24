@@ -26,6 +26,11 @@
             select type (decl => arena%entries(n)%node)
             type is (declaration_node)
                 if (.not. decl%is_save) cycle
+                ! Module variables have SAVE semantics, but their storage is
+                ! emitted by lower_module_variables with the module ABI.  Do
+                ! not route them through the saved-local pre-pass; that path
+                ! deliberately handles procedure-local storage only.
+                if (binding_scope_is_module(arena, n)) cycle
                 if (decl%is_parameter .or. decl%is_pointer .or. &
                     decl%is_target .or. decl%is_allocatable) cycle
                 if (decl%is_array) then
