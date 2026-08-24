@@ -55,6 +55,7 @@ contains
 
         call run('rm -rf '//build_dir, stat)
         call run('cmake -S runtime -B '//build_dir// &
+                 ' -DLIRIC_BUILD_DIR="${LIRIC_BUILD_DIR:-${LIBRARY_PATH}}"'// &
                  ' > /tmp/ffc_runtime_374_cfg.log 2>&1', stat)
         if (stat /= 0) then
             print *, 'FAIL: runtime cmake configure failed'
