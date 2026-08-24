@@ -897,13 +897,14 @@ contains
         call set_empty(error_msg)
     end procedure lower_file_write_formatted
     module procedure fortran_fmt_to_c
-        integer :: i, w, d
+        integer :: i, j, w, d, repeat_count
         character :: ch
         character(len=32) :: buf
 
         result_value = .false.
         c_fmt = ''
         call set_empty(error_msg)
+        repeat_count = 1
         i = 1
         do while (i <= len(fort_fmt))
             ch = fort_fmt(i:i)
@@ -911,12 +912,15 @@ contains
             case ('I', 'i')
                 i = i + 1
                 call read_fmt_int(fort_fmt, i, w)
-                if (w > 0) then
-                    write (buf, '(I0)') w
-                    c_fmt = c_fmt//'%'//trim(buf)//'d'
-                else
-                    c_fmt = c_fmt//'%d'
-                end if
+                do j = 1, repeat_count
+                    if (w > 0) then
+                        write (buf, '(I0)') w
+                        c_fmt = c_fmt//'%'//trim(buf)//'d'
+                    else
+                        c_fmt = c_fmt//'%d'
+                    end if
+                end do
+                repeat_count = 1
             case ('F', 'f')
                 i = i + 1
                 call read_fmt_int(fort_fmt, i, w)
@@ -925,8 +929,11 @@ contains
                     i = i + 1
                     call read_fmt_int(fort_fmt, i, d)
                 end if
-                write (buf, '(I0,A,I0)') w, '.', d
-                c_fmt = c_fmt//'%'//trim(buf)//'f'
+                do j = 1, repeat_count
+                    write (buf, '(I0,A,I0)') w, '.', d
+                    c_fmt = c_fmt//'%'//trim(buf)//'f'
+                end do
+                repeat_count = 1
             case ('E', 'e', 'G', 'g')
                 i = i + 1
                 call read_fmt_int(fort_fmt, i, w)
@@ -935,24 +942,32 @@ contains
                     i = i + 1
                     call read_fmt_int(fort_fmt, i, d)
                 end if
-                write (buf, '(I0,A,I0)') w, '.', d
-                c_fmt = c_fmt//'%'//trim(buf)//'g'
+                do j = 1, repeat_count
+                    write (buf, '(I0,A,I0)') w, '.', d
+                    c_fmt = c_fmt//'%'//trim(buf)//'g'
+                end do
+                repeat_count = 1
             case ('A', 'a')
                 i = i + 1
                 call read_fmt_int(fort_fmt, i, w)
-                if (w > 0) then
-                    write (buf, '(I0)') w
-                    c_fmt = c_fmt//'%'//trim(buf)//'s'
-                else
-                    c_fmt = c_fmt//'%s'
-                end if
+                do j = 1, repeat_count
+                    if (w > 0) then
+                        write (buf, '(I0)') w
+                        c_fmt = c_fmt//'%'//trim(buf)//'s'
+                    else
+                        c_fmt = c_fmt//'%s'
+                    end if
+                end do
+                repeat_count = 1
             case ('X', 'x')
-                c_fmt = c_fmt//' '
+                c_fmt = c_fmt//repeat(' ', repeat_count)
+                repeat_count = 1
                 i = i + 1
             case ('/', ',', ' ')
+                repeat_count = 1
                 i = i + 1
             case ('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
-                call read_fmt_int(fort_fmt, i, w)
+                call read_fmt_int(fort_fmt, i, repeat_count)
             case default
                 i = i + 1
             end select
