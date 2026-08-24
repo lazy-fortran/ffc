@@ -204,7 +204,7 @@ contains
             '        i = j + i'//new_line('a')// &
             '    endif'//new_line('a')// &
             'end do'//new_line('a')// &
-            'return'//new_line('a')// &
+            'stop 0'//new_line('a')// &
             'end'
 
         test_do_while_nested_return_fixture = expect_exit_status( &
