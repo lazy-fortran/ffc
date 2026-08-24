@@ -18,6 +18,14 @@ contains
         if (.not. node_exists(arena, node_index)) return
         select type (n => arena%entries(node_index)%node)
         type is (array_slice_node)
+            ! FortFront has already disambiguated a character substring from
+            ! an array section.  This flag is especially important for the
+            ! nested form c(i)(l:u), whose base expression may not retain the
+            ! array-access marker after semantic analysis.
+            if (n%is_character_substring) then
+                is_substring = .true.
+                return
+            end if
             if (n%num_dimensions /= 1) return
             if (is_character_array_element(arena, n%array_index, context)) then
                 is_substring = .true.
