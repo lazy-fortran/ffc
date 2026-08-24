@@ -1430,6 +1430,176 @@
                                 .not. context%symbols(symbol_index)%is_allocatable
     end function actual_is_whole_array
 
+    subroutine try_lower_elemental_subroutine_array_call(arena, callee_name, &
+                                                         arg_indices, context, &
+                                                         handled, error_msg)
+        ! Expand a call to an ELEMENTAL subroutine with a whole-array actual
+        ! into scalar calls.  This is the statement-call counterpart of the
+        ! elemental expression path: scalar actuals broadcast, while each
+        ! fixed-shape array actual contributes its corresponding element.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: callee_name
+        integer, allocatable, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: param_count, i, symbol_index
+        integer(c_int64_t) :: element_count, other_count, k
+        logical :: found, is_elemental, known, other_known
+        logical :: all_fixed, any_array
+        character(len=:), allocatable :: name, name_err
+        integer, allocatable :: copyback_indices(:)
+        type(lr_operand_desc_t), allocatable :: args(:)
+
+        handled = .false.
+        call set_empty(error_msg)
+        call elemental_subroutine_signature(arena, callee_name, found, &
+                                            param_count, is_elemental)
+        if (.not. found .or. .not. is_elemental) return
+        if (.not. allocated(arg_indices)) return
+        if (size(arg_indices) /= param_count) return
+
+        element_count = 0_c_int64_t
+        any_array = .false.
+        all_fixed = .true.
+        do i = 1, size(arg_indices)
+            if (.not. actual_is_whole_array(arena, arg_indices(i), context)) cycle
+            any_array = .true.
+            call actual_available_element_count(arena, arg_indices(i), context, &
+                                                other_count, other_known, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. other_known .or. other_count <= 0_c_int64_t) then
+                all_fixed = .false.
+                cycle
+            end if
+            if (.not. is_identifier(arena, arg_indices(i))) then
+                all_fixed = .false.
+                cycle
+            end if
+            call get_identifier_name(arena, arg_indices(i), name, name_err)
+            if (len_trim(name_err) > 0) return
+            symbol_index = resolve_symbol_at_node(context, arg_indices(i), name)
+            if (symbol_index <= 0) then
+                all_fixed = .false.
+                cycle
+            end if
+            if (context%symbols(symbol_index)%has_runtime_array_stride) then
+                all_fixed = .false.
+                cycle
+            end if
+            if (element_count == 0_c_int64_t) then
+                element_count = other_count
+            else if (element_count /= other_count) then
+                error_msg = 'nonconforming array actuals in elemental call to '// &
+                            trim(callee_name)
+                return
+            end if
+        end do
+        if (.not. any_array .or. .not. all_fixed .or. element_count <= 0_c_int64_t) return
+
+        allocate (args(size(arg_indices)))
+        allocate (copyback_indices(size(arg_indices)))
+        do k = 0_c_int64_t, element_count - 1_c_int64_t
+            copyback_indices = 0
+            do i = 1, size(arg_indices)
+                if (actual_is_whole_array(arena, arg_indices(i), context)) then
+                    call whole_array_element_address(arena, arg_indices(i), context, &
+                                                     k, args(i), error_msg)
+                else
+                    call prepare_reference_arg(arena, arg_indices(i), context, &
+                                               VALUE_I32, args(i), &
+                                               copyback_indices(i), error_msg)
+                end if
+                if (len_trim(error_msg) > 0) return
+            end do
+            if (.not. emit_void_call(context%session, &
+                    call_emit_name(arena, callee_name, context), args, error_msg)) return
+            call copy_back_reference_args(context, args, copyback_indices, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        handled = .true.
+    end subroutine try_lower_elemental_subroutine_array_call
+
+    subroutine elemental_subroutine_signature(arena, name, found, param_count, &
+                                              is_elemental)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        logical, intent(out) :: found
+        integer, intent(out) :: param_count
+        logical, intent(out) :: is_elemental
+        integer :: i, p
+        type(subroutine_def_node), pointer :: node
+
+        found = .false.
+        param_count = 0
+        is_elemental = .false.
+        do i = 1, arena%size
+            if (.not. node_exists(arena, i)) cycle
+            if (get_node_type_at(arena, i) /= 'subroutine_def_node' .and. &
+                get_node_type_at(arena, i) /= 'subroutine_def') cycle
+            node => get_node_as_subroutine_def(arena, i)
+            if (.not. associated(node)) cycle
+            if (.not. allocated(node%name)) cycle
+            if (.not. same_name(node%name, name)) cycle
+            found = .true.
+            if (allocated(node%param_indices)) param_count = size(node%param_indices)
+            if (allocated(node%prefix_keywords)) then
+                do p = 1, size(node%prefix_keywords)
+                    if (same_name(trim(node%prefix_keywords(p)), 'elemental')) &
+                        is_elemental = .true.
+                end do
+            end if
+            return
+        end do
+    end subroutine elemental_subroutine_signature
+
+    subroutine whole_array_element_address(arena, node_index, context, linear_index, &
+                                           address, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        integer(c_int64_t), intent(in) :: linear_index
+        type(lr_operand_desc_t), intent(out) :: address
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, name_err
+        integer :: symbol_index, vk, array_size
+        type(lr_operand_desc_t) :: index
+        logical :: ok
+
+        call get_identifier_name(arena, node_index, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = resolve_symbol_at_node(context, node_index, name)
+        if (symbol_index <= 0) then
+            error_msg = 'array argument was not declared: '//trim(name)
+            return
+        end if
+        vk = context%symbols(symbol_index)%value_kind
+        array_size = context%symbols(symbol_index)%array_size
+        index = i64_immediate(context%session, linear_index)
+        select case (vk)
+        case (VALUE_F32)
+            ok = emit_f32_array_element_addr(context%session, array_size, &
+                context%symbols(symbol_index)%element_address, index, address, error_msg)
+        case (VALUE_F64)
+            ok = emit_f64_array_element_addr(context%session, array_size, &
+                context%symbols(symbol_index)%element_address, index, address, error_msg)
+        case (VALUE_I64)
+            ok = emit_i64_array_element_addr(context%session, array_size, &
+                context%symbols(symbol_index)%element_address, index, address, error_msg)
+        case (VALUE_I8)
+            ok = emit_i8_array_element_addr(context%session, array_size, &
+                context%symbols(symbol_index)%element_address, index, address, error_msg)
+        case (VALUE_I16)
+            ok = emit_i16_array_element_addr(context%session, array_size, &
+                context%symbols(symbol_index)%element_address, index, address, error_msg)
+        case default
+            ok = emit_i32_array_element_addr(context%session, array_size, &
+                context%symbols(symbol_index)%element_address, index, address, error_msg)
+        end select
+        if (.not. ok) return
+        call set_empty(error_msg)
+    end subroutine whole_array_element_address
+
     logical function actual_is_unsupported_assumed_shape_forward(arena, &
                                                                  node_index, context, &
                                                                  callee_name, param_pos)

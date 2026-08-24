@@ -6198,6 +6198,7 @@ contains
         integer :: call_arg_kinds(MAX_PROC_ARGS)
         integer :: call_arg_ranks(MAX_PROC_ARGS)
         integer :: i
+        logical :: handled
         call get_subroutine_call_name(arena, node_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
         ! Indirect subroutine call through a procedure pointer (B3d).
@@ -6268,6 +6269,9 @@ contains
                 context, error_msg)
             return
         end if
+        call try_lower_elemental_subroutine_array_call(arena, call_name, &
+            arg_indices, context, handled, error_msg)
+        if (len_trim(error_msg) > 0 .or. handled) return
         if (external_procedure_index(context, call_name) > 0) then
             if (context%external_procedures( &
                 external_procedure_index(context, call_name))%by_reference) then
