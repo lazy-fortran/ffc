@@ -2289,6 +2289,36 @@
         end do
     end subroutine contained_elemental_signature
 
+    logical function is_contained_elemental_array_call(arena, node_index, &
+                                                       context) result(is_call)
+        !! Recognize a contained ELEMENTAL function reference whose result may
+        !! inherit an array shape from one or more actual arguments.  The AST
+        !! marks such a reference as an array access, so this deliberately
+        !! complements is_elemental_user_call rather than replacing it.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        logical :: found, is_elemental, all_intent_in
+        integer :: param_count
+        character(len=:), allocatable :: bad_dummy
+
+        is_call = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (node%base_expr_index > 0) return
+            if (.not. allocated(node%name)) return
+            if (.not. allocated(node%arg_indices)) return
+            if (.not. is_contained_f32_function(context, node%name) .and. &
+                .not. is_contained_f64_function(context, node%name) .and. &
+                .not. is_contained_i32_function(context, node%name)) return
+            call contained_elemental_signature(arena, node%name, found, &
+                param_count, is_elemental, all_intent_in, bad_dummy)
+            is_call = found .and. is_elemental .and. &
+                      param_count == size(node%arg_indices)
+        end select
+    end function is_contained_elemental_array_call
+
     ! True when dummy_name is declared INTENT(IN) among the body declarations.
     logical function dummy_is_intent_in(arena, body_indices, dummy_name) &
         result(is_in)

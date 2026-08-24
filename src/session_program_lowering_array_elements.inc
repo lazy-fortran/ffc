@@ -1742,6 +1742,19 @@
             return
         end if
 
+        if (is_contained_elemental_array_call(arena, expr_index, context) .or. &
+            is_elemental_user_call(arena, expr_index, context)) then
+            select type (n => arena%entries(expr_index)%node)
+            type is (call_or_subscript_node)
+                do i = 1, size(n%arg_indices)
+                    sym = whole_array_expr_shape_symbol(arena, &
+                        n%arg_indices(i), context)
+                    if (sym > 0) return
+                end do
+            end select
+            return
+        end if
+
         if (is_binary_op(arena, expr_index)) then
             call get_binary_op_info(arena, expr_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, err)
@@ -2568,7 +2581,8 @@
             end if
         end select
 
-        if (is_elemental_user_call(arena, node_index, context)) then
+        if (is_contained_elemental_array_call(arena, node_index, context) .or. &
+            is_elemental_user_call(arena, node_index, context)) then
             call lower_elementwise_user_call(arena, node_index, &
                                              target_symbol_index, linear_index, &
                                              context, value, error_msg)

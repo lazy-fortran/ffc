@@ -559,6 +559,21 @@
             if (is_array_result_call(arena, node_index, context)) then
                 is_array = .true.
             else if (allocated(node%arg_indices)) then
+                ! A contained elemental call inherits its array shape from an
+                ! array actual.  The elementwise evaluator expands the call
+                ! after this classification, so keep this test independent of
+                ! the intrinsic-call path below.
+                if (is_contained_elemental_array_call(arena, node_index, context) &
+                    .or. is_elemental_user_call(arena, node_index, context)) then
+                    do i = 1, size(node%arg_indices)
+                        if (actual_is_array_expression(arena, &
+                                node%arg_indices(i), context)) then
+                            is_array = .true.
+                            return
+                        end if
+                    end do
+                    return
+                end if
                 ! Elementwise intrinsic expressions (for example abs(a)) carry
                 ! their array rank through an array actual argument. Reductions
                 ! are deliberately excluded: they return a scalar.
