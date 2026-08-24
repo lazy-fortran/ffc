@@ -154,6 +154,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: printf_fmt
         character(len=:), allocatable :: format_body
+        character(len=:), allocatable :: normalized_body
         character :: kind_char
         integer :: symbol_index, buflen
         integer(c_int32_t) :: field_id
@@ -170,7 +171,22 @@
                 node%column, 'internal write requires a literal format', error_msg)
             return
         end if
-        call normalize_format_body(node%format_spec, format_body)
+        format_body = node%format_spec
+        symbol_index = find_symbol_compat(context, trim(format_body))
+        if (symbol_index > 0 .and. &
+            context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
+            if (.not. context%symbols(symbol_index)%is_array .and. &
+                allocated(context%symbols(symbol_index)%character_constant_text)) then
+                format_body = context%symbols(symbol_index)%character_constant_text
+            else
+                call unsupported_feature_error('internal write', node%line, &
+                    node%column, 'runtime character formats are not supported', &
+                    error_msg)
+                return
+            end if
+        end if
+        call normalize_format_body(format_body, normalized_body)
+        format_body = normalized_body
         ! The compound walker owns every descriptor kind beyond the I/A pair the
         ! single-descriptor path handles, so a lone E or X goes there too.
         if (index(format_body, ',') > 0 .or. &
@@ -179,7 +195,7 @@
                                                format_body, error_msg)
             return
         end if
-        call parse_single_edit_descriptor(node%format_spec, kind_char, printf_fmt, &
+        call parse_single_edit_descriptor(format_body, kind_char, printf_fmt, &
                                           error_msg)
         if (len_trim(error_msg) > 0) then
             call unsupported_feature_error('internal write', node%line, &
