@@ -342,6 +342,7 @@
 
         call set_empty(error_msg)
         if (trim(format_spec) == '*') return
+        if (format_has_al_descriptor(format_spec)) return
         call normalize_format_body(format_spec, body)
         do i = 1, len(body)
             ch = body(i:i)
