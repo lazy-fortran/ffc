@@ -5,6 +5,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
         type(lr_operand_desc_t) :: re_val, im_val
+        type(lr_operand_desc_t) :: character_data, character_length
         character(len=:), allocatable :: character_value
         character(len=64) :: string_name
         real(c_double) :: real_value
@@ -217,12 +218,16 @@
                             get_node_column(arena, node_index), &
                             'direct LIRIC session requires character variables '// &
                             'to be assigned from a literal before printing', &
-                            error_msg)
+                        error_msg)
                         return
                     end if
+                    call char_expr_operands(arena, node_index, context, &
+                                            character_data, character_length, &
+                                            error_msg)
+                    if (len_trim(error_msg) > 0) return
                     if (.not. emit_liric_print_string_operand( &
                         context%session, context%str_print_format_id, &
-                        context%symbols(symbol_index)%value, error_msg)) return
+                        character_data, error_msg)) return
                     return
                 end if
             end if
@@ -343,6 +348,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
         type(lr_operand_desc_t) :: re_val, im_val
+        type(lr_operand_desc_t) :: character_data, character_length
         character(len=:), allocatable :: character_value
         character(len=64) :: string_name
         real(c_double) :: real_value
@@ -587,12 +593,16 @@
                             get_node_column(arena, node_index), &
                             'direct LIRIC session requires character variables '// &
                             'to be assigned from a literal before printing', &
-                            error_msg)
+                        error_msg)
                         return
                     end if
+                    call char_expr_operands(arena, node_index, context, &
+                                            character_data, character_length, &
+                                            error_msg)
+                    if (len_trim(error_msg) > 0) return
                     if (.not. emit_liric_print_string_operand_value( &
                         context%session, context%str_print_format_id, &
-                        context%symbols(symbol_index)%value, error_msg)) return
+                        character_data, error_msg)) return
                     return
                 end if
             end if
