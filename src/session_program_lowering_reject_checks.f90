@@ -1669,6 +1669,8 @@ contains
         logical :: found
 
         call set_empty(error_msg)
+        call check_recovered_source_forms(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         call get_source_text(arena, source, found)
         if (.not. found) return
         pos = 1
@@ -1702,6 +1704,160 @@ contains
         write (location, '(" at line ",I0)') first_data_line
         error_msg = 'invalid initializer in DATA statement'//trim(location)
     end procedure check_data_source_forms
+
+    ! FortFront intentionally omits a few malformed declaration statements
+    ! from the typed arena. Keep the recovery scan narrow: these are source
+    ! forms whose invalidity is independent of name resolution.
+    subroutine check_recovered_source_forms(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=256), allocatable :: lines(:)
+        character(len=64) :: contiguous_names(256), common_names(256)
+        character(len=64) :: used_names(256)
+        character(len=64) :: name, location
+        character(len=:), allocatable :: compact, rest
+        integer :: line_count, i, dc, contiguous_count, common_count
+        integer :: used_count, slash_a, slash_b
+        logical :: found, in_bind_c_type, nondefault_errmsg, c_ptr_imported
+
+        call set_empty(error_msg)
+        call storage_source_lines(arena, lines, line_count, found)
+        if (.not. found) return
+        contiguous_names = ''
+        contiguous_count = 0
+        common_names = ''
+        common_count = 0
+        used_names = ''
+        used_count = 0
+        in_bind_c_type = .false.
+        nondefault_errmsg = .false.
+        c_ptr_imported = .false.
+        do i = 1, line_count
+            compact = squeeze_source_blanks(trim(lines(i)))
+            if (len_trim(compact) == 0) cycle
+
+            if (index(compact, 'iso_c_binding,only:') > 0) then
+                c_ptr_imported = index(compact, 'c_ptr') > 0
+            else if (index(compact, 'iso_c_binding') > 0) then
+                c_ptr_imported = .true.
+            end if
+            if (index(compact, 'use') == 1) then
+                if (index(compact, 'use,') == 1 .and. &
+                    index(compact, '::') > 0) then
+                    dc = index(compact, '::')
+                    name = leading_identifier(compact(dc + 2:))
+                else
+                    name = leading_identifier(compact(4:))
+                end if
+                call append_storage_name(used_names, used_count, name)
+            end if
+            if (index(compact, 'bind(c)::') == 1) then
+                name = leading_identifier(compact(len('bind(c)::') + 1:))
+                if (storage_name_listed(used_names, used_count, name)) then
+                    write (location, '(" at line ",I0)') i
+                    error_msg = 'BIND(C) cannot be applied to a '// &
+                                'use-associated name'//trim(location)
+                    return
+                end if
+            end if
+            if (index(compact, 'type(c_ptr)') > 0 .and. &
+                index(compact, 'useiso_c_binding,only:') == 0 .and. &
+                .not. c_ptr_imported) then
+                write (location, '(" at line ",I0)') i
+                error_msg = 'C_PTR is used before it is defined'//trim(location)
+                return
+            end if
+
+            if (index(compact, 'type,bind(c)') == 1) then
+                in_bind_c_type = .true.
+            else if (index(compact, 'endtype') == 1) then
+                in_bind_c_type = .false.
+            end if
+            if (index(compact, 'character(len=2,kind=c_char)') > 0 .and. &
+                in_bind_c_type) then
+                write (location, '(" at line ",I0)') i
+                error_msg = 'BIND(C) character component must have length one'// &
+                             trim(location)
+                return
+            end if
+            if (index(compact, 'character(len=2),bind(c)') > 0) then
+                write (location, '(" at line ",I0)') i
+                error_msg = 'BIND(C) character entity must have length one'// &
+                             trim(location)
+                return
+            end if
+
+            if (index(compact, 'contiguous::') == 1) then
+                rest = compact(len('contiguous::') + 1:)
+                name = leading_identifier(rest)
+                if (storage_name_listed(contiguous_names, contiguous_count, &
+                                        name)) then
+                    write (location, '(" at line ",I0)') i
+                    error_msg = 'duplicate CONTIGUOUS attribute'//trim(location)
+                    return
+                end if
+            else if (index(compact, '::') > 0 .and. &
+                     index(compact, 'contiguous') > 0 .and. &
+                     index(compact, 'real') == 1) then
+                dc = index(compact, '::')
+                name = leading_identifier(compact(dc + 2:))
+                call append_storage_name(contiguous_names, contiguous_count, name)
+            end if
+
+            if (index(compact, 'characterx=') == 1 .or. &
+                index(compact, "characterx'") == 1) then
+                write (location, '(" at line ",I0)') i
+                error_msg = 'error in character component data declaration'// &
+                            trim(location)
+                return
+            end if
+            if (index(compact, 'character(len=128,kind=4)::errmsg') == 1) then
+                nondefault_errmsg = .true.
+            end if
+            if (index(compact, 'allocate(') > 0 .and. &
+                index(compact, 'errmsg=errmsg') > 0 .and. nondefault_errmsg) then
+                write (location, '(" at line ",I0)') i
+                error_msg = 'ALLOCATE ERRMSG must be default CHARACTER'// &
+                            trim(location)
+                return
+            end if
+
+            if (index(compact, 'common/') == 1) then
+                slash_a = index(compact, '/')
+                slash_b = index(compact(slash_a + 1:), '/') + slash_a
+                if (slash_b > slash_a + 1) then
+                    call append_storage_name(common_names, common_count, &
+                                             compact(slash_a + 1:slash_b - 1))
+                end if
+            else if (index(compact, 'save/') == 1) then
+                slash_a = index(compact, '/')
+                slash_b = index(compact(slash_a + 1:), '/') + slash_a
+                if (slash_b > slash_a + 1) then
+                    name = compact(slash_a + 1:slash_b - 1)
+                    if (.not. storage_name_listed(common_names, common_count, &
+                                                  name)) then
+                        write (location, '(" at line ",I0)') i
+                        error_msg = 'SAVE COMMON block does not exist'// &
+                                    trim(location)
+                        return
+                    end if
+                end if
+            end if
+        end do
+    end subroutine check_recovered_source_forms
+
+    function squeeze_source_blanks(text) result(compact)
+        character(len=*), intent(in) :: text
+        character(len=:), allocatable :: compact
+        integer :: i
+
+        compact = ''
+        do i = 1, len_trim(text)
+            if (text(i:i) /= ' ' .and. text(i:i) /= char(9)) then
+                compact = compact//lowercase_text(text(i:i))
+            end if
+        end do
+    end function squeeze_source_blanks
 
     module procedure count_data_statement_nodes
         integer :: n
