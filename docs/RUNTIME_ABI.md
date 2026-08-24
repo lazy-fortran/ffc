@@ -687,9 +687,9 @@ components = [
 ```
 
 - `[module]` carries the module name, the emitting `ffc` version, and the
-  mandatory `fmod_schema`. Writers emit schema 14. Readers accept schemas 14,
-  13, 12, 11, and the read-only legacy schema 10. They reject missing and
-  unknown schema values with a request to recompile the module.
+  mandatory `fmod_schema`. Writers and readers use schema 14. Missing, old,
+  and unknown schema values are rejected with a request to recompile the
+  module.
 - Each `[[parameter]]` is a named constant: `name`, `kind` (the normalised
   scalar type token), and the literal `value`.
 - Each `[[derived_type]]` is a type definition with its `components`, each a
@@ -697,8 +697,7 @@ components = [
   public module re-exports it under a local alias; local declarations set it
   equal to `name`. `canonical_identity` adds the defining module, preventing
   unrelated same-named types from being merged. Allocatable array components
-  additionally record `alloc_rank` (1 or 2); schema 11 components without that
-  field are read as rank one for compatibility.
+  additionally record `alloc_rank` (1 or 2).
 - Each `[[variable]]` records a module variable's Fortran `name`, scalar `kind`,
   and optional mangled `c_name`.
 - Each `[[procedure]]` records an exportable module procedure's `name`, result

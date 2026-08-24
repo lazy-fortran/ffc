@@ -23,23 +23,12 @@ module ffc_module_artefact
 
     character(len=*), parameter, public :: FFC_FMOD_VERSION = '0.1.0'
 
-    ! The .fmod schema this ffc writes and the newest schema it can read.
-    ! Schema 10 remains readable because its records are structurally
-    ! compatible; schema 11 adds the optional specific-target list for generic
-    ! type-bound bindings and schema 12 records the rank of allocatable array
-    ! components. Schema 13 records whether a procedure dummy is class(t) and
-    ! its declared derived type, which is required to reconstruct the passed-
-    ! object ABI across separate compilation. Schema 14 records the canonical
-    ! identity behind a re-exported derived type name, so a later consumer can
-    ! merge an alias with the original type across multiple .fmod files. The
-    ! identity includes the defining module to keep unrelated same-named types
-    ! distinct.
-    ! Writers always emit the newest schema.
+    ! The .fmod schema this ffc writes and reads. Schema 14 records the
+    ! canonical identity behind a re-exported derived type name, so a later
+    ! consumer can merge an alias with the original type across multiple .fmod
+    ! files. The identity includes the defining module to keep unrelated
+    ! same-named types distinct.
     integer, parameter, public :: FMOD_SCHEMA_VERSION = 14
-    integer, parameter :: FMOD_LEGACY_SCHEMA_VERSION = 10
-    integer, parameter :: FMOD_PREVIOUS_SCHEMA_VERSION = 11
-    integer, parameter :: FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION = 12
-    integer, parameter :: FMOD_SCHEMA_BEFORE_CURRENT_VERSION = 13
 
     type :: fmod_parameter_t
         character(len=:), allocatable :: name
@@ -87,9 +76,7 @@ module ffc_module_artefact
     type :: fmod_binding_t
         character(len=:), allocatable :: method_name
         character(len=:), allocatable :: target_name
-        ! Space-joined specific targets for a type-bound generic. The first
-        ! target_name is retained for readers of schema 10; newer readers use
-        ! this list to resolve the actual argument signature.
+        ! Space-joined specific targets for a type-bound generic.
         character(len=:), allocatable :: specific_names
         character(len=:), allocatable :: pass_name
         logical :: pass_arg = .true.
@@ -101,8 +88,7 @@ module ffc_module_artefact
         ! this equals name; for a public USE rename, name is the exported
         ! spelling and canonical_name remains the remote type identity.
         character(len=:), allocatable :: canonical_name
-        ! Module-qualified canonical identity, e.g. "m::box_t". Empty in
-        ! pre-schema-14 artefacts; the importer derives it from the module name.
+        ! Module-qualified canonical identity, e.g. "m::box_t".
         character(len=:), allocatable :: canonical_identity
         ! Name of the type this one extends; empty when it extends nothing.
         character(len=:), allocatable :: parent_name
@@ -358,7 +344,7 @@ contains
         type(fmod_variable_t), allocatable :: vars(:)
         type(fmod_procedure_t), allocatable :: procs(:)
         type(fmod_generic_t), allocatable :: gens(:)
-        integer :: nuse, nparam, ndtype, ncomp, nvar, nproc, ngen, i
+        integer :: nuse, nparam, ndtype, ncomp, nvar, nproc, ngen
         integer :: schema
 
         allocate (character(len=0) :: error_msg)
@@ -556,17 +542,6 @@ contains
         close (unit)
         call flush_component(comps, ncomp, dtypes, ndtype)
 
-        ! Schema 13 and earlier did not carry provenance. A local type's name
-        ! is the only available identity in those artefacts, preserving their
-        ! read compatibility while giving every record one canonical spelling.
-        do i = 1, ndtype
-            if (.not. allocated(dtypes(i)%canonical_name)) then
-                dtypes(i)%canonical_name = dtypes(i)%name
-            else if (len_trim(dtypes(i)%canonical_name) == 0) then
-                dtypes(i)%canonical_name = dtypes(i)%name
-            end if
-        end do
-
         info%uses = uses(1:nuse)
         info%fmod_schema = schema
         info%parameters = params
@@ -578,20 +553,9 @@ contains
             error_msg = 'malformed .fmod (no module name): '//trim(path)
             return
         end if
-        ! Reject an artefact this ffc cannot read rather than misinterpret it:
-        ! a missing field means it predates the versioned schema, while schema
-        ! 10 is explicitly retained for backwards-compatible reads (#397).
-        if (schema /= FMOD_SCHEMA_VERSION .and. &
-            schema /= FMOD_PREVIOUS_SCHEMA_VERSION .and. &
-            schema /= FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION .and. &
-            schema /= FMOD_SCHEMA_BEFORE_CURRENT_VERSION .and. &
-            schema /= FMOD_LEGACY_SCHEMA_VERSION) then
+        if (schema /= FMOD_SCHEMA_VERSION) then
             error_msg = 'unsupported .fmod schema version'//schema_text(schema)// &
-                ' in '//trim(path)//' (this ffc reads schema versions '// &
-                int_text(FMOD_LEGACY_SCHEMA_VERSION)//' and '// &
-                int_text(FMOD_PREVIOUS_SCHEMA_VERSION)//' and '// &
-                int_text(FMOD_SCHEMA_BEFORE_PREVIOUS_VERSION)//' and '// &
-                int_text(FMOD_SCHEMA_BEFORE_CURRENT_VERSION)//' and '// &
+                ' in '//trim(path)//' (this ffc reads schema version '// &
                 int_text(FMOD_SCHEMA_VERSION)//'): recompile the module'
         end if
     end subroutine read_fmod
@@ -733,60 +697,43 @@ contains
                 return
             end if
             bar = index(target_part, '|')
-            if (bar == 0) then
-                target_part = trim(target_part)
-                pass_part = ''
-                pass_arg_part = ''
-                specific_names = target_part
-            else
-                if (bar <= 1) then
-                    error_msg = 'malformed .fmod binding record'
-                    return
-                end if
-                pass_part = adjustl(target_part(bar + 1:))
-                target_part = trim(target_part(1:bar - 1))
-                if (len_trim(target_part) == 0) then
-                    error_msg = 'malformed .fmod binding record'
-                    return
-                end if
-                bar = index(pass_part, '|')
-                if (bar == 0) then
-                    if (len_trim(pass_part) == 0) then
-                        error_msg = 'malformed .fmod binding record'
-                        return
-                    end if
-                    pass_part = trim(pass_part)
-                    pass_arg_part = ''
-                    specific_names = target_part
-                else
-                    if (bar == 1) then
-                        pass_arg_part = adjustl(pass_part(2:))
-                        pass_part = ''
-                    else
-                        pass_arg_part = adjustl(pass_part(bar + 1:))
-                        pass_part = trim(pass_part(1:bar - 1))
-                    end if
-                    if (len_trim(pass_arg_part) == 0) then
-                        error_msg = 'malformed .fmod binding record'
-                        return
-                    end if
-                    bar = index(pass_arg_part, '|')
-                    if (bar == 0) then
-                        specific_names = target_part
-                    else
-                        if (bar <= 1 .or. bar >= len_trim(pass_arg_part)) then
-                            error_msg = 'malformed .fmod binding record'
-                            return
-                        end if
-                        specific_names = trim(pass_arg_part(bar + 1:))
-                        if (index(specific_names, '|') > 0) then
-                            error_msg = 'malformed .fmod binding record'
-                            return
-                        end if
-                        pass_arg_part = trim(pass_arg_part(1:bar - 1))
-                    end if
-                end if
+            if (bar <= 1) then
+                error_msg = 'malformed .fmod binding record'
+                return
             end if
+            pass_part = adjustl(target_part(bar + 1:))
+            target_part = trim(target_part(1:bar - 1))
+            if (len_trim(target_part) == 0) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            bar = index(pass_part, '|')
+            if (bar == 0) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            if (bar == 1) then
+                pass_arg_part = adjustl(pass_part(2:))
+                pass_part = ''
+            else
+                pass_arg_part = adjustl(pass_part(bar + 1:))
+                pass_part = trim(pass_part(1:bar - 1))
+            end if
+            if (len_trim(pass_arg_part) == 0) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            bar = index(pass_arg_part, '|')
+            if (bar <= 1 .or. bar >= len_trim(pass_arg_part)) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            specific_names = trim(pass_arg_part(bar + 1:))
+            if (index(specific_names, '|') > 0) then
+                error_msg = 'malformed .fmod binding record'
+                return
+            end if
+            pass_arg_part = trim(pass_arg_part(1:bar - 1))
             if (len_trim(pass_arg_part) == 0) then
                 pass_value = 1
             else

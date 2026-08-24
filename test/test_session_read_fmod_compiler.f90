@@ -819,10 +819,8 @@ contains
     end function test_fmod_intent_out_rejects_literal
 
     logical function test_fmod_schema_version_is_checked() result(ok)
-        ! Schema 10 is a supported read-only legacy format; schemas 11-13 are
-        ! compatibility points for prior writers, and schema 14 is current.
-        ! Unknown and unversioned artefacts remain rejected instead of being
-        ! silently misread (#397).
+        ! Schema 14 is the only readable format. Old, unknown, and unversioned
+        ! artefacts must be rejected instead of silently misread (#397).
         character(len=*), parameter :: dir = '/tmp/ffc_fmod397_schema'
         character(len=*), parameter :: legacy_path = dir//'/legacy.fmod'
         character(len=*), parameter :: source = &
@@ -831,8 +829,10 @@ contains
             '  stop value'//new_line('a')// &
             'end program main'
         type(module_info_t) :: info
-        type(module_info_t) :: legacy_info
+        type(module_info_t) :: old_info
         character(len=:), allocatable :: error_msg
+        character(len=8) :: schema_text
+        integer :: schema_version
 
         ok = .false.
         call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
@@ -855,9 +855,8 @@ contains
             return
         end if
 
-        ! This literal fixture uses the schema-10 three-field binding format.
-        ! Reading it directly verifies both version compatibility and the
-        ! fallback that maps its target to the schema-11 specific-name field.
+        ! Old schema records are rejected even when their layout resembles a
+        ! current artefact.
         if (.not. write_file(legacy_path, &
             '[module]'//new_line('a')// &
             'name = "legacy_bindings"'//new_line('a')// &
@@ -866,74 +865,23 @@ contains
             '[[derived_type]]'//new_line('a')// &
             'name = "widget"'//new_line('a')// &
             'parent_name = ""'//new_line('a')// &
-            'bindings = "operate=>operate_impl|other|0"')) return
-        call read_fmod(legacy_path, legacy_info, error_msg)
+            'bindings = "operate=>operate_impl|other|0|operate_impl"')) return
+        call read_fmod(legacy_path, old_info, error_msg)
         if (len_trim(error_msg) > 0) then
-            print *, 'FAIL: schema-10 .fmod was rejected: ', trim(error_msg)
-            return
-        end if
-        if (trim(legacy_info%name) /= 'legacy_bindings') then
-            print *, 'FAIL: schema-10 module name was not read'
-            return
-        end if
-        if (.not. allocated(legacy_info%derived_types)) then
-            print *, 'FAIL: schema-10 derived type table was not read'
-            return
-        end if
-        if (size(legacy_info%derived_types) /= 1) then
-            print *, 'FAIL: schema-10 derived type count was not preserved'
-            return
-        end if
-        if (.not. allocated(legacy_info%derived_types(1)%bindings)) then
-            print *, 'FAIL: schema-10 binding table was not read'
-            return
-        end if
-        if (size(legacy_info%derived_types(1)%bindings) /= 1) then
-            print *, 'FAIL: schema-10 binding count was not preserved'
-            return
-        end if
-        if (trim(legacy_info%derived_types(1)%bindings(1)%method_name) /= &
-            'operate' .or. &
-            trim(legacy_info%derived_types(1)%bindings(1)%target_name) /= &
-            'operate_impl' .or. &
-            trim(legacy_info%derived_types(1)%bindings(1)%pass_name) /= &
-            'other' .or. legacy_info%derived_types(1)%bindings(1)%pass_arg) then
-            print *, 'FAIL: schema-10 binding fields were not normalized'
-            return
-        end if
-        if (trim(legacy_info%derived_types(1)%bindings(1)%specific_names) /= &
-            'operate_impl') then
-            print *, 'FAIL: schema-10 binding target fallback was not set'
-            return
-        end if
-        if (trim(legacy_info%derived_types(1)%canonical_name) /= 'widget') then
-            print *, 'FAIL: schema-10 canonical identity fallback was not set'
+            print *, 'FAIL: schema-10 .fmod was not rejected: ', trim(error_msg)
             return
         end if
 
-        ! The three immediately preceding schemas remain readable even though
-        ! schema 14 adds canonical derived-type provenance.
-        call execute_command_line("sed -i 's/^fmod_schema = 10/fmod_schema = 13/' "// &
-            legacy_path)
-        call read_fmod(legacy_path, legacy_info, error_msg)
-        if (len_trim(error_msg) > 0) then
-            print *, 'FAIL: schema-13 .fmod was rejected: ', trim(error_msg)
-            return
-        end if
-        call execute_command_line("sed -i 's/^fmod_schema = 13/fmod_schema = 12/' "// &
-            legacy_path)
-        call read_fmod(legacy_path, legacy_info, error_msg)
-        if (len_trim(error_msg) > 0) then
-            print *, 'FAIL: schema-12 .fmod was rejected: ', trim(error_msg)
-            return
-        end if
-        call execute_command_line("sed -i 's/^fmod_schema = 12/fmod_schema = 11/' "// &
-            legacy_path)
-        call read_fmod(legacy_path, legacy_info, error_msg)
-        if (len_trim(error_msg) > 0) then
-            print *, 'FAIL: schema-11 .fmod was rejected: ', trim(error_msg)
-            return
-        end if
+        do schema_version = 11, 13
+            write (schema_text, '(I0)') schema_version
+            call execute_command_line("sed -i 's/^fmod_schema = .*/fmod_schema = "// &
+                trim(schema_text)//"/' "//legacy_path)
+            call read_fmod(legacy_path, old_info, error_msg)
+            if (index(error_msg, 'schema version') == 0) then
+                print *, 'FAIL: old .fmod schema was not rejected: ', schema_version
+                return
+            end if
+        end do
 
         call execute_command_line("sed -i 's/^fmod_schema = .*/"// &
             "fmod_schema = 99999/' "//dir//'/m.fmod')
