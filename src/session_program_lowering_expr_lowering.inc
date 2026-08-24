@@ -337,12 +337,14 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: int_value
         type(lr_operand_desc_t) :: wide_value
+        integer :: integer_kind
 
-        if (is_integer_operand(arena, node_index, context)) then
-            call lower_i32_expression(arena, node_index, context, int_value, &
-                                      error_msg)
+        integer_kind = integer_operand_kind(arena, node_index, context)
+        if (integer_kind > 0) then
+            call lower_integer_operand(arena, node_index, integer_kind, context, &
+                                       int_value, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_i32_to_f32(context%session, int_value, value, &
+            if (.not. emit_liric_integer_to_f32(context%session, int_value, value, &
                                             error_msg)) return
             return
         end if
@@ -370,12 +372,14 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: int_value
+        integer :: integer_kind
 
-        if (is_integer_operand(arena, node_index, context)) then
-            call lower_i32_expression(arena, node_index, context, int_value, &
-                                      error_msg)
+        integer_kind = integer_operand_kind(arena, node_index, context)
+        if (integer_kind > 0) then
+            call lower_integer_operand(arena, node_index, integer_kind, context, &
+                                       int_value, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_i32_to_f64(context%session, int_value, value, &
+            if (.not. emit_liric_integer_to_f64(context%session, int_value, value, &
                                             error_msg)) return
             return
         end if
@@ -404,21 +408,25 @@
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
         logical :: is_int
-        integer :: symbol_index, bl, br, blin, bcol
-        character(len=:), allocatable :: id_name, id_err, bin_op
-        character(len=:), allocatable :: lit_value, lit_type
 
-        is_int = .false.
+        is_int = integer_operand_kind(arena, node_index, context) > 0
+    end function is_integer_operand
+
+    recursive integer function integer_operand_kind(arena, node_index, context) &
+        result(kind)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index, bl, br, blin, bcol, left_kind, right_kind
+        character(len=:), allocatable :: id_name, id_err, bin_op
+
+        kind = 0
         if (.not. node_exists(arena, node_index)) return
 
         if (is_literal(arena, node_index)) then
-            if (is_real_literal(arena, node_index)) return
-            if (is_logical_literal(arena, node_index)) return
-            if (is_character_literal(arena, node_index)) return
-            call get_literal_info(arena, node_index, lit_value, lit_type, id_err)
-            if (len_trim(id_err) > 0) return
-            is_int = trim(lit_type) == 'integer' .or. &
-                     is_integer_literal_text(lit_value)
+            if (.not. is_real_literal(arena, node_index) .and. &
+                .not. is_logical_literal(arena, node_index) .and. &
+                .not. is_character_literal(arena, node_index)) kind = VALUE_I32
             return
         end if
 
@@ -428,15 +436,18 @@
             symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index <= 0) return
             if (context%symbols(symbol_index)%is_array) return
-            is_int = context%symbols(symbol_index)%value_kind == VALUE_I32
+            select case (context%symbols(symbol_index)%value_kind)
+            case (VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64)
+                kind = context%symbols(symbol_index)%value_kind
+            end select
             return
         end if
 
-        ! An integer derived-type component read (v%k, v%part%k) in a real
-        ! expression is an integer subexpression and needs the same int->real
-        ! coercion as an integer scalar identifier.
         if (is_integer_component_access(arena, node_index, context)) then
-            is_int = .true.
+            select type (node => arena%entries(node_index)%node)
+            type is (component_access_node)
+                kind = derived_component_access_kind(arena, node, context)
+            end select
             return
         end if
 
@@ -446,13 +457,48 @@
             if (len_trim(id_err) > 0) return
             select case (trim(adjustl(lowercase_text(bin_op))))
             case ('+', '-', '*', '/', '**')
-                is_int = is_integer_operand(arena, bl, context) .and. &
-                         is_integer_operand(arena, br, context)
-            case default
-                is_int = .false.
+                left_kind = integer_operand_kind(arena, bl, context)
+                right_kind = integer_operand_kind(arena, br, context)
+                if (left_kind > 0 .and. right_kind > 0) then
+                    kind = wider_integer_kind(left_kind, right_kind)
+                end if
             end select
         end if
-    end function is_integer_operand
+    end function integer_operand_kind
+
+    integer function wider_integer_kind(left_kind, right_kind) result(kind)
+        integer, intent(in) :: left_kind, right_kind
+
+        if (left_kind == VALUE_I64 .or. right_kind == VALUE_I64) then
+            kind = VALUE_I64
+        else if (left_kind == VALUE_I32 .or. right_kind == VALUE_I32) then
+            kind = VALUE_I32
+        else if (left_kind == VALUE_I16 .or. right_kind == VALUE_I16) then
+            kind = VALUE_I16
+        else
+            kind = VALUE_I8
+        end if
+    end function wider_integer_kind
+
+    recursive subroutine lower_integer_operand(arena, node_index, integer_kind, &
+                                                context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index, integer_kind
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        select case (integer_kind)
+        case (VALUE_I8)
+            call lower_i8_expression(arena, node_index, context, value, error_msg)
+        case (VALUE_I16)
+            call lower_i16_expression(arena, node_index, context, value, error_msg)
+        case (VALUE_I64)
+            call lower_i64_expression(arena, node_index, context, value, error_msg)
+        case default
+            call lower_i32_expression(arena, node_index, context, value, error_msg)
+        end select
+    end subroutine lower_integer_operand
 
     ! True when the node is a scalar derived-type component read whose
     ! component is integer-valued. Allocatable, pointer and array components
@@ -478,7 +524,10 @@
             if (comp_index <= 0) return
             if (component_is_allocatable(context, type_index, comp_index)) return
             if (component_is_indirect(context, type_index, comp_index)) return
-            is_int = component_kind(context, type_index, comp_index) == VALUE_I32
+            select case (component_kind(context, type_index, comp_index))
+            case (VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64)
+                is_int = .true.
+            end select
         end select
     end function is_integer_component_access
 
@@ -602,7 +651,7 @@
                     .true., value, matched, error_msg)
                 if (matched .or. len_trim(error_msg) > 0) return
             end block
-            if (is_integer_component_access(arena, node_index, context)) then
+            if (integer_operand_kind(arena, node_index, context) > 0) then
                 call lower_f32_operand(arena, node_index, context, value, &
                                        error_msg)
                 return
@@ -919,7 +968,7 @@
                     .false., value, matched, error_msg)
                 if (matched .or. len_trim(error_msg) > 0) return
             end block
-            if (is_integer_component_access(arena, node_index, context)) then
+            if (integer_operand_kind(arena, node_index, context) > 0) then
                 call lower_f64_operand(arena, node_index, context, value, &
                                        error_msg)
                 return
@@ -1733,6 +1782,10 @@
                 call lower_i8_array_element(arena, node, context, value, error_msg)
                 return
             end if
+        type is (component_access_node)
+            call lower_derived_component_load(arena, node, context, value, &
+                                               error_msg)
+            return
         end select
 
         error_msg = 'ffc direct-session lowering only supports integer(1) expressions'
@@ -1866,6 +1919,10 @@
                 call lower_i16_array_element(arena, node, context, value, error_msg)
                 return
             end if
+        type is (component_access_node)
+            call lower_derived_component_load(arena, node, context, value, &
+                                               error_msg)
+            return
         end select
 
         error_msg = 'ffc direct-session lowering only supports integer(2) expressions'
