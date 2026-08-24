@@ -10,7 +10,8 @@ module session_program_lowering_impl
         pointer_assignment_node, literal_node, &
         identifier_node, binary_op_node
     use ast_nodes_transfer, only: nullify_node, entry_node
-    use ast_nodes_data, only: derived_type_node, module_node, &
+    use ast_nodes_data, only: declaration_node, parameter_declaration_node, &
+        derived_type_node, module_node, &
         type_binding_node, block_data_node
     use ast_nodes_legacy, only: common_block_node, enum_node
     use ast_nodes_io, only: open_statement_node, close_statement_node, &

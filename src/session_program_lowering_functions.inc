@@ -740,8 +740,115 @@
             context%function_node_indices(next_index) = 0
         end if
         context%function_count = next_index
+        if (present(node_index)) then
+            call register_function_entry_names(context%arena, node_index, context, &
+                                                error_msg)
+        end if
         call set_empty(error_msg)
     end subroutine register_internal_function_name
+
+    subroutine register_function_entry_names(arena, node_index, context, error_msg)
+        type(ast_arena_t), intent(inout) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(function_def_node), pointer :: fn_node
+        integer, allocatable :: entry_params(:)
+        integer :: i, next_index, parent_index, param_count
+
+        call set_empty(error_msg)
+        fn_node => get_node_as_function_def(arena, node_index)
+        if (.not. associated(fn_node)) return
+        if (.not. allocated(fn_node%name)) return
+        parent_index = find_function_index(context, fn_node%name)
+        if (parent_index <= 0) return
+        if (.not. allocated(fn_node%body_indices)) return
+        do i = 1, size(fn_node%body_indices)
+            if (.not. node_exists(arena, fn_node%body_indices(i))) cycle
+            select type (entry => arena%entries(fn_node%body_indices(i))%node)
+            type is (entry_node)
+                if (.not. allocated(entry%name)) cycle
+                if (find_function_index(context, entry%name) /= 0) cycle
+                call grow_function_names(context)
+                next_index = context%function_count + 1
+                context%function_names(next_index) = trim(entry%name)
+                context%function_value_kinds(next_index) = &
+                    context%function_value_kinds(parent_index)
+                call materialize_entry_parameter_nodes(arena, entry, entry_params)
+                param_count = size(entry_params)
+                context%function_param_counts(next_index) = param_count
+                context%function_node_indices(next_index) = node_index
+                context%function_count = next_index
+            end select
+        end do
+    end subroutine register_function_entry_names
+
+    subroutine entry_parameter_indices(arena, entry, params)
+        type(ast_arena_t), intent(in) :: arena
+        type(entry_node), intent(in) :: entry
+        integer, allocatable, intent(out) :: params(:)
+        character(len=:), allocatable :: names(:)
+        integer :: i, n, open_pos, close_pos, count
+
+        if (allocated(entry%param_indices)) then
+            params = entry%param_indices
+            return
+        end if
+        allocate (params(0))
+        if (.not. allocated(entry%params_text)) return
+        open_pos = index(entry%params_text, '(')
+        close_pos = index(entry%params_text, ')')
+        if (open_pos == 0 .or. close_pos <= open_pos + 1) return
+        call split_csv(entry%params_text(open_pos + 1:close_pos - 1), names, count)
+        if (count == 0) return
+        deallocate (params)
+        allocate (params(count))
+        do i = 1, count
+            params(i) = 0
+            do n = 1, arena%size
+                if (.not. node_exists(arena, n)) cycle
+                select type (parameter => arena%entries(n)%node)
+                type is (parameter_declaration_node)
+                    if (same_name(parameter%name, trim(names(i)))) then
+                        params(i) = n
+                        exit
+                    end if
+                end select
+            end do
+            if (params(i) == 0) params(i) = &
+                declaration_index_for_name(arena, trim(names(i)))
+        end do
+    end subroutine entry_parameter_indices
+
+    subroutine materialize_entry_parameter_nodes(arena, entry, params)
+        type(ast_arena_t), intent(inout) :: arena
+        type(entry_node), intent(in) :: entry
+        integer, allocatable, intent(out) :: params(:)
+        character(len=:), allocatable :: names(:), type_name
+        integer :: i, decl_index, count
+        type(parameter_declaration_node) :: parameter
+
+        call entry_parameter_indices(arena, entry, params)
+        if (.not. allocated(entry%params_text)) return
+        if (allocated(entry%param_indices)) return
+        call split_csv(entry%params_text(index(entry%params_text, '(') + 1: &
+                       index(entry%params_text, ')') - 1), names, count)
+        do i = 1, count
+            decl_index = params(i)
+            if (decl_index <= 0) cycle
+            select type (decl => arena%entries(decl_index)%node)
+            type is (declaration_node)
+                type_name = 'integer'
+                if (allocated(decl%type_name)) type_name = decl%type_name
+                parameter%name = trim(names(i))
+                parameter%type_name = trim(type_name)
+                parameter%kind_value = decl%kind_value
+                parameter%has_kind = decl%has_kind
+                call arena%push(parameter, 'parameter_declaration')
+                params(i) = arena%size
+            end select
+        end do
+    end subroutine materialize_entry_parameter_nodes
 
     logical function result_var_is_procedure_pointer(node, context) &
         result(is_procedure_pointer)
@@ -2600,6 +2707,9 @@
             if (len_trim(error_msg) > 0) return
             call lower_scalar_function(arena, fn_node, context, error_msg, &
                                        procedure_node_index=node_index)
+            if (len_trim(error_msg) > 0) return
+            call lower_function_entries(arena, fn_node, node_index, context, &
+                                        error_msg)
         else if (node_type == 'subroutine_def_node' .or. &
                  node_type == 'subroutine_def') then
             sb_node => get_node_as_subroutine_def(arena, node_index)
@@ -2614,6 +2724,98 @@
                                        procedure_node_index=node_index)
         end if
     end subroutine lower_one_internal_function
+
+    subroutine lower_function_entries(arena, parent, parent_index, context, &
+                                      error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(function_def_node), intent(in) :: parent
+        integer, intent(in) :: parent_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
+
+        call set_empty(error_msg)
+        if (.not. allocated(parent%body_indices)) return
+        do i = 1, size(parent%body_indices)
+            if (.not. node_exists(arena, parent%body_indices(i))) cycle
+            select type (entry => arena%entries(parent%body_indices(i))%node)
+            type is (entry_node)
+                call lower_one_function_entry(arena, parent, parent_index, i, &
+                                              context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
+    end subroutine lower_function_entries
+
+    subroutine lower_one_function_entry(arena, parent, parent_index, entry_pos, &
+                                        context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(function_def_node), intent(in) :: parent
+        integer, intent(in) :: parent_index, entry_pos
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(function_def_node) :: entry_function
+        type(entry_node) :: entry
+        integer, allocatable :: entry_params(:)
+        integer, allocatable :: body(:), work(:)
+        integer :: i, next_entry, count
+        logical :: is_decl
+
+        call set_empty(error_msg)
+        select type (candidate => arena%entries(parent%body_indices(entry_pos))%node)
+        type is (entry_node)
+            entry = candidate
+        class default
+            return
+        end select
+        if (.not. allocated(entry%name)) return
+        call entry_parameter_indices(arena, entry, entry_params)
+        if (size(entry_params) == 0) return
+
+        next_entry = size(parent%body_indices) + 1
+        do i = entry_pos + 1, size(parent%body_indices)
+            if (.not. node_exists(arena, parent%body_indices(i))) cycle
+            select type (candidate => arena%entries(parent%body_indices(i))%node)
+            type is (entry_node)
+                next_entry = i
+                exit
+            end select
+        end do
+
+        allocate (work(2 * max(1, size(parent%body_indices))))
+        count = 0
+        do i = 1, size(parent%body_indices)
+            if (.not. node_exists(arena, parent%body_indices(i))) cycle
+            select type (candidate => arena%entries(parent%body_indices(i))%node)
+            type is (declaration_node)
+                count = count + 1
+                work(count) = parent%body_indices(i)
+            class default
+                cycle
+            end select
+        end do
+        do i = entry_pos + 1, next_entry - 1
+            if (.not. node_exists(arena, parent%body_indices(i))) cycle
+            is_decl = .false.
+            select type (candidate => arena%entries(parent%body_indices(i))%node)
+            type is (declaration_node)
+                is_decl = .true.
+            end select
+            if (is_decl) cycle
+            count = count + 1
+            work(count) = parent%body_indices(i)
+        end do
+        allocate (body(count))
+        if (count > 0) body = work(1:count)
+
+        entry_function = parent
+        entry_function%name = trim(entry%name)
+        entry_function%param_indices = entry_params
+        entry_function%body_indices = body
+        call lower_scalar_function(arena, entry_function, context, error_msg, &
+                                   emit_name_override=trim(entry%name), &
+                                   procedure_node_index=parent_index)
+    end subroutine lower_one_function_entry
 
     subroutine lower_module_procedures(arena, root_index, context, error_msg)
         ! Emit module-defined procedures under their mangled symbol
