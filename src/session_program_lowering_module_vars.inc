@@ -35,6 +35,16 @@
                                             context, error_msg)
             return
         end if
+        select type (decl => arena%entries(var_idx)%node)
+        type is (declaration_node)
+            if (decl%is_pointer .and. declaration_names_procedure(decl)) then
+                value_kind = VALUE_PROC_PTR
+                status = MODVAR_OK
+                return
+            end if
+        class default
+            continue
+        end select
         ! A scalar derived-type module variable stores as a flat slot global.
         ! Component defaults fold statically; an explicit structure-constructor
         ! initialiser folds too when its provided arguments are compile-time
@@ -515,11 +525,11 @@
                                            var_name, module_name, context, &
                                            error_msg)
         use, intrinsic :: iso_c_binding, only: c_bool, c_char, c_int8_t, &
-                                               c_int32_t, c_loc, c_size_t, &
+                                               c_int32_t, c_int64_t, c_loc, c_size_t, &
                                                c_ptr, c_double, c_float
         use liric_session_bindings, only: lr_type_i32_s, lr_type_f32_s, &
                                           lr_type_f64_s, lr_type_i8_s, &
-                                          lr_type_array_s
+                                          lr_type_array_s, lr_type_ptr_s
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: var_idx
         integer, intent(in) :: value_kind
@@ -558,6 +568,19 @@
         call set_empty(error_msg)
         mangled = module_procedure_mangled(module_name, trim(var_name))
         call to_c_chars(mangled, c_name)
+        if (value_kind == VALUE_PROC_PTR) then
+            allocate(init_char(8))
+            init_char = 0_c_int8_t
+            gtype = lr_type_ptr_s(context%session%handle)
+            global_id = lr_session_global(context%session%handle, c_name, &
+                gtype, c_false_local, c_loc(init_char), 8_c_size_t)
+            deallocate(init_char)
+            if (global_id < 0_c_int32_t) then
+                error_msg = 'LIRIC could not create module procedure pointer global: '// &
+                    trim(mangled)
+            end if
+            return
+        end if
         if (value_kind == VALUE_CHARACTER) then
             call module_character_length(arena, var_idx, context, &
                                          character_length, error_msg)
@@ -1302,6 +1325,7 @@
     subroutine bind_one_module_variable(arena, var_idx, value_kind, var_name, &
                                         module_name, context, error_msg)
         use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
+        use liric_session_bindings, only: lr_type_ptr_s
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: var_idx
         integer, intent(in) :: value_kind
@@ -1336,6 +1360,23 @@
         if (module_declaration_is_array(arena, var_idx)) then
             call bind_one_module_array_variable(arena, var_idx, value_kind, &
                 trim(var_name), trim(module_name), global_id, context, error_msg)
+            return
+        end if
+        if (value_kind == VALUE_PROC_PTR) then
+            call grow_symbols(context)
+            sym_idx = context%symbol_count + 1
+            context%symbols(sym_idx) = symbol_t()
+            context%symbols(sym_idx)%name = trim(var_name)
+            context%symbols(sym_idx)%value_kind = VALUE_PROC_PTR
+            context%symbols(sym_idx)%is_pointer = .true.
+            context%symbols(sym_idx)%is_proc_pointer = .true.
+            context%symbols(sym_idx)%has_address = .true.
+            context%symbols(sym_idx)%is_reference = .true.
+            context%symbols(sym_idx)%address%kind = LR_OP_KIND_GLOBAL
+            context%symbols(sym_idx)%address%payload = int(global_id, c_int64_t)
+            context%symbols(sym_idx)%address%typ = lr_type_ptr_s(context%session%handle)
+            context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
+            context%symbol_count = sym_idx
             return
         end if
         call grow_symbols(context)
