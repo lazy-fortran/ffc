@@ -53,7 +53,8 @@ contains
             eq_pos = p + eq_pos - 1
             kw = spec_lower(text(p:eq_pos - 1))
             p = eq_pos + 1
-            do while (p <= len(text) .and. text(p:p) == ' ')
+            do while (p <= len(text))
+                if (text(p:p) /= ' ') exit
                 p = p + 1
             end do
             if (p > len(text)) exit

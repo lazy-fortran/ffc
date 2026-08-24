@@ -53,6 +53,18 @@
             pnode%expression_indices = node%arg_indices
         end if
         call lower_print(arena, pnode, context, error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        ! PRINT lowering does not go through the file-unit runtime entry
+        ! points, so establish the status explicitly before reporting
+        ! WRITE(*,...)'s optional I/O status specifiers.
+        block
+            type(lr_operand_desc_t), allocatable :: noargs(:)
+            allocate (noargs(0))
+            if (.not. emit_void_call(context%session, '_ffc_iostat_clear', &
+                                     noargs, error_msg)) return
+        end block
+        call store_write_iostat_success(node, context, error_msg)
     end subroutine lower_write_stdout
 
     subroutine lower_read_stdin(arena, node, context, error_msg)
@@ -65,20 +77,28 @@
         integer :: i
 
         call set_empty(error_msg)
-        if (.not. allocated(node%var_indices)) return
-        if (allocated(node%format_spec)) then
-            if (trim(node%format_spec) /= '*') then
-                call unsupported_feature_error('read statement', node%line, &
-                    node%column, 'only list-directed (*) stdin read is '// &
-                    'supported (#247 slice B5b)', error_msg)
-                return
+        if (allocated(node%var_indices)) then
+            if (allocated(node%format_spec)) then
+                if (trim(node%format_spec) /= '*') then
+                    call unsupported_feature_error('read statement', node%line, &
+                        node%column, 'only list-directed (*) stdin read is '// &
+                        'supported (#247 slice B5b)', error_msg)
+                    return
+                end if
             end if
+            do i = 1, size(node%var_indices)
+                call lower_read_stdin_item(arena, node%var_indices(i), node%line, &
+                                           node%column, context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
         end if
-        do i = 1, size(node%var_indices)
-            call lower_read_stdin_item(arena, node%var_indices(i), node%line, &
-                                       node%column, context, error_msg)
-            if (len_trim(error_msg) > 0) return
-        end do
+        block
+            type(lr_operand_desc_t), allocatable :: noargs(:)
+            allocate (noargs(0))
+            if (.not. emit_void_call(context%session, '_ffc_iostat_clear', &
+                                     noargs, error_msg)) return
+        end block
+        call store_read_iostat_success(node, context, error_msg)
     end subroutine lower_read_stdin
 
     subroutine lower_read_stdin_item(arena, node_index, stmt_line, stmt_col, &

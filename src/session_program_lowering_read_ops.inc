@@ -143,14 +143,20 @@
         type(read_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: sym
+        character(len=:), allocatable :: iomsg_name, iostat_name
+        type(lr_operand_desc_t) :: status_op
 
         call set_empty(error_msg)
-        call read_iostat_symbol(node, context, sym, error_msg)
-        if (len_trim(error_msg) > 0 .or. sym <= 0) return
-        call assign_i32_to_symbol(context, sym, &
-                                  i32_immediate(context%session, 0_c_int64_t), &
-                                  error_msg)
+        iostat_name = ''
+        iomsg_name = ''
+        if (allocated(node%io_control_list)) then
+            call io_control_value(node%io_control_list, 'iostat', iostat_name)
+            call io_control_value(node%io_control_list, 'iomsg', iomsg_name)
+        end if
+        if (len_trim(iostat_name) == 0 .and. len_trim(iomsg_name) == 0) return
+        status_op = i32_immediate(context%session, 0_c_int64_t)
+        call store_io_status(context, iostat_name, iomsg_name, status_op, &
+                             error_msg)
     end subroutine store_read_iostat_success
 
     subroutine store_read_iostat_from_eof(node, fp, context, error_msg, ok_value)
