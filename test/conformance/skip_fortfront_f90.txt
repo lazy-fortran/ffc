@@ -52,3 +52,5 @@ issue_2819_pure_with_print.f90 # scope=harness; reason=FortFront semantic reject
 issue_2855_external_intrinsic_conflict.f90 # scope=harness; reason=FortFront semantic rejection fixture
 issue_2078_include_statement_silently_dropped.f90 # scope=harness; reason=depends on external /tmp include not supplied by corpus
 issue_2850_bare_subroutine_interface.f90 # scope=harness; reason=procedure-only unit has no runnable main program
+issue_2416_io_format_variable.f90 # scope=harness; reason=gfortran reference terminates on unprepared file unit 10
+issue_2416_io_formats_comprehensive.f90 # scope=harness; reason=gfortran reference terminates on unprepared file unit 10
