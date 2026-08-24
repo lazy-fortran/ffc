@@ -685,6 +685,30 @@ contains
                 error_msg = 'BOZ literal constant'//trim(location)// &
                             ' cannot be assigned to a non-numeric variable'
                 return
+            type is (print_statement_node)
+                if (.not. allocated(nd%expression_indices)) cycle
+                do i = 1, size(nd%expression_indices)
+                    if (.not. node_is_boz_literal(arena, &
+                                                  nd%expression_indices(i))) cycle
+                    write (location, '(" at line ",I0,", column ",I0)') &
+                        get_node_line(arena, nd%expression_indices(i)), &
+                        get_node_column(arena, nd%expression_indices(i))
+                    error_msg = 'BOZ literal constant'//trim(location)// &
+                                ' cannot appear in an output IO list'
+                    return
+                end do
+            type is (write_statement_node)
+                if (.not. allocated(nd%arg_indices)) cycle
+                do i = 1, size(nd%arg_indices)
+                    if (.not. node_is_boz_literal(arena, nd%arg_indices(i))) &
+                        cycle
+                    write (location, '(" at line ",I0,", column ",I0)') &
+                        get_node_line(arena, nd%arg_indices(i)), &
+                        get_node_column(arena, nd%arg_indices(i))
+                    error_msg = 'BOZ literal constant'//trim(location)// &
+                                ' cannot appear in an output IO list'
+                    return
+                end do
             end select
         end do
     end procedure check_boz_literal_contexts
