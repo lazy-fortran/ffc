@@ -28,7 +28,6 @@ issue_2416_io_format_variable.f90 # owner=lazy-fortran/ffc#628; reason=move file
 issue_2416_io_formats_comprehensive.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
 issue_2417_minloc_with_mask.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 issue_2418_intrinsic_keywords_declared.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
-issue_2419_data_variable_in_allocate.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 issue_2450_procedure_interfaces.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 issue_2452_roundtrip_timeout.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 issue_2455_array_constructor_arg.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
