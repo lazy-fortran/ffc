@@ -189,6 +189,10 @@
         character(len=:), allocatable :: callee_name
 
         idx = find_symbol_compat(context, node%name)
+        if (idx <= 0) then
+            error_msg = 'procedure dummy or pointer is not declared: '//trim(node%name)
+            return
+        end if
         call resolve_proc_pointer_callee_name(arena, node%name, callee_name)
         ! A procedure dummy carries its result ABI in the interface that
         ! created the dummy.  An explicit procedure pointer has no runtime
@@ -415,6 +419,10 @@
         character(len=:), allocatable :: callee_name
 
         idx = find_symbol_compat(context, node%name)
+        if (idx <= 0) then
+            error_msg = 'procedure dummy or pointer is not declared: '//trim(node%name)
+            return
+        end if
         call resolve_proc_pointer_callee_name(arena, node%name, callee_name)
         if (.not. context%symbols(idx)%is_dummy_argument .and. &
             contained_function_kind(context, callee_name) /= VALUE_F32 .and. &
