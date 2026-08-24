@@ -34,7 +34,6 @@ issue_2455_array_constructor_arg.f90 # owner=lazy-fortran/ffc#458; reason=migrat
 issue_2455_nested_array_constructor.f90 # owner=lazy-fortran/ffc#540; reason=fold typed scalar and array named constants
 issue_2455_nested_function_args.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape arrays by descriptor
 issue_2458_multi_array_declaration.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
-issue_2487_parameter_statement.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
 issue_2489_interface_in_procedure.f90 # owner=lazy-fortran/ffc#540; reason=classify undefined and unlinked reference cases
 issue_2490_hollerith_format.f90 # scope=legacy; reason=deleted Hollerith FORMAT descriptor
 issue_2493_char_array_constructor.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
