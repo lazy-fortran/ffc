@@ -1188,7 +1188,6 @@ format_99.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output 
 format_before_read_01.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
 format_quotes_01.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
 formatted_read_01.f90 # owner=lazy-fortran/ffc#628; reason=read A and L fixed-width fields
-formatted_read_02.f90 # owner=lazy-fortran/ffc#628; reason=read A and L fixed-width fields
 formatted_read_03.f90 # owner=lazy-fortran/ffc#628; reason=lower scalar formatted input
 formatted_read_04.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
 formatted_read_05.f90 # owner=lazy-fortran/ffc#628; reason=lower scalar formatted input
