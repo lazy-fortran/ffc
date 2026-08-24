@@ -203,11 +203,8 @@
                                                  slot_address, error_msg, &
                                                  'select type component')
             if (len_trim(error_msg) > 0) return
-            ! The component slot is the inline 32-byte class descriptor itself,
-            ! not a pointer to a descriptor.  Its first field is the data
-            ! pointer, so loading slot_address here would use the data pointer
-            ! as the descriptor base and shift every field offset incorrectly.
-            descriptor = slot_address
+            if (.not. emit_ptr_load(context%session, slot_address, descriptor, &
+                                    error_msg)) return
             if (.not. emit_ptr_offset(context%session, descriptor, &
                     int(POLYMORPHIC_DESCRIPTOR_DATA_OFFSET, c_int64_t), &
                     data_address, error_msg)) return
@@ -1355,7 +1352,7 @@
         ! One load of the dynamic identity for the whole construct: every guard
         ! tests the same value, so an arm cannot observe a different type than
         ! the one that selected it.
-        if (.not. emit_i64_load(context%session, &
+        if (.not. emit_i32_load(context%session, &
                 context%symbols(sel_index)%dynamic_type_address, sel_type_id, &
                 error_msg)) return
 
@@ -1374,8 +1371,8 @@
             arm_block = create_liric_block(context%session)
             next_block = create_liric_block(context%session)
             do i = 1, size(ids)
-                if (.not. emit_liric_i64_icmp(context%session, LR_CMP_EQ, &
-                        sel_type_id, i64_immediate(context%session, &
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, &
+                        sel_type_id, i32_immediate(context%session, &
                             int(ids(i), c_int64_t)), cond, error_msg)) return
                 if (i < size(ids)) then
                     block
