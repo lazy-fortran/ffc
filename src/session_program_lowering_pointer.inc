@@ -545,6 +545,12 @@
                                           ptr_index, error_msg)
             return
         end if
+        if (component_access_is_scalar_derived_pointer(arena, &
+                node%target_index, context)) then
+            call alias_pointer_to_derived_component(arena, node%target_index, &
+                context, ptr_index, error_msg)
+            return
+        end if
         if (component_access_is_derived_array(arena, node%target_index, context)) then
             call alias_pointer_to_derived_array_component(arena, node%target_index, &
                 context, ptr_index, error_msg)
@@ -653,6 +659,60 @@
         context%symbols(ptr_index)%has_runtime_association = .false.
         call set_empty(error_msg)
     end subroutine lower_pointer_assignment
+
+    logical function component_access_is_scalar_derived_pointer(arena, access_index, &
+                                                                context) result(is_ptr)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: symbol_index, type_index, component_index
+        character(len=:), allocatable :: name, error_msg
+
+        is_ptr = .false.
+        call resolve_component_ref(arena, access_index, context, symbol_index, &
+                                   type_index, component_index, name, error_msg)
+        if (len_trim(error_msg) > 0 .or. symbol_index <= 0) return
+        is_ptr = component_is_pointer(context, type_index, component_index) .and. &
+                 component_kind(context, type_index, component_index) == VALUE_DERIVED
+    end function component_access_is_scalar_derived_pointer
+
+    subroutine alias_pointer_to_derived_component(arena, access_index, context, &
+                                                   ptr_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index, ptr_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: slot_address, target_address
+        character(len=:), allocatable :: component_name
+        integer :: symbol_index, type_index, component_index, target_type
+
+        call resolve_component_ref(arena, access_index, context, symbol_index, &
+                                   type_index, component_index, component_name, &
+                                   error_msg)
+        if (len_trim(error_msg) > 0) return
+        target_type = context%derived_types(type_index)%component_type_index( &
+            component_index)
+        if (.not. context%symbols(ptr_index)%is_derived .or. &
+            (.not. (target_type == context%symbols(ptr_index)%derived_type_index .or. &
+                    derived_type_extends(context, target_type, &
+                                         context%symbols(ptr_index)%derived_type_index)))) then
+            error_msg = 'pointer and derived component target types do not match'
+            return
+        end if
+        call component_element_address_at(context, symbol_index, type_index, &
+                                           component_index, 0, slot_address, &
+                                           error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_load(context%session, slot_address, target_address, &
+                                error_msg)) return
+        context%symbols(ptr_index)%address = target_address
+        context%symbols(ptr_index)%element_address = target_address
+        context%symbols(ptr_index)%has_address = .true.
+        context%symbols(ptr_index)%is_reference = .true.
+        context%symbols(ptr_index)%is_associated = .true.
+        context%symbols(ptr_index)%has_runtime_association = .true.
+        call set_empty(error_msg)
+    end subroutine alias_pointer_to_derived_component
 
     subroutine alias_pointer_to_derived_array_component(arena, target_index, &
                                                         context, ptr_index, &

@@ -1314,6 +1314,10 @@
                 context%symbols(index)%derived_type_index = derived_type_index
                 context%symbols(index)%array_size = &
                     total_component_slots(context, derived_type_index)
+                if (node%is_pointer) then
+                    context%symbols(index)%is_pointer = .true.
+                    context%symbols(index)%is_associated = .true.
+                end if
                 if (declaration_is_class_polymorphic(node)) then
                     ! class(t) dummy: the parameter pointer is the caller's
                     ! borrowed scalar class descriptor, not the storage. Take
