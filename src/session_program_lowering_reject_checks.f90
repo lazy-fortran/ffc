@@ -1729,6 +1729,8 @@ contains
         call set_empty(error_msg)
         call storage_source_lines(arena, lines, line_count, found)
         if (.not. found) return
+        call check_value_attribute_scope(arena, error_msg)
+        if (len_trim(error_msg) > 0) return
         contiguous_names = ''
         contiguous_count = 0
         common_names = ''
@@ -1920,6 +1922,70 @@ contains
             return
         end if
     end subroutine check_recovered_source_forms
+
+    ! VALUE is a dummy-argument attribute.  FortFront preserves the attribute
+    ! on declaration nodes even when a malformed source declaration is not
+    ! rejected upstream; without this check the lowerer can silently emit a
+    ! local or module object as if VALUE were meaningful there.
+    subroutine check_value_attribute_scope(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n, cur, p, line, column
+        character(len=:), allocatable :: declared_name, dummy_name, name_error
+        character(len=64) :: location
+        logical :: is_dummy
+
+        call set_empty(error_msg)
+        do n = 1, arena%size
+            if (.not. node_exists(arena, n)) cycle
+            select type (decl => arena%entries(n)%node)
+            type is (declaration_node)
+                if (.not. decl%is_value) cycle
+                declared_name = decl_display_name(decl)
+                if (len_trim(declared_name) == 0) cycle
+                is_dummy = .false.
+                cur = arena%entries(n)%parent_index
+                do while (cur > 0)
+                    if (.not. node_exists(arena, cur)) exit
+                    select type (proc => arena%entries(cur)%node)
+                    type is (function_def_node)
+                        if (allocated(proc%param_indices)) then
+                            do p = 1, size(proc%param_indices)
+                                call parameter_name(arena, proc%param_indices(p), &
+                                                     dummy_name, name_error)
+                                if (len_trim(name_error) == 0 .and. &
+                                    same_name(dummy_name, declared_name)) then
+                                    is_dummy = .true.
+                                    exit
+                                end if
+                            end do
+                        end if
+                    type is (subroutine_def_node)
+                        if (allocated(proc%param_indices)) then
+                            do p = 1, size(proc%param_indices)
+                                call parameter_name(arena, proc%param_indices(p), &
+                                                     dummy_name, name_error)
+                                if (len_trim(name_error) == 0 .and. &
+                                    same_name(dummy_name, declared_name)) then
+                                    is_dummy = .true.
+                                    exit
+                                end if
+                            end do
+                        end if
+                    end select
+                    if (is_dummy) exit
+                    cur = arena%entries(cur)%parent_index
+                end do
+                if (is_dummy) cycle
+                line = get_node_line(arena, n)
+                column = get_node_column(arena, n)
+                write (location, '(" at line ",I0,", column ",I0)') line, column
+                error_msg = 'VALUE attribute is only permitted on a dummy '// &
+                    'argument'//trim(location)
+                return
+            end select
+        end do
+    end subroutine check_value_attribute_scope
 
     function squeeze_source_blanks(text) result(compact)
         character(len=*), intent(in) :: text
