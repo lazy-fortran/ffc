@@ -447,6 +447,7 @@
         type(function_def_node) :: merged_fn
         type(subroutine_def_node) :: merged_sb
         integer, allocatable :: body_source(:)
+        character(len=:), allocatable :: emit_name
 
         call set_empty(error_msg)
         if (.not. node_exists(arena, proc_index)) return
@@ -460,11 +461,17 @@
             return
         end if
         if (is_function) then
+            emit_name = module_procedure_mangled(parent_module, merged_fn%name)
+            if (has_bind_c(merged_fn%bind_c_clause)) emit_name = &
+                procedure_emit_name(merged_fn%name, merged_fn%bind_c_clause)
             call lower_scalar_function(arena, merged_fn, context, error_msg, &
-                module_procedure_mangled(parent_module, merged_fn%name))
+                emit_name)
         else
+            emit_name = module_procedure_mangled(parent_module, merged_sb%name)
+            if (has_bind_c(merged_sb%bind_c_clause)) emit_name = &
+                procedure_emit_name(merged_sb%name, merged_sb%bind_c_clause)
             call lower_void_subroutine(arena, merged_sb, context, error_msg, &
-                module_procedure_mangled(parent_module, merged_sb%name))
+                emit_name)
         end if
         if (len_trim(error_msg) > 0) return
         call lower_nested_internal_procedures(arena, body_source, context, &
