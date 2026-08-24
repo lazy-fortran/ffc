@@ -30,7 +30,6 @@ issue_2418_intrinsic_keywords_declared.f90 # owner=lazy-fortran/ffc#337; reason=
 issue_2450_procedure_interfaces.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 issue_2452_roundtrip_timeout.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 issue_2455_array_constructor_arg.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
-issue_2455_nested_array_constructor.f90 # owner=lazy-fortran/ffc#540; reason=fold typed scalar and array named constants
 issue_2455_nested_function_args.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape arrays by descriptor
 issue_2458_multi_array_declaration.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 issue_2489_interface_in_procedure.f90 # owner=lazy-fortran/ffc#540; reason=classify undefined and unlinked reference cases
@@ -54,7 +53,6 @@ issue_2817_inline_instantiate_caret.f90 # owner=lazy-fortran/ffc#337; reason=cen
 issue_2819_implied_do_index_out_of_scope.f90 # scope=harness; reason=FortFront semantic rejection fixture
 issue_2819_implied_do_index_shadow.f90 # scope=harness; reason=FortFront semantic rejection fixture
 issue_2819_pure_with_print.f90 # scope=harness; reason=FortFront semantic rejection fixture
-issue_2836_io_expression_format.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
 issue_2850_bare_function_interface.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 issue_2850_bare_subroutine_interface.f90 # owner=lazy-fortran/ffc#540; reason=classify undefined and unlinked reference cases
 issue_2855_external_intrinsic_conflict.f90 # scope=harness; reason=FortFront semantic rejection fixture
