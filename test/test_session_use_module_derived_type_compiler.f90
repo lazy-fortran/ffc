@@ -149,10 +149,14 @@ contains
         allocate (info%parameters(0))
         allocate (info%derived_types(1))
         info%derived_types(1)%name = 'holder_t'
+        info%derived_types(1)%canonical_identity = &
+            'fmod414_unknown::holder_t'
         allocate (info%derived_types(1)%components(1))
         info%derived_types(1)%components(1)%name = 'core'
         info%derived_types(1)%components(1)%kind = 'derived'
         info%derived_types(1)%components(1)%type_name = 'never_defined_t'
+        info%derived_types(1)%components(1)%type_identity = &
+            'fmod414_unknown::never_defined_t'
         info%derived_types(1)%components(1)%slot_count = 1
         info%derived_types(1)%components(1)%slot_offset = 0
         call write_fmod(dir//'/fmod414_unknown.fmod', info, error_msg)
@@ -184,6 +188,8 @@ contains
         allocate (info%parameters(0))
         allocate (info%derived_types(1))
         info%derived_types(1)%name = 'pair_t'
+        info%derived_types(1)%canonical_identity = &
+            'fmod414_overlap::pair_t'
         allocate (info%derived_types(1)%components(2))
         info%derived_types(1)%components(1)%name = 'a'
         info%derived_types(1)%components(1)%kind = 'integer'
@@ -221,6 +227,8 @@ contains
         allocate (info%parameters(0))
         allocate (info%derived_types(1))
         info%derived_types(1)%name = 'value_t'
+        info%derived_types(1)%canonical_identity = &
+            'fmod414_slot_count::value_t'
         allocate (info%derived_types(1)%components(1))
         info%derived_types(1)%components(1)%name = 'value'
         info%derived_types(1)%components(1)%kind = 'integer'
