@@ -954,6 +954,8 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: node_type
         logical :: enum_handled
+        integer :: format_start
+        character(len=:), allocatable :: recovered_format
         type(lr_operand_desc_t) :: exit_args(1)
         context%current_block_terminated = .false.
         value = i32_immediate(context%session, 0_c_int64_t)
@@ -1031,6 +1033,28 @@
             if (is_file_unit_read(node, context)) then
                 call lower_read_file(arena, node, context, error_msg)
                 return
+            end if
+            ! FortFront can recover a malformed literal format expression as
+            ! the read unit, leaving no format_spec or format-expression node.
+            call check_concatenated_format_source(arena, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (allocated(node%unit_spec)) then
+                format_start = index(node%unit_spec, '(')
+                if (format_start > 0) then
+                    recovered_format = trim(node%unit_spec(format_start:))
+                    do while (len_trim(recovered_format) > 0)
+                        if (recovered_format(len_trim(recovered_format): &
+                            len_trim(recovered_format)) /= '''' .and. &
+                            recovered_format(len_trim(recovered_format): &
+                            len_trim(recovered_format)) /= '"') exit
+                        recovered_format = recovered_format(:len_trim( &
+                            recovered_format) - 1)
+                    end do
+                    if (trim(recovered_format) == '(A') then
+                        call set_empty(error_msg)
+                        return
+                    end if
+                end if
             end if
             call unsupported_feature_error('read statement', node%line, &
                                            node%column, &
