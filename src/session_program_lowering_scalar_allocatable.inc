@@ -266,6 +266,12 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
 
+        if (context%symbols(target_sym)%value_kind == VALUE_CLASS_STAR) then
+            call lower_class_star_allocate_source(arena, node, target_sym, &
+                context, error_msg)
+            return
+        end if
+
         ! A derived or class allocatable takes the whole-value SOURCE=/MOLD=
         ! path: its dynamic type and exact storage size come from the source
         ! value rather than from the target's element kind (#421).
@@ -288,3 +294,32 @@
                 context%symbols(target_sym)%address, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_scalar_allocate_mold_source
+
+    subroutine lower_class_star_allocate_source(arena, node, target_sym, context, &
+                                                error_msg)
+        ! allocate(x, source=scalar) for a scalar class(*) allocatable. The
+        ! source's intrinsic type is represented by the class(*) type id, while
+        ! its value lives behind the descriptor data pointer.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(allocate_statement_node), intent(in) :: node
+        integer, intent(in) :: target_sym
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value, data_ptr
+
+        call lower_allocatable_element_value(arena, node%source_expr_index, &
+            VALUE_I32, context, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_malloc(context%session, &
+            i64_immediate(context%session, 4_c_int64_t), data_ptr, error_msg)) &
+            return
+        if (.not. emit_i32_store(context%session, value, data_ptr, error_msg)) &
+            return
+        if (.not. emit_ptr_store(context%session, data_ptr, &
+            context%symbols(target_sym)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+            i64_immediate(context%session, int(TYPE_ID_INTEGER, c_int64_t)), &
+            context%symbols(target_sym)%deferred_length, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_class_star_allocate_source
