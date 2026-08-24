@@ -163,8 +163,11 @@ contains
 
         ! Otherwise the selector is an expression: evaluate it once and bind the
         ! associate name to that value for the construct scope.
-        value_kind = expression_value_kind(arena, assoc%expr_index, context, &
-            VALUE_I32)
+        value_kind = scalar_real_expr_kind(arena, assoc%expr_index, context)
+        if (value_kind == SCALAR_REAL_NONE) then
+            value_kind = expression_value_kind(arena, assoc%expr_index, context, &
+                VALUE_I32)
+        end if
         select case (value_kind)
         case (VALUE_F32, VALUE_F64, VALUE_LOGICAL, VALUE_I32)
             call lower_expression_by_kind(arena, assoc%expr_index, context, &
