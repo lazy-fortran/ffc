@@ -315,9 +315,10 @@ dg_warning_only() {
 }
 
 # source_has_program_root <source>
-# LFortran's integration_tests directory contains standalone companion sources
-# (subroutines, functions and modules) beside their executable test roots.  A
-# source without PROGRAM or BLOCK DATA cannot be run as a standalone binary.
+# The LFortran integration_tests and FortFront F90 directories contain
+# standalone companion sources (subroutines, functions and modules) beside
+# executable test roots. A source without PROGRAM or BLOCK DATA cannot be run
+# as a standalone binary.
 source_has_program_root() {
     local source="$1"
     awk '
@@ -1215,7 +1216,8 @@ while IFS= read -r full_path <&3; do
         continue
     fi
 
-    if [ "$SUITE" = "lfortran" ] && ! source_has_program_root "$full_path"; then
+    if { [ "$SUITE" = "lfortran" ] || [ "$SUITE" = "fortfront-f90" ]; } && \
+        ! source_has_program_root "$full_path"; then
         CASE_ACTION="exclude"
         SKIP_COUNT=$((SKIP_COUNT + 1))
         write_result_record "$rel_path" "SKIP" -1 -1 \
