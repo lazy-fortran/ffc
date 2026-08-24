@@ -167,6 +167,28 @@
                 call set_empty(error_msg)
                 return
             end if
+            ! Lazy executable references may seed a name before its derived
+            ! allocatable declaration is lowered. Upgrade that placeholder in
+            ! place so the declaration does not look like a duplicate.
+            if (.not. context%symbols(index)%is_derived .and. &
+                .not. context%symbols(index)%has_binding .and. &
+                .not. context%symbols(index)%is_parameter .and. &
+                .not. context%symbols(index)%is_dummy_argument) then
+                context%symbols(index)%value_kind = VALUE_DERIVED
+                context%symbols(index)%is_derived = .true.
+                context%symbols(index)%is_allocatable = .true.
+                context%symbols(index)%array_rank = 0
+                context%symbols(index)%derived_type_index = derived_type_index
+                context%symbols(index)%has_address = .false.
+                if (is_class) then
+                    call bind_class_allocatable_descriptor(context, index, &
+                                                           derived_type_index, &
+                                                           error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+                call set_empty(error_msg)
+                return
+            end if
             ! A scalar allocatable derived dummy: the parameter pointer already
             ! aliases the caller's storage. Re-declaring it in the body just
             ! records the derived type so component access can resolve.
