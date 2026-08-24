@@ -1339,7 +1339,14 @@
         integer :: sym_idx
 
         call set_empty(error_msg)
-        if (find_symbol_compat(context, var_name) > 0) return
+        sym_idx = find_symbol_compat(context, var_name)
+        ! Inferred symbols are provisional spelling-based slots and must not
+        ! hide the addressed module binding, including a USE rename.
+        if (sym_idx > 0) then
+            if (context%symbols(sym_idx)%has_address .or. &
+                context%symbols(sym_idx)%has_binding .or. &
+                context%symbols(sym_idx)%is_parameter) return
+        end if
         mangled = module_procedure_mangled(module_name, trim(var_name))
         call to_c_chars(mangled, c_name)
         global_id = lr_session_intern(context%session%handle, c_name)
@@ -1529,7 +1536,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(ast_arena_t), pointer :: arena
-        integer :: m, i, param_idx, value_kind
+        integer :: m, i, param_idx, value_kind, sym_idx
         logical :: enum_handled
         character(len=:), allocatable :: kind_err, decl_err
 
@@ -1541,14 +1548,19 @@
                 if (.not. node_exists(arena, param_idx)) cycle
                 select type (node => arena%entries(param_idx)%node)
                 type is (declaration_node)
-                    if (find_symbol_compat(context, node%var_name) > 0) cycle
+                    sym_idx = find_symbol_compat(context, node%var_name)
+                    if (sym_idx > 0) then
+                        if (context%symbols(sym_idx)%has_address .or. &
+                            context%symbols(sym_idx)%has_binding .or. &
+                            context%symbols(sym_idx)%is_parameter) cycle
+                    end if
                     if (node%is_array .or. node%is_multi_declaration) cycle
                     call declaration_value_kind(node, value_kind, kind_err, &
                                                 context)
                     if (len_trim(kind_err) > 0) cycle
                     ! Out-of-scope kinds leave the symbol unbound; do not fail.
                     call lower_constant_declaration(node, context, value_kind, &
-                                                    decl_err)
+                                                    decl_err, param_idx)
                 end select
             end do
             do i = 1, context%module_exports(m)%enum_count

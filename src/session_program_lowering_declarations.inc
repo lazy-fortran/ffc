@@ -538,11 +538,13 @@
         end do
     end function find_declaration_record
 
-    subroutine lower_constant_declaration(node, context, value_kind, error_msg)
+    subroutine lower_constant_declaration(node, context, value_kind, error_msg, &
+                                          reference_index)
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: reference_index
         character(len=:), allocatable :: name
         integer(c_int64_t) :: constant_value
         integer :: index
@@ -576,7 +578,7 @@
         ! derived-type bound pre-pass caches their folded i32 constant.
         if (value_kind /= VALUE_I32) then
             call lower_nonint_constant_declaration(node, context, value_kind, &
-                                                   error_msg)
+                                                   error_msg, reference_index)
             return
         end if
 
@@ -612,7 +614,7 @@
     end subroutine lower_constant_declaration
 
     subroutine lower_nonint_constant_declaration(node, context, value_kind, &
-                                                 error_msg)
+                                                 error_msg, reference_index)
         ! Bind a scalar REAL/LOGICAL/CHARACTER (or non-default integer) named
         ! constant: define a symbol of the declared kind, fold the literal
         ! initializer into its value operand, and mark it a parameter so later
@@ -621,6 +623,7 @@
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: value_kind
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: reference_index
         character(len=:), allocatable :: name
         integer :: index
 
@@ -632,7 +635,7 @@
 
         if (value_kind == VALUE_CHARACTER) then
             call lower_character_constant_declaration(node, context, name, &
-                                                      error_msg)
+                                                      error_msg, reference_index)
             return
         end if
 
@@ -682,7 +685,8 @@
                                       node%initializer_index, error_msg)
     end subroutine lower_nonint_constant_declaration
 
-    subroutine lower_character_constant_declaration(node, context, name, error_msg)
+    subroutine lower_character_constant_declaration(node, context, name, error_msg, &
+                                                    reference_index)
         ! A character named constant with an assumed length
         ! (character(len=*), parameter :: s = "Hello") takes its length from
         ! the folded initializer text. A declared length
@@ -696,13 +700,14 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: reference_index
         character(len=:), allocatable :: literal_text
         character(len=64) :: string_name
         logical :: fold_ok
         integer :: index, declared_length
 
         call fold_char_constant_expr(context, node%initializer_index, &
-                                     literal_text, fold_ok)
+                                     literal_text, fold_ok, reference_index)
         if (.not. fold_ok) then
             call unsupported_feature_error('character parameter declaration', &
                 node%line, node%column, 'only character-literal initializers '// &
@@ -740,7 +745,7 @@
     end subroutine lower_character_constant_declaration
 
     recursive subroutine fold_char_constant_expr(context, node_index, &
-                                                 accumulated, ok)
+                                                 accumulated, ok, reference_index)
         ! Fold a character-parameter initializer (a literal, a // chain of
         ! literals and/or earlier character named constants) into its
         ! compile-time text.
@@ -748,6 +753,7 @@
         integer, intent(in) :: node_index
         character(len=:), allocatable, intent(out) :: accumulated
         logical, intent(out) :: ok
+        integer, intent(in), optional :: reference_index
         character(len=:), allocatable :: left_text, right_text
         character(len=:), allocatable :: bin_op, bin_err
         integer :: bin_left, bin_right, bin_line, bin_col
@@ -763,9 +769,11 @@
                                     bin_err)
             if (len_trim(bin_err) > 0) return
             if (trim(bin_op) /= '//') return
-            call fold_char_constant_expr(context, bin_left, left_text, ok)
+            call fold_char_constant_expr(context, bin_left, left_text, ok, &
+                                         reference_index)
             if (.not. ok) return
-            call fold_char_constant_expr(context, bin_right, right_text, ok)
+            call fold_char_constant_expr(context, bin_right, right_text, ok, &
+                                         reference_index)
             if (.not. ok) return
             accumulated = left_text//right_text
             ok = .true.
@@ -776,7 +784,11 @@
             call get_identifier_name(context%arena, node_index, id_name, &
                                      id_err)
             if (len_trim(id_err) > 0) return
-            symbol_index = find_symbol_compat(context, id_name)
+            if (present(reference_index)) then
+                symbol_index = resolve_symbol_at_node(context, reference_index, id_name)
+            else
+                symbol_index = find_symbol_compat(context, id_name)
+            end if
             if (symbol_index <= 0) return
             if (.not. &
                 allocated(context%symbols(symbol_index)%character_constant_text)) &

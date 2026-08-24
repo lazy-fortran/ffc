@@ -30,8 +30,10 @@ contains
         call get_identifier_name(arena, i, id_name, err)
         if (len_trim(err) > 0) cycle
         if (len_trim(id_name) == 0) cycle
-        ! Skip if already explicitly declared
-        if (name_is_explicitly_declared(context, id_name)) cycle
+        ! FortFront's binding at this reference is authoritative.  A global
+        ! spelling list would suppress an inferred symbol in a nested scope
+        ! merely because another scope declares the same name.
+        if (identifier_has_explicit_binding(arena, i, id_name)) cycle
         ! Skip if already registered (from a prior inferred seed)
         sym_idx = find_symbol_compat(context, id_name)
         if (sym_idx > 0) cycle
@@ -40,6 +42,33 @@ contains
         if (len_trim(error_msg) > 0) return
     end do
     end procedure collect_inferred_symbols
+
+    logical function identifier_has_explicit_binding(arena, node_index, name) &
+        result(found)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=*), intent(in) :: name
+        type(declaration_binding_t) :: binding
+        character(len=:), allocatable :: resolve_error
+
+        found = .false.
+        call resolve_name_at_node(arena, node_index, name, binding, resolve_error)
+        if (len_trim(resolve_error) > 0 .or. .not. binding%found) return
+        if (binding%binding_kind == BINDING_NAMED_CONSTANT) then
+            found = .true.
+            return
+        end if
+        if (binding%binding_kind /= BINDING_DECLARATION .and. &
+            binding%binding_kind /= BINDING_DUMMY_ARGUMENT .and. &
+            binding%binding_kind /= BINDING_FUNCTION_RESULT) return
+        if (.not. node_exists(arena, binding%declaration_node_index)) return
+        select type (decl => arena%entries(binding%declaration_node_index)%node)
+        type is (declaration_node)
+            found = .not. decl%is_inferred
+        class default
+            found = .true.
+        end select
+    end function identifier_has_explicit_binding
 
     module procedure collect_explicit_decl_names
     ! Mark all variable names that have an explicit declaration_node in the
