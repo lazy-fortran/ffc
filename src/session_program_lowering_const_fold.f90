@@ -618,9 +618,8 @@ contains
         ! Fold a compile-time integer array: an array constructor of
         ! foldable elements, or an identifier naming an integer PARAMETER
         ! array (recurses into that array's own constructor initializer).
-        integer, allocatable :: flat(:)
+        type(lowering_context_t) :: fold_context
         character(len=:), allocatable :: id_name
-        integer :: i, n
 
         if (.not. node_exists(arena, node_index)) then
             error_msg = 'array argument index does not reference an AST node'
@@ -633,16 +632,14 @@ contains
                 error_msg = 'array constructor has no elements'
                 return
             end if
-            allocate (flat(0))
-            call flatten_constructor_elements(arena, elem_node%element_indices, &
-                                              flat, error_msg)
+            ! Implied-do indices are temporary compile-time bindings.  Keep
+            ! them out of the active lowering context while folding SIZE(...)
+            ! in a declaration initializer.
+            fold_context = context
+            allocate (values(0))
+            call fold_i32_constructor_node(arena, node_index, fold_context, &
+                                            values, error_msg)
             if (len_trim(error_msg) > 0) return
-            n = size(flat)
-            allocate (values(n))
-            do i = 1, n
-                call eval_i32_constant(arena, flat(i), context, values(i), error_msg)
-                if (len_trim(error_msg) > 0) return
-            end do
             call set_empty(error_msg)
             return
         end select
@@ -656,6 +653,122 @@ contains
         end if
 
         error_msg = 'array argument is not a compile-time integer array constant'
+    contains
+
+    recursive subroutine fold_i32_constructor_node(arena, node_index, context, &
+                                                   values, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        integer(c_int64_t), allocatable, intent(inout) :: values(:)
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: lo, hi, step, value, ival
+        integer :: i, vsym
+        logical :: created_temp
+        type(symbol_t) :: saved_sym
+
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node_index)) then
+            call eval_i32_constant(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) == 0) call append_i32_fold_value(values, value)
+            return
+        end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(node%element_indices)) then
+                error_msg = 'array constructor has no elements'
+                return
+            end if
+            if (is_implied_do_constructor(arena, node)) then
+                select type (loop => arena%entries(node%element_indices(1))%node)
+                type is (do_loop_node)
+                    call eval_i32_constant(arena, loop%start_expr_index, context, &
+                                           lo, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call eval_i32_constant(arena, loop%end_expr_index, context, &
+                                           hi, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    step = 1_c_int64_t
+                    if (loop%step_expr_index > 0) then
+                        call eval_i32_constant(arena, loop%step_expr_index, &
+                                               context, step, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end if
+                    if (step == 0_c_int64_t) then
+                        error_msg = 'implied-do constructor step is zero'
+                        return
+                    end if
+                    created_temp = .false.
+                    vsym = find_symbol_compat(context, loop%var_name)
+                    if (vsym <= 0) then
+                        call grow_symbols(context)
+                        vsym = context%symbol_count + 1
+                        context%symbols(vsym)%name = trim(loop%var_name)
+                        context%symbol_count = vsym
+                        created_temp = .true.
+                    end if
+                    saved_sym = context%symbols(vsym)
+                    context%symbols(vsym)%has_i32_constant = .true.
+                    context%symbols(vsym)%is_transient_i32_constant = .true.
+                    context%symbols(vsym)%value_kind = VALUE_I32
+                    ival = lo
+                    if (step > 0_c_int64_t) then
+                        do while (ival <= hi)
+                            context%symbols(vsym)%i32_constant = ival
+                            do i = 1, size(loop%body_indices)
+                                call fold_i32_constructor_node(arena, &
+                                    loop%body_indices(i), context, values, error_msg)
+                                if (len_trim(error_msg) > 0) exit
+                            end do
+                            if (len_trim(error_msg) > 0) exit
+                            ival = ival + step
+                        end do
+                    else
+                        do while (ival >= hi)
+                            context%symbols(vsym)%i32_constant = ival
+                            do i = 1, size(loop%body_indices)
+                                call fold_i32_constructor_node(arena, &
+                                    loop%body_indices(i), context, values, error_msg)
+                                if (len_trim(error_msg) > 0) exit
+                            end do
+                            if (len_trim(error_msg) > 0) exit
+                            ival = ival + step
+                        end do
+                    end if
+                    if (created_temp) then
+                        context%symbol_count = context%symbol_count - 1
+                    else
+                        context%symbols(vsym) = saved_sym
+                    end if
+                class default
+                    error_msg = 'implied-do constructor is missing its loop node'
+                end select
+            else
+                do i = 1, size(node%element_indices)
+                    call fold_i32_constructor_node(arena, node%element_indices(i), &
+                                                    context, values, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            end if
+        class default
+            call eval_i32_constant(arena, node_index, context, value, error_msg)
+            if (len_trim(error_msg) == 0) call append_i32_fold_value(values, value)
+        end select
+    end subroutine fold_i32_constructor_node
+
+    subroutine append_i32_fold_value(values, value)
+        integer(c_int64_t), allocatable, intent(inout) :: values(:)
+        integer(c_int64_t), intent(in) :: value
+        integer(c_int64_t), allocatable :: grown(:)
+        integer :: n
+
+        n = size(values)
+        allocate (grown(n + 1))
+        if (n > 0) grown(1:n) = values
+        grown(n + 1) = value
+        call move_alloc(grown, values)
+    end subroutine append_i32_fold_value
     end procedure fold_i32_array_literal
 
     module procedure fold_i32_array_literal_by_name

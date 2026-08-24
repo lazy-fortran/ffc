@@ -1819,6 +1819,7 @@
         integer :: component_type, component_index
         integer :: array_index, dim_index, kind_index
         integer(c_int64_t) :: dim
+        integer(c_int64_t), allocatable :: constructor_values(:)
         integer :: arr_size, arr_dim_sizes(ARRAY_MAX_RANK)
         logical :: ok
         character(len=:), allocatable :: id_name, component_name
@@ -1866,6 +1867,26 @@
                 end if
                 error_msg = 'size argument is not a fixed-size array: '// &
                             trim(component_name)
+                return
+            class default
+            end select
+        end if
+        if (node_exists(arena, array_index)) then
+            select type (constructor => arena%entries(array_index)%node)
+            type is (array_literal_node)
+                call fold_i32_array_literal(arena, context, array_index, &
+                                             constructor_values, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (dim_index > 0) then
+                    call eval_i32_constant(arena, dim_index, context, dim, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (dim /= 1_c_int64_t) then
+                        error_msg = 'size dim out of range for array constructor'
+                        return
+                    end if
+                end if
+                constant_value = int(size(constructor_values), c_int64_t)
+                call set_empty(error_msg)
                 return
             class default
             end select
