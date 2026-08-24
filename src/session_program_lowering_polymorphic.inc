@@ -181,6 +181,18 @@
             end select
         end if
         if (.not. node_exists(arena, expr_index)) return
+        select type (wrapper => arena%entries(expr_index)%node)
+        type is (call_or_subscript_node)
+            if (wrapper%is_array_access) return
+            if (.not. node_exists(arena, wrapper%base_expr_index)) return
+            select type (base => arena%entries(wrapper%base_expr_index)%node)
+            type is (component_access_node)
+                expr_index = wrapper%base_expr_index
+            class default
+                return
+            end select
+        class default
+        end select
         select type (selector => arena%entries(expr_index)%node)
         type is (component_access_node)
             base_type = component_base_type_index(arena, &
