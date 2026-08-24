@@ -396,13 +396,11 @@
         fn_node => get_node_as_function_def(arena, proc_index)
         if (associated(fn_node)) then
             restates = allocated(fn_node%param_indices)
-            if (restates) restates = size(fn_node%param_indices) > 0
             return
         end if
         sb_node => get_node_as_subroutine_def(arena, proc_index)
         if (.not. associated(sb_node)) return
         restates = allocated(sb_node%param_indices)
-        if (restates) restates = size(sb_node%param_indices) > 0
     end function submodule_body_restates_signature
 
     integer function fmod_procedure_index(info, name) result(idx)
