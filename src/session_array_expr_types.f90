@@ -53,6 +53,14 @@ contains
                 n = 0
                 return
             end if
+            if (self%extents(d) == 0) then
+                n = 0
+                return
+            end if
+            if (self%extents(d) > huge(n)/n) then
+                n = 0
+                return
+            end if
             n = n*self%extents(d)
         end do
     end function array_expr_plan_element_count
