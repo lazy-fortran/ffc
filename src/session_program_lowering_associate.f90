@@ -47,8 +47,10 @@ contains
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: value_kind, idx, src_idx
+        integer :: expression_symbol, expression_source, expression_extent
         character(len=:), allocatable :: sel_name, name_err
         type(lr_operand_desc_t) :: value
+        type(array_expr_plan_t) :: expression_plan
         type(declaration_binding_t) :: binding
 
         call set_empty(error_msg)
@@ -115,16 +117,43 @@ contains
             end select
         end if
 
-        ! Array-valued expression selectors (e.g. z => x + y) need a temporary
-        ! array and shape tracking, which the scalar value path cannot model.
-        ! Reject them cleanly instead of silently aliasing only one element.
+        ! Array-valued expression selectors are values, not aliases. Materialize
+        ! the expression once into ordinary array storage so all later uses of
+        ! the associate name share that value.
         if (associate_selector_is_array(arena, assoc%expr_index, context)) then
-            call unsupported_feature_error('associate array selector', &
-                get_node_line(arena, assoc%expr_index), &
-                get_node_column(arena, assoc%expr_index), &
-                'ffc direct-session associates only scalar expression '// &
-                'selectors; array-expression aliases are not yet supported', &
+            expression_source = associate_selector_array_symbol(arena, &
+                assoc%expr_index, context)
+            if (expression_source <= 0) then
+                error_msg = 'associate array selector has no resolvable array source'
+                return
+            end if
+            if (context%symbols(expression_source)%array_rank /= 1) then
+                call unsupported_feature_error('associate array selector', &
+                    get_node_line(arena, assoc%expr_index), &
+                    get_node_column(arena, assoc%expr_index), &
+                    'ffc direct-session associate expression storage currently '// &
+                    'supports rank-1 arrays only', error_msg)
+                return
+            end if
+            expression_extent = context%symbols(expression_source)%array_size
+            if (expression_extent <= 0) then
+                error_msg = 'associate array selector has no static extent'
+                return
+            end if
+            value_kind = context%symbols(expression_source)%value_kind
+            call create_array_expression_temp(context, value_kind, expression_extent, &
+                0, expression_symbol, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call build_array_expression(context, expression_symbol, assoc%expr_index, &
+                expression_plan, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_array_expression_assignment(arena, expression_plan, context, &
                 error_msg)
+            if (len_trim(error_msg) > 0) return
+            idx = associate_symbol_slot(context, binding)
+            context%symbols(idx) = context%symbols(expression_symbol)
+            context%symbols(idx)%name = trim(assoc%name)
+            call attach_symbol_binding(context, idx, binding)
             return
         end if
 
@@ -232,6 +261,47 @@ contains
             if (sym > 0) is_arr = context%symbols(sym)%is_array
         end if
     end function associate_selector_is_array
+
+    recursive integer function associate_selector_array_symbol(arena, node_index, &
+                                                               context) result(sym)
+        ! Find an array operand whose shape and element kind govern an
+        ! elementwise associate expression. Binary and elemental-call trees
+        ! recurse until they reach a declared array identifier.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: id_name, id_err, bin_op, bin_err
+        integer :: left_index, right_index, line, column, i
+
+        sym = 0
+        if (.not. node_exists(arena, node_index)) return
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, id_name, id_err)
+            if (len_trim(id_err) > 0) return
+            sym = resolve_symbol_at_node(context, node_index, id_name)
+            if (sym <= 0) return
+            if (.not. context%symbols(sym)%is_array) sym = 0
+            return
+        end if
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, bin_op, left_index, &
+                right_index, line, column, bin_err)
+            if (len_trim(bin_err) > 0) return
+            sym = associate_selector_array_symbol(arena, left_index, context)
+            if (sym <= 0) sym = associate_selector_array_symbol(arena, right_index, &
+                context)
+            return
+        end if
+        select type (call_node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(call_node%arg_indices)) return
+            do i = 1, size(call_node%arg_indices)
+                sym = associate_selector_array_symbol(arena, &
+                    call_node%arg_indices(i), context)
+                if (sym > 0) return
+            end do
+        end select
+    end function associate_selector_array_symbol
 
     integer function associate_symbol_slot(context, binding) result(idx)
         ! Find an existing symbol slot for an associate binding, or append a
