@@ -5,7 +5,6 @@ ast_coverage_literals_calls.f90 # owner=lazy-fortran/ffc#584; reason=register re
 ast_forall_pointer.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 call_graph_internal_procedures.f90 # owner=lazy-fortran/ffc#628; reason=select and load the matching runtime archive
 compiler_resolved_expression_kinds.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
-control_flow_associate_construct.f90 # owner=lazy-fortran/ffc#584; reason=bind BLOCK and ASSOCIATE storage scopes
 data_statement_scalar_upgrade.f90 # scope=harness; reason=FortFront semantic rejection fixture
 docs_unsigned_integers_out.f90 # scope=vendor; reason=nonstandard UNSIGNED extension
 dtio_interface_basic.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
@@ -18,7 +17,6 @@ issue_1607_final_procedures.f90 # owner=lazy-fortran/ffc#422; reason=invoke scal
 issue_1611_allocate_no_typespec.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 issue_1615_target_attribute.f90 # owner=lazy-fortran/ffc#540; reason=lower scalar data-pointer association
 issue_1619_nested_types_complex.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-issue_1738_derived_type_allocatable.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable arrays to descriptors
 issue_1740_optional_keyword_arguments.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 issue_1827_submodule_simple.f90 # owner=lazy-fortran/ffc#584; reason=consume parent interfaces for separate submodules
 issue_1827_submodule_with_contents.f90 # owner=lazy-fortran/ffc#584; reason=consume parent interfaces for separate submodules
