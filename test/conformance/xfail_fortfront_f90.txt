@@ -23,11 +23,9 @@ issue_2248_read_keyword.f90 # owner=lazy-fortran/ffc#628; reason=lower scalar fo
 issue_2250_pure_interface.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 issue_2416_io_format_variable.f90 # owner=lazy-fortran/ffc#628; reason=move file-unit state behind the runtime ABI
 issue_2416_io_formats_comprehensive.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
-issue_2452_roundtrip_timeout.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 issue_2455_array_constructor_arg.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 issue_2458_multi_array_declaration.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 issue_2489_interface_in_procedure.f90 # owner=lazy-fortran/ffc#540; reason=classify undefined and unlinked reference cases
-issue_2493_char_array_constructor.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
 issue_2497_include_line_standalone.f90 # owner=lazy-fortran/ffc#540; reason=expand Fortran INCLUDE lines
 issue_256_invalid_syntax_missing_then.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 issue_2592_interface_block_explicit_interface_ok.f90 # owner=lazy-fortran/ffc#540; reason=classify undefined and unlinked reference cases
