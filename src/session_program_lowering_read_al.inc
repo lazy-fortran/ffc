@@ -71,6 +71,97 @@
         ok = .true.
     end subroutine next_al_descriptor
 
+    recursive subroutine expand_al_sequence(text, pos, stop_at_close, result, &
+                                             error_msg)
+        ! Flatten nested parenthesized A/L groups before the field reader walks
+        ! them.  The reader only needs the resulting descriptor sequence; the
+        ! enclosing I/O statement still controls record advancement.
+        character(len=*), intent(in) :: text
+        integer, intent(inout) :: pos
+        logical, intent(in) :: stop_at_close
+        character(len=:), allocatable, intent(inout) :: result
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: prefix, inner
+        character :: code
+        integer :: repeat_count, width, i
+
+        call set_empty(error_msg)
+        do while (pos <= len_trim(text))
+            if (text(pos:pos) == ')') then
+                if (stop_at_close) then
+                    pos = pos + 1
+                    return
+                end if
+                error_msg = 'unexpected closing parenthesis in A/L format'
+                return
+            end if
+            if (text(pos:pos) == ',' .or. text(pos:pos) == ' ') then
+                pos = pos + 1
+                cycle
+            end if
+
+            call read_al_int(text, pos, repeat_count)
+            if (repeat_count <= 0) repeat_count = 1
+            if (pos > len_trim(text)) then
+                error_msg = 'formatted A/L format ends in a repeat count'
+                return
+            end if
+            if (text(pos:pos) == '(') then
+                pos = pos + 1
+                inner = ''
+                call expand_al_sequence(text, pos, .true., inner, error_msg)
+                if (len_trim(error_msg) > 0) return
+                do i = 1, repeat_count
+                    if (len_trim(result) > 0 .and. len_trim(inner) > 0) &
+                        result = result//','
+                    result = result//inner
+                end do
+                cycle
+            end if
+            code = text(pos:pos)
+            if (code >= 'a' .and. code <= 'z') &
+                code = char(ichar(code) - 32)
+            if (code /= 'A' .and. code /= 'L') then
+                error_msg = 'formatted A/L read supports only A and L '// &
+                            'edit descriptors'
+                return
+            end if
+            pos = pos + 1
+            call read_al_int(text, pos, width)
+            if (len_trim(result) > 0) result = result//','
+            result = result//code
+            if (width > 0) then
+                result = result//trim(adjustl(itoa_al(width)))
+            end if
+            if (repeat_count > 1) then
+                do i = 2, repeat_count
+                    result = result//','//code
+                    if (width > 0) result = result//trim(adjustl(itoa_al(width)))
+                end do
+            end if
+        end do
+        if (stop_at_close) error_msg = 'unterminated parenthesized A/L format'
+    end subroutine expand_al_sequence
+
+    function itoa_al(value) result(text)
+        integer, intent(in) :: value
+        character(len=:), allocatable :: text
+        character(len=32) :: buffer
+        write (buffer, '(I0)') value
+        text = trim(buffer)
+    end function itoa_al
+
+    subroutine expand_al_format(body, flat, error_msg)
+        character(len=*), intent(in) :: body
+        character(len=:), allocatable, intent(out) :: flat
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: pos
+
+        flat = ''
+        pos = 1
+        call expand_al_sequence(body, pos, .false., flat, error_msg)
+    end subroutine expand_al_format
+
     subroutine read_al_int(text, pos, value)
         ! Read a non-negative integer at pos; value is 0 when no digit follows.
         character(len=*), intent(in) :: text
@@ -94,6 +185,7 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: body
+        character(len=:), allocatable :: flat_body
         type(lr_operand_desc_t) :: err_slot, err_value
         integer :: pos, repeat_left, width, i
         character :: code
@@ -101,6 +193,9 @@
 
         call set_empty(error_msg)
         call normalize_format_body(node%format_spec, body)
+        call expand_al_format(body, flat_body, error_msg)
+        if (len_trim(error_msg) > 0) return
+        body = flat_body
         call emit_al_error_slot(context, err_slot, error_msg)
         if (len_trim(error_msg) > 0) return
         pos = 1

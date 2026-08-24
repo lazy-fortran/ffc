@@ -347,7 +347,7 @@
             ch = body(i:i)
             if (ch >= 'a' .and. ch <= 'z') ch = char(ichar(ch) - 32)
             select case (ch)
-            case ('I', 'F', 'E', 'D', 'G', 'P', 'X', '.', ',', ' ', '/', &
+            case ('I', 'F', 'E', 'D', 'G', 'P', 'X', '.', ',', ' ', '/', '(', ')', &
                   '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '+', '-')
                 ! Numeric edit descriptor, repeat count, width, or separator.
             case default

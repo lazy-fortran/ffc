@@ -14,6 +14,7 @@ program test_session_formatted_read_al_compiler
 
     all_passed = .true.
     if (.not. test_read_al_fields()) all_passed = .false.
+    if (.not. test_read_al_groups()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: formatted A/L file-unit read lowers through direct session'
@@ -66,5 +67,26 @@ contains
             ' EOFR'//nl, &
             '/tmp/ffc_formatted_read_al')
     end function test_read_al_fields
+
+    logical function test_read_al_groups()
+        character(len=*), parameter :: nl = new_line('a')
+        character(len=:), allocatable :: source
+
+        source = 'program main'//nl// &
+                 '  integer :: u'//nl// &
+                 '  character(len=4) :: a1, a2, a3'//nl// &
+                 '  open(newunit=u, file='//q//data_path//q// &
+                 ', status='//q//'old'//q//')'//nl// &
+                 '  read(u, '//q//'(2(A2),A2)'//q//') a1, a2, a3'//nl// &
+                 '  print *, a1'//nl// &
+                 '  print *, a2'//nl// &
+                 '  print *, a3'//nl// &
+                 '  close(u)'//nl// &
+                 'end program main'
+
+        test_read_al_groups = expect_output(source, &
+            ' ab  '//nl//' cd  '//nl//' ef  '//nl, &
+            '/tmp/ffc_formatted_read_al_groups')
+    end function test_read_al_groups
 
 end program test_session_formatted_read_al_compiler
