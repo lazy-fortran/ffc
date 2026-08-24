@@ -2507,6 +2507,13 @@
             end if
         end select
 
+        block
+            logical :: handled
+            call lower_rank2_minloc_element(arena, node_index, linear_index, &
+                target_symbol_index, context, value, handled, error_msg)
+            if (handled .or. len_trim(error_msg) > 0) return
+        end block
+
         symbol_index = cached_array_expression_symbol(context, node_index)
         if (symbol_index > 0) then
             call ensure_array_shapes_match(context, target_symbol_index, &
@@ -2713,6 +2720,181 @@
                                        'whole-array assignment requires array '// &
                                        'operands and +, -, or *', error_msg)
     end subroutine lower_array_elementwise_value
+
+    ! MINLOC over a rank-2 array returns a rank-1 coordinate vector.  The
+    ! scalar intrinsic path handles rank-1 inputs; emit one coordinate here.
+    subroutine lower_rank2_minloc_element(arena, node_index, linear_index, &
+                                          target_symbol_index, context, value, &
+                                          handled, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index, linear_index, target_symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, kw_name, id_error
+        integer :: source_sym, mask_sym, i, j, d1, d2, extent, fixed_coord
+        integer :: source_vk, arg_value
+        integer(c_int64_t) :: dim_value, lin
+        logical :: have_dim, have_mask
+        type(lr_operand_desc_t) :: candidate, candidate_idx, mask_elem
+        type(lr_operand_desc_t) :: best, best_idx, better, take, masked
+        type(lr_operand_desc_t) :: next_best, next_best_idx
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(node%name)) return
+            if (node%is_array_access .or. .not. same_name(node%name, 'minloc')) return
+            if (.not. allocated(node%arg_indices)) return
+            if (size(node%arg_indices) < 1 .or. .not. &
+                is_identifier(arena, node%arg_indices(1))) return
+            call get_identifier_name(arena, node%arg_indices(1), name, id_error)
+            if (len_trim(id_error) > 0) return
+            source_sym = find_symbol_compat(context, name)
+            if (source_sym <= 0 .or. .not. context%symbols(source_sym)%is_array) return
+            if (context%symbols(source_sym)%array_rank /= 2) return
+            if (context%symbols(target_symbol_index)%array_rank /= 1 .or. &
+                context%symbols(target_symbol_index)%value_kind /= VALUE_I32) return
+            d1 = context%symbols(source_sym)%array_dim_sizes(1)
+            d2 = context%symbols(source_sym)%array_dim_sizes(2)
+            source_vk = context%symbols(source_sym)%value_kind
+            if (d1 <= 0 .or. d2 <= 0) return
+            if (source_vk /= VALUE_I32 .and. source_vk /= VALUE_F32 .and. &
+                source_vk /= VALUE_F64) return
+
+            dim_value = 0_c_int64_t
+            mask_sym = 0
+            have_dim = .false.
+            have_mask = .false.
+            do i = 2, size(node%arg_indices)
+                call reshape_keyword_arg(arena, node%arg_indices(i), kw_name, arg_value)
+                if (len_trim(kw_name) > 0) then
+                    if (kw_name == 'dim') then
+                        call eval_i32_constant(arena, arg_value, context, dim_value, &
+                                               error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        have_dim = .true.
+                    else if (kw_name == 'mask') then
+                        if (.not. is_identifier(arena, arg_value)) return
+                        call get_identifier_name(arena, arg_value, name, id_error)
+                        if (len_trim(id_error) > 0) return
+                        mask_sym = find_symbol_compat(context, name)
+                        if (mask_sym <= 0) return
+                        have_mask = .true.
+                    else
+                        return
+                    end if
+                else if (.not. have_dim) then
+                    call eval_i32_constant(arena, arg_value, context, dim_value, error_msg)
+                    if (len_trim(error_msg) == 0) then
+                        have_dim = .true.
+                    else
+                        call set_empty(error_msg)
+                        if (.not. is_identifier(arena, arg_value)) return
+                        call get_identifier_name(arena, arg_value, name, id_error)
+                        if (len_trim(id_error) > 0) return
+                        mask_sym = find_symbol_compat(context, name)
+                        if (mask_sym <= 0) return
+                        have_mask = .true.
+                    end if
+                else
+                    if (.not. is_identifier(arena, arg_value)) return
+                    call get_identifier_name(arena, arg_value, name, id_error)
+                    if (len_trim(id_error) > 0) return
+                    mask_sym = find_symbol_compat(context, name)
+                    if (mask_sym <= 0) return
+                    have_mask = .true.
+                end if
+            end do
+            if (have_dim) then
+                if (dim_value /= 1_c_int64_t .and. dim_value /= 2_c_int64_t) return
+                extent = merge(d2, d1, dim_value == 1_c_int64_t)
+                if (linear_index >= extent) return
+                fixed_coord = linear_index
+            else
+                if (linear_index >= 2) return
+                extent = d1 * d2
+                fixed_coord = 0
+            end if
+            if (have_mask) then
+                if (.not. context%symbols(mask_sym)%is_array .or. &
+                    context%symbols(mask_sym)%array_rank /= 2 .or. &
+                    context%symbols(mask_sym)%array_size /= &
+                    context%symbols(source_sym)%array_size) return
+            end if
+
+            best = i32_immediate(context%session, 0_c_int64_t)
+            best_idx = i32_immediate(context%session, 0_c_int64_t)
+            do j = 0, extent - 1
+                if (have_dim) then
+                    if (dim_value == 1_c_int64_t) then
+                        lin = int(j, c_int64_t) + int(fixed_coord, c_int64_t) * int(d1, c_int64_t)
+                    else
+                        lin = int(fixed_coord, c_int64_t) + int(j, c_int64_t) * int(d1, c_int64_t)
+                    end if
+                else
+                    lin = int(j, c_int64_t)
+                end if
+                call load_array_linear_element(context, source_sym, lin, candidate, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (have_mask) then
+                    call load_array_linear_element(context, mask_sym, lin, mask_elem, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, mask_elem, &
+                        i32_immediate(context%session, 0_c_int64_t), masked, error_msg)) return
+                else
+                    masked = i32_immediate(context%session, 1_c_int64_t)
+                end if
+                call locate_minloc_better(context, source_vk, candidate, best, best_idx, &
+                                          better, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, better, masked, &
+                    take, error_msg)) return
+                if (have_dim) then
+                    candidate_idx = i32_immediate(context%session, int(j + 1, c_int64_t))
+                else if (linear_index == 0) then
+                    candidate_idx = i32_immediate(context%session, int(mod(j, d1) + 1, c_int64_t))
+                else
+                    candidate_idx = i32_immediate(context%session, int(j / d1 + 1, c_int64_t))
+                end if
+                call select_value(context, take, candidate, best, next_best, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call select_value(context, take, candidate_idx, best_idx, next_best_idx, error_msg)
+                if (len_trim(error_msg) > 0) return
+                best = next_best
+                best_idx = next_best_idx
+            end do
+            value = best_idx
+            handled = .true.
+        end select
+    end subroutine lower_rank2_minloc_element
+
+    subroutine locate_minloc_better(context, value_kind, candidate, best, best_idx, &
+                                    better, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: value_kind
+        type(lr_operand_desc_t), intent(in) :: candidate, best, best_idx
+        type(lr_operand_desc_t), intent(out) :: better
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: cmp, unset
+
+        if (value_kind == VALUE_F32) then
+            if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OLT, candidate, best, &
+                cmp, error_msg)) return
+        else if (value_kind == VALUE_F64) then
+            if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OLT, candidate, best, &
+                cmp, error_msg)) return
+        else
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, candidate, best, &
+                cmp, error_msg)) return
+        end if
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, best_idx, &
+            i32_immediate(context%session, 0_c_int64_t), unset, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_OR, cmp, unset, better, error_msg)) return
+    end subroutine locate_minloc_better
 
     subroutine lower_array_constructor_operand_element(arena, ctor, &
                                                         target_symbol_index, &
