@@ -12,7 +12,6 @@ dtio_interface_basic.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOST
 dtio_interface_read_write.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
 dtio_interface_unformatted.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
 f2003_abstract_interface.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-f2003_block_construct.f90 # owner=lazy-fortran/ffc#584; reason=resolve specification expressions by binding identity
 f2003_type_bound_array_call.f90 # owner=lazy-fortran/ffc#422; reason=deduplicate derived array declaration collection
 issue_1353_class_pointer_declaration.f90 # owner=lazy-fortran/ffc#540; reason=lower scalar data-pointer association
 issue_1607_final_procedures.f90 # owner=lazy-fortran/ffc#422; reason=invoke scalar final procedures once
