@@ -119,7 +119,9 @@ contains
         operands(1) = size
 
         inst%op = LR_OP_ALLOCA
-        inst%typ = lr_type_ptr_s(handle)
+        ! LIRIC's alloca type is the element type; the result is always ptr.
+        ! A byte-count alloca therefore allocates i8 elements dynamically.
+        inst%typ = lr_type_i8_s(handle)
         inst%dest = 0_c_int32_t
         inst%operands = c_loc(operands)
         inst%num_operands = 1_c_int32_t
