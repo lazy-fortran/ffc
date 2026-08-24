@@ -1512,6 +1512,15 @@ while IFS= read -r full_path <&3; do
                     ref_exit=$?
                     set_last_action_evidence CASE_REF_COMPILE executed \
                         "$ref_exit"
+                    if [ "$SUITE" = "fortfront-f90" ]; then
+                        CASE_ACTION="exclude"
+                        SKIP_COUNT=$((SKIP_COUNT + 1))
+                        write_result_record "$rel_path" "SKIP" "$ffc_exit" \
+                            "$ref_exit" \
+                            "ffc and gfortran reject; no positive executable oracle" ""
+                        echo "  SKIP: $rel_path (ffc and gfortran reject; no positive executable oracle)"
+                        continue
+                    fi
                     status="FAIL"
                     note="ffc compilation failed; gfortran also rejects"
                     FAIL_COUNT=$((FAIL_COUNT + 1))
