@@ -167,6 +167,8 @@ contains
                 vk = VALUE_F32
             else if (is_contained_f64_function(context, callee_name)) then
                 vk = VALUE_F64
+            else if (contained_function_kind(context, callee_name) == VALUE_PROC_PTR) then
+                vk = VALUE_F32
             end if
             return
         end if

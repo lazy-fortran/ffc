@@ -898,8 +898,8 @@
 
     logical function data_pointer_result_call(arena, node_index, context) &
         result(is_call)
-        ! True when node_index is a call to a function whose result is a scalar
-        ! data pointer (#407).
+        ! True when node_index is a call to a function whose result is a pointer
+        ! (data or procedure pointer).
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
@@ -910,7 +910,9 @@
         type is (call_or_subscript_node)
             if (.not. allocated(call_node%name)) return
             is_call = contained_function_kind(context, call_node%name) == &
-                      VALUE_DATA_PTR_RESULT
+                      VALUE_DATA_PTR_RESULT .or. &
+                      contained_function_kind(context, call_node%name) == &
+                      VALUE_PROC_PTR
         end select
     end function data_pointer_result_call
 
@@ -933,6 +935,28 @@
         call set_empty(error_msg)
         select type (call_node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
+            if (contained_function_kind(context, call_node%name) == VALUE_PROC_PTR) then
+                if (allocated(call_node%arg_indices)) then
+                    call prepare_reference_args(arena, call_node%arg_indices, &
+                        context, VALUE_F32, call_node%name, args, &
+                        copyback_indices, error_msg)
+                else
+                    call prepare_reference_args(arena, NO_ACTUAL_ARGS, context, &
+                        VALUE_F32, call_node%name, args, copyback_indices, error_msg)
+                end if
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_ptr_call(context%session, &
+                        call_emit_name(arena, call_node%name, context), args, &
+                        result_address, error_msg)) return
+                call copy_back_reference_args(context, args, copyback_indices, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_ptr_store(context%session, result_address, &
+                        context%symbols(ptr_index)%address, error_msg)) return
+                context%symbols(ptr_index)%is_associated = .true.
+                call set_empty(error_msg)
+                return
+            end if
             pointee_kind = data_pointer_result_kind(context, call_node%name)
             if (pointee_kind /= context%symbols(ptr_index)%value_kind) then
                 error_msg = 'pointer and function result scalar kinds do not '// &
@@ -1490,6 +1514,11 @@
                                      context%symbols(ptr_idx)%address, &
                                      error_msg)) return
             call set_empty(error_msg)
+            return
+        end if
+        if (data_pointer_result_call(arena, node%target_index, context)) then
+            call bind_data_pointer_result(arena, node%target_index, context, &
+                                          ptr_idx, error_msg)
             return
         end if
         if (.not. is_identifier(arena, node%target_index)) then

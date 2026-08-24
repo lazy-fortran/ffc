@@ -290,7 +290,9 @@
 
         idx = find_symbol_compat(context, node%name)
         call resolve_proc_pointer_callee_name(arena, node%name, callee_name)
-        if (.not. is_contained_f32_function(context, callee_name)) then
+        if (.not. context%symbols(idx)%is_dummy_argument .and. &
+            contained_function_kind(context, callee_name) /= VALUE_F32 .and. &
+            contained_function_kind(context, callee_name) /= VALUE_PROC_PTR) then
             error_msg = 'procedure pointer call result is unsupported or ambiguous: '// &
                         trim(node%name)
             return

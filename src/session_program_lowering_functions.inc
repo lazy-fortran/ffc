@@ -743,6 +743,43 @@
         call set_empty(error_msg)
     end subroutine register_internal_function_name
 
+    logical function result_var_is_procedure_pointer(node, context) &
+        result(is_procedure_pointer)
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: result_name
+        integer :: i, k
+
+        is_procedure_pointer = .false.
+        result_name = trim(node%name)
+        if (allocated(node%result_variable)) then
+            if (len_trim(node%result_variable) > 0) &
+                result_name = trim(node%result_variable)
+        end if
+        if (.not. allocated(node%body_indices)) return
+        do i = 1, size(node%body_indices)
+            if (.not. node_exists(context%arena, node%body_indices(i))) cycle
+            select type (decl => context%arena%entries(node%body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. declaration_names_procedure(decl)) cycle
+                if (allocated(decl%var_name)) then
+                    if (same_name(decl%var_name, result_name)) then
+                        is_procedure_pointer = .true.
+                        return
+                    end if
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (same_name(decl%var_names(k), result_name)) then
+                            is_procedure_pointer = .true.
+                            return
+                        end if
+                    end do
+                end if
+            end select
+        end do
+    end function result_var_is_procedure_pointer
+
   subroutine function_value_kind(node, context, value_kind, derived_type_index, &
                                    error_msg, reference_index)
         type(function_def_node), intent(in) :: node
@@ -772,6 +809,12 @@
         ! descriptor sret ABI; the callee allocates the data at run time.
         if (result_var_is_alloc_array(node, context)) then
             value_kind = VALUE_ALLOC_ARRAY_RESULT
+            return
+        end if
+
+        ! A procedure pointer result returns its callable address (#2450).
+        if (result_var_is_procedure_pointer(node, context)) then
+            value_kind = VALUE_PROC_PTR
             return
         end if
 
@@ -3106,7 +3149,8 @@
             ! pointer: the caller passes the result buffer address as param 0.
             if (.not. begin_void_subroutine(context%session, emit_name, &
                                             param_count + 1, error_msg)) return
-        else if (value_kind == VALUE_DATA_PTR_RESULT) then
+        else if (value_kind == VALUE_DATA_PTR_RESULT .or. &
+                 value_kind == VALUE_PROC_PTR) then
             ! A scalar data pointer result returns the target address itself,
             ! so the LIRIC function returns ptr and copies no pointee storage.
             if (.not. begin_ptr_function(context%session, emit_name, &
@@ -3247,6 +3291,22 @@
                 rsym%is_reference = .false.
             end associate
             context%symbol_count = context%current_function_result_index
+        else if (value_kind == VALUE_PROC_PTR) then
+            call grow_symbols(context)
+            context%current_function_result_index = context%symbol_count + 1
+            associate (rsym => context%symbols(context%current_function_result_index))
+                rsym%name = trim(result_name)
+                rsym%value_kind = VALUE_PROC_PTR
+                rsym%is_pointer = .true.
+                rsym%is_proc_pointer = .true.
+                rsym%is_associated = .false.
+                if (.not. emit_ptr_alloca(context%session, rsym%address, &
+                                          error_msg)) return
+                if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+                                         rsym%address, error_msg)) return
+                rsym%has_address = .true.
+            end associate
+            context%symbol_count = context%current_function_result_index
         else
             call define_symbol(context, result_name, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -3340,12 +3400,19 @@
                 else if (.not. emit_ret_void(context%session, error_msg)) then
                     return
                 end if
-            else if (value_kind == VALUE_DATA_PTR_RESULT) then
+            else if (value_kind == VALUE_DATA_PTR_RESULT .or. &
+                     value_kind == VALUE_PROC_PTR) then
                 ! Return the adopted target address, or a null pointer when the
                 ! result was never associated.
                 if (context%symbols(result_index)%has_address .and. &
                     context%symbols(result_index)%is_associated) then
-                    value = context%symbols(result_index)%address
+                    if (value_kind == VALUE_PROC_PTR) then
+                        if (.not. emit_ptr_load(context%session, &
+                                context%symbols(result_index)%address, value, &
+                                error_msg)) return
+                    else
+                        value = context%symbols(result_index)%address
+                    end if
                 else
                     value = null_ptr_operand(context)
                 end if

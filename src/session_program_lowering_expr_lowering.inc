@@ -652,19 +652,8 @@
             return
         end if
         if (is_proc_pointer_call(context, node%name)) then
-            block
-                character(len=:), allocatable :: callee_name
-                call resolve_proc_pointer_callee_name(arena, node%name, &
-                                                      callee_name)
-                if (is_contained_f32_function(context, callee_name)) then
-                    call lower_f32_proc_ptr_call(arena, node, context, value, &
-                                                 error_msg)
-                    return
-                end if
-                error_msg = 'procedure pointer call result is unsupported or '// &
-                            'ambiguous: '//trim(node%name)
-                return
-            end block
+            call lower_f32_proc_ptr_call(arena, node, context, value, error_msg)
+            return
         end if
         ! Resolve generic -> specific (#249 B7c).
         call call_argument_kinds(arena, node, context, VALUE_F32, &
