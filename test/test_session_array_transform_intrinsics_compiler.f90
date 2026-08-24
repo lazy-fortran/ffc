@@ -9,6 +9,7 @@ program test_session_array_transform_intrinsics_compiler
     all_passed = .true.
     if (.not. test_merge_scalar_mask_true()) all_passed = .false.
     if (.not. test_merge_scalar_mask_variable()) all_passed = .false.
+    if (.not. test_merge_rank2_array_mask()) all_passed = .false.
     if (.not. test_pack_unpack_roundtrip()) all_passed = .false.
     if (.not. test_spread_real_dim1()) all_passed = .false.
     if (.not. test_spread_invalid_dim()) all_passed = .false.
@@ -64,6 +65,42 @@ contains
             '   4.50000000    '//new_line('a'), &
             '/tmp/ffc_session_transform_merge_scalar_var')
     end function test_merge_scalar_mask_variable
+
+    ! A rank-2 array mask selects each element in Fortran column-major order.
+    logical function test_merge_rank2_array_mask()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: t(2, 2)'//new_line('a')// &
+            '  integer :: f(2, 2)'//new_line('a')// &
+            '  integer :: r(2, 2)'//new_line('a')// &
+            '  logical :: m(2, 2)'//new_line('a')// &
+            '  integer :: i, j'//new_line('a')// &
+            '  t(1, 1) = 1'//new_line('a')// &
+            '  t(2, 1) = 2'//new_line('a')// &
+            '  t(1, 2) = 3'//new_line('a')// &
+            '  t(2, 2) = 4'//new_line('a')// &
+            '  f(1, 1) = 10'//new_line('a')// &
+            '  f(2, 1) = 20'//new_line('a')// &
+            '  f(1, 2) = 30'//new_line('a')// &
+            '  f(2, 2) = 40'//new_line('a')// &
+            '  m(1, 1) = .true.'//new_line('a')// &
+            '  m(2, 1) = .false.'//new_line('a')// &
+            '  m(1, 2) = .false.'//new_line('a')// &
+            '  m(2, 2) = .true.'//new_line('a')// &
+            '  r = merge(t, f, m)'//new_line('a')// &
+            '  do j = 1, 2'//new_line('a')// &
+            '     do i = 1, 2'//new_line('a')// &
+            '        print *, r(i, j)'//new_line('a')// &
+            '     end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            'end program main'
+        test_merge_rank2_array_mask = expect_output( &
+            source, '           1'//new_line('a')// &
+            '          20'//new_line('a')// &
+            '          30'//new_line('a')// &
+            '           4'//new_line('a'), &
+            '/tmp/ffc_session_transform_merge_rank2')
+    end function test_merge_rank2_array_mask
 
     ! pack then unpack with the same mask restores the masked positions.
     logical function test_pack_unpack_roundtrip()
