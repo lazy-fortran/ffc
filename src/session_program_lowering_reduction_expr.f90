@@ -22,7 +22,7 @@ contains
         type(array_section_info_t) :: info
         integer :: sym, bin_left, bin_right, bin_line, bin_col, left_extent, &
                    right_extent
-        logical :: right_is_array
+        logical :: left_is_array, right_is_array
 
         ok = .false.
         extent = 0
@@ -65,16 +65,55 @@ contains
             case default
                 return
             end select
-            if (.not. reduction_arg_extent(arena, bin_left, context, vk, &
-                                           left_extent)) return
+            left_is_array = reduction_arg_extent(arena, bin_left, context, vk, &
+                                                 left_extent)
             right_is_array = reduction_arg_extent(arena, bin_right, context, vk, &
                                                   right_extent)
+            if (.not. left_is_array .and. .not. reduction_arg_is_scalar(arena, &
+                    bin_left, context)) return
+            if (.not. right_is_array .and. .not. reduction_arg_is_scalar(arena, &
+                    bin_right, context)) return
+            if (.not. left_is_array .and. .not. right_is_array) return
+            if (.not. left_is_array) then
+                extent = right_extent
+                ok = extent > 0
+                return
+            end if
             if (right_is_array .and. right_extent /= left_extent) return
             extent = left_extent
             ok = extent > 0
             return
         end if
     end function reduction_arg_extent
+
+    recursive logical function reduction_arg_is_scalar(arena, node_index, &
+                                                       context) result(is_scalar)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: name, error_msg, op
+        integer :: sym, left, right, line, column
+
+        is_scalar = .false.
+        if (.not. node_exists(arena, node_index)) return
+        if (is_literal(arena, node_index)) then
+            is_scalar = .true.
+            return
+        end if
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            sym = find_symbol_compat(context, name)
+            if (sym > 0) is_scalar = .not. context%symbols(sym)%is_array
+            return
+        end if
+        if (.not. is_binary_op(arena, node_index)) return
+        call get_binary_op_info(arena, node_index, op, left, right, line, column, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        is_scalar = reduction_arg_is_scalar(arena, left, context) .and. &
+                    reduction_arg_is_scalar(arena, right, context)
+    end function reduction_arg_is_scalar
 
     recursive logical function reduction_expression_has_kind(arena, node_index, &
                                                              context, vk) result(has)
@@ -94,8 +133,10 @@ contains
             call get_identifier_name(arena, node_index, name, err)
             if (len_trim(err) > 0) return
             sym = find_symbol_compat(context, name)
-            has = sym > 0 .and. context%symbols(sym)%is_array .and. &
-                  context%symbols(sym)%value_kind == vk
+            if (sym > 0) then
+                has = context%symbols(sym)%is_array .and. &
+                      context%symbols(sym)%value_kind == vk
+            end if
             return
         end if
 

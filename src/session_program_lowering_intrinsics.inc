@@ -273,35 +273,64 @@
         type(lr_operand_desc_t) :: arg
         type(lr_operand_desc_t) :: left_part
         type(lr_operand_desc_t) :: right_part
+        type(lr_operand_desc_t) :: low_part, high_part, mask, high_mask
         integer(c_int64_t) :: shift_count
-        integer(c_int64_t) :: rotate
+        integer(c_int64_t) :: rotate, size_bits, mask_value
 
-        if (.not. require_intrinsic_arg_count(node, 2, 2, error_msg)) return
+        if (.not. require_intrinsic_arg_count(node, 2, 3, error_msg)) return
         call literal_shift_count(arena, node%arg_indices(2), shift_count, &
                                  'ishftc', error_msg)
         if (len_trim(error_msg) > 0) return
+
+        size_bits = 32_c_int64_t
+        if (size(node%arg_indices) == 3) then
+            call literal_shift_count(arena, node%arg_indices(3), size_bits, &
+                                     'ishftc size', error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (size_bits < 1_c_int64_t .or. size_bits > 32_c_int64_t) then
+            error_msg = 'ishftc size must be between 1 and 32'
+            return
+        end if
 
         call lower_i32_expression(arena, node%arg_indices(1), context, arg, &
                                   error_msg)
         if (len_trim(error_msg) > 0) return
 
-        ! Default 32-bit circular shift: normalise the count into [0, 31].
-        rotate = modulo(shift_count, 32_c_int64_t)
+        ! Rotate only the selected low bits and preserve the remaining bits.
+        rotate = modulo(shift_count, size_bits)
         if (rotate == 0_c_int64_t) then
             value = arg
             call set_empty(error_msg)
             return
         end if
-        ! ishftc(i, n) = (i << n) | (i >> (32 - n)) using a logical right shift.
-        if (.not. emit_i32_binary(context%session, LR_OP_SHL, arg, &
+        if (size_bits == 32_c_int64_t) then
+            mask_value = -1_c_int64_t
+        else
+            mask_value = 2_c_int64_t**size_bits - 1_c_int64_t
+        end if
+        mask = i32_immediate(context%session, mask_value)
+        if (.not. emit_i32_binary(context%session, LR_OP_XOR, mask, &
+                                  i32_immediate(context%session, -1_c_int64_t), &
+                                  high_mask, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, arg, mask, &
+                                  low_part, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, arg, high_mask, &
+                                  high_part, error_msg)) return
+        ! ishftc(i, n, s) = ((low << n) | (low >> (s - n))) | high.
+        if (.not. emit_i32_binary(context%session, LR_OP_SHL, low_part, &
                                   i32_immediate(context%session, rotate), &
                                   left_part, error_msg)) return
-        if (.not. emit_i32_binary(context%session, LR_OP_LSHR, arg, &
-                                  i32_immediate(context%session, 32_c_int64_t - &
+        if (.not. emit_i32_binary(context%session, LR_OP_LSHR, low_part, &
+                                  i32_immediate(context%session, size_bits - &
                                                 rotate), &
                                   right_part, error_msg)) return
         if (.not. emit_i32_binary(context%session, LR_OP_OR, left_part, &
                                   right_part, value, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, value, mask, &
+                                  low_part, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_OR, low_part, high_part, &
+                                  value, error_msg)) return
     end subroutine lower_i32_ishftc_intrinsic
 
     subroutine literal_shift_count(arena, shift_index, shift_count, name, &
