@@ -556,6 +556,16 @@
                 context, ptr_index, error_msg)
             return
         end if
+        ! p => a(i): a scalar pointer may bind to an element of an intrinsic
+        ! TARGET array.  FortFront represents the element as a call-shaped
+        ! node, distinct from the array-section node handled below.
+        if (is_declared_scalar_array_element_target(arena, node%target_index, &
+                                                    context)) then
+            call alias_pointer_to_scalar_array_element(arena, node%target_index, &
+                                                       context, ptr_index, &
+                                                       error_msg)
+            return
+        end if
         ! p => a(lo:hi:s): a strided array-section view bound through the
         ! pointer's descriptor byte-stride path (#338).
         if (.not. is_identifier(arena, node%target_index)) then
@@ -665,6 +675,85 @@
         context%symbols(ptr_index)%has_runtime_association = .false.
         call set_empty(error_msg)
     end subroutine lower_pointer_assignment
+
+    logical function is_declared_scalar_array_element_target(arena, target_index, &
+                                                              context) result(is_target)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: target_index
+        type(lowering_context_t), intent(in) :: context
+
+        is_target = .false.
+        if (.not. node_exists(arena, target_index)) return
+        select type (target_node => arena%entries(target_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. is_declared_array_element_ref(target_node, context)) return
+            is_target = .true.
+        end select
+    end function is_declared_scalar_array_element_target
+
+    subroutine alias_pointer_to_scalar_array_element(arena, target_index, context, &
+                                                      ptr_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: target_index, ptr_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: element_address
+        integer :: target_symbol, value_kind
+
+        select type (target_node => arena%entries(target_index)%node)
+        type is (call_or_subscript_node)
+            target_symbol = find_symbol_compat(context, target_node%name)
+            if (target_symbol <= 0) then
+                error_msg = 'pointer assignment source was not declared: '// &
+                            trim(target_node%name)
+                return
+            end if
+            if (.not. (context%symbols(target_symbol)%is_target .or. &
+                       context%symbols(target_symbol)%is_pointer)) then
+                error_msg = 'right of => is not a target or pointer: '// &
+                            trim(target_node%name)
+                return
+            end if
+            if (.not. context%symbols(target_symbol)%has_address) then
+                error_msg = 'pointer assignment source has no storage: '// &
+                            trim(target_node%name)
+                return
+            end if
+            if (context%symbols(ptr_index)%is_array) then
+                error_msg = 'left of => is an array pointer but the target is '// &
+                            'a scalar array element'
+                return
+            end if
+            value_kind = context%symbols(target_symbol)%value_kind
+            if (context%symbols(ptr_index)%value_kind /= value_kind) then
+                error_msg = 'pointer and target scalar kinds do not match'
+                return
+            end if
+            select case (value_kind)
+            case (VALUE_I32)
+                call lower_i32_array_element_address(arena, target_node, context, &
+                                                     element_address, error_msg, &
+                                                     'pointer assignment target')
+            case (VALUE_F32, VALUE_F64)
+                call lower_array_element_address_for_kind(arena, target_node, &
+                    context, value_kind, element_address, error_msg, &
+                    'pointer assignment target')
+            case default
+                error_msg = 'pointer assignment target array element kind is not '// &
+                            'supported'
+            end select
+            if (len_trim(error_msg) > 0) return
+            context%symbols(ptr_index)%address = element_address
+            context%symbols(ptr_index)%has_address = .true.
+            context%symbols(ptr_index)%is_reference = .true.
+            context%symbols(ptr_index)%is_associated = .true.
+            context%symbols(ptr_index)%has_runtime_association = .false.
+            call set_empty(error_msg)
+        class default
+            error_msg = 'pointer assignment target AST node is not a scalar '// &
+                        'array element'
+        end select
+    end subroutine alias_pointer_to_scalar_array_element
 
     logical function component_access_is_scalar_derived_pointer(arena, access_index, &
                                                                 context) result(is_ptr)
