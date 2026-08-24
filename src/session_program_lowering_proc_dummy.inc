@@ -115,7 +115,8 @@
         idx = find_symbol_compat(context, name)
         if (idx > 0) then
             is_proc = context%symbols(idx)%is_proc_pointer
-            return
+            if (is_proc) return
+            if (find_function_index(context, name) <= 0) return
         end if
         if (find_function_index(context, name) > 0) then
             is_proc = .true.
@@ -137,11 +138,17 @@
         if (idx > 0) then
             ! Forwarding a procedure dummy or pointer: pass on the address it
             ! holds, so the receiving procedure sees the original target.
-            if (.not. emit_ptr_load(context%session, &
-                                    context%symbols(idx)%address, operand, &
-                                    error_msg)) return
-            call set_empty(error_msg)
-            return
+            if (context%symbols(idx)%is_proc_pointer) then
+                if (.not. emit_ptr_load(context%session, &
+                                        context%symbols(idx)%address, operand, &
+                                        error_msg)) return
+                call set_empty(error_msg)
+                return
+            end if
+            if (find_function_index(context, name) <= 0) then
+                error_msg = 'procedure actual is not callable: '//trim(name)
+                return
+            end if
         end if
         if (find_function_index(context, name) > 0) then
             call procedure_symbol_operand(context, &
@@ -575,7 +582,7 @@
         call_args(1) = argument
         if (.not. emit_liric_f64_call(context%session, trim(libm_name), &
                                       call_args, result_value, error_msg)) return
-        if (.not. emit_ret_i32_operand(context%session, result_value, &
+        if (.not. emit_ret_i64_operand(context%session, result_value, &
                                        error_msg)) return
         if (.not. finish_function(context%session, error_msg)) return
         call set_empty(error_msg)
