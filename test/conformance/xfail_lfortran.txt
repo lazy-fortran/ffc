@@ -2002,7 +2002,6 @@ modules_68.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived v
 modules_69.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
 modules_71.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 modules_72.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-modulo_01.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 move_alloc_derived_01.f90 # owner=lazy-fortran/ffc#337; reason=migrate runtime automatic arrays to descriptors
 move_alloc_pointer_alias.f90 # owner=lazy-fortran/ffc#337; reason=migrate pointer arrays to descriptors
 multi_file_member_access_01.f90 # owner=lazy-fortran/ffc#584; reason=map USE bindings to module exports
