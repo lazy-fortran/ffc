@@ -867,7 +867,7 @@ contains
             'parent_name = ""'//new_line('a')// &
             'bindings = "operate=>operate_impl|other|0|operate_impl"')) return
         call read_fmod(legacy_path, old_info, error_msg)
-        if (len_trim(error_msg) > 0) then
+        if (index(error_msg, 'unsupported .fmod schema version') == 0) then
             print *, 'FAIL: schema-10 .fmod was not rejected: ', trim(error_msg)
             return
         end if
