@@ -6357,20 +6357,83 @@ contains
     end subroutine lower_cpu_time
 
     subroutine lower_system_clock(arena, arg_indices, context, error_msg)
-        ! system_clock(count): count = an integer tick counter. Only the count
-        ! argument is supported; count_rate and count_max are not.
+        ! system_clock(count, count_rate, count_max): the runtime clock uses
+        ! seconds, so its rate is one and its count range is the default
+        ! integer range.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: arg_indices(:)
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
-        integer :: symbol_index
+        integer :: actual_indices(3), symbol_index, positional_count
+        integer :: i, value_index
+        character(len=:), allocatable :: keyword
+        character(len=10) :: names(3)
 
-        call intrinsic_out_scalar(arena, arg_indices, context, 'system_clock', &
-            VALUE_I32, symbol_index, error_msg)
-        if (len_trim(error_msg) > 0) return
-        if (.not. emit_system_clock_value(context%session, value, error_msg)) return
-        call store_intrinsic_scalar_result(context, symbol_index, value, error_msg)
+        call set_empty(error_msg)
+        if (size(arg_indices) > 3) then
+            error_msg = 'system_clock accepts at most three arguments'
+            return
+        end if
+        actual_indices = 0
+        names = [character(len=10) :: 'count', 'count_rate', 'count_max']
+        positional_count = 0
+        do i = 1, size(arg_indices)
+            call unwrap_intrinsic_arg(arena, arg_indices(i), keyword, value_index)
+            if (len_trim(keyword) == 0) then
+                positional_count = positional_count + 1
+                if (positional_count > 3) then
+                    error_msg = 'system_clock accepts at most three arguments'
+                    return
+                end if
+                actual_indices(positional_count) = value_index
+            else
+                if (same_name(keyword, names(1))) then
+                    value_index = 1
+                else if (same_name(keyword, names(2))) then
+                    value_index = 2
+                else if (same_name(keyword, names(3))) then
+                    value_index = 3
+                else
+                    error_msg = 'unknown system_clock keyword: '//trim(keyword)
+                    return
+                end if
+                if (actual_indices(value_index) /= 0) then
+                    error_msg = 'system_clock argument supplied more than once'
+                    return
+                end if
+                call unwrap_intrinsic_arg(arena, arg_indices(i), keyword, &
+                    actual_indices(value_index))
+            end if
+        end do
+        if (actual_indices(1) /= 0) then
+            call intrinsic_out_scalar(arena, actual_indices(1:1), context, &
+                'system_clock', VALUE_I32, symbol_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_system_clock_value(context%session, value, error_msg)) &
+                return
+            call store_intrinsic_scalar_result(context, symbol_index, value, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (actual_indices(2) /= 0) then
+            call intrinsic_out_scalar(arena, actual_indices(2:2), context, &
+                'system_clock', VALUE_I32, symbol_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = i32_immediate(context%session, 1_c_int64_t)
+            call store_intrinsic_scalar_result(context, symbol_index, value, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        if (actual_indices(3) /= 0) then
+            call intrinsic_out_scalar(arena, actual_indices(3:3), context, &
+                'system_clock', VALUE_I32, symbol_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            value = i32_immediate(context%session, &
+                int(huge(0_c_int32_t), c_int64_t))
+            call store_intrinsic_scalar_result(context, symbol_index, value, &
+                error_msg)
+        end if
     end subroutine lower_system_clock
 
     subroutine lower_random_number(arena, arg_indices, context, error_msg)
@@ -6382,12 +6445,18 @@ contains
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: wide_value
         integer :: symbol_index
 
         call intrinsic_out_scalar(arena, arg_indices, context, 'random_number', &
-            VALUE_F32, symbol_index, error_msg)
+            VALUE_F32, symbol_index, error_msg, allow_f64=.true.)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_random_number_value(context%session, value, error_msg)) return
+        if (context%symbols(symbol_index)%value_kind == VALUE_F64) then
+            if (.not. emit_liric_f32_to_f64(context%session, value, wide_value, &
+                error_msg)) return
+            value = wide_value
+        end if
         call store_intrinsic_scalar_result(context, symbol_index, value, error_msg)
     end subroutine lower_random_number
 
