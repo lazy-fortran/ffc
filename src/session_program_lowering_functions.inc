@@ -502,6 +502,11 @@
         if (.not. allocated(node%name)) return
         call grow_function_names(context)
         existing = find_function_index(context, node%name)
+        if (existing /= 0 .and. present(node_index) .and. &
+            context%function_node_indices(existing) > 0) then
+            if (.not. procedure_same_host_unit(context%arena, node_index, &
+                    context%function_node_indices(existing))) existing = 0
+        end if
         if (existing /= 0) then
             if (present(node_index)) then
                 new_param_count = 0
@@ -694,6 +699,11 @@
         ! not two rival definitions. Reconcile so the entry keeps the
         ! body-bearing definition rather than hard-erroring.
         existing = find_function_index(context, node%name)
+        if (existing /= 0 .and. present(node_index) .and. &
+            context%function_node_indices(existing) > 0) then
+            if (.not. procedure_same_host_unit(context%arena, node_index, &
+                    context%function_node_indices(existing))) existing = 0
+        end if
         if (existing /= 0) then
             if (present(node_index)) then
                 new_param_count = 0

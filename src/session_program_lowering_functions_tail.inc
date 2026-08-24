@@ -789,13 +789,32 @@
         character(len=*), intent(in) :: callee_name
         integer, intent(in) :: param_pos
         type(lowering_context_t), intent(in), optional :: context
-        integer :: n
+        integer :: n, preferred_node
         character(len=:), allocatable :: node_type
         type(function_def_node), pointer :: fn_node
         type(subroutine_def_node), pointer :: sb_node
 
         value_kind = 0
+        preferred_node = 0
+        if (present(context)) then
+            preferred_node = visible_same_unit_procedure_node(context, callee_name)
+            if (preferred_node <= 0) then
+                ! A renamed USE import has one exact context entry but is not in
+                ! the current lexical unit.
+                do n = 1, context%function_count
+                    if (.not. same_name(context%function_names(n), callee_name)) cycle
+                    if (context%function_node_indices(n) <= 0) cycle
+                    if (.not. node_exists(arena, &
+                            context%function_node_indices(n))) cycle
+                    preferred_node = context%function_node_indices(n)
+                    exit
+                end do
+            end if
+        end if
+        ! The context-selected node is the binding-aware path. With no context,
+        ! retain the historical arena scan for semantic-only callers.
         do n = 1, arena%size
+            if (preferred_node > 0 .and. n /= preferred_node) cycle
             if (.not. node_exists(arena, n)) cycle
             node_type = get_node_type_at(arena, n)
             if (node_type == 'subroutine_def_node' .or. &
@@ -1195,6 +1214,10 @@
         if (present(current_context)) then
             nested_node_index = visible_nested_procedure_node(current_context, &
                                                                fortran_name)
+            if (nested_node_index <= 0) then
+                nested_node_index = visible_same_unit_procedure_node( &
+                    current_context, fortran_name)
+            end if
             ! An interface block in a procedure's specification part declares
             ! an external procedure unless the name is also a dummy argument of
             ! that procedure; the external one keeps its plain link name rather
@@ -1285,6 +1308,27 @@
         end do
     end function visible_nested_procedure_node
 
+    integer function visible_same_unit_procedure_node(context, name) result(index)
+        ! Return a sibling procedure from the same program/module scope. Such
+        ! a procedure shadows a USE-associated procedure of the same name.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: i, candidate
+
+        index = 0
+        if (context%current_proc_node_index <= 0) return
+        do i = 1, context%function_count
+            if (.not. same_name(context%function_names(i), name)) cycle
+            candidate = context%function_node_indices(i)
+            if (candidate <= 0) cycle
+            if (procedure_same_host_unit(context%arena, candidate, &
+                                         context%current_proc_node_index)) then
+                index = candidate
+                return
+            end if
+        end do
+    end function visible_same_unit_procedure_node
+
     logical function procedure_scope_is(arena, procedure_node_index, scope_index) &
             result(is_nested)
         type(ast_arena_t), intent(in) :: arena
@@ -1310,6 +1354,40 @@
             parent = arena%entries(parent)%parent_index
         end do
     end function procedure_scope_is
+
+    logical function procedure_same_host_unit(arena, procedure_node_index, &
+                                               reference_node_index) result(same)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: procedure_node_index
+        integer, intent(in) :: reference_node_index
+        integer :: procedure_unit, reference_unit
+
+        procedure_unit = containing_program_or_module(arena, procedure_node_index)
+        reference_unit = containing_program_or_module(arena, reference_node_index)
+        same = procedure_unit > 0 .and. procedure_unit == reference_unit
+    end function procedure_same_host_unit
+
+    integer function containing_program_or_module(arena, procedure_node_index) &
+            result(unit_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: procedure_node_index
+        character(len=:), allocatable :: node_type
+        integer :: parent
+
+        unit_index = 0
+        if (.not. node_exists(arena, procedure_node_index)) return
+        parent = arena%entries(procedure_node_index)%parent_index
+        do while (parent > 0)
+            if (.not. node_exists(arena, parent)) return
+            node_type = get_node_type_at(arena, parent)
+            if (node_type == 'program_node' .or. node_type == 'program' .or. &
+                node_type == 'module_node' .or. node_type == 'module') then
+                unit_index = parent
+                return
+            end if
+            parent = arena%entries(parent)%parent_index
+        end do
+    end function containing_program_or_module
 
     integer function enclosing_procedure_node(arena, procedure_node_index) &
             result(scope_index)
