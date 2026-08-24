@@ -3268,6 +3268,16 @@
                 'the rhs is not a derived actual', error_msg)
             return
         end if
+        ! The component descriptor can preserve a dynamic identity, but this
+        ! lowering unit does not yet have a safe copy path for a source whose
+        ! storage/layout is known only through that descriptor.  Do not treat
+        ! its declared type as the dynamic type or copy an unverified size.
+        if (context%symbols(source_index)%is_polymorphic) then
+            call unsupported_feature_error('polymorphic allocatable component '// &
+                'assignment', node%line, node%column, &
+                'a polymorphic rhs has no safe descriptor copy lowering', error_msg)
+            return
+        end if
 
         declared_type = context%derived_types(base_type)%component_type_index( &
             component_index)
