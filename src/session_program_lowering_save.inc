@@ -244,6 +244,11 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
 
+        if (value_kind == VALUE_DERIVED) then
+            call lower_saved_derived_declaration(node, node_index, context, &
+                                                 error_msg)
+            return
+        end if
         select case (value_kind)
         case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
         case default
@@ -266,6 +271,77 @@
             error_msg = 'saved declaration did not expose a variable name'
         end if
     end subroutine lower_saved_scalar_declaration
+
+    subroutine lower_saved_derived_declaration(node, node_index, context, &
+                                               error_msg)
+        use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
+        type(declaration_node), intent(in) :: node
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, derived_type_index
+
+        derived_type_index = declaration_derived_type_index(context, node)
+        if (derived_type_index <= 0) then
+            error_msg = 'saved derived declaration lost its type index'
+            return
+        end if
+        if (node%is_multi_declaration .and. allocated(node%var_names)) then
+            do i = 1, size(node%var_names)
+                call bind_saved_derived(node_index, context, &
+                    trim(node%var_names(i)), derived_type_index, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+        else if (allocated(node%var_name)) then
+            call bind_saved_derived(node_index, context, trim(node%var_name), &
+                derived_type_index, error_msg)
+        else
+            error_msg = 'saved derived declaration did not expose a name'
+        end if
+    contains
+        subroutine bind_saved_derived(node_index, context, name, type_index, &
+                                     error_msg)
+            integer, intent(in) :: node_index, type_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            character(len=:), allocatable, intent(out) :: error_msg
+            character(len=:), allocatable :: gname
+            character(kind=c_char), allocatable :: c_name(:)
+            integer(c_int32_t) :: global_id
+            integer :: sym_idx, existing_idx
+
+            gname = saved_local_global_name(node_index, name)
+            call to_c_chars(gname, c_name)
+            global_id = lr_session_intern(context%session%handle, c_name)
+            if (global_id < 0_c_int32_t) then
+                error_msg = 'saved derived global not found: '//gname
+                return
+            end if
+            existing_idx = find_symbol_compat(context, name)
+            if (existing_idx > 0) then
+                sym_idx = existing_idx
+            else
+                call grow_symbols(context)
+                sym_idx = context%symbol_count + 1
+                context%symbol_count = sym_idx
+            end if
+            context%symbols(sym_idx) = symbol_t()
+            context%symbols(sym_idx)%name = name
+            context%symbols(sym_idx)%value_kind = VALUE_DERIVED
+            context%symbols(sym_idx)%is_derived = .true.
+            context%symbols(sym_idx)%derived_type_index = type_index
+            context%symbols(sym_idx)%array_size = &
+                total_component_slots(context, type_index)
+            context%symbols(sym_idx)%element_address%kind = LR_OP_KIND_GLOBAL
+            context%symbols(sym_idx)%element_address%payload = &
+                int(global_id, c_int64_t)
+            context%symbols(sym_idx)%element_address%typ = &
+                lr_type_ptr_s(context%session%handle)
+            context%symbols(sym_idx)%element_address%global_offset = &
+                0_c_int64_t
+            call set_empty(error_msg)
+        end subroutine bind_saved_derived
+    end subroutine lower_saved_derived_declaration
 
     subroutine bind_saved_scalar(node_index, context, name, value_kind, error_msg)
         use, intrinsic :: iso_c_binding, only: c_char, c_int32_t, c_int64_t
