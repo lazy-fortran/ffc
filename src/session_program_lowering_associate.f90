@@ -11,7 +11,7 @@ contains
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, saved_symbol_count, saved_floor
+        integer :: i, saved_symbol_count, saved_floor, local_symbol_count
         logical :: terminated
         type(lr_operand_desc_t) :: value
 
@@ -33,7 +33,11 @@ contains
         end if
         ! Associate names are scoped to the construct: drop their storage and
         ! binding identities even when body lowering reports an error.
+        local_symbol_count = context%symbol_count
         call pop_storage_scope(context, saved_symbol_count, saved_floor)
+        if (local_symbol_count > saved_symbol_count) then
+            context%symbols(saved_symbol_count + 1:local_symbol_count) = symbol_t()
+        end if
         if (len_trim(error_msg) > 0) return
         if (terminated) context%current_block_terminated = terminated
     end subroutine lower_associate
