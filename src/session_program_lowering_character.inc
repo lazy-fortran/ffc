@@ -1520,6 +1520,11 @@
             return
         end if
         if (is_binary_op(arena, node_index)) then
+            if (is_character_array_constructor_expression(arena, node_index, &
+                                                          context)) then
+                error_msg = 'character array constructor requires element-wise output'
+                return
+            end if
             call concat_char_operands(arena, node_index, context, data_ptr, &
                                       length, error_msg)
             return

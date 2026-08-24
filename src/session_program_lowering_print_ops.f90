@@ -1077,6 +1077,13 @@ contains
         end if
         if (is_char_expr_call(arena, node_index, context) .or. &
             is_character_concat(arena, node_index, context)) then
+            block
+                logical :: array_handled
+                call emit_formatted_character_array_expression(arena, node_index, &
+                    context, fmt_id, array_handled, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (array_handled) return
+            end block
             call char_expr_operands(arena, node_index, context, data_ptr, &
                                     length, error_msg)
             if (len_trim(error_msg) > 0) return

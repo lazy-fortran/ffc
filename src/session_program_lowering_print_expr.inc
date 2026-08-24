@@ -425,6 +425,22 @@
             return
         end if
 
+        if (is_character_array_constructor_expression(arena, node_index, context)) then
+            block
+                integer :: i, count
+                type(lr_operand_desc_t) :: data_ptr, length
+                count = character_array_constructor_size(arena, node_index, context)
+                do i = 1, count
+                    call character_array_constructor_element_operands(arena, node_index, &
+                        i, context, data_ptr, length, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_print_string_operand_value(context%session, &
+                        context%str_print_format_id, data_ptr, error_msg)) return
+                end do
+            end block
+            return
+        end if
+
         if (is_binary_op(arena, node_index)) then
             ! Character // concatenation prints as a runtime string buffer; only
             ! the // operands case is handled here (intrinsic agent, bug 2).
@@ -986,6 +1002,34 @@
         if (.not. emit_liric_print_string_operand_value(context%session, &
             context%str_print_format_id, data_ptr, error_msg)) return
     end subroutine lower_print_char_expr
+
+    subroutine emit_formatted_character_array_expression(arena, node_index, &
+                                                         context, fmt_id, handled, &
+                                                         error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        integer(c_int32_t), intent(in) :: fmt_id
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, count
+        type(lr_operand_desc_t) :: data_ptr, length
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. is_character_array_constructor_expression(arena, node_index, &
+                                                             context)) return
+        count = character_array_constructor_size(arena, node_index, context)
+        if (count <= 0) return
+        handled = .true.
+        do i = 1, count
+            call character_array_constructor_element_operands(arena, node_index, i, &
+                context, data_ptr, length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_string_operand_value(context%session, fmt_id, &
+                                                            data_ptr, error_msg)) return
+        end do
+    end subroutine emit_formatted_character_array_expression
 
     subroutine lower_print_logical_value(context, value, error_msg)
         type(lowering_context_t), intent(inout) :: context

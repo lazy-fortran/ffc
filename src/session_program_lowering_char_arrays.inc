@@ -14,6 +14,122 @@
     ! extent; dummy character arrays stay unsupported. A character parameter
     ! array may infer its element length from its folded constructor.
 
+    recursive logical function is_character_array_constructor_expression( &
+            arena, node_index, context) result(is_array)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: op, op_error
+        integer :: left_index, right_index, line, column
+
+        is_array = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (array_literal_node)
+            is_array = .true.
+        class default
+            if (.not. is_binary_op(arena, node_index)) return
+            call get_binary_op_info(arena, node_index, op, left_index, &
+                                    right_index, line, column, op_error)
+            if (len_trim(op_error) > 0 .or. trim(op) /= '//') return
+            is_array = is_character_array_constructor_expression(arena, &
+                left_index, context) .or. &
+                is_character_array_constructor_expression(arena, right_index, context)
+        end select
+    end function is_character_array_constructor_expression
+
+    recursive integer function character_array_constructor_size(arena, node_index, &
+                                                                context) result(count)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: op, op_error
+        integer :: left_index, right_index, line, column
+        integer :: left_count, right_count
+        integer, allocatable :: flat(:)
+
+        count = 1
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (array_literal_node)
+            count = 0
+            if (.not. allocated(node%element_indices)) return
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, node%element_indices, flat, &
+                                               op_error)
+            if (len_trim(op_error) == 0) count = size(flat)
+        class default
+            if (.not. is_binary_op(arena, node_index)) return
+            call get_binary_op_info(arena, node_index, op, left_index, &
+                                    right_index, line, column, op_error)
+            if (len_trim(op_error) > 0 .or. trim(op) /= '//') return
+            left_count = character_array_constructor_size(arena, left_index, context)
+            right_count = character_array_constructor_size(arena, right_index, context)
+            if (is_character_array_constructor_expression(arena, left_index, context)) &
+                count = left_count
+            if (is_character_array_constructor_expression(arena, right_index, context)) &
+                count = max(count, right_count)
+        end select
+    end function character_array_constructor_size
+
+    recursive subroutine character_array_constructor_element_operands(arena, &
+            node_index, element_index, context, data_ptr, length, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index, element_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: data_ptr, length
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: op, op_error
+        integer :: left_index, right_index, line, column
+        integer :: left_count, right_count, left_selected, right_selected
+        integer, allocatable :: flat(:)
+        type(lr_operand_desc_t) :: right_data, right_length
+        type(lr_operand_desc_t) :: combined_data, combined_length
+
+        if (.not. is_character_array_constructor_expression(arena, node_index, &
+                                                             context)) then
+            call char_expr_operands(arena, node_index, context, data_ptr, length, &
+                                    error_msg)
+            return
+        end if
+        select type (node => arena%entries(node_index)%node)
+        type is (array_literal_node)
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, node%element_indices, flat, &
+                                               error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (element_index < 1 .or. element_index > size(flat)) then
+                error_msg = 'character array constructor element is out of range'
+                return
+            end if
+            call char_expr_operands(arena, flat(element_index), context, data_ptr, &
+                                    length, error_msg)
+            return
+        class default
+        end select
+        call get_binary_op_info(arena, node_index, op, left_index, right_index, &
+                                line, column, error_msg)
+        if (len_trim(error_msg) > 0) return
+        left_count = character_array_constructor_size(arena, left_index, context)
+        right_count = character_array_constructor_size(arena, right_index, context)
+        left_selected = element_index
+        if (left_count == 1) left_selected = 1
+        call character_array_constructor_element_operands(arena, left_index, &
+            left_selected, context, data_ptr, length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        right_selected = element_index
+        if (right_count == 1) right_selected = 1
+        call character_array_constructor_element_operands(arena, right_index, &
+            right_selected, context, right_data, right_length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call concat_character_operands(context, data_ptr, length, right_data, &
+                                       right_length, combined_data, combined_length, &
+                                       error_msg)
+        if (len_trim(error_msg) > 0) return
+        data_ptr = combined_data
+        length = combined_length
+    end subroutine character_array_constructor_element_operands
+
     subroutine lower_character_array_declaration(node, context, error_msg)
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
