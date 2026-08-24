@@ -1,44 +1,8 @@
 # Current full-epoch expected failures for fortfront-f90.
 # Format: path # owner=ORG/REPO#N; reason=text or path # scope=TAG; reason=text
-ast_coverage_control_flow.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
-ast_coverage_literals_calls.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
-ast_forall_pointer.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
-call_graph_internal_procedures.f90 # owner=lazy-fortran/ffc#628; reason=select and load the matching runtime archive
-dtio_interface_basic.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
-dtio_interface_read_write.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
-dtio_interface_unformatted.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
-f2003_abstract_interface.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-f2003_type_bound_array_call.f90 # owner=lazy-fortran/ffc#422; reason=deduplicate derived array declaration collection
-issue_1353_class_pointer_declaration.f90 # owner=lazy-fortran/ffc#540; reason=lower scalar data-pointer association
-issue_1607_final_procedures.f90 # owner=lazy-fortran/ffc#422; reason=invoke scalar final procedures once
-issue_1611_allocate_no_typespec.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-issue_1619_nested_types_complex.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-issue_1827_submodule_simple.f90 # owner=lazy-fortran/ffc#584; reason=consume parent interfaces for separate submodules
-issue_1827_submodule_with_contents.f90 # owner=lazy-fortran/ffc#584; reason=consume parent interfaces for separate submodules
 issue_2070_entry_loses_argument_declarations.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 issue_2078_include_statement_silently_dropped.f90 # owner=lazy-fortran/ffc#540; reason=expand Fortran INCLUDE lines
-issue_2162_entry_wrapping.f90 # owner=lazy-fortran/ffc#579; reason=compile procedure-only translation units
-issue_2238_select_rank_performance.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
-issue_2248_read_keyword.f90 # owner=lazy-fortran/ffc#628; reason=lower scalar formatted input
-issue_2250_pure_interface.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 issue_2416_io_format_variable.f90 # owner=lazy-fortran/ffc#628; reason=move file-unit state behind the runtime ABI
 issue_2416_io_formats_comprehensive.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
 issue_2455_array_constructor_arg.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
-issue_2458_multi_array_declaration.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
-issue_2489_interface_in_procedure.f90 # owner=lazy-fortran/ffc#540; reason=classify undefined and unlinked reference cases
-issue_2497_include_line_standalone.f90 # owner=lazy-fortran/ffc#540; reason=expand Fortran INCLUDE lines
-issue_256_invalid_syntax_missing_then.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
-issue_2592_interface_block_explicit_interface_ok.f90 # owner=lazy-fortran/ffc#540; reason=classify undefined and unlinked reference cases
-issue_2592_missing_explicit_interface_function.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
-issue_2592_missing_explicit_interface_subroutine.f90 # owner=lazy-fortran/ffc#540; reason=classify undefined and unlinked reference cases
-issue_2593_call_argument_type_mismatch.f90 # owner=lazy-fortran/ffc#579; reason=reject incompatible scalar dummy kinds
-issue_2737_lfortran_template_instantiate.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
-issue_2738_lfortran_traits_requirements_implements.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-issue_2814_c_funloc.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-issue_2817_inline_instantiate_caret.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
-issue_2850_bare_function_interface.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 issue_2850_bare_subroutine_interface.f90 # owner=lazy-fortran/ffc#540; reason=classify undefined and unlinked reference cases
-issue_playtest5_array_parameter_rank_lost.f90 # owner=lazy-fortran/ffc#584; reason=resolve specification expressions by binding identity
-library_usage_ast_node_counter.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-tmp_goto_ast.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
-tooling_lightweight_ast.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD

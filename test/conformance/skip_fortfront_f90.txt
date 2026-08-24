@@ -1,5 +1,41 @@
 # Current full-epoch skipped cases for fortfront-f90.
 # Format: path # owner=ORG/REPO#N; reason=text or path # scope=TAG; reason=text
+ast_coverage_control_flow.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+ast_coverage_literals_calls.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+ast_forall_pointer.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+call_graph_internal_procedures.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+dtio_interface_basic.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+dtio_interface_read_write.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+dtio_interface_unformatted.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+f2003_abstract_interface.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+f2003_type_bound_array_call.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_1353_class_pointer_declaration.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_1607_final_procedures.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_1611_allocate_no_typespec.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_1619_nested_types_complex.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_1827_submodule_simple.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_1827_submodule_with_contents.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2162_entry_wrapping.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2238_select_rank_performance.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2248_read_keyword.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2250_pure_interface.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2458_multi_array_declaration.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2489_interface_in_procedure.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2497_include_line_standalone.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_256_invalid_syntax_missing_then.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2592_interface_block_explicit_interface_ok.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2592_missing_explicit_interface_function.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2592_missing_explicit_interface_subroutine.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2593_call_argument_type_mismatch.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2737_lfortran_template_instantiate.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2738_lfortran_traits_requirements_implements.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2814_c_funloc.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2817_inline_instantiate_caret.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_2850_bare_function_interface.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+issue_playtest5_array_parameter_rank_lost.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+library_usage_ast_node_counter.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+tmp_goto_ast.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
+tooling_lightweight_ast.f90 # scope=harness; reason=ffc and gfortran reject current fixture; no positive oracle
 ast_coverage_module_interface.f90 # scope=harness; reason=depends on absent othermod and file.inc fixtures
 ast_coverage_program_with_procedures.f90 # scope=harness; reason=parser fixture omits required CONTAINS statement
 data_statement_scalar_upgrade.f90 # scope=harness; reason=FortFront semantic rejection fixture
