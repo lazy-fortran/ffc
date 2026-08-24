@@ -127,6 +127,14 @@
              binding%binding_kind /= BINDING_FUNCTION_RESULT)) then
             return
         end if
+        if (allocated(node%type_name)) then
+            block
+                integer :: declared_kind
+                call type_name_value_kind(node%type_name, node%line, node%column, &
+                    declared_kind, error_msg, context, node_index)
+                if (len_trim(error_msg) > 0) return
+            end block
+        end if
         call make_declaration_record(node, name, binding, context, record)
         call store_declaration_record(context, record, error_msg)
     end subroutine collect_one_declaration_entity
@@ -1027,9 +1035,9 @@
     end subroutine resolve_kind_parameter_value
 
     ! Reject a real/complex kind selector whose value has no exact machine
-    ! representation in the direct LIRIC session (real kinds 4 and 8 only).
-    ! Silently narrowing real(16)/complex(16) to a supported width would change
-    ! the program's arithmetic, so the requested kind is reported instead.
+    ! representation in the direct LIRIC session. REAL(16) is accepted only
+    ! through the explicit emulation path; silently narrowing complex(16) to a
+    ! supported width would change the program's arithmetic.
     ! Only kind selectors that resolve to a definite value - numeric literals
     ! and declared integer parameters - are judged here; symbolic kind names
     ! keep their existing classification.
@@ -1062,12 +1070,19 @@
         if (.not. has_value) return
         if (kind_value == 4_c_int64_t) return
         if (kind_value == 8_c_int64_t) return
-        if (kind_value == 16_c_int64_t) return
+        if (kind_value == 16_c_int64_t .and. trim(base) == 'real') return
         write (kind_text, '(I0)') kind_value
-        call unsupported_feature_error(trim(base)//' kind', line, column, &
-            'direct LIRIC session supports '//trim(base)// &
-            ' kinds 4 (single), 8 (double), and 16 (emulated quad); kind '// &
-            trim(adjustl(kind_text))//' is not supported', error_msg)
+        if (trim(base) == 'real') then
+            call unsupported_feature_error('real kind', line, column, &
+                'direct LIRIC session supports real kinds 4 (single), 8 '// &
+                '(double), and 16 (emulated quad); kind '// &
+                trim(adjustl(kind_text))//' is not supported', error_msg)
+        else
+            call unsupported_feature_error('complex kind', line, column, &
+                'direct LIRIC session supports complex kinds 4 (single) and '// &
+                '8 (double); kind '//trim(adjustl(kind_text))// &
+                ' is not supported', error_msg)
+        end if
     end subroutine check_float_kind_supported
 
     ! True when text is a plain unsigned decimal integer literal.

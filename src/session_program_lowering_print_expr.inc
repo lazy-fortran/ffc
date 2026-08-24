@@ -361,7 +361,7 @@
         ! path. Preserve the wider list-directed field width at the output
         ! boundary instead of sending an unsupported binary128 operand to the
         ! native backend.
-        if (arena%entries(node_index)%node%resolved_storage_bits == 128 .or. &
+        if (arena%entries(node_index)%node%resolved_type_kind == TREAL .and. &
             arena%entries(node_index)%node%resolved_kind_value == 16) then
             call lower_f64_expression(arena, node_index, context, value, error_msg)
             if (len_trim(error_msg) > 0) return

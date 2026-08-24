@@ -4,35 +4,30 @@ program test_session_unsupported_kind_rejection_compiler
 
     logical :: all_passed
 
-    print *, '=== unsupported numeric kind rejection test ==='
+    print *, '=== unsupported numeric kind and REAL(16) support test ==='
 
     all_passed = .true.
-    if (.not. test_unsupported_real_kind_rejected()) all_passed = .false.
+    if (.not. test_supported_real16()) all_passed = .false.
     if (.not. test_unsupported_complex_kind_rejected()) all_passed = .false.
     if (.not. test_unsupported_integer_kind_rejected()) all_passed = .false.
     if (.not. test_supported_kinds_accepted()) all_passed = .false.
 
     if (.not. all_passed) stop 1
-    print *, 'PASS: unsupported numeric kinds are diagnosed, not narrowed'
+    print *, 'PASS: unsupported numeric kinds are diagnosed and REAL(16) is emulated'
 
 contains
 
-    logical function test_unsupported_real_kind_rejected()
+    logical function test_supported_real16()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  real(16) :: x'//new_line('a')// &
-            '  x = 1.0'//new_line('a')// &
-            '  stop 0'//new_line('a')// &
+            '  x = 1.0_16'//new_line('a')// &
+            '  stop 7'//new_line('a')// &
             'end program main'
 
-        test_unsupported_real_kind_rejected = expect_error_contains( &
-            source, 'unsupported real kind', &
-            '/tmp/ffc_session_reject_kind_real16')
-        if (.not. expect_error_contains(source, 'kind 16 is not supported', &
-            '/tmp/ffc_session_reject_kind_real16b')) then
-            test_unsupported_real_kind_rejected = .false.
-        end if
-    end function test_unsupported_real_kind_rejected
+        test_supported_real16 = expect_exit_status( &
+            source, 7, '/tmp/ffc_session_supported_kind_real16')
+    end function test_supported_real16
 
     logical function test_unsupported_complex_kind_rejected()
         character(len=*), parameter :: source = &
@@ -77,6 +72,7 @@ contains
             '  integer(8) :: d'//new_line('a')// &
             '  real(4) :: r4'//new_line('a')// &
             '  real(8) :: r8'//new_line('a')// &
+            '  real(16) :: r16'//new_line('a')// &
             '  complex(4) :: c4'//new_line('a')// &
             '  complex(8) :: c8'//new_line('a')// &
             '  a = 1'//new_line('a')// &
@@ -85,6 +81,7 @@ contains
             '  d = 4'//new_line('a')// &
             '  r4 = 1.0'//new_line('a')// &
             '  r8 = 2.0d0'//new_line('a')// &
+            '  r16 = 3.0_16'//new_line('a')// &
             '  c4 = (1.0, 0.0)'//new_line('a')// &
             '  c8 = (2.0d0, 0.0d0)'//new_line('a')// &
             '  stop 7'//new_line('a')// &
