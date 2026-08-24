@@ -2360,16 +2360,22 @@
         type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable, intent(out) :: impl_name
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: targets, target
-        integer :: actual_count, position, i, k, sep, fn_idx, ext_idx
+        character(len=:), allocatable :: targets, target, pass_name
+        integer :: actual_count, expected_position, i, k, sep
+        integer :: fn_idx, ext_idx
         integer :: expected_count, expected_kind, expected_rank
         integer :: actual_kinds(MAX_PROC_ARGS), actual_ranks(MAX_PROC_ARGS)
         logical :: matches, matched
 
         call set_empty(error_msg)
         call set_empty(impl_name)
+        call set_empty(pass_name)
         if (type_index <= 0) return
         if (binding_slot <= 0) return
+        if (allocated(context%derived_types(type_index)%binding_pass_names)) then
+            pass_name = trim(context%derived_types(type_index)% &
+                binding_pass_names(binding_slot))
+        end if
         if (allocated(context%derived_types(type_index)%binding_specific_names)) then
             targets = trim(context%derived_types(type_index)% &
                 binding_specific_names(binding_slot))
@@ -2392,38 +2398,6 @@
             error_msg = 'too many actual arguments for type-bound procedure'
             return
         end if
-        actual_kinds = VALUE_I32
-        actual_ranks = 0
-        position = 0
-        if (pass_arg) position = 1
-        k = 0
-        do i = 1, actual_count
-            if (i == position) then
-                actual_kinds(i) = VALUE_DERIVED
-            else
-                k = k + 1
-                if (allocated(arg_indices)) then
-                    if (is_real_literal(arena, arg_indices(k))) then
-                        ! Generic resolution uses the source literal kind. An
-                        ! unsuffixed real literal is default REAL (F32), not
-                        ! the F64 fallback used by expression lowering when no
-                        ! dummy-kind hint has been selected yet.
-                        if (scalar_real_expr_kind(arena, arg_indices(k), context) &
-                            == VALUE_F32) then
-                            actual_kinds(i) = VALUE_F32
-                        else
-                            actual_kinds(i) = VALUE_F64
-                        end if
-                    else
-                        actual_kinds(i) = expression_value_kind(arena, &
-                            arg_indices(k), context, VALUE_I32)
-                    end if
-                    actual_ranks(i) = expression_value_rank(arena, &
-                        arg_indices(k), context)
-                end if
-            end if
-        end do
-
         matched = .false.
         do while (len_trim(targets) > 0)
             sep = index(targets, ' ')
@@ -2449,13 +2423,62 @@
                 if (ext_idx <= 0) cycle
             end if
             if (expected_count /= actual_count) cycle
+
+            ! The passed object is not required to be the first dummy. Resolve
+            ! its position for each specific before laying out the actual
+            ! signature; otherwise pass(value, self) is compared as though
+            ! self were value and valid generics are rejected.
+            if (fn_idx > 0) then
+                expected_position = resolved_impl_pass_position(arena, target, &
+                    pass_name, pass_arg, context)
+            else
+                expected_position = 1
+                if (.not. pass_arg) expected_position = 0
+                if (pass_arg .and. len_trim(pass_name) > 0) then
+                    do i = 1, context%external_procedures(ext_idx)%arg_count
+                        if (trim(context%external_procedures(ext_idx)%arg_names(i)) &
+                            == trim(pass_name)) then
+                            expected_position = i
+                            exit
+                        end if
+                    end do
+                end if
+            end if
+            actual_kinds = VALUE_I32
+            actual_ranks = 0
+            k = 0
+            do i = 1, actual_count
+                if (i == expected_position) then
+                    actual_kinds(i) = VALUE_DERIVED
+                else
+                    k = k + 1
+                    if (allocated(arg_indices)) then
+                        if (is_real_literal(arena, arg_indices(k))) then
+                            ! Generic resolution uses the source literal kind.
+                            ! An unsuffixed real literal is default REAL (F32),
+                            ! not the F64 fallback used by expression lowering.
+                            if (scalar_real_expr_kind(arena, arg_indices(k), &
+                                    context) == VALUE_F32) then
+                                actual_kinds(i) = VALUE_F32
+                            else
+                                actual_kinds(i) = VALUE_F64
+                            end if
+                        else
+                            actual_kinds(i) = expression_value_kind(arena, &
+                                arg_indices(k), context, VALUE_I32)
+                        end if
+                        actual_ranks(i) = expression_value_rank(arena, &
+                            arg_indices(k), context)
+                    end if
+                end if
+            end do
             matches = .true.
             do i = 1, actual_count
                 ! The passed object is the dispatch receiver, not an
                 ! overload operand. Local AST scans may not see its dummy
                 ! declaration in the procedure body; ABI compatibility is
                 ! established by the type-bound slot itself.
-                if (i == position) cycle
+                if (i == expected_position) cycle
                 if (fn_idx > 0) then
                     expected_kind = specific_arg_kind(context, fn_idx, i)
                     expected_rank = specific_arg_rank(context, fn_idx, i)
@@ -2636,6 +2659,30 @@
         end do
     end function impl_pass_position
 
+    integer function resolved_impl_pass_position(arena, impl_name, pass_name, &
+                                                 pass_arg, context) result(pos)
+        ! Generic bindings may omit PASS(name) even when their specific
+        ! procedure declares a named passed object. Recover that position from
+        ! the specific signature so generic matching and call lowering agree.
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: impl_name, pass_name
+        logical, intent(in) :: pass_arg
+        type(lowering_context_t), intent(in) :: context
+        integer :: fn_idx, i
+
+        pos = impl_pass_position(arena, impl_name, pass_name, pass_arg)
+        if (.not. pass_arg .or. len_trim(pass_name) > 0) return
+        fn_idx = find_function_index(context, impl_name)
+        if (fn_idx <= 0) return
+        do i = 1, context%function_param_counts(fn_idx)
+            if (specific_arg_kind(context, fn_idx, i) == VALUE_DERIVED .and. &
+                specific_arg_rank(context, fn_idx, i) == 0) then
+                pos = i
+                return
+            end if
+        end do
+    end function resolved_impl_pass_position
+
     subroutine impl_param_indices(arena, impl_name, params)
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: impl_name
@@ -2766,7 +2813,8 @@
             pass_arg, context, impl_name, error_msg)
         if (len_trim(error_msg) > 0) return
 
-        position = impl_pass_position(arena, impl_name, pass_name, pass_arg)
+        position = resolved_impl_pass_position(arena, impl_name, pass_name, &
+                                               pass_arg, context)
         if (allocated(arg_indices)) then
             call prepare_reference_args(arena, arg_indices, context, VALUE_I32, &
                                         impl_name, method_args, copyback_indices, &
@@ -2842,10 +2890,12 @@
         integer :: base_var_index, position, receiver_symbol, slot
         character(len=:), allocatable :: impl_name, pass_name
         logical :: found, pass_arg
-        integer, allocatable :: combined(:)
-        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: explicit_args(:)
+        type(lr_operand_desc_t), allocatable :: args(:), all_args(:)
+        type(lr_operand_desc_t) :: receiver_arg
         type(lr_operand_desc_t) :: callee_ptr
         integer, allocatable :: copyback_indices(:)
+        integer :: n, i, k
 
         call method_call_info(arena, node, context, base_var_index, impl_name, &
                               pass_name, found, error_msg, receiver_symbol, slot)
@@ -2860,11 +2910,36 @@
             pass_arg = context%derived_types(context%symbols(receiver_symbol)% &
                 derived_type_index)%binding_pass_args(slot)
         end if
-        position = impl_pass_position(arena, impl_name, pass_name, pass_arg)
-        call method_call_arg_indices(node, base_var_index, position, combined)
-        call prepare_reference_args(arena, combined, context, value_kind, &
-                                    impl_name, args, copyback_indices, error_msg)
+        position = resolved_impl_pass_position(arena, impl_name, pass_name, &
+                                               pass_arg, context)
+        if (allocated(node%arg_indices)) then
+            explicit_args = node%arg_indices
+        else
+            allocate (explicit_args(0))
+        end if
+        call prepare_reference_args(arena, explicit_args, context, value_kind, &
+                                    impl_name, args, copyback_indices, error_msg, &
+                                    self_position=position)
         if (len_trim(error_msg) > 0) return
+        n = size(args)
+        if (position > 0) then
+            allocate (all_args(n + 1))
+            call class_receiver_argument(context, arena, impl_name, position, &
+                                         receiver_symbol, receiver_arg, error_msg)
+            if (len_trim(error_msg) > 0) return
+            k = 0
+            do i = 1, n + 1
+                if (i == position) then
+                    all_args(i) = receiver_arg
+                else
+                    k = k + 1
+                    all_args(i) = args(k)
+                end if
+            end do
+        else
+            allocate (all_args(n))
+            if (n > 0) all_args = args
+        end if
         if (pass_arg .and. slot > 0 .and. &
             class_receiver_dispatches_dynamically(context, receiver_symbol)) then
             call class_dispatch_callee(context, receiver_symbol, slot, &
@@ -2872,26 +2947,26 @@
             if (len_trim(error_msg) > 0) return
             if (value_kind == VALUE_F64) then
                 if (.not. emit_f64_indirect_call(context%session, callee_ptr, &
-                        args, value, error_msg)) return
+                        all_args, value, error_msg)) return
             else if (value_kind == VALUE_F32) then
                 if (.not. emit_f32_indirect_call(context%session, callee_ptr, &
-                        args, value, error_msg)) return
+                        all_args, value, error_msg)) return
             else
                 if (.not. emit_i32_indirect_call(context%session, callee_ptr, &
-                        args, value, error_msg)) return
+                        all_args, value, error_msg)) return
             end if
         else
             if (value_kind == VALUE_F64) then
                 if (.not. emit_liric_f64_call(context%session, &
-                        type_bound_emit_name(arena, impl_name, context), args, &
+                        type_bound_emit_name(arena, impl_name, context), all_args, &
                         value, error_msg)) return
             else if (value_kind == VALUE_F32) then
                 if (.not. emit_liric_f32_call(context%session, &
-                        type_bound_emit_name(arena, impl_name, context), args, &
+                        type_bound_emit_name(arena, impl_name, context), all_args, &
                         value, error_msg)) return
             else
                 if (.not. emit_i32_call(context%session, &
-                        type_bound_emit_name(arena, impl_name, context), args, &
+                        type_bound_emit_name(arena, impl_name, context), all_args, &
                         value, error_msg)) return
             end if
         end if
