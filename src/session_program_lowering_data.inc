@@ -591,10 +591,11 @@
         context%symbols(var_sym)%has_i32_constant = .true.
         context%symbols(var_sym)%i32_constant = int(iv, c_int64_t)
         context%symbols(var_sym)%is_transient_i32_constant = .true.
-        if (context%symbols(var_sym)%has_address .and. &
-            context%symbols(var_sym)%is_reference) then
-            call store_reference_value(context, var_sym, value, error_msg)
-        end if
+        ! The DATA implied-DO variable is a specification-time control
+        ! variable.  Its bound value is needed by constant folding and
+        ! subscripting, but the standard leaves the variable undefined after
+        ! the implied-DO; do not leak the temporary binding into runtime
+        ! storage.
     end subroutine bind_loop_var_constant
 
     subroutine data_implied_do_control(arena, obj_index, context, var_sym, &
