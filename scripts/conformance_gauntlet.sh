@@ -1514,7 +1514,7 @@ while IFS= read -r full_path <&3; do
                     ref_exit=$?
                     set_last_action_evidence CASE_REF_COMPILE executed \
                         "$ref_exit"
-                    if [ "$SUITE" = "fortfront-f90" ]; then
+                    if [ "$SUITE" = "fortfront-f90" ] || [ "$SUITE" = "lfortran" ]; then
                         CASE_ACTION="exclude"
                         SKIP_COUNT=$((SKIP_COUNT + 1))
                         write_result_record "$rel_path" "SKIP" "$ffc_exit" \
