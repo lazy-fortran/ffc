@@ -4947,6 +4947,251 @@
                                        trim(detail), error_msg)
     end subroutine unsupported_array_subscript
 
+    ! Array-valued LBOUND/UBOUND inquiries return one bound per dimension.
+    ! The scalar expression lowerers intentionally reject an array-valued
+    ! actual, so assignment lowering handles the shape-only result here.
+    subroutine lower_bound_intrinsic_assignment(arena, rhs, &
+            symbol_index, context, handled, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: rhs
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: rank, extents(7), i
+        logical :: ok, is_upper
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(rhs%name)) return
+        is_upper = same_name(rhs%name, 'ubound')
+        call bound_intrinsic_shape(arena, rhs, context, rank, extents, ok, &
+                                   error_msg)
+        if (len_trim(error_msg) > 0 .or. .not. ok) return
+        if (rank <= 0 .or. rank > 7) return
+        if (context%symbols(symbol_index)%array_rank /= 1 .or. &
+            context%symbols(symbol_index)%array_size /= rank .or. &
+            context%symbols(symbol_index)%value_kind /= VALUE_I32) return
+        do i = 1, rank
+            if (is_upper) then
+                call store_array_linear_element(context, symbol_index, &
+                    int(i - 1, c_int64_t), &
+                    i32_immediate(context%session, int(extents(i), c_int64_t)), &
+                    error_msg)
+            else
+                call store_array_linear_element(context, symbol_index, &
+                    int(i - 1, c_int64_t), &
+                    i32_immediate(context%session, 1_c_int64_t), error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+        end do
+        handled = .true.
+        call set_empty(error_msg)
+    end subroutine lower_bound_intrinsic_assignment
+
+    recursive subroutine bound_intrinsic_shape(arena, rhs, context, rank, &
+            extents, ok, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: rhs
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: rank, extents(7)
+        logical, intent(out) :: ok
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: source_index, source_rank, source_arg, i
+        integer(c_int64_t) :: dim_value, copies
+        character(len=:), allocatable :: name
+        type(array_section_info_t) :: info
+
+        rank = 0
+        extents = 0
+        ok = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) < 1) return
+        source_arg = rhs%arg_indices(1)
+        if (is_identifier(arena, source_arg)) then
+            call get_identifier_name(arena, source_arg, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            source_index = find_symbol_compat(context, name)
+            if (source_index <= 0) return
+            source_rank = context%symbols(source_index)%array_rank
+            if (.not. context%symbols(source_index)%is_array .or. &
+                source_rank < 1 .or. source_rank > 7) return
+            rank = source_rank
+            do i = 1, rank
+                extents(i) = context%symbols(source_index)%array_dim_sizes(i)
+            end do
+            ok = .true.
+            return
+        end if
+        if (node_exists(arena, source_arg)) then
+            select type (source => arena%entries(source_arg)%node)
+            type is (array_slice_node)
+                call describe_array_section(arena, source, context, info, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (info%result_rank < 1 .or. info%result_rank > 7) return
+                rank = info%result_rank
+                do i = 1, rank
+                    extents(i) = int(info%section_extents(info%kept_dims(i)))
+                end do
+                ok = .true.
+                return
+            type is (call_or_subscript_node)
+                if (.not. allocated(source%name) .or. &
+                    .not. same_name(source%name, 'spread')) return
+                if (.not. allocated(source%arg_indices) .or. &
+                    size(source%arg_indices) < 3) return
+                call bound_source_shape(arena, source%arg_indices(1), context, &
+                    source_rank, extents, ok, error_msg)
+                if (len_trim(error_msg) > 0 .or. .not. ok) return
+                call eval_i32_constant(arena, source%arg_indices(2), context, &
+                    dim_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call eval_i32_constant(arena, source%arg_indices(3), context, &
+                    copies, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (dim_value < 1 .or. dim_value > source_rank + 1 .or. copies < 0) then
+                    ok = .false.
+                    return
+                end if
+                do i = source_rank + 1, dim_value + 1, -1
+                    extents(i) = extents(i - 1)
+                end do
+                extents(dim_value) = copies
+                rank = source_rank + 1
+                ok = .true.
+            end select
+        end if
+    end subroutine bound_intrinsic_shape
+
+    subroutine bound_source_shape(arena, node_index, context, rank, extents, ok, &
+            error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: rank, extents(7)
+        logical, intent(out) :: ok
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: sym, i
+        type(array_section_info_t) :: info
+
+        rank = 0
+        extents = 0
+        ok = .false.
+        call set_empty(error_msg)
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            sym = find_symbol_compat(context, name)
+            if (sym <= 0 .or. .not. context%symbols(sym)%is_array) return
+            rank = context%symbols(sym)%array_rank
+            if (rank < 1 .or. rank > 7) return
+            do i = 1, rank
+                extents(i) = context%symbols(sym)%array_dim_sizes(i)
+            end do
+            ok = .true.
+            return
+        end if
+        if (.not. node_exists(arena, node_index)) return
+        select type (section => arena%entries(node_index)%node)
+        type is (array_slice_node)
+            call describe_array_section(arena, section, context, info, error_msg)
+            if (len_trim(error_msg) > 0) return
+            rank = info%result_rank
+            if (rank < 1 .or. rank > 7) return
+            do i = 1, rank
+                extents(i) = int(info%section_extents(info%kept_dims(i)))
+            end do
+            ok = .true.
+        end select
+    end subroutine bound_source_shape
+
+    subroutine lower_locate_array_assignment(arena, rhs, symbol_index, context, &
+            handled, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: rhs
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: src, rank, d1, d2, i, op
+        type(lr_operand_desc_t) :: elem, best, best_index, better, selected, one
+        type(lr_operand_desc_t) :: best_row, best_col
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) /= 1) return
+        if (.not. is_identifier(arena, rhs%arg_indices(1))) return
+        call get_identifier_name(arena, rhs%arg_indices(1), name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        src = find_symbol_compat(context, name)
+        if (src <= 0 .or. .not. context%symbols(src)%is_array) return
+        rank = context%symbols(src)%array_rank
+        if (rank < 1 .or. rank > 2 .or. context%symbols(symbol_index)%array_rank /= 1 .or. &
+            context%symbols(symbol_index)%array_size /= rank .or. &
+            context%symbols(symbol_index)%value_kind /= VALUE_I32) return
+        if (same_name(rhs%name, 'maxloc')) then
+            op = DIM_REDUCE_MAX
+        else
+            op = DIM_REDUCE_MIN
+        end if
+        one = i32_immediate(context%session, 1_c_int64_t)
+        select case (context%symbols(src)%value_kind)
+        case (VALUE_F32)
+            best = liric_f32_immediate(context%session, 0.0_c_float)
+        case (VALUE_F64)
+            best = liric_f64_immediate(context%session, 0.0_c_double)
+        case (VALUE_I32)
+            best = i32_immediate(context%session, 0_c_int64_t)
+        case default
+            return
+        end select
+        best_index = i32_immediate(context%session, 0_c_int64_t)
+        best_row = best_index
+        best_col = best_index
+        d1 = context%symbols(src)%array_dim_sizes(1)
+        d2 = 1
+        if (rank == 2) d2 = context%symbols(src)%array_dim_sizes(2)
+        do i = 0, d1*d2 - 1
+            call load_array_linear_element(context, src, int(i, c_int64_t), elem, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+            call reduction_locate_better(context, op, context%symbols(src)%value_kind, &
+                elem, best, best_index, one, better, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call select_value(context, better, elem, best, selected, error_msg)
+            if (len_trim(error_msg) > 0) return
+            best = selected
+            call select_value(context, better, &
+                i32_immediate(context%session, int(mod(i, d1) + 1, c_int64_t)), &
+                best_row, selected, error_msg)
+            if (len_trim(error_msg) > 0) return
+            best_row = selected
+            if (rank == 2) then
+                call select_value(context, better, &
+                    i32_immediate(context%session, int(i/d1 + 1, c_int64_t)), &
+                    best_col, selected, error_msg)
+                if (len_trim(error_msg) > 0) return
+                best_col = selected
+            end if
+            call select_value(context, better, &
+                i32_immediate(context%session, int(i + 1, c_int64_t)), &
+                best_index, selected, error_msg)
+            if (len_trim(error_msg) > 0) return
+            best_index = selected
+        end do
+        call store_array_linear_element(context, symbol_index, 0_c_int64_t, &
+            best_row, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (rank == 2) then
+            call store_array_linear_element(context, symbol_index, 1_c_int64_t, &
+                best_col, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        handled = .true.
+    end subroutine lower_locate_array_assignment
+
     ! sum/product/count/any/all(source, dim) reduced along one dimension of a
     ! rank-2 source into the rank-1 target symbol. The source extents are known
     ! at compile time, so the reduction unrolls to a fixed sequence of loads
@@ -4963,15 +5208,16 @@
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
-        integer :: reduce_op, source_arg, dim_arg
+        integer :: reduce_op, source_arg, dim_arg, mask_arg
         integer :: src_sym, i, j
         integer :: cmp_lsym, cmp_lscalar, cmp_rsym, cmp_rscalar
         integer :: d1, d2, out_size, reduce_extent
         integer :: source_vk, result_vk, compare_vk, predicate
         integer(c_int64_t) :: dim_value, lin
-        logical :: is_comparison, target_runtime
+        logical :: is_comparison, target_runtime, has_mask
         character(len=:), allocatable :: cmp_op
-        type(lr_operand_desc_t) :: acc, cond, elem
+        type(lr_operand_desc_t) :: acc, cond, elem, candidate, best_value
+        type(lr_operand_desc_t) :: best_index, better, selected
 
         handled = .false.
         call set_empty(error_msg)
@@ -4985,10 +5231,16 @@
         case ('any'); reduce_op = DIM_REDUCE_ANY
         case ('all'); reduce_op = DIM_REDUCE_ALL
         case ('norm2'); reduce_op = DIM_REDUCE_NORM2
+        case ('maxval'); reduce_op = DIM_REDUCE_MAX
+        case ('minval'); reduce_op = DIM_REDUCE_MIN
+        case ('maxloc'); reduce_op = DIM_REDUCE_MAX + 2
+        case ('minloc'); reduce_op = DIM_REDUCE_MIN + 2
         case default; return
         end select
 
         call split_reduction_args(arena, rhs, source_arg, dim_arg)
+        mask_arg = reduction_mask_argument(arena, rhs)
+        has_mask = mask_arg > 0
         if (source_arg <= 0 .or. dim_arg <= 0) return
         call eval_i32_constant(arena, dim_arg, context, dim_value, error_msg)
         if (len_trim(error_msg) > 0) then
@@ -5015,12 +5267,21 @@
         cmp_rscalar = 0
         call dim_reduction_array_symbol(arena, source_arg, context, src_sym)
         if (src_sym <= 0) then
-            if (reduce_op == DIM_REDUCE_SUM .or. reduce_op == DIM_REDUCE_PROD) return
+            if (reduce_op == DIM_REDUCE_SUM .or. reduce_op == DIM_REDUCE_PROD .or. &
+                reduce_op == DIM_REDUCE_MIN .or. reduce_op == DIM_REDUCE_MAX .or. &
+                reduce_op == DIM_REDUCE_MIN + 2 .or. reduce_op == DIM_REDUCE_MAX + 2) return
             if (reduce_op == DIM_REDUCE_NORM2) return
-            call dim_reduction_comparison(arena, source_arg, context, cmp_op, &
+            call dim_reduction_comparison(arena, merge(mask_arg, source_arg, &
+                has_mask), context, cmp_op, &
                                           cmp_lsym, cmp_lscalar, cmp_rsym, &
                                           cmp_rscalar, src_sym, compare_vk, &
                                           is_comparison)
+            if (.not. is_comparison) return
+        end if
+        if (has_mask .and. src_sym > 0) then
+            call dim_reduction_comparison(arena, mask_arg, context, cmp_op, &
+                cmp_lsym, cmp_lscalar, cmp_rsym, cmp_rscalar, src_sym, &
+                compare_vk, is_comparison)
             if (.not. is_comparison) return
         end if
         if (context%symbols(src_sym)%array_rank /= 2) return
@@ -5047,7 +5308,8 @@
             case default; return
             end select
             if (result_vk /= source_vk) return
-        else if (reduce_op == DIM_REDUCE_SUM .or. reduce_op == DIM_REDUCE_PROD) then
+        else if (reduce_op == DIM_REDUCE_SUM .or. reduce_op == DIM_REDUCE_PROD .or. &
+                 reduce_op == DIM_REDUCE_MIN .or. reduce_op == DIM_REDUCE_MAX) then
             select case (source_vk)
             case (VALUE_I32, VALUE_F32, VALUE_F64)
             case default; return
@@ -5059,6 +5321,9 @@
         if (reduce_op == DIM_REDUCE_COUNT .and. result_vk /= VALUE_I32) return
         if ((reduce_op == DIM_REDUCE_ANY .or. reduce_op == DIM_REDUCE_ALL) .and. &
             result_vk /= VALUE_LOGICAL) return
+        if ((reduce_op == DIM_REDUCE_MIN + 2 .or. reduce_op == DIM_REDUCE_MAX + 2) .and. &
+            (result_vk /= VALUE_I32 .or. (source_vk /= VALUE_I32 .and. &
+             source_vk /= VALUE_F32 .and. source_vk /= VALUE_F64))) return
 
         if (is_comparison) then
             select case (compare_vk)
@@ -5090,8 +5355,20 @@
                 if (len_trim(error_msg) > 0) return
                 cycle
             end if
-            call reduction_identity(context, reduce_op, source_vk, acc, error_msg)
-            if (len_trim(error_msg) > 0) return
+            if (reduce_op == DIM_REDUCE_MIN + 2 .or. reduce_op == DIM_REDUCE_MAX + 2) then
+                best_index = i32_immediate(context%session, 0_c_int64_t)
+                select case (source_vk)
+                case (VALUE_F32)
+                    best_value = liric_f32_immediate(context%session, 0.0_c_float)
+                case (VALUE_F64)
+                    best_value = liric_f64_immediate(context%session, 0.0_c_double)
+                case default
+                    best_value = i32_immediate(context%session, 0_c_int64_t)
+                end select
+            else
+                call reduction_identity(context, reduce_op, source_vk, acc, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
             do j = 0, reduce_extent - 1
                 if (dim_value == 1_c_int64_t) then
                     lin = int(j, c_int64_t) + int(i, c_int64_t) * int(d1, c_int64_t)
@@ -5099,13 +5376,53 @@
                     lin = int(i, c_int64_t) + int(j, c_int64_t) * int(d1, c_int64_t)
                 end if
                 if (reduce_op == DIM_REDUCE_SUM .or. &
-                    reduce_op == DIM_REDUCE_PROD) then
+                    reduce_op == DIM_REDUCE_PROD .or. reduce_op == DIM_REDUCE_MIN .or. &
+                    reduce_op == DIM_REDUCE_MAX .or. reduce_op == DIM_REDUCE_MIN + 2 .or. &
+                    reduce_op == DIM_REDUCE_MAX + 2) then
                     call load_array_linear_element(context, src_sym, lin, elem, &
                                                    error_msg)
                     if (len_trim(error_msg) > 0) return
-                    call reduction_combine(context, reduce_op, source_vk, acc, &
-                                           elem, error_msg)
-                    if (len_trim(error_msg) > 0) return
+                    if (reduce_op == DIM_REDUCE_MIN + 2 .or. &
+                        reduce_op == DIM_REDUCE_MAX + 2) then
+                        if (has_mask) then
+                            call dim_reduction_mask_element(arena, context, &
+                                is_comparison, cmp_lsym, cmp_lscalar, cmp_rsym, &
+                                cmp_rscalar, src_sym, compare_vk, predicate, lin, &
+                                cond, error_msg)
+                            if (len_trim(error_msg) > 0) return
+                        else
+                            cond = i32_immediate(context%session, 1_c_int64_t)
+                        end if
+                        call reduction_locate_better(context, reduce_op - 2, &
+                            source_vk, elem, best_value, best_index, cond, better, &
+                            error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        call select_value(context, better, elem, best_value, &
+                                          selected, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        best_value = selected
+                        call select_value(context, better, &
+                            i32_immediate(context%session, int(j + 1, c_int64_t)), &
+                            best_index, selected, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        best_index = selected
+                    else
+                        if (has_mask) then
+                            call dim_reduction_mask_element(arena, context, &
+                                is_comparison, cmp_lsym, cmp_lscalar, cmp_rsym, &
+                                cmp_rscalar, src_sym, compare_vk, predicate, lin, &
+                                cond, error_msg)
+                            if (len_trim(error_msg) > 0) return
+                            call select_value(context, cond, elem, acc, candidate, &
+                                              error_msg)
+                            if (len_trim(error_msg) > 0) return
+                        else
+                            candidate = elem
+                        end if
+                        call reduction_combine(context, reduce_op, source_vk, acc, &
+                                               candidate, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end if
                 else
                     call dim_reduction_mask_element(arena, context, is_comparison, &
                         cmp_lsym, cmp_lscalar, cmp_rsym, cmp_rscalar, src_sym, &
@@ -5116,6 +5433,9 @@
                     if (len_trim(error_msg) > 0) return
                 end if
             end do
+            if (reduce_op == DIM_REDUCE_MIN + 2 .or. reduce_op == DIM_REDUCE_MAX + 2) then
+                acc = best_index
+            end if
             if (target_runtime) then
                 call store_array_element_at_operand(context, symbol_index, &
                     i32_immediate(context%session, int(i, c_int64_t)), acc, &
@@ -5191,6 +5511,60 @@
             end if
         end do
     end subroutine split_reduction_args
+
+    integer function reduction_mask_argument(arena, rhs) result(mask_arg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: rhs
+        character(len=:), allocatable :: keyword
+        integer :: value, i
+
+        mask_arg = 0
+        if (.not. allocated(rhs%arg_indices)) return
+        do i = 1, size(rhs%arg_indices)
+            call reshape_keyword_arg(arena, rhs%arg_indices(i), keyword, value)
+            if (trim(keyword) == 'mask') then
+                mask_arg = value
+                return
+            end if
+        end do
+    end function reduction_mask_argument
+
+    subroutine reduction_locate_better(context, op, vk, elem, best_value, &
+            best_index, mask, better, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: op, vk
+        type(lr_operand_desc_t), intent(in) :: elem, best_value, best_index, mask
+        type(lr_operand_desc_t), intent(out) :: better
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: cmp, next_cmp, unset
+        integer :: predicate
+
+        call set_empty(error_msg)
+        if (op == DIM_REDUCE_MAX) then
+            predicate = LR_CMP_SGT
+        else
+            predicate = LR_CMP_SLT
+        end if
+        select case (vk)
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_fcmp(context%session, &
+                merge(LR_FCMP_OGT, LR_FCMP_OLT, op == DIM_REDUCE_MAX), elem, &
+                best_value, cmp, error_msg)) return
+        case (VALUE_F64)
+            if (.not. emit_liric_f64_fcmp(context%session, &
+                merge(LR_FCMP_OGT, LR_FCMP_OLT, op == DIM_REDUCE_MAX), elem, &
+                best_value, cmp, error_msg)) return
+        case default
+            if (.not. emit_liric_i32_icmp(context%session, predicate, elem, &
+                                          best_value, cmp, error_msg)) return
+        end select
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, best_index, &
+            i32_immediate(context%session, 0_c_int64_t), unset, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_OR, cmp, unset, next_cmp, &
+                                  error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, next_cmp, mask, better, &
+                                  error_msg)) return
+    end subroutine reduction_locate_better
 
     ! Bind an identifier actual to a stored (non-allocatable) array symbol.
     subroutine dim_reduction_array_symbol(arena, idx, context, sym)

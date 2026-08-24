@@ -3153,6 +3153,20 @@
                                                         context, error_msg)
                 return
             type is (call_or_subscript_node)
+                if (same_name(rhs%name, 'lbound') .or. &
+                    same_name(rhs%name, 'ubound')) then
+                    call lower_bound_intrinsic_assignment(arena, rhs, &
+                        symbol_index, context, reduction_handled, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (reduction_handled) return
+                end if
+                if (same_name(rhs%name, 'maxloc') .or. &
+                    same_name(rhs%name, 'minloc')) then
+                    call lower_locate_array_assignment(arena, rhs, symbol_index, &
+                        context, reduction_handled, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (reduction_handled) return
+                end if
                 ! sum/product/count/any/all(source, dim): reduce a rank-2 source
                 ! along dim into this rank-1 target. Declines (falls through) for
                 ! any form it cannot resolve at compile time.
@@ -5928,9 +5942,89 @@
         call resolve_reshape_order(arena, order_index, symbol_index, context, &
                                    order_perm, error_msg)
         if (len_trim(error_msg) > 0) return
+        block
+            logical :: handled
+            call lower_reshape_dim_reduction(arena, source_index, symbol_index, &
+                context, handled, error_msg)
+            if (len_trim(error_msg) > 0 .or. handled) return
+        end block
         call lower_reshape_source(arena, source_index, pad_index, order_perm, &
                                   symbol_index, context, error_msg)
     end subroutine lower_reshape_call
+
+    subroutine lower_reshape_dim_reduction(arena, source_index, symbol_index, &
+            context, handled, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: source_index, symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: source_sym, source_arg, dim_arg, op, d1, d2, i, j
+        integer(c_int64_t) :: dim_value, lin
+        type(lr_operand_desc_t) :: acc, elem, zero
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, source_index)) return
+        select type (source => arena%entries(source_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(source%name)) return
+            if (same_name(source%name, 'maxval')) then
+                op = DIM_REDUCE_MAX
+            else if (same_name(source%name, 'minval')) then
+                op = DIM_REDUCE_MIN
+            else
+                return
+            end if
+            call split_reduction_args(arena, source, source_arg, dim_arg)
+            if (source_arg <= 0 .or. dim_arg <= 0) return
+            call dim_reduction_array_symbol(arena, source_arg, context, source_sym)
+            if (source_sym <= 0) return
+            call eval_i32_constant(arena, dim_arg, context, dim_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (dim_value /= 1_c_int64_t .and. dim_value /= 2_c_int64_t) return
+            if (context%symbols(source_sym)%array_rank /= 2 .or. &
+                context%symbols(source_sym)%value_kind /= &
+                    context%symbols(symbol_index)%value_kind) return
+            d1 = context%symbols(source_sym)%array_dim_sizes(1)
+            d2 = context%symbols(source_sym)%array_dim_sizes(2)
+            if (dim_value == 1_c_int64_t) then
+                if (context%symbols(symbol_index)%array_size < d2) return
+            else
+                if (context%symbols(symbol_index)%array_size < d1) return
+            end if
+            do i = 0, merge(d2, d1, dim_value == 1_c_int64_t) - 1
+                call reduction_identity(context, op, context%symbols(source_sym)%value_kind, &
+                    acc, error_msg)
+                if (len_trim(error_msg) > 0) return
+                do j = 0, merge(d1, d2, dim_value == 1_c_int64_t) - 1
+                    if (dim_value == 1_c_int64_t) then
+                        lin = int(j, c_int64_t) + int(i, c_int64_t) * int(d1, c_int64_t)
+                    else
+                        lin = int(i, c_int64_t) + int(j, c_int64_t) * int(d1, c_int64_t)
+                    end if
+                    call load_array_linear_element(context, source_sym, lin, elem, &
+                        error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call reduction_combine(context, op, context%symbols(source_sym)%value_kind, &
+                        acc, elem, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+                call store_array_linear_element(context, symbol_index, &
+                    int(i, c_int64_t), acc, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+            call zero_operand(context, context%symbols(symbol_index)%value_kind, zero)
+            do i = merge(d2, d1, dim_value == 1_c_int64_t), &
+                    context%symbols(symbol_index)%array_size - 1
+                call store_array_linear_element(context, symbol_index, &
+                    int(i, c_int64_t), zero, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+            handled = .true.
+        class default
+            return
+        end select
+    end subroutine lower_reshape_dim_reduction
 
     subroutine lower_complex_reshape_literal(arena, source_index, order_index, &
                                               symbol_index, context, error_msg)
