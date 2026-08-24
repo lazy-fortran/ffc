@@ -69,6 +69,78 @@
         is_compound_only_descriptor = kind_char == 'E' .or. kind_char == 'X'
     end function is_compound_only_descriptor
 
+    subroutine lower_internal_write_expression(arena, node, context, error_msg)
+        ! A character expression format is accepted only for the same single
+        ! integer descriptor supported by the literal path.  The expression is
+        ! materialized as `(I...)`; trim the enclosing parentheses in-place and
+        ! turn the descriptor kind into the equivalent C snprintf format.
+        type(ast_arena_t), intent(in) :: arena
+        type(write_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: format_data, format_len, format_len64
+        type(lr_operand_desc_t) :: format_body, close_offset, close_ptr
+        type(lr_operand_desc_t) :: dest, tmp, value
+        type(lr_operand_desc_t) :: size_op, args(4)
+        integer :: symbol_index, buflen
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%arg_indices) .or. &
+            size(node%arg_indices) /= 1) then
+            call unsupported_feature_error('internal write', node%line, &
+                node%column, 'only a single-value internal write is supported', &
+                error_msg)
+            return
+        end if
+        call char_expr_operands(arena, node%format_expr_index, context, &
+                                format_data, format_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_offset(context%session, format_data, 1_c_int64_t, &
+                                  format_body, error_msg)) return
+        if (.not. emit_liric_i32_to_i64(context%session, format_len, &
+                                        format_len64, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_SUB, format_len64, &
+                                   i64_immediate(context%session, 2_c_int64_t), &
+                                   close_offset, error_msg)) return
+        if (.not. emit_ptr_offset_dyn(context%session, format_body, close_offset, &
+                                      close_ptr, error_msg)) return
+        if (.not. emit_i8_store(context%session, &
+                                i8_immediate(context%session, &
+                                             int(iachar('%'), c_int64_t)), &
+                                format_body, error_msg)) return
+        if (.not. emit_i8_store(context%session, &
+                                i8_immediate(context%session, 0_c_int64_t), &
+                                close_ptr, error_msg)) return
+
+        symbol_index = find_symbol_compat(context, trim(node%unit_spec))
+        if (context%symbols(symbol_index)%is_deferred_character) then
+            call unsupported_feature_error('internal write', node%line, &
+                node%column, 'internal write target must be a fixed-length '// &
+                'character variable', error_msg)
+            return
+        end if
+        buflen = context%symbols(symbol_index)%character_length
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, int(buflen + 1, c_int64_t)), dest, &
+                error_msg)) return
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, int(buflen + 1, c_int64_t)), tmp, &
+                error_msg)) return
+        size_op = i64_immediate(context%session, int(buflen + 1, c_int64_t))
+        args(1) = tmp
+        args(2) = size_op
+        args(3) = format_body
+        call lower_i32_expression(arena, node%arg_indices(1), context, value, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        args(4) = value
+        if (.not. emit_snprintf(context%session, args, error_msg)) return
+        call emit_blank_pad_string(context, buflen, tmp, dest, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(symbol_index)%value = dest
+        context%symbols(symbol_index)%has_character_value = .true.
+    end subroutine lower_internal_write_expression
+
     subroutine lower_internal_write(arena, node, context, error_msg)
         ! write (buf, fmt) value: format value through a single edit descriptor
         ! into the fixed-length character variable buf, blank-padded to its
@@ -89,6 +161,10 @@
         type(lr_operand_desc_t) :: data_ptr, length, args(6), size_op
         character(len=64) :: fmt_name
 
+        if (node%format_expr_index > 0) then
+            call lower_internal_write_expression(arena, node, context, error_msg)
+            return
+        end if
         if (.not. allocated(node%format_spec)) then
             call unsupported_feature_error('internal write', node%line, &
                 node%column, 'internal write requires a literal format', error_msg)
