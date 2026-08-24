@@ -152,10 +152,10 @@
 
     subroutine select_type_component_selector(arena, selector_index, context, &
                                              sel_index, handled, error_msg)
-        ! A polymorphic allocatable component stores a pointer to the same
-        ! scalar class descriptor used by class dummies. Materialise a symbol
-        ! for SELECT TYPE from that descriptor, preserving its declared type
-        ! and runtime data/type identity.
+        ! A polymorphic allocatable component stores the scalar class descriptor
+        ! inline in its component slot. Materialise a symbol for SELECT TYPE
+        ! from that descriptor, preserving its declared type and runtime
+        ! data/type identity.
         use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: selector_index
@@ -203,8 +203,7 @@
                                                  slot_address, error_msg, &
                                                  'select type component')
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_ptr_load(context%session, slot_address, descriptor, &
-                                    error_msg)) return
+            descriptor = slot_address
             if (.not. emit_ptr_offset(context%session, descriptor, &
                     int(POLYMORPHIC_DESCRIPTOR_DATA_OFFSET, c_int64_t), &
                     data_address, error_msg)) return
