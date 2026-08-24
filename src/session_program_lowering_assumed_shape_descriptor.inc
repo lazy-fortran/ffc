@@ -428,6 +428,7 @@
         type(lr_operand_desc_t) :: dynamic_type_id, dynamic_type_i32
         type(lr_operand_desc_t) :: section_stride
         integer :: symbol_index, value_kind, actual_rank, dim
+        integer :: expression_symbol, expression_extent, expression_kind
         integer :: dummy_lowers(ARRAY_MAX_RANK)
         integer :: component_type, component_index
         integer(c_int64_t) :: element_bytes
@@ -436,10 +437,52 @@
         logical :: is_component_projection, has_dummy_lowers, is_empty_actual
         logical :: is_class_star_dummy
         logical :: is_section_actual, section_is_contiguous
+        logical :: is_materialized_expression, expression_extent_known
+        logical :: is_forwarded_actual
+        type(array_expr_plan_t) :: expression_plan
         character(len=32) :: rank_text, actual_rank_text
         character(len=:), allocatable :: dummy_type_name
         integer :: dummy_type_index
         integer :: forwarded_symbol
+
+        is_materialized_expression = .false.
+        expression_symbol = 0
+        is_forwarded_actual = assumed_shape_descriptor_forward_actual(arena, &
+            node_index, context, forwarded_symbol)
+
+        ! Array-valued expressions have no storage for the descriptor to borrow.
+        ! Materialize a fixed-size expression before rank and descriptor
+        ! construction; this is the same temporary representation used by the
+        ! explicit-shape array-argument path. Storage-backed sections retain
+        ! their existing descriptor construction below.
+        if (.not. actual_is_whole_array(arena, node_index, context) .and. &
+            .not. is_forwarded_actual .and. &
+            .not. actual_is_contiguous_section(arena, node_index, context, &
+                                               allow_derived=.true.) .and. &
+            .not. actual_is_rank1_section_view(arena, node_index, context) .and. &
+            actual_is_array_expression(arena, node_index, context)) then
+            call array_expression_static_extent(arena, node_index, context, &
+                                                expression_extent, &
+                                                expression_extent_known)
+            if (.not. expression_extent_known .or. expression_extent <= 0) then
+                error_msg = 'array-valued actual has no statically known extent in '// &
+                    trim(callee_name)
+                return
+            end if
+            expression_kind = expression_value_kind(arena, node_index, context, &
+                                                    VALUE_F32)
+            call create_array_expression_temp(context, expression_kind, &
+                                              expression_extent, 0, &
+                                              expression_symbol, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call build_array_expression(context, expression_symbol, node_index, &
+                                        expression_plan, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_array_expression_assignment(arena, expression_plan, context, &
+                                                  error_msg)
+            if (len_trim(error_msg) > 0) return
+            is_materialized_expression = .true.
+        end if
 
         if (rank == 1) then
             if (assumed_shape_descriptor_forward_actual(arena, node_index, context, &
@@ -450,7 +493,11 @@
             end if
         end if
 
-        actual_rank = assumed_shape_actual_rank(arena, node_index, context)
+        if (is_materialized_expression) then
+            actual_rank = 1
+        else
+            actual_rank = assumed_shape_actual_rank(arena, node_index, context)
+        end if
         if (actual_rank /= rank) then
             write (rank_text, '(I0)') rank
             write (actual_rank_text, '(I0)') actual_rank
@@ -483,7 +530,11 @@
         class_star_type_id = 0_c_int32_t
 
         is_empty_actual = assumed_shape_empty_constructor(arena, node_index)
-        symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
+        if (is_materialized_expression) then
+            symbol_index = expression_symbol
+        else
+            symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
+        end if
         if (symbol_index <= 0 .and. .not. is_empty_actual) then
             error_msg = 'assumed-shape actual was not declared'
             return
@@ -567,7 +618,11 @@
             if (len_trim(error_msg) > 0) return
         end if
 
-        call assumed_shape_actual_base(arena, node_index, context, base, error_msg)
+        if (is_materialized_expression) then
+            base = context%symbols(symbol_index)%element_address
+        else
+            call assumed_shape_actual_base(arena, node_index, context, base, error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
 
         if (.not. emit_alloca_bytes(context%session, &
@@ -644,8 +699,14 @@
             running = i64_immediate(context%session, element_bytes)
         end if
         do dim = 1, rank
-            call assumed_shape_actual_extent(arena, node_index, context, rank, &
-                                             dim, extent, error_msg)
+            if (is_materialized_expression) then
+                extent = i64_immediate(context%session, int( &
+                    context%symbols(symbol_index)%array_dim_sizes(dim), &
+                    c_int64_t))
+            else
+                call assumed_shape_actual_extent(arena, node_index, context, rank, &
+                                                 dim, extent, error_msg)
+            end if
             if (len_trim(error_msg) > 0) return
             ! A bare-colon dummy has lower bound 1; an explicit lower bound such
             ! as 0: is part of the dummy view (F2018 8.5.8.3).
