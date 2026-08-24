@@ -2231,8 +2231,11 @@
         integer :: comp_kind, base_type, comp_index, base_symbol
         type(lr_operand_desc_t) :: base_address
         character(len=:), allocatable :: base_error
+        logical :: scalar_wrapper
 
-        if (.not. allocated(target%arg_indices)) then
+        scalar_wrapper = .not. allocated(target%arg_indices)
+        if (.not. scalar_wrapper) scalar_wrapper = size(target%arg_indices) == 0
+        if (scalar_wrapper) then
             ! FortFront may retain a scalar component designator in a
             ! call_or_subscript wrapper.  There is no element index in that
             ! shape; unwrap the component before the generic scalar fallback
