@@ -223,21 +223,53 @@
     logical function proc_pointer_f64_target_is_stable(arena, ptr_name, context) &
         result(is_stable)
         ! Return true only for the deliberately small f64 procedure-pointer
-        ! boundary: one direct assignment to a same-unit real(8) function,
-        ! outside all flow constructs.  A procedure dummy is handled by the
-        ! caller and does not use this predicate.
+        ! boundary: direct assignments to same-unit real(8) functions, outside
+        ! all flow constructs.  Several straight-line reassignments are valid
+        !: the last store wins at run time and every target has the same ABI.
+        ! A procedure dummy is handled by the caller and does not use this
+        ! predicate.
         type(ast_arena_t), intent(in) :: arena
         character(len=*), intent(in) :: ptr_name
         type(lowering_context_t), intent(in) :: context
         integer :: n, parent, assignment_count
+        logical :: checked_call
         character(len=:), allocatable :: lhs_name, rhs_name, local_error
         character(len=:), allocatable :: parent_type
+        type(procedure_reassignment_call_query_t) :: reassignment_query
 
         is_stable = .false.
         assignment_count = 0
+        checked_call = .false.
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
             select type (pnode => arena%entries(n)%node)
+            type is (call_or_subscript_node)
+                if (.not. allocated(pnode%name)) cycle
+                if (.not. same_name(pnode%name, ptr_name)) cycle
+                if (pnode%is_array_access) cycle
+                reassignment_query = query_procedure_reassignment_call(arena, n)
+                if (reassignment_query%has_null_assignment .or. &
+                    reassignment_query%has_nullify .or. &
+                    reassignment_query%has_multiple_calls) return
+                checked_call = .true.
+            type is (if_node)
+                if (body_contains_proc_assignment(arena, &
+                        pnode%then_body_indices, ptr_name) .or. &
+                    body_contains_proc_assignment(arena, &
+                        pnode%else_body_indices, ptr_name)) return
+                if (allocated(pnode%elseif_blocks)) then
+                    do parent = 1, size(pnode%elseif_blocks)
+                        if (body_contains_proc_assignment(arena, &
+                                pnode%elseif_blocks(parent)%body_indices, &
+                                ptr_name)) return
+                    end do
+                end if
+            type is (do_loop_node)
+                if (body_contains_proc_assignment(arena, pnode%body_indices, &
+                                                  ptr_name)) return
+            type is (do_while_node)
+                if (body_contains_proc_assignment(arena, pnode%body_indices, &
+                                                  ptr_name)) return
             type is (pointer_assignment_node)
                 if (.not. is_identifier(arena, pnode%pointer_index)) cycle
                 call get_identifier_name(arena, pnode%pointer_index, lhs_name, &
@@ -245,13 +277,10 @@
                 if (len_trim(local_error) > 0) cycle
                 if (.not. same_name(lhs_name, ptr_name)) cycle
                 assignment_count = assignment_count + 1
-                if (assignment_count /= 1) return
                 if (.not. is_identifier(arena, pnode%target_index)) return
                 call get_identifier_name(arena, pnode%target_index, rhs_name, &
                                           local_error)
                 if (len_trim(local_error) > 0) return
-                if (.not. is_contained_f64_function(context, rhs_name)) return
-
                 parent = arena%entries(n)%parent_index
                 do while (parent > 0 .and. parent <= arena%size)
                     parent_type = get_node_type_at(arena, parent)
@@ -270,8 +299,105 @@
                 end do
             end select
         end do
-        is_stable = assignment_count == 1
+        is_stable = assignment_count > 0 .and. checked_call
     end function proc_pointer_f64_target_is_stable
+
+    recursive logical function body_contains_proc_assignment(arena, indices, &
+                                                              ptr_name) result(found)
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: indices(:)
+        character(len=*), intent(in) :: ptr_name
+        integer :: i, j
+        integer, allocatable :: one(:)
+        character(len=:), allocatable :: lhs, local_error
+
+        found = .false.
+        if (.not. allocated(indices)) return
+        do i = 1, size(indices)
+            if (.not. node_exists(arena, indices(i))) cycle
+            select type (node => arena%entries(indices(i))%node)
+            type is (pointer_assignment_node)
+                if (.not. is_identifier(arena, node%pointer_index)) cycle
+                call get_identifier_name(arena, node%pointer_index, lhs, &
+                                          local_error)
+                if (len_trim(local_error) == 0 .and. &
+                    same_name(lhs, ptr_name)) then
+                    found = .true.
+                    return
+                end if
+            type is (if_node)
+                found = body_contains_proc_assignment(arena, &
+                    node%then_body_indices, ptr_name)
+                if (.not. found) found = body_contains_proc_assignment(arena, &
+                    node%else_body_indices, ptr_name)
+                if (.not. found .and. allocated(node%elseif_blocks)) then
+                    do j = 1, size(node%elseif_blocks)
+                        found = body_contains_proc_assignment(arena, &
+                            node%elseif_blocks(j)%body_indices, ptr_name)
+                        if (found) return
+                    end do
+                end if
+                if (found) return
+            type is (do_loop_node)
+                found = body_contains_proc_assignment(arena, node%body_indices, &
+                                                      ptr_name)
+                if (found) return
+            type is (do_while_node)
+                found = body_contains_proc_assignment(arena, node%body_indices, &
+                                                      ptr_name)
+                if (found) return
+            type is (block_construct_node)
+                found = body_contains_proc_assignment(arena, node%body_indices, &
+                                                      ptr_name)
+                if (found) return
+            type is (associate_node)
+                found = body_contains_proc_assignment(arena, node%body_indices, &
+                                                      ptr_name)
+                if (found) return
+            type is (forall_node)
+                found = body_contains_proc_assignment(arena, node%body_indices, &
+                                                      ptr_name)
+                if (found) return
+            type is (where_node)
+                found = body_contains_proc_assignment(arena, &
+                    node%where_body_indices, ptr_name)
+                if (.not. found .and. allocated(node%elsewhere_clauses)) then
+                    do j = 1, size(node%elsewhere_clauses)
+                        found = body_contains_proc_assignment(arena, &
+                            node%elsewhere_clauses(j)%body_indices, ptr_name)
+                        if (found) return
+                    end do
+                end if
+                if (found) return
+            type is (case_block_node)
+                found = body_contains_proc_assignment(arena, node%body_indices, &
+                                                      ptr_name)
+                if (found) return
+            type is (case_default_node)
+                found = body_contains_proc_assignment(arena, node%body_indices, &
+                                                      ptr_name)
+                if (found) return
+            type is (select_case_node)
+                if (allocated(node%case_indices)) then
+                    do j = 1, size(node%case_indices)
+                        allocate(one(1))
+                        one(1) = node%case_indices(j)
+                        found = body_contains_proc_assignment(arena, one, &
+                                                              ptr_name)
+                        deallocate(one)
+                        if (found) return
+                    end do
+                end if
+                if (node%default_index > 0) then
+                    allocate(one(1))
+                    one(1) = node%default_index
+                    found = body_contains_proc_assignment(arena, one, ptr_name)
+                    deallocate(one)
+                    if (found) return
+                end if
+            end select
+        end do
+    end function body_contains_proc_assignment
 
     subroutine lower_f32_proc_ptr_call(arena, node, context, value, error_msg)
         ! Indirect default-real function call through a procedure pointer.

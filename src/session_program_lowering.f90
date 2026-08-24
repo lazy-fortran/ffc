@@ -55,6 +55,8 @@ module session_program_lowering_impl
         BINDING_NAMED_CONSTANT, ASSOCIATION_DIRECT, ASSOCIATION_HOST, &
         ASSOCIATION_USE, &
         BINDING_ASSOCIATE_NAME, &
+        procedure_reassignment_call_query_t, &
+        query_procedure_reassignment_call, &
         get_alternate_return_label, get_return_selector, &
         is_alternate_return_dummy
     use ffc_runtime_link, only: ffc_runtime_link_input

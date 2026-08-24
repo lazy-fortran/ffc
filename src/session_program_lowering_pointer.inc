@@ -1262,6 +1262,11 @@
                 error_msg = 'nullify argument is not a pointer: '//trim(name)
                 return
             end if
+            if (context%symbols(symbol_index)%is_proc_pointer) then
+                if (.not. emit_ptr_store(context%session, &
+                        null_ptr_operand(context), &
+                        context%symbols(symbol_index)%address, error_msg)) return
+            end if
             context%symbols(symbol_index)%is_associated = .false.
             context%symbols(symbol_index)%has_runtime_association = .false.
             context%symbols(symbol_index)%has_address = .false.
@@ -1319,6 +1324,14 @@
         if (.not. context%symbols(ptr_idx)%is_pointer .and. &
             .not. context%symbols(ptr_idx)%is_proc_pointer) then
             error_msg = 'associated argument is not a pointer: '//trim(ptr_name)
+            return
+        end if
+        ! Procedure-pointer association is a run-time property of the slot.
+        ! Folding the lowering-time flag is wrong when an assignment occurs
+        ! inside a branch (the slot remains null when that branch is not taken).
+        if (context%symbols(ptr_idx)%is_proc_pointer) then
+            call lower_proc_pointer_associated(arena, arg_indices, context, &
+                                               value, error_msg)
             return
         end if
         if (size(arg_indices) == 1) then

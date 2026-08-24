@@ -2602,7 +2602,7 @@
     integer function contained_function_kind(context, name) result(value_kind)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
-        integer :: i, nested_node_index
+        integer :: i, nested_node_index, node_index
 
         value_kind = 0
         nested_node_index = visible_nested_procedure_node(context, name)
@@ -2616,6 +2616,23 @@
                 return
             end if
         end do
+        ! A procedure can be visible from the enclosing AST before the
+        ! registration pass has copied its entry into the local function table
+        ! (notably internal procedures referenced by a procedure pointer).  A
+        ! direct scan is still an exact lookup by Fortran name; it does not
+        ! guess an ABI from the call site.
+        if (associated(context%arena)) then
+            do node_index = 1, context%arena%size
+                if (.not. node_exists(context%arena, node_index)) cycle
+                select type (node => context%arena%entries(node_index)%node)
+                type is (function_def_node)
+                    if (.not. allocated(node%name)) cycle
+                    if (.not. same_name(node%name, name)) cycle
+                    value_kind = procedure_value_kind(context, node_index)
+                    return
+                end select
+            end do
+        end if
    end function contained_function_kind
 
     logical function is_contained_function_reference(node, context) result(is_ref)
