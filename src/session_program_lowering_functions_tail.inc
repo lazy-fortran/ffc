@@ -797,7 +797,9 @@
         value_kind = 0
         preferred_node = 0
         if (present(context)) then
-            preferred_node = visible_same_unit_procedure_node(context, callee_name)
+            preferred_node = visible_nested_procedure_node(context, callee_name)
+            if (preferred_node <= 0) preferred_node = &
+                visible_same_unit_procedure_node(context, callee_name)
             if (preferred_node <= 0) then
                 ! A renamed USE import has one exact context entry but is not in
                 ! the current lexical unit.
@@ -850,13 +852,26 @@
         character(len=*), intent(in) :: callee_name
         integer, intent(in) :: param_pos
         type(lowering_context_t), intent(in) :: context
-        integer :: n
+        integer :: n, preferred_node
         character(len=:), allocatable :: node_type
         type(function_def_node), pointer :: fn_node
         type(subroutine_def_node), pointer :: sb_node
 
         value_kind = 0
+        preferred_node = visible_nested_procedure_node(context, callee_name)
+        if (preferred_node <= 0) preferred_node = visible_same_unit_procedure_node( &
+            context, callee_name)
+        if (preferred_node <= 0) then
+            do n = 1, context%function_count
+                if (.not. same_name(context%function_names(n), callee_name)) cycle
+                if (context%function_node_indices(n) > 0) then
+                    preferred_node = context%function_node_indices(n)
+                    exit
+                end if
+            end do
+        end if
         do n = 1, arena%size
+            if (preferred_node > 0 .and. n /= preferred_node) cycle
             if (.not. node_exists(arena, n)) cycle
             node_type = get_node_type_at(arena, n)
             if (node_type == 'subroutine_def_node' .or. node_type == 'subroutine_def') then
@@ -2103,14 +2118,27 @@
         character(len=*), intent(in) :: callee_name
         character(len=64), allocatable, intent(out) :: names(:)
         integer, intent(out) :: count
-        integer :: n
+        integer :: n, preferred_node
         character(len=:), allocatable :: node_type
         type(function_def_node), pointer :: fn_node
         type(subroutine_def_node), pointer :: sb_node
 
         count = -1
         allocate (names(0))
+        preferred_node = visible_nested_procedure_node(context, callee_name)
+        if (preferred_node <= 0) preferred_node = visible_same_unit_procedure_node( &
+            context, callee_name)
+        if (preferred_node <= 0) then
+            do n = 1, context%function_count
+                if (.not. same_name(context%function_names(n), callee_name)) cycle
+                if (context%function_node_indices(n) > 0) then
+                    preferred_node = context%function_node_indices(n)
+                    exit
+                end if
+            end do
+        end if
         do n = 1, arena%size
+            if (preferred_node > 0 .and. n /= preferred_node) cycle
             if (.not. node_exists(arena, n)) cycle
             node_type = get_node_type_at(arena, n)
             if (node_type == 'subroutine_def_node' .or. &
@@ -2179,13 +2207,26 @@
         character(len=:), allocatable :: node_type, intent_token
         type(function_def_node), pointer :: fn_node
         type(subroutine_def_node), pointer :: sb_node
-        integer :: n, idx
+        integer :: n, idx, preferred_node
 
         is_optional = .false.
         is_value = .false.
         intent_code = ARG_INTENT_NONE
         if (param_pos < 1) return
+        preferred_node = visible_nested_procedure_node(context, callee_name)
+        if (preferred_node <= 0) preferred_node = visible_same_unit_procedure_node( &
+            context, callee_name)
+        if (preferred_node <= 0) then
+            do n = 1, context%function_count
+                if (.not. same_name(context%function_names(n), callee_name)) cycle
+                if (context%function_node_indices(n) > 0) then
+                    preferred_node = context%function_node_indices(n)
+                    exit
+                end if
+            end do
+        end if
         do n = 1, arena%size
+            if (preferred_node > 0 .and. n /= preferred_node) cycle
             if (.not. node_exists(arena, n)) cycle
             node_type = get_node_type_at(arena, n)
             if (node_type == 'subroutine_def_node' .or. &

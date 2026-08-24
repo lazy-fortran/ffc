@@ -79,8 +79,12 @@
         ! parameter slots even when Fortran omits the actual. Type-bound calls
         ! include the receiver in arg_indices, so the position mapper keeps
         ! the contract check aligned with the implementation's dummies.
-        param_count = arena_proc_param_count(arena, callee_name)
-        if (param_count < 0) param_count = proc_param_count(context, callee_name)
+        ! The context's binding table is authoritative for a call from this
+        ! procedure. An arena-wide name scan can find an interface signature,
+        ! a host-associated procedure, or a sibling with the same spelling
+        ! before it finds the visible same-unit target.
+        param_count = proc_param_count(context, callee_name)
+        if (param_count < 0) param_count = arena_proc_param_count(arena, callee_name)
         explicit_param_count = param_count
         if (sp > 0 .and. explicit_param_count >= 0) then
             explicit_param_count = max(explicit_param_count - 1, 0)
