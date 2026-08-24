@@ -4898,8 +4898,7 @@ contains
         end if
         call declaration_value_kind(node, value_kind, error_msg, context, node_index)
         if (len_trim(error_msg) > 0) return
-        if (node%is_allocatable .and. value_kind /= VALUE_CHARACTER .and. &
-            value_kind /= VALUE_CLASS_STAR) then
+        if (node%is_allocatable .and. value_kind /= VALUE_CHARACTER) then
             call lower_scalar_allocatable_declaration(node, context, value_kind, &
                 error_msg)
             return
@@ -5207,16 +5206,26 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
 
-        if (find_symbol_compat(context, name) > 0) then
-            error_msg = 'duplicate class(*) declaration: '//trim(name)
-            return
+        index = find_symbol_compat(context, name)
+        if (index > 0) then
+            if (context%symbols(index)%value_kind == VALUE_CLASS_STAR) then
+                call set_empty(error_msg)
+                return
+            end if
+            ! A declaration may be visited after an instruction has already
+            ! materialised a provisional scalar symbol. The explicit class(*)
+            ! declaration owns that binding; replace the provisional kind and
+            ! install the canonical descriptor below.
+            context%symbols(index)%value_kind = VALUE_CLASS_STAR
+            context%symbols(index)%is_allocatable = .true.
+        else
+            call grow_symbols(context)
+            index = context%symbol_count + 1
+            context%symbols(index)%name = trim(name)
+            context%symbols(index)%value_kind = VALUE_CLASS_STAR
+            context%symbols(index)%is_allocatable = .true.
+            context%symbol_count = index
         end if
-        call grow_symbols(context)
-        index = context%symbol_count + 1
-        context%symbols(index)%name = trim(name)
-        context%symbols(index)%value_kind = VALUE_CLASS_STAR
-        context%symbols(index)%is_allocatable = .true.
-        context%symbol_count = index
         if (.not. emit_alloca_bytes(context%session, &
             i64_immediate(context%session, 16_c_int64_t), &
             context%symbols(index)%address, error_msg)) return

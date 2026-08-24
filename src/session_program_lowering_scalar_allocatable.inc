@@ -11,6 +11,23 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
 
+        if (value_kind == VALUE_CLASS_STAR) then
+            if (node%is_multi_declaration .and. allocated(node%var_names)) then
+                do i = 1, size(node%var_names)
+                    call define_declared_class_star_symbol(context, &
+                        node%var_names(i), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            else if (allocated(node%var_name)) then
+                call define_declared_class_star_symbol(context, node%var_name, &
+                    error_msg)
+            else
+                error_msg = 'allocatable class(*) declaration did not expose a '// &
+                    'variable name'
+            end if
+            return
+        end if
+
         if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
             value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
             call unsupported_feature_error('allocatable declaration', &
