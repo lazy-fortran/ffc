@@ -4770,7 +4770,8 @@ contains
                 value_kind /= VALUE_I16 .and. value_kind /= VALUE_C4 .and. &
                 value_kind /= VALUE_C8) then
                 if (.not. (value_kind == VALUE_CLASS_STAR .and. &
-                           declaration_is_assumed_shape(node, context))) then
+                           (declaration_is_assumed_shape(node, context) .or. &
+                            declaration_is_assumed_rank(node, context)))) then
                     call unsupported_feature_error('array declaration', node%line, &
                         node%column, &
                         'ffc direct-session lowering only '// &

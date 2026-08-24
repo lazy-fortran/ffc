@@ -862,9 +862,14 @@
         case ('logical')
             value_kind = VALUE_LOGICAL
         case ('type')
+            ! TYPE(*) is unlimited polymorphic, with the same descriptor ABI as
+            ! CLASS(*).  FortFront represents the selector as the TYPE base
+            ! here, so classify it before handling c_ptr and intrinsic specs.
+            if (trim(kind_spec) == '*') then
+                value_kind = VALUE_CLASS_STAR
             ! c_ptr is an opaque 8-byte pointer value; c_loc/c_associated/
             ! c_f_pointer operate on it (#139).
-            if (trim(kind_spec) == 'c_ptr') then
+            else if (trim(kind_spec) == 'c_ptr') then
                 value_kind = VALUE_C_PTR
             else if (is_intrinsic_type_spec(kind_spec)) then
                 ! F2008 TYPE(intrinsic-type-spec): type(real), type(integer),
