@@ -1482,7 +1482,22 @@
 
         idx = find_symbol_compat(context, name)
         if (idx > 0) then
-            ! Already declared (e.g. a dummy re-declaration); benign.
+            ! Declaration collection may have installed the binding before the
+            ! executable declaration is lowered.  Refresh that slot's
+            ! procedure-pointer classification rather than leaving it as the
+            ! scalar placeholder used by the collection pass.
+            if (.not. context%symbols(idx)%is_proc_pointer) &
+                context%symbols(idx)%is_associated = .false.
+            context%symbols(idx)%value_kind = VALUE_PROC_PTR
+            context%symbols(idx)%is_pointer = .true.
+            context%symbols(idx)%is_proc_pointer = .true.
+            if (.not. context%symbols(idx)%has_address) then
+                if (.not. emit_ptr_alloca(context%session, &
+                                          context%symbols(idx)%address, error_msg)) return
+                if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+                                         context%symbols(idx)%address, error_msg)) return
+                context%symbols(idx)%has_address = .true.
+            end if
             call set_empty(error_msg)
             return
         end if
