@@ -4913,7 +4913,10 @@
             symbol_index = find_symbol_compat(context, id_name)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%is_array .or. &
-                    context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+                    (context%symbols(symbol_index)%value_kind /= VALUE_I8 .and. &
+                     context%symbols(symbol_index)%value_kind /= VALUE_I16 .and. &
+                     context%symbols(symbol_index)%value_kind /= VALUE_I32 .and. &
+                     context%symbols(symbol_index)%value_kind /= VALUE_I64)) then
                     call unsupported_array_subscript(arena, node_index, &
                                                      'non-integer identifiers', &
                                                      error_msg)
