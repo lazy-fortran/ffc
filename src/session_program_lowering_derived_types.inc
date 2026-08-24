@@ -1551,15 +1551,30 @@ subroutine collect_component_declaration(component_index, parent_line, &
                         'cannot carry a default initialiser', error_msg)
                     return
                 end if
-                call fold_component_default(context, component%initializer_index, &
-                                            value_kind, default_value, error_msg)
-                if (len_trim(error_msg) > 0) then
-                    call unsupported_feature_error( &
-                        'derived type component initializer', component%line, &
-                        component%column, 'only a compile-time integer, real, '// &
-                        'logical, character, or c_null_ptr default is '// &
-                        'supported', error_msg)
-                    return
+                if (comp_pointer) then
+                    ! A scalar data pointer may be default-initialised only to
+                    ! NULL().  Its storage is zeroed by the indirect-component
+                    ! default path; it must not be sent through integer literal
+                    ! folding, where the NULL() call is not a scalar value.
+                    if (.not. pointer_target_is_null(context%arena, &
+                                                     component%initializer_index)) then
+                        call unsupported_feature_error( &
+                            'derived type pointer initializer', component%line, &
+                            component%column, 'only NULL() is supported', error_msg)
+                        return
+                    end if
+                    default_value = 0_c_int64_t
+                else
+                    call fold_component_default(context, component%initializer_index, &
+                                                value_kind, default_value, error_msg)
+                    if (len_trim(error_msg) > 0) then
+                        call unsupported_feature_error( &
+                            'derived type component initializer', component%line, &
+                            component%column, 'only a compile-time integer, real, '// &
+                            'logical, character, or c_null_ptr default is '// &
+                            'supported', error_msg)
+                        return
+                    end if
                 end if
                 has_default = .true.
             end if

@@ -877,6 +877,14 @@
                 ! derived type, so lower them exactly like the bare intrinsic.
                 call type_name_value_kind(kind_spec, line, column, value_kind, &
                                           error_msg, context, reference_index)
+            else if (present(context)) then
+                if (find_derived_type(context, kind_spec) > 0) then
+                    value_kind = VALUE_DERIVED
+                else
+                    call unsupported_feature_error('scalar type', line, column, &
+                        'direct LIRIC session only supports integer, real, '// &
+                        'logical, character, and c_ptr scalars', error_msg)
+                end if
             else
                 call unsupported_feature_error('scalar type', line, column, &
                     'direct LIRIC session only supports integer, real, '// &
@@ -893,6 +901,12 @@
                 value_kind = VALUE_DERIVED
             end if
         case default
+            if (present(context)) then
+                if (find_derived_type(context, base) > 0) then
+                    value_kind = VALUE_DERIVED
+                    return
+                end if
+            end if
             call unsupported_feature_error('scalar type', line, column, &
                                            'direct LIRIC session only supports '// &
                                            'integer, real, logical, and character '// &
