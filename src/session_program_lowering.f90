@@ -6245,6 +6245,10 @@ contains
             call lower_c_f_pointer(arena, arg_indices, context, error_msg)
             return
         end if
+        if (same_name(call_name, 'c_f_procpointer')) then
+            call lower_c_f_procpointer(arena, arg_indices, context, error_msg)
+            return
+        end if
         if (same_name(call_name, 'move_alloc')) then
             call lower_move_alloc(arena, arg_indices, context, error_msg)
             return

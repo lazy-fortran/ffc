@@ -1380,6 +1380,52 @@
         end if
     end subroutine lower_proc_pointer_declaration
 
+    subroutine lower_c_f_procpointer(arena, arg_indices, context, error_msg)
+        ! c_f_procpointer(cfunptr, fptr): copy a C function address into a
+        ! Fortran procedure-pointer slot. C_FUNPTR uses the same pointer-sized
+        ! operand representation as C_PTR in the direct session backend.
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: ptr_value
+        character(len=:), allocatable :: name
+        integer :: symbol_index
+
+        call set_empty(error_msg)
+        if (.not. allocated(arg_indices)) then
+            error_msg = 'c_f_procpointer requires exactly two arguments'
+            return
+        end if
+        if (size(arg_indices) /= 2) then
+            error_msg = 'c_f_procpointer requires exactly two arguments'
+            return
+        end if
+        call lower_c_ptr_expression(arena, arg_indices(1), context, ptr_value, &
+                                    error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. is_identifier(arena, arg_indices(2))) then
+            error_msg = 'c_f_procpointer target must be a procedure pointer'
+            return
+        end if
+        call get_identifier_name(arena, arg_indices(2), name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol_compat(context, name)
+        if (symbol_index <= 0) then
+            error_msg = 'c_f_procpointer target was not declared as a procedure pointer: '// &
+                trim(name)
+            return
+        end if
+        if (.not. context%symbols(symbol_index)%is_proc_pointer) then
+            error_msg = 'c_f_procpointer target was not declared as a procedure pointer: '// &
+                trim(name)
+            return
+        end if
+        if (.not. emit_ptr_store(context%session, ptr_value, &
+                                 context%symbols(symbol_index)%address, error_msg)) return
+        context%symbols(symbol_index)%is_associated = .true.
+    end subroutine lower_c_f_procpointer
+
     subroutine define_proc_pointer_symbol(context, name, error_msg)
         ! Allocate a ptr slot on the stack; the slot holds the function address.
         ! Initially null (zeroed by alloca semantics at declaration).

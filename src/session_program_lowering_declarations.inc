@@ -861,6 +861,10 @@
             value_kind = VALUE_F64
         case ('logical')
             value_kind = VALUE_LOGICAL
+        case ('procedure')
+            ! PROCEDURE(interface), POINTER entities use the existing indirect
+            ! call slot; the interface body supplies call compatibility.
+            value_kind = VALUE_PROC_PTR
         case ('type')
             ! TYPE(*) is unlimited polymorphic, with the same descriptor ABI as
             ! CLASS(*).  FortFront represents the selector as the TYPE base
@@ -869,7 +873,8 @@
                 value_kind = VALUE_CLASS_STAR
             ! c_ptr is an opaque 8-byte pointer value; c_loc/c_associated/
             ! c_f_pointer operate on it (#139).
-            else if (trim(kind_spec) == 'c_ptr') then
+            else if (trim(kind_spec) == 'c_ptr' .or. &
+                     trim(kind_spec) == 'c_funptr') then
                 value_kind = VALUE_C_PTR
             else if (is_intrinsic_type_spec(kind_spec)) then
                 ! F2008 TYPE(intrinsic-type-spec): type(real), type(integer),
