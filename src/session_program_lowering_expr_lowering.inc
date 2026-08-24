@@ -1246,7 +1246,8 @@
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
     end subroutine lower_overloaded_operator
 
-    logical function operand_has_value_kind(arena, node_index, context, want_kind)
+    recursive logical function operand_has_value_kind(arena, node_index, context, want_kind) &
+            result(matches)
         ! True when node_index is a scalar identifier or an array-element
         ! access whose declared value kind is want_kind. Used to route a
         ! comparison or arithmetic operand of a non-default integer kind
@@ -1258,24 +1259,43 @@
         integer, intent(in) :: want_kind
         character(len=:), allocatable :: id_name, err
         integer :: sym
+        logical :: left_match, right_match
 
-        operand_has_value_kind = .false.
+        matches = .false.
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, err)
             if (len_trim(err) > 0) return
             sym = resolve_symbol_at_node(context, node_index, id_name)
-            operand_has_value_kind = sym > 0 .and. &
+            matches = sym > 0 .and. &
                 context%symbols(sym)%value_kind == want_kind
             return
         end if
         if (.not. node_exists(arena, node_index)) return
+        if (is_binary_op(arena, node_index)) then
+            block
+                integer :: left_index, right_index, line, column
+                character(len=:), allocatable :: op, op_error
+                call get_binary_op_info(arena, node_index, op, left_index, &
+                    right_index, line, column, op_error)
+                if (len_trim(op_error) > 0) return
+                left_match = operand_has_value_kind(arena, left_index, context, &
+                    want_kind)
+                right_match = operand_has_value_kind(arena, right_index, context, &
+                    want_kind)
+                matches = left_match .or. right_match
+            end block
+            return
+        end if
         select type (node => arena%entries(node_index)%node)
+        type is (component_access_node)
+            matches = &
+                derived_component_access_kind(arena, node, context) == want_kind
         type is (call_or_subscript_node)
             if (node%base_expr_index > 0) return
             if (is_contained_function_reference(node, context)) return
             if (.not. (node%is_array_access .or. &
                        is_declared_array_element_ref(node, context))) return
-            operand_has_value_kind = &
+            matches = &
                 array_access_value_kind(node, context) == want_kind
         end select
     end function operand_has_value_kind
