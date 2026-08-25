@@ -112,6 +112,12 @@
             end if
             if (character_length > 0) then
                 context%symbols(existing_index)%character_length = character_length
+            else if (context%symbols(existing_index)%is_deferred_character) then
+                ! A provisional character symbol may have been installed with
+                ! the default width one before the explicit character(:)
+                ! declaration is visited. The explicit deferred declaration
+                ! is authoritative and must clear that provisional width.
+                context%symbols(existing_index)%character_length = 0
             end if
             call set_empty(error_msg)
             return
@@ -247,15 +253,13 @@
             if (.not. emit_i64_binary(context%session, LR_OP_ADD, &
                     source_len_i64, i64_immediate(context%session, 1_c_int64_t), &
                     buffer_size, error_msg)) return
-            if (context%in_internal_function) then
-                if (.not. emit_malloc(context%session, buffer_size, buffer, &
-                        error_msg)) return
-                storage_class = LOWERING_CHARACTER_STORAGE_OWNED
-            else
-                if (.not. emit_alloca_bytes(context%session, buffer_size, buffer, &
-                        error_msg)) return
-                storage_class = LOWERING_CHARACTER_STORAGE_STACK
-            end if
+            ! The descriptor retains the buffer and later expression lowering
+            ! may keep operand pointers live across the copy. Dynamic stack
+            ! storage can overlap those temporaries in the direct LIRIC
+            ! backend, so use owned heap storage in both scopes.
+            if (.not. emit_malloc(context%session, buffer_size, buffer, &
+                    error_msg)) return
+            storage_class = LOWERING_CHARACTER_STORAGE_OWNED
             call fill_spaces(context, buffer, source_len_i32, error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_i64_binary(context%session, LR_OP_ADD, buffer, &
@@ -339,6 +343,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer, intent(in), optional :: reference_index
         character(len=:), allocatable :: parse_error
+        character(len=:), allocatable :: length_expr
         character(len=:), allocatable :: lowered
 
         character_length = -1
@@ -351,7 +356,26 @@
             return
         end if
         lowered = lowercase_text(node%type_name)
-        if (trim(lowered) == 'character') then
+        ! FortFront stores an explicit character length expression separately
+        ! from type_name. In particular, character(:) arrives as
+        ! type_name='character', character_length_expr=':'. Do not collapse
+        ! that form to bare character(len=1).
+        if (node%has_character_length .and. &
+            allocated(node%character_length_expr)) then
+            length_expr = trim(adjustl(lowercase_text( &
+                node%character_length_expr)))
+            if (index(length_expr, '=') > 0) then
+                length_expr = trim(adjustl(length_expr( &
+                    index(length_expr, '=') + 1:)))
+            end if
+            if (length_expr == ':' .or. length_expr == '*') then
+                character_length = -1
+                return
+            end if
+        end if
+        if (trim(lowered) == 'character' .and. &
+            (.not. node%has_character_length .or. &
+             .not. allocated(node%character_length_expr))) then
             ! A bare character declaration has the default length one. An
             ! explicitly deferred character uses character(len=:), while an
             ! assumed-length dummy uses character(len=*).
@@ -1433,15 +1457,9 @@
         ! A runtime-fixed local used to form a function result must outlive the
         ! function frame. Use the same heap allocation convention as the other
         ! runtime character-expression helpers in internal functions.
-        if (context%in_internal_function) then
-            if (.not. emit_malloc(context%session, buffer_size, buffer, &
-                    error_msg)) return
-            buffer_storage_class = LOWERING_CHARACTER_STORAGE_OWNED
-        else
-            if (.not. emit_alloca_bytes(context%session, buffer_size, buffer, &
-                    error_msg)) return
-            buffer_storage_class = LOWERING_CHARACTER_STORAGE_STACK
-        end if
+        if (.not. emit_malloc(context%session, buffer_size, buffer, &
+                error_msg)) return
+        buffer_storage_class = LOWERING_CHARACTER_STORAGE_OWNED
         call fill_spaces(context, buffer, target_len, error_msg)
         if (len_trim(error_msg) > 0) return
 
@@ -1897,12 +1915,7 @@
         if (.not. emit_i64_binary(context%session, LR_OP_ADD, length64, &
                 i64_immediate(context%session, 1_c_int64_t), bytes, &
                 error_msg)) return
-        if (context%in_internal_function) then
-            if (.not. emit_malloc(context%session, bytes, buf, error_msg)) return
-        else
-            if (.not. emit_alloca_bytes(context%session, bytes, buf, error_msg)) &
-                return
-        end if
+        if (.not. emit_malloc(context%session, bytes, buf, error_msg)) return
         if (.not. emit_memcpy(context%session, buf, data_ptr, length64, &
                 error_msg)) return
         if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, length64, &

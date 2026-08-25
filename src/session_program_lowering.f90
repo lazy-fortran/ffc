@@ -6000,6 +6000,9 @@ contains
     include 'session_program_lowering_arguments.inc'
     include 'session_program_lowering_assumed_shape_extent.inc'
     include 'session_program_lowering_assumed_shape_descriptor.inc'
+    ! Character lowering transitively includes its character-expression tail
+    ! and several deferred-character fragments; keep the dependency visible in
+    ! this owning unit for FO cache invalidation and deferred-length edits.
     include 'session_program_lowering_character.inc'
     include 'session_program_lowering_deferred_char.inc'
     subroutine lower_function_return(node, context, error_msg)

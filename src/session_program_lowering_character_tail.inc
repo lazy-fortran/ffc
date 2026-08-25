@@ -608,8 +608,10 @@
         if (.not. emit_i64_binary(context%session, LR_OP_ADD, total64, &
                 i64_immediate(context%session, 1_c_int64_t), size64, &
                 error_msg)) return
-        if (.not. emit_alloca_bytes(context%session, size64, buf, error_msg)) &
-            return
+        ! The buffer must remain valid while the operand temporaries are used.
+        ! Dynamic stack storage can overlap those temporaries in the direct
+        ! LIRIC backend, so keep concatenation results in owned heap storage.
+        if (.not. emit_malloc(context%session, size64, buf, error_msg)) return
 
         ! Copy left at offset 0, then right at offset left_len.
         if (.not. emit_liric_i32_to_i64(context%session, left_len, left64, &
@@ -661,7 +663,7 @@
                 error_msg)) return
         if (.not. emit_i64_binary(context%session, LR_OP_ADD, total64, &
                 i64_immediate(context%session, 1_c_int64_t), size64, error_msg)) return
-        if (.not. emit_alloca_bytes(context%session, size64, buf, error_msg)) return
+        if (.not. emit_malloc(context%session, size64, buf, error_msg)) return
         if (.not. emit_liric_i32_to_i64(context%session, left_length, left64, &
                 error_msg)) return
         if (.not. emit_memcpy(context%session, buf, left_data, left64, error_msg)) return

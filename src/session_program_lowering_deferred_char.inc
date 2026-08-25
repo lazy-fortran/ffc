@@ -207,15 +207,11 @@ integer function resolve_concat_operand(arena, node_index, context, &
         end if
 
         size_op = i64_immediate(context%session, int(dest_len + 1, c_int64_t))
-        if (context%in_internal_function .and. &
-            dest_symbol_index == context%current_function_result_index) then
-            ! The result outlives the callee frame, so its storage is owned
-            ! heap memory the caller copies from and releases.
-            if (.not. emit_malloc(context%session, size_op, buf, error_msg)) return
-        else
-            if (.not. emit_alloca_bytes(context%session, size_op, buf, &
-                error_msg)) return
-        end if
+        ! The descriptor retains this buffer after the assignment, and the
+        ! operand pointers must remain valid while the copies are emitted.
+        ! Dynamic stack storage can overlap those temporaries in the direct
+        ! LIRIC backend, so use owned heap storage for every deferred result.
+        if (.not. emit_malloc(context%session, size_op, buf, error_msg)) return
         call fill_spaces(context, buf, &
             i32_immediate(context%session, int(dest_len, c_int64_t)), error_msg)
         if (len_trim(error_msg) > 0) return
@@ -865,7 +861,9 @@ integer function resolve_concat_operand(arena, node_index, context, &
         end if
 
         ! Buffer holds dest_len content bytes plus a trailing null for %s prints.
-        if (.not. emit_alloca_bytes(context%session, &
+        ! Dynamic stack storage can overlap live character operand descriptors
+        ! in the direct LIRIC backend, so keep the temporary in owned storage.
+        if (.not. emit_malloc(context%session, &
             i64_immediate(context%session, int(dest_len + 1, c_int64_t)), buf, &
             error_msg)) return
         call fill_spaces(context, buf, &
