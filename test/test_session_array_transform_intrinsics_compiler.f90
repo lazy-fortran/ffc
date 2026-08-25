@@ -14,6 +14,7 @@ program test_session_array_transform_intrinsics_compiler
     if (.not. test_pack_unpack_roundtrip()) all_passed = .false.
     if (.not. test_spread_real_dim1()) all_passed = .false.
     if (.not. test_spread_integer_rank2_dim2()) all_passed = .false.
+    if (.not. test_spread_integer_rank3_all_dims()) all_passed = .false.
     if (.not. test_spread_invalid_dim()) all_passed = .false.
     if (.not. test_spread_invalid_ncopies()) all_passed = .false.
     if (.not. test_merge_nonconformable()) all_passed = .false.
@@ -225,6 +226,51 @@ contains
             '           6'//new_line('a'), &
             '/tmp/ffc_session_transform_spread_integer_rank2_dim2')
     end function test_spread_integer_rank2_dim2
+
+    ! A rank-3 integer source supports insertion at every valid DIM.
+    logical function test_spread_integer_rank3_all_dims()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(2, 2, 2)'//new_line('a')// &
+            '  integer :: r1(2, 2, 2, 2)'//new_line('a')// &
+            '  integer :: r2(2, 2, 2, 2)'//new_line('a')// &
+            '  integer :: r3(2, 2, 2, 2)'//new_line('a')// &
+            '  integer :: r4(2, 2, 2, 2)'//new_line('a')// &
+            '  integer :: i, j, k, l'//new_line('a')// &
+            '  a = reshape([1, 2, 10, 20, 100, 200, 1000, 2000], [2, 2, 2])'//new_line('a')// &
+            '  r1 = spread(a, 1, 2)'//new_line('a')// &
+            '  r2 = spread(a, 2, 2)'//new_line('a')// &
+            '  r3 = spread(a, 3, 2)'//new_line('a')// &
+            '  r4 = spread(a, 4, 2)'//new_line('a')// &
+            '  do l = 1, 2'//new_line('a')// &
+            '     do k = 1, 2'//new_line('a')// &
+            '        do j = 1, 2'//new_line('a')// &
+            '           do i = 1, 2'//new_line('a')// &
+            '              print *, r1(i, j, k, l), r2(i, j, k, l), r3(i, j, k, l), r4(i, j, k, l)'//new_line('a')// &
+            '           end do'//new_line('a')// &
+            '        end do'//new_line('a')// &
+            '     end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            'end program main'
+        test_spread_integer_rank3_all_dims = expect_output( &
+            source, '           1           1           1           1'//new_line('a')// &
+            '           1           2           2           2'//new_line('a')// &
+            '           2           1          10          10'//new_line('a')// &
+            '           2           2          20          20'//new_line('a')// &
+            '          10          10           1         100'//new_line('a')// &
+            '          10          20           2         200'//new_line('a')// &
+            '          20          10          10        1000'//new_line('a')// &
+            '          20          20          20        2000'//new_line('a')// &
+            '         100         100         100           1'//new_line('a')// &
+            '         100         200         200           2'//new_line('a')// &
+            '         200         100        1000          10'//new_line('a')// &
+            '         200         200        2000          20'//new_line('a')// &
+            '        1000        1000         100         100'//new_line('a')// &
+            '        1000        2000         200         200'//new_line('a')// &
+            '        2000        1000        1000        1000'//new_line('a')// &
+            '        2000        2000        2000        2000'//new_line('a'), &
+            '/tmp/ffc_session_transform_spread_integer_rank3_all_dims')
+    end function test_spread_integer_rank3_all_dims
 
     ! A DIM outside 1..rank+1 is rejected with a diagnostic.
     logical function test_spread_invalid_dim()

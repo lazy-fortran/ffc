@@ -5437,7 +5437,8 @@
     end subroutine lower_merge_assignment
 
     ! spread(source, dim, ncopies) for fixed-size integer arrays. Rank-1
-    ! sources produce rank-2 targets; rank-2 sources produce rank-3 targets.
+    ! sources produce rank-2 targets; rank-2 sources produce rank-3 targets;
+    ! rank-3 sources produce rank-4 targets.
     ! dim and ncopies must be compile-time integers.
     subroutine lower_spread_assignment(arena, node, symbol_index, context, &
                                        error_msg)
@@ -5448,10 +5449,10 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
         integer :: source_index
-        integer :: i, j, k, m, source_rank
+        integer :: i, j, k, l, m, source_rank
         integer(c_int64_t) :: dim_val, ncopies
-        integer(c_int64_t) :: target_rows, target_cols, target_depth
-        integer(c_int64_t) :: source_rows, source_cols
+        integer(c_int64_t) :: target_rows, target_cols, target_depth, target_fourth
+        integer(c_int64_t) :: source_rows, source_cols, source_depth
         integer(c_int64_t) :: src_index, linear_index
 
         select type (rhs => arena%entries(node%value_index)%node)
@@ -5464,15 +5465,17 @@
                                             'source array', source_index, error_msg)
             if (len_trim(error_msg) > 0) return
             source_rank = context%symbols(source_index)%array_rank
-            if (source_rank /= 1 .and. source_rank /= 2) then
-                error_msg = 'spread supports only rank-1 or rank-2 source arrays'
+            if (source_rank < 1 .or. source_rank > 3) then
+                error_msg = 'spread supports only rank-1 through rank-3 source arrays'
                 return
             end if
             if (context%symbols(symbol_index)%array_rank /= source_rank + 1) then
                 if (source_rank == 1) then
                     error_msg = 'spread result must be assigned to a rank-2 array'
-                else
+                else if (source_rank == 2) then
                     error_msg = 'spread result must be assigned to a rank-3 array'
+                else
+                    error_msg = 'spread result must be assigned to a rank-4 array'
                 end if
                 return
             end if
@@ -5523,7 +5526,7 @@
                         if (len_trim(error_msg) > 0) return
                     end do
                 end do
-            else
+            else if (source_rank == 2) then
                 source_rows = int(context%symbols(source_index)%array_dim_sizes(1), &
                                   c_int64_t)
                 source_cols = int(context%symbols(source_index)%array_dim_sizes(2), &
@@ -5576,6 +5579,83 @@
                             call store_array_linear_element(context, symbol_index, &
                                                             linear_index, value, error_msg)
                             if (len_trim(error_msg) > 0) return
+                        end do
+                    end do
+                end do
+            else
+                source_rows = int(context%symbols(source_index)%array_dim_sizes(1), &
+                                  c_int64_t)
+                source_cols = int(context%symbols(source_index)%array_dim_sizes(2), &
+                                  c_int64_t)
+                source_depth = int(context%symbols(source_index)%array_dim_sizes(3), &
+                                   c_int64_t)
+                target_rows = int(context%symbols(symbol_index)%array_dim_sizes(1), &
+                                  c_int64_t)
+                target_cols = int(context%symbols(symbol_index)%array_dim_sizes(2), &
+                                  c_int64_t)
+                target_depth = int(context%symbols(symbol_index)%array_dim_sizes(3), &
+                                   c_int64_t)
+                target_fourth = int(context%symbols(symbol_index)%array_dim_sizes(4), &
+                                    c_int64_t)
+                select case (dim_val)
+                case (1_c_int64_t)
+                    if (target_rows /= ncopies .or. target_cols /= source_rows .or. &
+                        target_depth /= source_cols .or. target_fourth /= source_depth) then
+                        error_msg = 'spread result shape does not match the target array'
+                        return
+                    end if
+                case (2_c_int64_t)
+                    if (target_rows /= source_rows .or. target_cols /= ncopies .or. &
+                        target_depth /= source_cols .or. target_fourth /= source_depth) then
+                        error_msg = 'spread result shape does not match the target array'
+                        return
+                    end if
+                case (3_c_int64_t)
+                    if (target_rows /= source_rows .or. target_cols /= source_cols .or. &
+                        target_depth /= ncopies .or. target_fourth /= source_depth) then
+                        error_msg = 'spread result shape does not match the target array'
+                        return
+                    end if
+                case default
+                    if (target_rows /= source_rows .or. target_cols /= source_cols .or. &
+                        target_depth /= source_depth .or. target_fourth /= ncopies) then
+                        error_msg = 'spread result shape does not match the target array'
+                        return
+                    end if
+                end select
+                do l = 0, int(target_fourth) - 1
+                    do k = 0, int(target_depth) - 1
+                        do j = 0, int(target_cols) - 1
+                            do i = 0, int(target_rows) - 1
+                                select case (dim_val)
+                                case (1_c_int64_t)
+                                    src_index = int(j, c_int64_t) + source_rows * &
+                                                (int(k, c_int64_t) + source_cols * &
+                                                 int(l, c_int64_t))
+                                case (2_c_int64_t)
+                                    src_index = int(i, c_int64_t) + source_rows * &
+                                                (int(k, c_int64_t) + source_cols * &
+                                                 int(l, c_int64_t))
+                                case (3_c_int64_t)
+                                    src_index = int(i, c_int64_t) + source_rows * &
+                                                (int(j, c_int64_t) + source_cols * &
+                                                 int(l, c_int64_t))
+                                case default
+                                    src_index = int(i, c_int64_t) + source_rows * &
+                                                (int(j, c_int64_t) + source_cols * &
+                                                 int(k, c_int64_t))
+                                end select
+                                call load_array_linear_element(context, source_index, &
+                                                               src_index, value, error_msg)
+                                if (len_trim(error_msg) > 0) return
+                                linear_index = int(i, c_int64_t) + target_rows * &
+                                               (int(j, c_int64_t) + target_cols * &
+                                                (int(k, c_int64_t) + target_depth * &
+                                                 int(l, c_int64_t)))
+                                call store_array_linear_element(context, symbol_index, &
+                                                                linear_index, value, error_msg)
+                                if (len_trim(error_msg) > 0) return
+                            end do
                         end do
                     end do
                 end do
