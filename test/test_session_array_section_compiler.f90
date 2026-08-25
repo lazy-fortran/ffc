@@ -1,5 +1,6 @@
 program test_session_array_section_compiler
-    use ffc_test_support, only: expect_exit_status, expect_output
+    use ffc_test_support, only: expect_exit_status, expect_output, &
+                                expect_output_matches_gfortran
     implicit none
 
     logical :: all_passed
@@ -16,6 +17,7 @@ program test_session_array_section_compiler
     if (.not. test_empty_section()) all_passed = .false.
     if (.not. test_runtime_scalar_section_dispatch()) all_passed = .false.
     if (.not. test_runtime_scalar_section_ranks()) all_passed = .false.
+    if (.not. test_fixed_rank3_assignment_matches_gfortran()) all_passed = .false.
 
     if (.not. all_passed) stop 1
 
@@ -204,4 +206,21 @@ contains
             '          10'//new_line('a'), &
             '/tmp/ffc_session_runtime_scalar_section_ranks_test')
     end function test_runtime_scalar_section_ranks
+
+    logical function test_fixed_rank3_assignment_matches_gfortran()
+        ! Compare fixed-size rank-3 scalar broadcast and conformable section copy
+        ! against gfortran's independent behavioral oracle.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(2, 2, 2), b(2, 2, 2)'//new_line('a')// &
+            '  a = 0'//new_line('a')// &
+            '  a(:, :, :) = 7'//new_line('a')// &
+            '  b = 0'//new_line('a')// &
+            '  b(:, :, :) = a(:, :, :)'//new_line('a')// &
+            '  print *, sum(b)'//new_line('a')// &
+            'end program main'
+
+        test_fixed_rank3_assignment_matches_gfortran = &
+            expect_output_matches_gfortran(source, 'array_section_fixed_rank3')
+    end function test_fixed_rank3_assignment_matches_gfortran
 end program test_session_array_section_compiler
