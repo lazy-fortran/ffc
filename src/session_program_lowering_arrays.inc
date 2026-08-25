@@ -4600,8 +4600,9 @@
         ! Materialize a fixed/raw-sret array function result into a bounded
         ! temporary so MATMUL can consume it as an ordinary rank-1/2 array.
         ! The result shape is recovered from size(dummy) bounds and the actual
-        ! call argument's known shape; dynamic caller-only shapes remain an
-        ! explicit diagnostic rather than an unbounded compiler allocation.
+        ! call argument's known shape, including higher-rank explicit-shape
+        ! actuals; dynamic caller-only shapes remain an explicit diagnostic
+        ! rather than an unbounded compiler allocation.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: value_index
         type(lowering_context_t), intent(inout) :: context
@@ -4750,7 +4751,7 @@
         type(lowering_context_t), intent(inout) :: context
         integer, intent(out) :: extent
         character(len=:), allocatable, intent(out) :: error_msg
-        integer(c_int64_t) :: folded
+        integer(c_int64_t) :: folded, dim_value
         character(len=:), allocatable :: dummy_name, name_error
         integer :: param_pos, actual_index, actual_symbol
 
@@ -4766,9 +4767,19 @@
             if (.not. allocated(size_call%name) .or. &
                 .not. same_name(size_call%name, 'size') .or. &
                 .not. allocated(size_call%arg_indices) .or. &
-                size(size_call%arg_indices) /= 1) then
+                (size(size_call%arg_indices) /= 1 .and. &
+                 size(size_call%arg_indices) /= 2)) then
                 error_msg = 'matmul array result extent is not compile-time known'
                 return
+            end if
+            dim_value = 1_c_int64_t
+            if (size(size_call%arg_indices) == 2) then
+                call eval_i32_constant(arena, size_call%arg_indices(2), context, &
+                                       dim_value, error_msg)
+                if (len_trim(error_msg) > 0) then
+                    error_msg = 'matmul array result SIZE dimension is not constant'
+                    return
+                end if
             end if
             call get_identifier_name(arena, size_call%arg_indices(1), dummy_name, &
                                      name_error)
@@ -4797,7 +4808,12 @@
                 error_msg = 'matmul array result actual is not an array'
                 return
             end if
-            extent = context%symbols(actual_symbol)%array_dim_sizes(1)
+            if (dim_value < 1_c_int64_t .or. dim_value > &
+                int(context%symbols(actual_symbol)%array_rank, c_int64_t)) then
+                error_msg = 'matmul array result SIZE dimension is out of range'
+                return
+            end if
+            extent = context%symbols(actual_symbol)%array_dim_sizes(int(dim_value))
             if (extent <= 0) then
                 error_msg = 'matmul array result actual shape is dynamic'
                 return
