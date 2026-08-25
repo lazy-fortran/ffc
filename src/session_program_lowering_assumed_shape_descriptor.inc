@@ -1108,8 +1108,16 @@
                 return
             end if
             descriptor = context%symbols(sym_index)%address
-            if (.not. emit_ptr_load(context%session, descriptor, descriptor_base, &
-                                    error_msg)) return
+            ! Allocatable dummies use the descriptor-aliasing ABI: the
+            ! parameter address is already the caller's descriptor. Ordinary
+            ! assumed-rank dummies receive a pointer to a temporary canonical
+            ! descriptor and therefore retain the load below.
+            if (dummy_is_allocatable_array(arena, body_indices, name)) then
+                descriptor_base = descriptor
+            else
+                if (.not. emit_ptr_load(context%session, descriptor, descriptor_base, &
+                                        error_msg)) return
+            end if
             context%symbols(sym_index)%is_assumed_rank = .true.
             context%symbols(sym_index)%runtime_descriptor_address = descriptor_base
         end do

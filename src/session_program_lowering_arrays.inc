@@ -220,7 +220,17 @@
             return
         end if
         context%symbols(index)%value_kind = value_kind
-        context%symbols(index)%runtime_descriptor_address = param_base
+        ! The entry binder has already followed the formal slot to the
+        ! canonical actual descriptor.  Keep that address rather than making
+        ! SELECT RANK read the pointer slot itself.
+        if (.not. context%symbols(index)%has_runtime_descriptor) then
+            context%symbols(index)%runtime_descriptor_address = param_base
+        end if
+        if (node%is_allocatable) then
+            context%symbols(index)%is_allocatable = .true.
+            context%symbols(index)%allocatable_descriptor_address = &
+                context%symbols(index)%runtime_descriptor_address
+        end if
         call set_empty(error_msg)
     end subroutine bind_one_assumed_rank
 

@@ -351,16 +351,23 @@
                             ': pointer and alias actuals are refused'
                         return
                     end if
-                    if (context%symbols(assumed_rank_actual_symbol)%is_allocatable .or. &
-                        context%symbols(assumed_rank_actual_symbol)%is_runtime_array) then
-                        error_msg = 'unsupported assumed-rank actual in '//trim(callee_name)// &
-                            ': dynamic shapes are not supported'
-                        return
-                    end if
                     if (context%symbols(assumed_rank_actual_symbol)%value_kind /= VALUE_F32 .and. &
                         context%symbols(assumed_rank_actual_symbol)%value_kind /= VALUE_F64) then
                         error_msg = 'unsupported assumed-rank actual in '//trim(callee_name)// &
                             ': only REAL whole arrays are supported'
+                        return
+                    end if
+                    if (context%symbols(assumed_rank_actual_symbol)%is_allocatable) then
+                        ! Preserve the caller's descriptor so an allocatable
+                        ! assumed-rank dummy owns the same allocation.
+                        call allocatable_array_actual_descriptor_address(arena, &
+                            arg_indices(i), context, args(i), error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        cycle
+                    end if
+                    if (context%symbols(assumed_rank_actual_symbol)%is_runtime_array) then
+                        error_msg = 'unsupported assumed-rank actual in '//trim(callee_name)// &
+                            ': dynamic shapes are not supported'
                         return
                     end if
                 end if
