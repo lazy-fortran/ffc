@@ -2156,10 +2156,10 @@
         end if
 
         if ((value_kind == VALUE_C4 .or. value_kind == VALUE_C8) .and. &
-                (dim_count < 1 .or. dim_count > 2)) then
+                (dim_count < 1 .or. dim_count > 4)) then
             call unsupported_feature_error('complex array declaration', &
                 node%line, node%column, &
-                'direct LIRIC session supports rank-1 and rank-2 complex '// &
+                'direct LIRIC session supports rank-1 through rank-4 complex '// &
                 'arrays only', error_msg)
             return
         end if
