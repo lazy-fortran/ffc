@@ -1084,6 +1084,8 @@ contains
         select case (value_kind)
         case (VALUE_I32)
             id = int(TYPE_ID_INTEGER, c_int64_t)
+        case (VALUE_F32)
+            id = int(TYPE_ID_REAL, c_int64_t)
         case (VALUE_F64)
             id = int(TYPE_ID_REAL, c_int64_t)
         case (VALUE_LOGICAL)
@@ -1129,7 +1131,9 @@ contains
         select case (trim(lowercase_text(type_name)))
         case ('integer')
             value_kind = VALUE_I32
-        case ('real', 'double precision', 'real(8)', 'real(kind=8)')
+        case ('real')
+            value_kind = VALUE_F32
+        case ('double precision', 'real(8)', 'real(kind=8)')
             value_kind = VALUE_F64
         case ('logical')
             value_kind = VALUE_LOGICAL
@@ -1159,13 +1163,6 @@ contains
         call select_type_guard_kind(arena, guard_index, value_kind, error_msg)
         if (len_trim(error_msg) > 0) return
         selector_is_array = context%symbols(sel_index)%is_array
-        if (selector_is_array .and. value_kind == VALUE_F64) then
-            ! `type is (real)` denotes default REAL.  The class(*) array
-            ! descriptor carries the actual's byte stride, while the typed
-            ! arm must load default-real elements as f32 rather than widening
-            ! their four-byte storage to f64.
-            value_kind = VALUE_F32
-        end if
         idx = find_symbol_compat(context, assoc_name)
         if (selector_is_array) then
             ! SELECT TYPE on class(*) assumed-shape keeps the descriptor-backed
