@@ -180,11 +180,11 @@
     end subroutine lower_c_f_strpointer
 
     subroutine lower_pointer_target_array(node, context, value_kind, error_msg)
-        ! Rank-1/rank-2 fixed-size integer/real/logical/complex POINTER/TARGET
+        ! Rank-1/rank-2/rank-3 fixed-size integer/real/logical/complex POINTER/TARGET
         ! arrays (#245 B3a). A target array gets ordinary explicit-shape
-        ! storage; a deferred-shape pointer array (p(:) or p(:,:)) starts
+        ! storage; a deferred-shape pointer array (p(:), p(:,:), or p(:,:,:)) starts
         ! unassociated and adopts a target array's base, shape, and element
-        ! kind at `p => t`. Anything outside this subset (rank>2, allocatable,
+        ! kind at `p => t`. Anything outside this subset (rank>3, allocatable,
         ! derived, character, bounds-remapped pointers) keeps the prior
         ! unsupported diagnostic.
         type(declaration_node), intent(in) :: node
@@ -200,7 +200,7 @@
         dim_count = 0
         if (allocated(node%dimension_indices)) &
             dim_count = size(node%dimension_indices)
-        if (dim_count < 1 .or. dim_count > 2) then
+        if (dim_count < 1 .or. dim_count > 3) then
             call unsupported_pointer_target_array(node, error_msg)
             return
         end if
@@ -263,7 +263,7 @@
 
         call unsupported_feature_error('pointer/target array declaration', &
             node%line, node%column, &
-            'direct LIRIC session supports rank-1 and rank-2 fixed-size '// &
+            'direct LIRIC session supports rank-1, rank-2, and rank-3 fixed-size '// &
             'integer, real, logical, and complex pointer/target arrays '// &
             'only (#245 slice B3a)', error_msg)
     end subroutine unsupported_pointer_target_array
@@ -1072,7 +1072,7 @@
             context%symbols(target_index)%array_size
         context%symbols(ptr_index)%array_lower_bound = &
             context%symbols(target_index)%array_lower_bound
-        do i = 1, 2
+        do i = 1, context%symbols(ptr_index)%array_rank
             context%symbols(ptr_index)%array_dim_sizes(i) = &
                 context%symbols(target_index)%array_dim_sizes(i)
             context%symbols(ptr_index)%array_dim_lowers(i) = &
@@ -1121,8 +1121,8 @@
             error_msg = 'pointer assignment section expected an array slice node'
             return
         end select
-        if (info%result_rank /= 1 .and. info%result_rank /= 2) then
-            error_msg = 'pointer array sections support rank-1 and rank-2 views only'
+        if (info%result_rank < 1 .or. info%result_rank > 3) then
+            error_msg = 'pointer array sections support rank-1 through rank-3 views only'
             return
         end if
         if (info%result_rank == 2) then
@@ -1139,6 +1139,21 @@
             if (info%section_strides(1) /= 1_c_int64_t .or. &
                 info%section_strides(2) /= 1_c_int64_t) then
                 error_msg = 'rank-2 pointer sections must be contiguous'
+                return
+            end if
+        else if (info%result_rank == 3) then
+            if (info%source_rank /= 3 .or. info%kept_dims(1) /= 1 .or. &
+                info%kept_dims(2) /= 2 .or. info%kept_dims(3) /= 3) then
+                error_msg = 'rank-3 pointer sections must keep all source dimensions'
+                return
+            end if
+            if (info%section_extents(1) /= info%source_sizes(1) .or. &
+                info%section_lowers(1) /= info%source_lowers(1)) then
+                error_msg = 'rank-3 pointer sections must keep the complete first dimension'
+                return
+            end if
+            if (any(info%section_strides(1:3) /= 1_c_int64_t)) then
+                error_msg = 'rank-3 pointer sections must be contiguous'
                 return
             end if
         end if

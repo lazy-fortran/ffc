@@ -59,6 +59,48 @@ program test_session_pointer_array_rank2
         'end program main', 'rank-2 pointer sections must be contiguous', &
         '/tmp/ffc_session_pointer_array_rank2_noncontiguous')) stop 4
 
+    ! Rank-3 whole-array association adopts all three target dimensions.
+    if (.not. expect_exit_status( &
+        'program main'//new_line('a')// &
+        'integer, target :: t(2, 3, 4)'//new_line('a')// &
+        'integer, pointer :: p(:, :, :)'//new_line('a')// &
+        'p => t'//new_line('a')// &
+        'if (size(p) /= 24) stop 1'//new_line('a')// &
+        'if (ubound(p, 1) /= 2 .or. ubound(p, 2) /= 3 .or. '// &
+            'ubound(p, 3) /= 4) stop 2'//new_line('a')// &
+        'p(2, 3, 4) = 77'//new_line('a')// &
+        'stop t(2, 3, 4)'//new_line('a')// &
+        'end program main', 77, &
+        '/tmp/ffc_session_pointer_array_rank3_alias')) stop 5
+
+    ! A contiguous rank-3 section may shorten a trailing dimension while
+    ! retaining all dimensions in the descriptor view.
+    if (.not. expect_exit_status( &
+        'program main'//new_line('a')// &
+        'integer, target :: t(2, 3, 4)'//new_line('a')// &
+        'integer, pointer :: p(:, :, :)'//new_line('a')// &
+        't = reshape([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, '// &
+            '13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24], '// &
+            '[2, 3, 4])'//new_line('a')// &
+        'p => t(:, :, 2:3)'//new_line('a')// &
+        'if (size(p) /= 12) stop 1'//new_line('a')// &
+        'if (size(p, 1) /= 2 .or. size(p, 2) /= 3 .or. '// &
+            'size(p, 3) /= 2) stop 2'//new_line('a')// &
+        'if (p(2, 3, 1) /= 12) stop 3'//new_line('a')// &
+        'p(1, 1, 2) = 99'//new_line('a')// &
+        'stop t(1, 1, 3)'//new_line('a')// &
+        'end program main', 99, &
+        '/tmp/ffc_session_pointer_array_rank3_section')) stop 6
+
+    ! A rank-3 section with a non-unit stride remains unsupported.
+    if (.not. expect_error_contains( &
+        'program main'//new_line('a')// &
+        'integer, target :: t(2, 3, 4)'//new_line('a')// &
+        'integer, pointer :: p(:, :, :)'//new_line('a')// &
+        'p => t(:, :, 1:4:2)'//new_line('a')// &
+        'end program main', 'rank-3 pointer sections must be contiguous', &
+        '/tmp/ffc_session_pointer_array_rank3_noncontiguous')) stop 7
+
     ! A rank-1 complex(4) target array: p => t aliases the re/im storage, and
     ! element writes through the pointer flow back to the target.
     if (.not. expect_output( &
@@ -74,7 +116,7 @@ program test_session_pointer_array_rank2
         'end program main', &
         '             (1.00000000,2.00000000)'//new_line('a')// &
         '             (9.00000000,8.00000000)'//new_line('a'), &
-        '/tmp/ffc_session_pointer_array_complex')) stop 5
+        '/tmp/ffc_session_pointer_array_complex')) stop 8
 
-    print *, 'PASS: rank-2 and complex pointer/target array, => , element access'
+    print *, 'PASS: rank-2/rank-3 and complex pointer/target array, => , element access'
 end program test_session_pointer_array_rank2
