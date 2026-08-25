@@ -20,6 +20,10 @@
         if (node%is_abstract) return
         if (allocated(node%kind)) then
             lowered_kind = lowercase_text(trim(node%kind))
+            ! Defined I/O interfaces declare the procedures used by the
+            ! runtime's type-directed I/O dispatch.  Their declarations have
+            ! no direct executable lowering here.
+            if (lowered_kind == 'read' .or. lowered_kind == 'write') return
             if (lowered_kind == 'operator' .or. &
                 lowered_kind == 'assignment') then
                 call register_operator_interface(arena, node, context, &
