@@ -1236,10 +1236,12 @@
     end subroutine derived_array_slot_offset
 
     subroutine component_zero_based_index(arena, arg_indices, context, base_type, &
-                                          comp_index, zero_based, error_msg)
-        ! Zero-based element index of a derived array component reference
-        ! comp(i) or comp(i,j). A rank-2 component linearises column-major with
-        ! the leading extent recorded at collection time.
+                                          comp_index, zero_based, error_msg, &
+                                          access_index)
+        ! Zero-based element index of a derived array component reference. A
+        ! rank-2 fixed component uses its recorded leading extent; rank-3 and
+        ! rank-4 allocatable components load all leading extents from the
+        ! component descriptor and linearise in column-major order.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: arg_indices(:)
         type(lowering_context_t), intent(inout) :: context
@@ -1247,41 +1249,108 @@
         integer, intent(in) :: comp_index
         type(lr_operand_desc_t), intent(out) :: zero_based
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: sub_val, first, second, scaled
-        integer :: dim1
+        integer, intent(in), optional :: access_index
+        type(lr_operand_desc_t) :: sub_val, zeroed, first, second, third, fourth
+        type(lr_operand_desc_t) :: scaled, next_scaled, term, accumulated
+        type(lr_operand_desc_t) :: next_accumulated
+        type(lr_operand_desc_t) :: desc_addr, extent1, extent2, extent3
+        type(lr_operand_desc_t) :: extent_i32
+        integer :: dim1, rank, i
+        character(len=12) :: rank_text
+        integer :: indices(4)
 
-        if (size(arg_indices) < 1 .or. size(arg_indices) > 2) then
-            error_msg = 'only rank-1 and rank-2 derived array components are '// &
+        rank = size(arg_indices)
+        write (rank_text, '(I0)') rank
+        if (rank < 1 .or. rank > 4) then
+            error_msg = 'only rank-1 through rank-4 derived array components are '// &
                         'supported'
             return
         end if
-        call lower_i32_expression(arena, arg_indices(1), context, sub_val, &
-                                  error_msg)
-        if (len_trim(error_msg) > 0) return
-        if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
-                i32_immediate(context%session, 1_c_int64_t), first, error_msg)) &
-            return
-        if (size(arg_indices) == 1) then
+        indices = 0
+        indices(1:rank) = arg_indices
+        do i = 1, rank
+            call lower_i32_expression(arena, indices(i), context, sub_val, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
+                    i32_immediate(context%session, 1_c_int64_t), zeroed, &
+                    error_msg)) return
+            select case (i)
+            case (1)
+                first = zeroed
+            case (2)
+                second = zeroed
+            case (3)
+                third = zeroed
+            case (4)
+                fourth = zeroed
+            end select
+        end do
+        if (rank == 1) then
             zero_based = first
             call set_empty(error_msg)
             return
         end if
         dim1 = context%derived_types(base_type)%component_dim1(comp_index)
-        if (dim1 <= 0) then
+        if (dim1 <= 0 .and. rank == 2) then
             error_msg = 'rank-2 derived array component has no recorded shape'
             return
         end if
-        call lower_i32_expression(arena, arg_indices(2), context, sub_val, &
-                                  error_msg)
-        if (len_trim(error_msg) > 0) return
-        if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
-                i32_immediate(context%session, 1_c_int64_t), second, error_msg)) &
-            return
-        if (.not. emit_i32_binary(context%session, LR_OP_MUL, second, &
-                i32_immediate(context%session, int(dim1, c_int64_t)), scaled, &
-                error_msg)) return
-        if (.not. emit_i32_binary(context%session, LR_OP_ADD, first, scaled, &
-                zero_based, error_msg)) return
+        if (rank > 2) then
+            if (.not. component_is_alloc_array(context, base_type, comp_index)) then
+                error_msg = 'rank-'//trim(rank_text)// &
+                            ' derived array component has no recorded shape'
+                return
+            end if
+            if (.not. present(access_index)) then
+                error_msg = 'rank-'//trim(rank_text)// &
+                            ' allocatable derived array component has no descriptor'
+                return
+            end if
+            call alloc_array_component_descriptor(arena, access_index, context, &
+                                                  desc_addr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i64_load_at(context%session, desc_addr, 8_c_int64_t, &
+                    extent1, error_msg)) return
+            if (.not. emit_liric_i64_to_i32(context%session, extent1, extent_i32, &
+                    error_msg)) return
+            dim1 = 0
+            scaled = extent_i32
+        else
+            scaled = i32_immediate(context%session, int(dim1, c_int64_t))
+        end if
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, second, scaled, &
+                term, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, first, term, &
+                accumulated, error_msg)) return
+        if (rank >= 3) then
+            if (.not. emit_i64_load_at(context%session, desc_addr, 16_c_int64_t, &
+                    extent2, error_msg)) return
+            if (.not. emit_liric_i64_to_i32(context%session, extent2, extent_i32, &
+                    error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, scaled, extent_i32, &
+                    next_scaled, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, third, next_scaled, &
+                    term, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, accumulated, term, &
+                    next_accumulated, error_msg)) return
+            scaled = next_scaled
+            accumulated = next_accumulated
+        end if
+        if (rank == 4) then
+            if (.not. emit_i64_load_at(context%session, desc_addr, 24_c_int64_t, &
+                    extent3, error_msg)) return
+            if (.not. emit_liric_i64_to_i32(context%session, extent3, extent_i32, &
+                    error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, scaled, extent_i32, &
+                    next_scaled, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, fourth, next_scaled, &
+                    term, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, accumulated, term, &
+                    next_accumulated, error_msg)) return
+            accumulated = next_accumulated
+        end if
+        zero_based = accumulated
         call set_empty(error_msg)
     end subroutine component_zero_based_index
 
@@ -5909,7 +5978,8 @@
         if (len_trim(error_msg) > 0) return
         inner_slots = total_component_slots(context, type_index)
         call component_zero_based_index(arena, node%arg_indices, context, &
-            outer_type, component_index, zero_based, error_msg)
+            outer_type, component_index, zero_based, error_msg, &
+            node%base_expr_index)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
                 i32_immediate(context%session, int(inner_slots, c_int64_t)), &
@@ -6119,7 +6189,8 @@
             end if
             start = component_start_slot(context, base_type, comp_index)
             call component_zero_based_index(arena, node%arg_indices, context, &
-                base_type, comp_index, zero_based, error_msg)
+                base_type, comp_index, zero_based, error_msg, &
+                node%base_expr_index)
             if (len_trim(error_msg) > 0) return
             if (component_is_alloc_array(context, base_type, comp_index)) then
                 if (.not. emit_ptr_offset(context%session, base_addr, &
