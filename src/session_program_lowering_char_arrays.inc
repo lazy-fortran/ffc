@@ -824,8 +824,9 @@
         ! A scalar character value broadcasts to every element of a fixed
         ! character array.  The contiguous representation still needs one
         ! padded/truncated copy per element; a single block copy would only
-        ! initialize the first element.
-        if (is_character_literal(arena, node%value_index)) then
+        ! initialize the first element.  An identifier naming a character
+        ! array is reserved for the array-to-array path below.
+        if (.not. is_identifier(arena, node%value_index)) then
             call char_expr_operands(arena, node%value_index, context, source_data, &
                                     source_length, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -856,13 +857,45 @@
             handled = .true.
             return
         end if
-        if (.not. is_identifier(arena, node%value_index)) return
 
         call get_identifier_name(arena, node%value_index, source_name, error_msg)
         if (len_trim(error_msg) > 0) return
         source_index = find_symbol_compat(context, source_name)
-        if (source_index <= 0) return
-        if (.not. context%symbols(source_index)%is_array) return
+        if (source_index <= 0) then
+            ! Let the scalar expression path report the normal diagnostic for
+            ! an unknown character identifier.
+            call char_expr_operands(arena, node%value_index, context, source_data, &
+                                    source_length, error_msg)
+            return
+        end if
+        if (.not. context%symbols(source_index)%is_array) then
+            call char_expr_operands(arena, node%value_index, context, source_data, &
+                                    source_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            target_length = i32_immediate(context%session, &
+                int(element_length, c_int64_t))
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, &
+                    source_length, target_length, source_fits, error_msg)) return
+            call select_value(context, source_fits, source_length, target_length, &
+                              copy_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_i64(context%session, copy_length, &
+                    copy_length64, error_msg)) return
+            n = int(context%symbols(symbol_index)%array_size, c_int64_t)
+            do k = 0_c_int64_t, n - 1_c_int64_t
+                element_index = i32_immediate(context%session, k)
+                call character_array_element_address(context, symbol_index, &
+                                                     element_index, slot_addr, &
+                                                     error_msg)
+                if (len_trim(error_msg) > 0) return
+                call fill_spaces(context, slot_addr, target_length, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_memcpy(context%session, slot_addr, source_data, &
+                        copy_length64, error_msg)) return
+            end do
+            handled = .true.
+            return
+        end if
         if (context%symbols(source_index)%value_kind /= VALUE_CHARACTER) return
         if (context%symbols(source_index)%is_allocatable) return
         if (context%symbols(source_index)%is_runtime_array) return
