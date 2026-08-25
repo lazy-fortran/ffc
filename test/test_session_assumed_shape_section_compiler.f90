@@ -58,12 +58,12 @@ contains
             'call show(y(:,2))'//new_line('a')// &
             'contains'//new_line('a')// &
             'subroutine show(v)'//new_line('a')// &
-            'integer, intent(in) :: v(:)'//new_line('a')// &
-            'print *, size(v), v(1), v(2)'//new_line('a')// &
+            'integer, intent(in) :: v(0:)'//new_line('a')// &
+            'print *, lbound(v,1), ubound(v,1), size(v), v(0), v(1)'//new_line('a')// &
             'end subroutine show'//new_line('a')// &
             'end program main'
         character(len=*), parameter :: expected = &
-            '           2          21          22'//new_line('a')
+            '           0           1           2          21          22'//new_line('a')
 
         test_rank2_column_section = expect_output(source, expected, &
             '/tmp/ffc_session_assumed_shape_section_r2c')

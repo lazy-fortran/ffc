@@ -539,7 +539,13 @@
             error_msg = 'assumed-shape actual was not declared'
             return
         end if
-        is_section_actual = actual_is_rank1_section_view(arena, node_index, context)
+        ! A rank-2 whole column has rank-one result shape and is contiguous,
+        ! but is not a rank-one source section view.  Classify it here so the
+        ! descriptor gets the section's base/extent/byte stride rather than
+        ! inheriting the source array's whole-array view.
+        is_section_actual = actual_is_rank1_section_view(arena, node_index, context) .or. &
+                            actual_is_contiguous_section(arena, node_index, context, &
+                                                         allow_derived=.true.)
         section_is_contiguous = .false.
         is_component_projection = .false.
         select type (actual => arena%entries(node_index)%node)
