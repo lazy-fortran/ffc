@@ -667,12 +667,8 @@
         resolved_size_index4 = 0
         if (present(size_index4)) resolved_size_index4 = size_index4
         if (rank == 4 .and. resolved_size_index4 <= 0) then
-            resolved_size_index4 = find_rank4_allocate_shape(arena, size_index1, &
-                                                              size_index2, size_index3)
-            if (resolved_size_index4 <= 0) then
-                error_msg = 'rank-4 derived allocatable shape is missing'
-                return
-            end if
+            error_msg = 'rank-4 derived allocatable shape is missing'
+            return
         end if
         call lower_derived_allocate_shape(arena, size_index1, context, lowers(1), &
                                           extents(1), error_msg)
@@ -736,31 +732,6 @@
                 i64_immediate(context%session, int(type_index, c_int64_t)), error_msg)
         end if
     end subroutine lower_allocate_derived_array
-
-    integer function find_rank4_allocate_shape(arena, size_index1, size_index2, &
-                                                size_index3) result(size_index4)
-        ! The common allocate dispatcher predates rank-4 derived arrays and
-        ! passes only the first three shape nodes to this helper. Recover the
-        ! fourth node from the immutable AST until that dispatcher can carry
-        ! the complete shape through its interface.
-        type(ast_arena_t), intent(in) :: arena
-        integer, intent(in) :: size_index1, size_index2, size_index3
-        integer :: i
-
-        size_index4 = 0
-        do i = 1, size(arena%entries)
-            select type (candidate => arena%entries(i)%node)
-            type is (call_or_subscript_node)
-                if (.not. allocated(candidate%arg_indices)) cycle
-                if (size(candidate%arg_indices) /= 4) cycle
-                if (candidate%arg_indices(1) /= size_index1) cycle
-                if (candidate%arg_indices(2) /= size_index2) cycle
-                if (candidate%arg_indices(3) /= size_index3) cycle
-                size_index4 = candidate%arg_indices(4)
-                return
-            end select
-        end do
-    end function find_rank4_allocate_shape
 
     subroutine lower_derived_allocate_shape(arena, shape_index, context, lower_i64, &
                                             extent_i64, error_msg)

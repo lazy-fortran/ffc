@@ -342,7 +342,11 @@
                     end if
                 end if
             end if
-            if (size_index3 > 0) then
+            if (size_index4 > 0) then
+                call lower_allocate_derived_array(arena, size_index1, size_index2, &
+                    symbol_index, context, error_msg, dynamic_type_index, &
+                    size_index3, size_index4)
+            else if (size_index3 > 0) then
                 call lower_allocate_derived_array(arena, size_index1, size_index2, &
                     symbol_index, context, error_msg, dynamic_type_index, size_index3)
             else
