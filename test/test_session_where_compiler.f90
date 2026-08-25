@@ -9,6 +9,7 @@ program test_session_where_compiler
 
     all_passed = .true.
     if (.not. test_where_masked_assignment()) all_passed = .false.
+    if (.not. test_where_rank2_masked_assignment()) all_passed = .false.
     if (.not. test_where_elsewhere()) all_passed = .false.
     if (.not. test_where_overlapping_section()) all_passed = .false.
     if (.not. test_where_shape_mismatch_diagnostic()) all_passed = .false.
@@ -52,6 +53,26 @@ contains
         ok = expect_output(source, i12([10, 0, 30, 0, 50]), &
             '/tmp/ffc_where_masked_test')
     end function test_where_masked_assignment
+
+    logical function test_where_rank2_masked_assignment() result(ok)
+        ! The same scalar-comparison WHERE lowering must preserve rank-2
+        ! column-major element order and apply ELSEWHERE to the complement.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(2,3), b(2,3)'//new_line('a')// &
+            '  a = reshape([1, 2, 3, 4, 5, 6], [2, 3])'//new_line('a')// &
+            '  b = 0'//new_line('a')// &
+            '  where (a > 2)'//new_line('a')// &
+            '     b = a * 10'//new_line('a')// &
+            '  elsewhere'//new_line('a')// &
+            '     b = -a'//new_line('a')// &
+            '  end where'//new_line('a')// &
+            '  print *, b'//new_line('a')// &
+            'end program main'
+
+        ok = expect_output(source, i12([-1, -2, 30, 40, 50, 60]), &
+            '/tmp/ffc_where_rank2_masked_test')
+    end function test_where_rank2_masked_assignment
 
     logical function test_where_elsewhere() result(ok)
         ! WHERE (a > 2) c = a * 10 ELSEWHERE c = a. The elsewhere branch covers
