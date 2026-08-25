@@ -4957,8 +4957,8 @@
     subroutine lower_alloc_array_component_section_assignment(arena, node, target, &
                                                                context, error_msg)
         ! Assign a scalar or constructor to an allocatable component section.
-        ! Rank-1 sections use the first descriptor extent; rank-2 sections use
-        ! both extents and retain the descriptor's column-major linear layout.
+        ! Whole sections use the descriptor extents and retain the descriptor's
+        ! column-major linear layout. Scalar broadcast is supported through rank 4.
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
         type(array_slice_node), intent(in) :: target
@@ -4969,6 +4969,7 @@
         type(lr_operand_desc_t), allocatable :: rhs_values(:)
         integer, allocatable :: flat(:)
         integer :: comp_kind, i, n, comp_rank, base_type, comp_index
+        logical :: extent_handled
         integer(c_int32_t) :: entry_block, header_block, body_block, &
                               latch_block, exit_block, idx_vreg
         type(lr_operand_desc_t) :: extent, entry_idx, header_idx, backedge_idx
@@ -4998,9 +4999,9 @@
                             'component rank'
                 return
             end if
-            if (comp_rank < 1 .or. comp_rank > 2) then
+            if (comp_rank < 1 .or. comp_rank > 4) then
                 error_msg = 'allocatable component section assignment supports '// &
-                            'rank 1 and rank 2 only'
+                            'ranks 1 through 4 only'
                 return
             end if
         class default
@@ -5046,6 +5047,12 @@
         call lower_component_rhs_value(arena, node%value_index, comp_kind, context, &
                                        value, error_msg)
         if (len_trim(error_msg) > 0) return
+        idx_vreg = reserve_i32_vreg(context%session)
+        if (idx_vreg == 0_c_int32_t) idx_vreg = reserve_i32_vreg(context%session)
+        if (idx_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve a positive component index vreg'
+            return
+        end if
         call alloc_component_extent_i32(context, desc_addr, extent, error_msg)
         if (len_trim(error_msg) > 0) return
         if (comp_rank == 2) then
@@ -5056,6 +5063,14 @@
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
                                       second_extent_i32, total_extent, error_msg)) return
             extent = total_extent
+        else if (comp_rank >= 3) then
+            call lower_alloc_array_component_size(arena, target%array_index, context, &
+                                                  extent, extent_handled, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. extent_handled) then
+                error_msg = 'allocatable component section extent was not handled'
+                return
+            end if
         end if
         entry_idx = i32_immediate(context%session, 0_c_int64_t)
         entry_block = context%current_block_id
@@ -5068,12 +5083,6 @@
         if (.not. set_liric_block(context%session, header_block, error_msg)) return
         context%current_block_id = header_block
         context%current_block_terminated = .false.
-        idx_vreg = reserve_i32_vreg(context%session)
-        if (idx_vreg == 0_c_int32_t) idx_vreg = reserve_i32_vreg(context%session)
-        if (idx_vreg <= 0_c_int32_t) then
-            error_msg = 'LIRIC could not reserve a positive component index vreg'
-            return
-        end if
         backedge_idx = i32_vreg(context%session, idx_vreg)
         if (.not. emit_liric_i32_phi(context%session, entry_idx, entry_block, &
                 backedge_idx, latch_block, header_idx, error_msg)) return
