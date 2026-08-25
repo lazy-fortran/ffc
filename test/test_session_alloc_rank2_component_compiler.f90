@@ -15,7 +15,7 @@ program test_session_alloc_rank2_component_compiler
     all_passed = .true.
     if (.not. test_runtime_lifecycle()) all_passed = .false.
     if (.not. test_rank2_section_scalar_broadcast()) all_passed = .false.
-    if (.not. test_whole_component_assignment_rejected()) all_passed = .false.
+    if (.not. test_whole_component_assignment()) all_passed = .false.
     if (.not. test_actual_argument_rejected()) all_passed = .false.
     if (.not. test_alias_rejected()) all_passed = .false.
     if (.not. test_unsupported_kind_rejected()) all_passed = .false.
@@ -111,20 +111,36 @@ contains
             'rank2_broadcast')
     end function test_rank2_section_scalar_broadcast
 
-    logical function test_whole_component_assignment_rejected()
+    logical function test_whole_component_assignment()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: t'//new_line('a')// &
             '    integer, allocatable :: a(:,:)'//new_line('a')// &
             '  end type t'//new_line('a')// &
             '  type(t) :: x'//new_line('a')// &
-            '  x%a = 1'//new_line('a')// &
+            '  integer :: rhs(2,3)'//new_line('a')// &
+            '  integer :: i, j'//new_line('a')// &
+            '  allocate(x%a(2,3))'//new_line('a')// &
+            '  x%a = 7'//new_line('a')// &
+            '  if (x%a(1,1) /= 7 .or. x%a(2,3) /= 7) error stop 1'// &
+            new_line('a')// &
+            '  do j = 1, 3'//new_line('a')// &
+            '    do i = 1, 2'//new_line('a')// &
+            '      rhs(i,j) = 10*i + j'//new_line('a')// &
+            '    end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            '  x%a = rhs'//new_line('a')// &
+            '  if (x%a(1,1) /= rhs(1,1) .or. x%a(2,1) /= rhs(2,1)) '// &
+            'error stop 2'//new_line('a')// &
+            '  if (x%a(1,2) /= rhs(1,2) .or. x%a(2,3) /= rhs(2,3)) '// &
+            'error stop 3'//new_line('a')// &
+            '  print *, size(x%a,1), size(x%a,2), x%a(1,1), x%a(2,3)'// &
+            new_line('a')// &
             'end program main'
 
-        test_whole_component_assignment_rejected = expect_error_contains(source, &
-            'whole-component assignment supports rank-1 components only', &
-            '/tmp/ffc_alloc_rank2_component_whole_reject')
-    end function test_whole_component_assignment_rejected
+        test_whole_component_assignment = matches_gfortran(source, &
+            'whole_component_assignment')
+    end function test_whole_component_assignment
 
     logical function test_actual_argument_rejected()
         character(len=*), parameter :: source = &
