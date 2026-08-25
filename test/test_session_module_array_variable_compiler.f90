@@ -1,5 +1,6 @@
 program test_session_module_array_variable_compiler
-    use ffc_test_support, only: expect_exit_status, expect_output
+    use ffc_test_support, only: expect_exit_status, expect_output, &
+        expect_output_matches_gfortran
     implicit none
 
     logical :: all_passed
@@ -9,6 +10,7 @@ program test_session_module_array_variable_compiler
     all_passed = .true.
     if (.not. test_fixed_size_element_rw()) all_passed = .false.
     if (.not. test_fixed_size_rank2_numeric_logical()) all_passed = .false.
+    if (.not. test_fixed_size_rank3_numeric_logical()) all_passed = .false.
     if (.not. test_parameter_sized_size_inquiry()) all_passed = .false.
     if (.not. test_zero_size_module_array()) all_passed = .false.
     if (.not. test_constructor_initializer()) all_passed = .false.
@@ -65,6 +67,31 @@ contains
         test_fixed_size_rank2_numeric_logical = expect_exit_status( &
             source, 21, '/tmp/ffc_session_modarr_rank2')
     end function test_fixed_size_rank2_numeric_logical
+
+    logical function test_fixed_size_rank3_numeric_logical()
+        ! Rank-3 module arrays retain all bounds and shared storage. The
+        ! complete output is checked against an independent gfortran build.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  integer :: a(0:1, 2:3, 4:5) = 1'//new_line('a')// &
+            '  logical :: flags(2, 2, 2) = .false.'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine fill()'//new_line('a')// &
+            '    a(1, 3, 5) = 9'//new_line('a')// &
+            '    flags(1, 1, 1) = .true.'//new_line('a')// &
+            '    flags(2, 2, 2) = .true.'//new_line('a')// &
+            '  end subroutine fill'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  call fill()'//new_line('a')// &
+            '  print *, sum(a), count(flags), size(a), lbound(a, 2), '// &
+            'ubound(a, 3)'//new_line('a')// &
+            'end program main'
+
+        test_fixed_size_rank3_numeric_logical = expect_output_matches_gfortran( &
+            source, 'module_array_rank3')
+    end function test_fixed_size_rank3_numeric_logical
 
     logical function test_parameter_sized_size_inquiry()
         ! A module array whose extent is a named PARAMETER; SIZE must fold to
