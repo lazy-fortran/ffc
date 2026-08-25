@@ -1391,8 +1391,8 @@
     end subroutine resolve_result_decl_kind
 
     logical function result_var_is_fixed_array(node, context) result(is_fixed)
-        ! True when the function result variable is declared as a rank-1 or
-        ! rank-2 explicit-shape array in the body. Runtime bounds are still
+        ! True when the function result variable is declared as a rank-1 to
+        ! rank-4 explicit-shape array in the body. Runtime bounds are still
         ! valid here: the caller supplies the sret storage and the callee's
         ! runtime shape operands drive element addressing.
         type(function_def_node), intent(in) :: node
@@ -1504,7 +1504,7 @@
         if (decl%is_allocatable) return
         if (.not. allocated(decl%dimension_indices)) return
         if (size(decl%dimension_indices) < 1 .or. &
-            size(decl%dimension_indices) > 2) return
+            size(decl%dimension_indices) > 4) return
         is_fixed = .true.
     end function declaration_is_fixed_array
 
