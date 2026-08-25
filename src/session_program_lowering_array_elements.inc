@@ -3371,7 +3371,7 @@
         ! sides use the same linear index mapping for every fixed rank supported
         ! by this assignment path.
         if (node_exists(arena, node%value_index) .and. tinfo%source_rank >= 1 &
-            .and. tinfo%source_rank <= 3) then
+            .and. tinfo%source_rank <= 4) then
             select type (rhs => arena%entries(node%value_index)%node)
             type is (array_literal_node)
                 if (.not. allocated(rhs%element_indices)) then
@@ -3417,8 +3417,8 @@
             end select
         end if
 
-        ! Scalar broadcast: arr(section) = expr, for rank-1 through rank-3 sections.
-        if (tinfo%result_rank < 1 .or. tinfo%result_rank > 3 .or. &
+        ! Scalar broadcast: arr(section) = expr, for rank-1 through rank-4 sections.
+        if (tinfo%result_rank < 1 .or. tinfo%result_rank > 4 .or. &
             tinfo%source_rank < tinfo%result_rank) then
             error_msg = 'array section assignment supports rank-1 through rank-3 '// &
                         'result sections'
