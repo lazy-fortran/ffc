@@ -11,6 +11,7 @@ program test_session_associate
     if (.not. test_associate_scalar_write_alias()) all_passed = .false.
     if (.not. test_associate_expression_selector()) all_passed = .false.
     if (.not. test_associate_rank2_expression_selector()) all_passed = .false.
+    if (.not. test_associate_rank3_expression_selector()) all_passed = .false.
     if (.not. test_associate_two_names()) all_passed = .false.
     if (.not. test_associate_scope_drops_binding()) all_passed = .false.
     if (.not. test_associate_print_value()) all_passed = .false.
@@ -100,6 +101,29 @@ contains
         test_associate_rank2_expression_selector = expect_exit_status( &
             source, 37, '/tmp/ffc_session_associate_rank2_expr')
     end function test_associate_rank2_expression_selector
+
+    logical function test_associate_rank3_expression_selector()
+        ! Rank-3 expression selectors retain their shape and column-major
+        ! values when materialized for the associate name.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: a(2,2,2), b(2,2,2), code'//new_line('a')// &
+            'a = reshape((/1,2,3,4,5,6,7,8/), (/2,2,2/))'//new_line('a')// &
+            'b = 10'//new_line('a')// &
+            'code = 0'//new_line('a')// &
+            'associate (s => a + b)'//new_line('a')// &
+            '    if (s(1,1,1) /= 11 .or. s(2,1,1) /= 12) code = 1'//new_line('a')// &
+            '    if (s(1,2,1) /= 13 .or. s(2,2,1) /= 14) code = 1'//new_line('a')// &
+            '    if (s(1,1,2) /= 15 .or. s(2,1,2) /= 16) code = 1'//new_line('a')// &
+            '    if (s(1,2,2) /= 17 .or. s(2,2,2) /= 18) code = 1'//new_line('a')// &
+            'end associate'//new_line('a')// &
+            'if (code == 0) stop 38'//new_line('a')// &
+            'stop 1'//new_line('a')// &
+            'end program main'
+
+        test_associate_rank3_expression_selector = expect_exit_status( &
+            source, 38, '/tmp/ffc_session_associate_rank3_expr')
+    end function test_associate_rank3_expression_selector
 
     logical function test_associate_two_names()
         character(len=*), parameter :: source = &

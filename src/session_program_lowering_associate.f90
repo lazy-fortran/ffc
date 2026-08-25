@@ -53,6 +53,7 @@ contains
         integer :: value_kind, idx, src_idx
         integer :: expression_symbol, expression_source, expression_extent
         integer :: expression_rank, expression_dim1, expression_dim2
+        integer :: expression_dim3
         character(len=:), allocatable :: sel_name, name_err
         type(lr_operand_desc_t) :: value
         type(array_expr_plan_t) :: expression_plan
@@ -133,12 +134,12 @@ contains
                 return
             end if
             expression_rank = context%symbols(expression_source)%array_rank
-            if (expression_rank /= 1 .and. expression_rank /= 2) then
+            if (expression_rank < 1 .or. expression_rank > 3) then
                 call unsupported_feature_error('associate array selector', &
                     get_node_line(arena, assoc%expr_index), &
                     get_node_column(arena, assoc%expr_index), &
                     'ffc direct-session associate expression storage supports '// &
-                    'rank-1 and rank-2 arrays only', error_msg)
+                    'rank-1 through rank-3 arrays only', error_msg)
                 return
             end if
             if (expression_rank == 1) then
@@ -146,10 +147,15 @@ contains
                 if (expression_dim1 <= 0) expression_dim1 = &
                     context%symbols(expression_source)%array_size
                 expression_extent = expression_dim1
-            else
+            else if (expression_rank == 2) then
                 expression_dim1 = context%symbols(expression_source)%array_dim_sizes(1)
                 expression_dim2 = context%symbols(expression_source)%array_dim_sizes(2)
                 expression_extent = expression_dim1 * expression_dim2
+            else
+                expression_dim1 = context%symbols(expression_source)%array_dim_sizes(1)
+                expression_dim2 = context%symbols(expression_source)%array_dim_sizes(2)
+                expression_dim3 = context%symbols(expression_source)%array_dim_sizes(3)
+                expression_extent = expression_dim1 * expression_dim2 * expression_dim3
             end if
             if (expression_extent <= 0) then
                 error_msg = 'associate array selector has no static extent'
@@ -164,6 +170,11 @@ contains
             if (expression_rank == 2) then
                 context%symbols(expression_symbol)%array_dim_lowers(2) = 1
                 context%symbols(expression_symbol)%array_dim_sizes(2) = expression_dim2
+            else if (expression_rank == 3) then
+                context%symbols(expression_symbol)%array_dim_lowers(2) = 1
+                context%symbols(expression_symbol)%array_dim_sizes(2) = expression_dim2
+                context%symbols(expression_symbol)%array_dim_lowers(3) = 1
+                context%symbols(expression_symbol)%array_dim_sizes(3) = expression_dim3
             end if
             call build_array_expression(context, expression_symbol, assoc%expr_index, &
                 expression_plan, error_msg)
