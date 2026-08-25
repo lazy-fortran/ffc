@@ -273,7 +273,7 @@ contains
             error_msg)
         ! Runtime-extent whole-array comparisons use the same descriptor-aware
         ! element loader as bare logical reductions.  The linear index is
-        ! column-major, so rank-2 uses extent(1) as its leading stride.
+        ! column-major, so each additional rank multiplies the accumulated extent.
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: mask_sym, scalar_index
@@ -290,13 +290,13 @@ contains
 
         call set_empty(error_msg)
         if (context%symbols(mask_sym)%array_rank < 1 .or. &
-            context%symbols(mask_sym)%array_rank > 2) then
+            context%symbols(mask_sym)%array_rank > 3) then
             error_msg = trim(reduction_name)// &
-                ' over runtime comparison masks supports ranks 1 and 2 only'
+                ' over runtime comparison masks supports ranks 1 through 3 only'
             return
         end if
         extent = context%symbols(mask_sym)%runtime_dim_size(1)
-        if (context%symbols(mask_sym)%array_rank == 2) then
+        if (context%symbols(mask_sym)%array_rank >= 2) then
             if (.not. context%symbols(mask_sym)%has_runtime_dim_size(2)) then
                 error_msg = trim(reduction_name)// &
                     ' over runtime comparison masks is missing rank-2 extent'
@@ -304,6 +304,17 @@ contains
             end if
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
                 context%symbols(mask_sym)%runtime_dim_size(2), total_extent, &
+                error_msg)) return
+            extent = total_extent
+        end if
+        if (context%symbols(mask_sym)%array_rank >= 3) then
+            if (.not. context%symbols(mask_sym)%has_runtime_dim_size(3)) then
+                error_msg = trim(reduction_name)// &
+                    ' over runtime comparison masks is missing rank-3 extent'
+                return
+            end if
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
+                context%symbols(mask_sym)%runtime_dim_size(3), total_extent, &
                 error_msg)) return
             extent = total_extent
         end if
