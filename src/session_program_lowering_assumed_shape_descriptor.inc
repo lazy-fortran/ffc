@@ -79,7 +79,7 @@
     logical function assumed_shape_descriptor_forward_actual(arena, node_index, &
                                                              context, source_symbol) &
             result(is_forward)
-        ! A rank-1 assumed-shape dummy or its identity section is already a
+        ! An assumed-shape dummy or its identity section is already a
         ! descriptor-backed view. Forwarding it composes only the dummy bound;
         ! base, extent, and signed byte stride remain those of the incoming
         ! borrowed descriptor.
@@ -120,7 +120,8 @@
         end if
         if (source_symbol <= 0) return
         if (.not. context%symbols(source_symbol)%is_assumed_shape_dummy) return
-        if (context%symbols(source_symbol)%array_rank /= 1) return
+        if (context%symbols(source_symbol)%array_rank < 1 .or. &
+            context%symbols(source_symbol)%array_rank > 3) return
         if (.not. context%symbols(source_symbol)%has_runtime_descriptor) return
         is_forward = .true.
     end function assumed_shape_descriptor_forward_actual
@@ -484,13 +485,11 @@
             is_materialized_expression = .true.
         end if
 
-        if (rank == 1) then
-            if (assumed_shape_descriptor_forward_actual(arena, node_index, context, &
-                                                        forwarded_symbol)) then
-                call build_forwarded_assumed_shape_descriptor(arena, context, rank, &
-                    callee_name, param_pos, forwarded_symbol, descriptor, error_msg)
-                return
-            end if
+        if (assumed_shape_descriptor_forward_actual(arena, node_index, context, &
+                                                    forwarded_symbol)) then
+            call build_forwarded_assumed_shape_descriptor(arena, context, rank, &
+                callee_name, param_pos, forwarded_symbol, descriptor, error_msg)
+            return
         end if
 
         if (is_materialized_expression) then
@@ -745,7 +744,7 @@
                                                         callee_name, param_pos, &
                                                         source_symbol, descriptor, &
                                                         error_msg)
-        ! Compose a rank-1 descriptor for a forwarded assumed-shape dummy. The
+        ! Compose a rank-1 through rank-3 descriptor for a forwarded assumed-shape dummy. The
         ! source descriptor is borrowed and remains the owner of no storage;
         ! the new stack descriptor copies its base, element metadata, extent,
         ! and signed stride, changing only the callee's lower bound.
@@ -759,10 +758,11 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: source_descriptor, value_i64
         integer :: dummy_lowers(ARRAY_MAX_RANK)
+        integer :: dim
         logical :: has_dummy_lowers
 
-        if (rank /= 1) then
-            error_msg = 'assumed-shape descriptor forwarding supports rank 1 only'
+        if (rank < 1 .or. rank > 3) then
+            error_msg = 'assumed-shape descriptor forwarding supports ranks 1 through 3'
             return
         end if
         source_descriptor = context%symbols(source_symbol)%runtime_descriptor_address
@@ -798,25 +798,28 @@
                                                context, rank, dummy_lowers, &
                                                has_dummy_lowers, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. has_dummy_lowers) dummy_lowers(1) = 1
-        if (.not. emit_i64_store_at(context%session, &
-                i64_immediate(context%session, int(dummy_lowers(1), c_int64_t)), &
-                descriptor, assumed_shape_dim_field_offset(1, &
-                    int(ARRAY_DIMENSION_LOWER_OFFSET, c_int64_t)), error_msg)) return
-        if (.not. emit_i64_load_at(context%session, source_descriptor, &
-                assumed_shape_dim_field_offset(1, &
-                    int(ARRAY_DIMENSION_EXTENT_OFFSET, c_int64_t)), value_i64, &
-                error_msg)) return
-        if (.not. emit_i64_store_at(context%session, value_i64, descriptor, &
-                assumed_shape_dim_field_offset(1, &
-                    int(ARRAY_DIMENSION_EXTENT_OFFSET, c_int64_t)), error_msg)) return
-        if (.not. emit_i64_load_at(context%session, source_descriptor, &
-                assumed_shape_dim_field_offset(1, &
-                    int(ARRAY_DIMENSION_STRIDE_OFFSET, c_int64_t)), value_i64, &
-                error_msg)) return
-        if (.not. emit_i64_store_at(context%session, value_i64, descriptor, &
-                assumed_shape_dim_field_offset(1, &
-                    int(ARRAY_DIMENSION_STRIDE_OFFSET, c_int64_t)), error_msg)) return
+        if (.not. has_dummy_lowers) dummy_lowers(1:rank) = 1
+        do dim = 1, rank
+            if (.not. emit_i64_store_at(context%session, &
+                    i64_immediate(context%session, int(dummy_lowers(dim), &
+                                                         c_int64_t)), descriptor, &
+                    assumed_shape_dim_field_offset(dim, &
+                        int(ARRAY_DIMENSION_LOWER_OFFSET, c_int64_t)), error_msg)) return
+            if (.not. emit_i64_load_at(context%session, source_descriptor, &
+                    assumed_shape_dim_field_offset(dim, &
+                        int(ARRAY_DIMENSION_EXTENT_OFFSET, c_int64_t)), value_i64, &
+                    error_msg)) return
+            if (.not. emit_i64_store_at(context%session, value_i64, descriptor, &
+                    assumed_shape_dim_field_offset(dim, &
+                        int(ARRAY_DIMENSION_EXTENT_OFFSET, c_int64_t)), error_msg)) return
+            if (.not. emit_i64_load_at(context%session, source_descriptor, &
+                    assumed_shape_dim_field_offset(dim, &
+                        int(ARRAY_DIMENSION_STRIDE_OFFSET, c_int64_t)), value_i64, &
+                    error_msg)) return
+            if (.not. emit_i64_store_at(context%session, value_i64, descriptor, &
+                    assumed_shape_dim_field_offset(dim, &
+                        int(ARRAY_DIMENSION_STRIDE_OFFSET, c_int64_t)), error_msg)) return
+        end do
         call set_empty(error_msg)
     end subroutine build_forwarded_assumed_shape_descriptor
 

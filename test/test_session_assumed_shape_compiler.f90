@@ -10,6 +10,7 @@ program test_session_assumed_shape
     if (.not. test_rank1_integer()) all_passed = .false.
     if (.not. test_rank1_real_sum()) all_passed = .false.
     if (.not. test_rank2_integer()) all_passed = .false.
+    if (.not. test_rank3_forwarded()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: assumed-shape dummies lower through direct LIRIC'
@@ -98,5 +99,36 @@ contains
         test_rank2_integer = expect_output(source, expected, &
             '/tmp/ffc_session_assumed_shape_r2i')
     end function test_rank2_integer
+
+    logical function test_rank3_forwarded()
+        ! A rank-3 assumed-shape dummy forwarded to another assumed-shape
+        ! dummy must preserve every extent and column-major element address.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: arr(2,2,2)'//new_line('a')// &
+            'arr = 0'//new_line('a')// &
+            'arr(1,1,1) = 111'//new_line('a')// &
+            'arr(2,2,2) = 222'//new_line('a')// &
+            'call outer(arr)'//new_line('a')// &
+            'contains'//new_line('a')// &
+            'subroutine outer(a)'//new_line('a')// &
+            'integer, intent(in) :: a(:,:,:)'//new_line('a')// &
+            'call inner(a)'//new_line('a')// &
+            'end subroutine outer'//new_line('a')// &
+            'subroutine inner(a)'//new_line('a')// &
+            'integer, intent(in) :: a(:,:,:)'//new_line('a')// &
+            'print *, sum(a)'//new_line('a')// &
+            'print *, a(1,1,1)'//new_line('a')// &
+            'print *, a(2,2,2)'//new_line('a')// &
+            'end subroutine inner'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: expected = &
+            '         333'//new_line('a')// &
+            '         111'//new_line('a')// &
+            '         222'//new_line('a')
+
+        test_rank3_forwarded = expect_output(source, expected, &
+            '/tmp/ffc_session_assumed_shape_r3_forwarded')
+    end function test_rank3_forwarded
 
 end program test_session_assumed_shape
