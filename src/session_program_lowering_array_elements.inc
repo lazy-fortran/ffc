@@ -5000,7 +5000,8 @@
         extents = 0
         ok = .false.
         call set_empty(error_msg)
-        if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) < 1) return
+        if (.not. allocated(rhs%arg_indices)) return
+        if (size(rhs%arg_indices) < 1) return
         source_arg = rhs%arg_indices(1)
         if (is_identifier(arena, source_arg)) then
             call get_identifier_name(arena, source_arg, name, error_msg)
@@ -5108,23 +5109,82 @@
         type(lowering_context_t), intent(inout) :: context
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: name
-        integer :: src, rank, d1, d2, i, op
+        character(len=:), allocatable :: name, keyword, id_error
+        integer :: src, rank, i, j, op, arg_value, positional
+        integer :: mask_sym, remaining, extent
+        integer, allocatable :: extents(:), coords(:)
+        logical :: have_dim, have_mask
+        integer(c_int64_t) :: dim_value
         type(lr_operand_desc_t) :: elem, best, best_index, better, selected, one
-        type(lr_operand_desc_t) :: best_row, best_col
+        type(lr_operand_desc_t) :: mask_elem, mask_value
+        type(lr_operand_desc_t), allocatable :: best_coords(:)
 
         handled = .false.
         call set_empty(error_msg)
-        if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) /= 1) return
+        if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) < 1) return
         if (.not. is_identifier(arena, rhs%arg_indices(1))) return
         call get_identifier_name(arena, rhs%arg_indices(1), name, error_msg)
         if (len_trim(error_msg) > 0) return
         src = find_symbol_compat(context, name)
         if (src <= 0 .or. .not. context%symbols(src)%is_array) return
         rank = context%symbols(src)%array_rank
-        if (rank < 1 .or. rank > 2 .or. context%symbols(symbol_index)%array_rank /= 1 .or. &
+        if (rank < 1 .or. rank > 4 .or. context%symbols(symbol_index)%array_rank /= 1 .or. &
             context%symbols(symbol_index)%array_size /= rank .or. &
             context%symbols(symbol_index)%value_kind /= VALUE_I32) return
+        allocate (extents(rank))
+        do i = 1, rank
+            extents(i) = context%symbols(src)%array_dim_sizes(i)
+        end do
+        if (any(extents <= 0)) return
+        allocate (coords(rank), best_coords(rank))
+        have_dim = .false.
+        have_mask = .false.
+        mask_sym = 0
+        positional = 1
+        do i = 2, size(rhs%arg_indices)
+            call reshape_keyword_arg(arena, rhs%arg_indices(i), keyword, arg_value)
+            if (len_trim(keyword) > 0) then
+                select case (keyword)
+                case ('dim')
+                    call eval_i32_constant(arena, arg_value, context, dim_value, &
+                                           error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    have_dim = .true.
+                case ('mask')
+                    if (.not. is_identifier(arena, arg_value)) return
+                    call get_identifier_name(arena, arg_value, name, id_error)
+                    if (len_trim(id_error) > 0) return
+                    mask_sym = find_symbol_compat(context, name)
+                    if (mask_sym <= 0) return
+                    have_mask = .true.
+                case default
+                    return
+                end select
+            else if (positional == 1) then
+                call eval_i32_constant(arena, arg_value, context, dim_value, &
+                                       error_msg)
+                if (len_trim(error_msg) == 0) then
+                    have_dim = .true.
+                else
+                    call set_empty(error_msg)
+                    if (.not. is_identifier(arena, arg_value)) return
+                    call get_identifier_name(arena, arg_value, name, id_error)
+                    if (len_trim(id_error) > 0) return
+                    mask_sym = find_symbol_compat(context, name)
+                    if (mask_sym <= 0) return
+                    have_mask = .true.
+                end if
+                positional = 2
+            else
+                return
+            end if
+        end do
+        if (have_dim .and. (rank /= 1 .or. dim_value /= 1_c_int64_t)) return
+        if (have_mask) then
+            if (.not. context%symbols(mask_sym)%is_array .or. &
+                context%symbols(mask_sym)%array_rank /= rank .or. &
+                context%symbols(mask_sym)%array_size /= context%symbols(src)%array_size) return
+        end if
         if (same_name(rhs%name, 'maxloc')) then
             op = DIM_REDUCE_MAX
         else
@@ -5142,47 +5202,49 @@
             return
         end select
         best_index = i32_immediate(context%session, 0_c_int64_t)
-        best_row = best_index
-        best_col = best_index
-        d1 = context%symbols(src)%array_dim_sizes(1)
-        d2 = 1
-        if (rank == 2) d2 = context%symbols(src)%array_dim_sizes(2)
-        do i = 0, d1*d2 - 1
+        best_coords = best_index
+        do i = 0, context%symbols(src)%array_size - 1
             call load_array_linear_element(context, src, int(i, c_int64_t), elem, &
                 error_msg)
             if (len_trim(error_msg) > 0) return
+            if (have_mask) then
+                call load_array_linear_element(context, mask_sym, int(i, c_int64_t), &
+                                               mask_elem, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, mask_elem, &
+                    i32_immediate(context%session, 0_c_int64_t), mask_value, &
+                    error_msg)) return
+            else
+                mask_value = one
+            end if
             call reduction_locate_better(context, op, context%symbols(src)%value_kind, &
-                elem, best, best_index, one, better, error_msg)
+                elem, best, best_index, mask_value, better, error_msg)
             if (len_trim(error_msg) > 0) return
             call select_value(context, better, elem, best, selected, error_msg)
             if (len_trim(error_msg) > 0) return
             best = selected
-            call select_value(context, better, &
-                i32_immediate(context%session, int(mod(i, d1) + 1, c_int64_t)), &
-                best_row, selected, error_msg)
-            if (len_trim(error_msg) > 0) return
-            best_row = selected
-            if (rank == 2) then
+            remaining = i
+            do j = 1, rank
+                extent = extents(j)
+                coords(j) = mod(remaining, extent) + 1
+                remaining = remaining / extent
                 call select_value(context, better, &
-                    i32_immediate(context%session, int(i/d1 + 1, c_int64_t)), &
-                    best_col, selected, error_msg)
+                    i32_immediate(context%session, int(coords(j), c_int64_t)), &
+                    best_coords(j), selected, error_msg)
                 if (len_trim(error_msg) > 0) return
-                best_col = selected
-            end if
+                best_coords(j) = selected
+            end do
             call select_value(context, better, &
                 i32_immediate(context%session, int(i + 1, c_int64_t)), &
                 best_index, selected, error_msg)
             if (len_trim(error_msg) > 0) return
             best_index = selected
         end do
-        call store_array_linear_element(context, symbol_index, 0_c_int64_t, &
-            best_row, error_msg)
-        if (len_trim(error_msg) > 0) return
-        if (rank == 2) then
-            call store_array_linear_element(context, symbol_index, 1_c_int64_t, &
-                best_col, error_msg)
+        do j = 1, rank
+            call store_array_linear_element(context, symbol_index, &
+                int(j - 1, c_int64_t), best_coords(j), error_msg)
             if (len_trim(error_msg) > 0) return
-        end if
+        end do
         handled = .true.
     end subroutine lower_locate_array_assignment
 
