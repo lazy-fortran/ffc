@@ -187,9 +187,9 @@
         type(lowering_context_t), intent(inout) :: context
         logical, intent(in) :: is_assignment
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i, j, next, fn_index
+        integer :: i, j, next
         type(module_procedure_node), pointer :: mp_node
-        character(len=:), allocatable :: node_type, op_token
+        character(len=:), allocatable :: node_type, op_token, body_name
 
         call set_empty(error_msg)
         if (.not. allocated(node%procedure_indices)) return
@@ -203,39 +203,77 @@
             if (.not. node_exists(arena, node%procedure_indices(i))) cycle
             node_type = get_node_type_at(arena, node%procedure_indices(i))
             if (node_type /= 'module_procedure_node' .and. &
-                node_type /= 'module_procedure') cycle
-            select type (n => arena%entries(node%procedure_indices(i))%node)
-            type is (module_procedure_node)
-                mp_node => n
-            class default
-                cycle
-            end select
-            if (.not. allocated(mp_node%procedure_names)) cycle
-            do j = 1, size(mp_node%procedure_names)
-                if (context%operators(next)%specific_count >= &
-                    MAX_GENERIC_SPECIFICS) then
-                    error_msg = 'operator '//trim(op_token)// &
-                                ' has too many overloads'
-                    return
-                end if
-                associate (op => context%operators(next))
-                    op%specific_count = op%specific_count + 1
-                    op%specific_names(op%specific_count) = &
-                        trim(mp_node%procedure_names(j)%s)
-                    fn_index = find_function_index(context, &
-                        trim(mp_node%procedure_names(j)%s))
-                    if (fn_index > 0) then
-                        op%return_kinds(op%specific_count) = &
-                            context%function_value_kinds(fn_index)
-                        op%first_arg_kinds(op%specific_count) = &
-                            specific_arg_kind(context, fn_index, 1)
-                        op%second_arg_kinds(op%specific_count) = &
-                            specific_arg_kind(context, fn_index, 2)
-                    end if
-                end associate
-            end do
+                node_type /= 'module_procedure' .and. &
+                node_type /= 'function_def_node' .and. &
+                node_type /= 'function_def' .and. &
+                node_type /= 'subroutine_def_node' .and. &
+                node_type /= 'subroutine_def') cycle
+            if (node_type == 'function_def_node' .or. &
+                node_type == 'function_def') then
+                call register_internal_function_by_index(arena, &
+                    node%procedure_indices(i), context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (node_type == 'subroutine_def_node' .or. &
+                     node_type == 'subroutine_def') then
+                call register_internal_subroutine_by_index(arena, &
+                    node%procedure_indices(i), context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+            if (node_type == 'module_procedure_node' .or. &
+                node_type == 'module_procedure') then
+                select type (n => arena%entries(node%procedure_indices(i))%node)
+                type is (module_procedure_node)
+                    mp_node => n
+                class default
+                    cycle
+                end select
+                if (.not. allocated(mp_node%procedure_names)) cycle
+                do j = 1, size(mp_node%procedure_names)
+                    call add_operator_specific(context, next, &
+                        trim(mp_node%procedure_names(j)%s), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            else
+                call interface_body_procedure_name(arena, &
+                    node%procedure_indices(i), body_name)
+                if (len_trim(body_name) == 0) cycle
+                call add_operator_specific(context, next, body_name, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
         end do
     end subroutine register_operator_interface
+
+    subroutine add_operator_specific(context, operator_idx, name, &
+                                      error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: operator_idx
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: fn_index
+
+        call set_empty(error_msg)
+        if (context%operators(operator_idx)%specific_count >= &
+            MAX_GENERIC_SPECIFICS) then
+            error_msg = 'operator '// &
+                trim(context%operators(operator_idx)%operator_name)// &
+                ' has too many overloads'
+            return
+        end if
+        associate (op => context%operators(operator_idx))
+            op%specific_count = op%specific_count + 1
+            op%specific_names(op%specific_count) = trim(name)
+            fn_index = find_function_index(context, trim(name))
+            if (fn_index > 0) then
+                op%return_kinds(op%specific_count) = &
+                    context%function_value_kinds(fn_index)
+                op%first_arg_kinds(op%specific_count) = &
+                    specific_arg_kind(context, fn_index, 1)
+                op%second_arg_kinds(op%specific_count) = &
+                    specific_arg_kind(context, fn_index, 2)
+            end if
+        end associate
+    end subroutine add_operator_specific
 
     integer function find_operator_slot(context, op_token, is_assignment) &
         result(idx)
