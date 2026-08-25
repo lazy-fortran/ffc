@@ -108,14 +108,15 @@ contains
                 end do
             end select
         end if
-        derived_count = 0
-        if (module_index > 0) then
-            do i = 1, arena%size
-                if (.not. node_exists(arena, i)) cycle
-                if (arena%entries(i)%parent_index /= module_index) cycle
-                if (.not. is_derived_type_node(arena, i)) cycle
-                derived_count = derived_count + 1
-            end do
+        ! The module export collector has already selected the public derived
+        ! declarations and retained their arena indices.  Do not reconstruct
+        ! that set from parent links: derived declarations in a module can be
+        ! represented through a different arena nesting path, which otherwise
+        ! silently drops them from the .fmod artefact (#540).
+        derived_count = export%derived_type_count
+        allocate (derived_indices(derived_count))
+        if (derived_count > 0) then
+            derived_indices = export%derived_type_indices(1:derived_count)
         end if
         ! A public module also re-exports a public derived type admitted by a
         ! USE statement. The lowering context already reconstructed that type
@@ -141,17 +142,6 @@ contains
             j = j + 1
             imported_type_indices(j) = i
         end do
-        allocate (derived_indices(derived_count))
-        j = 0
-        if (module_index > 0) then
-            do i = 1, arena%size
-                if (.not. node_exists(arena, i)) cycle
-                if (arena%entries(i)%parent_index /= module_index) cycle
-                if (.not. is_derived_type_node(arena, i)) cycle
-                j = j + 1
-                derived_indices(j) = i
-            end do
-        end if
         allocate (info%derived_types(derived_count + imported_count))
         do i = 1, derived_count
             call build_fmod_derived_type(arena, context, &
