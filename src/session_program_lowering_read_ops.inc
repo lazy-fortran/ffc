@@ -41,6 +41,10 @@
         integer :: i
 
         call set_empty(error_msg)
+        if (is_unformatted_file_read(node, context)) then
+            call lower_read_file_unformatted(arena, node, context, error_msg)
+            return
+        end if
         ! List-directed (*) and explicit edit-descriptor formats both reduce to
         ! a per-item fscanf with a kind-driven conversion (%d / %lf / ...).
         ! Field widths are not enforced; whitespace- and newline-separated
@@ -91,6 +95,107 @@
         if (len_trim(error_msg) > 0) return
         call branch_on_eof_to_end_label(node, fp, context, error_msg)
     end subroutine lower_read_file
+
+    logical function is_unformatted_file_read(node, context)
+        type(read_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer :: sym, ios, unit_number
+
+        is_unformatted_file_read = .false.
+        if (.not. allocated(node%unit_spec)) return
+        read (node%unit_spec, *, iostat=ios) unit_number
+        if (ios == 0) then
+            sym = find_symbol_compat(context, file_unit_pseudo_name(unit_number))
+        else
+            sym = find_symbol_compat(context, trim(node%unit_spec))
+        end if
+        if (sym > 0) is_unformatted_file_read = context%symbols(sym)%is_unformatted
+    end function is_unformatted_file_read
+
+    subroutine lower_read_file_unformatted(arena, node, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(read_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: fp, item_ok
+        integer :: i
+
+        call set_empty(error_msg)
+        call load_unit_file_ptr(node%unit_spec, context, fp, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. allocated(node%var_indices)) then
+            call store_read_iostat_success(node, context, error_msg)
+            return
+        end if
+        do i = 1, size(node%var_indices)
+            call lower_read_file_unformatted_item(arena, node%var_indices(i), fp, &
+                                                   context, item_ok, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call store_read_iostat_success(node, context, error_msg)
+    end subroutine lower_read_file_unformatted
+
+    subroutine lower_read_file_unformatted_item(arena, node_index, fp, context, &
+                                                item_ok, error_msg)
+        use liric_session_complex_print_bindings, only: emit_extern_i32_call
+        use liric_session_memory_bindings, only: emit_i32_load, emit_i64_load
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lr_operand_desc_t), intent(in) :: fp
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: item_ok
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: var_name
+        character(len=:), allocatable :: scanf_fmt
+        type(lr_operand_desc_t) :: slot, args(4), converted
+        integer :: sym, bytes
+
+        call set_empty(error_msg)
+        item_ok = i32_immediate(context%session, 0_c_int64_t)
+        call identifier_name(arena, node_index, var_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        sym = find_symbol_compat(context, var_name)
+        if (sym <= 0) then
+            error_msg = 'read target was not declared: '//trim(var_name)
+            return
+        end if
+
+        call file_read_slot_for_kind(context, sym, scanf_fmt, slot, error_msg)
+        if (len_trim(error_msg) > 0) return
+        select case (context%symbols(sym)%value_kind)
+        case (VALUE_I32, VALUE_F32)
+            bytes = 4
+        case (VALUE_I64, VALUE_F64)
+            bytes = 8
+        case default
+            call unsupported_feature_error('unformatted read', &
+                get_node_line(arena, node_index), get_node_column(arena, node_index), &
+                'only integer and real scalar values are supported', error_msg)
+            return
+        end select
+        args(1) = slot
+        args(2) = i64_immediate(context%session, int(bytes, c_int64_t))
+        args(3) = i64_immediate(context%session, 1_c_int64_t)
+        args(4) = fp
+        if (.not. emit_extern_i32_call(context%session, 'fread', args, converted, &
+                                       error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, converted, &
+                i32_immediate(context%session, 1_c_int64_t), item_ok, error_msg)) return
+        select case (context%symbols(sym)%value_kind)
+        case (VALUE_I32)
+            if (.not. emit_i32_load(context%session, slot, &
+                                    context%symbols(sym)%value, error_msg)) return
+        case (VALUE_I64)
+            if (.not. emit_i64_load(context%session, slot, &
+                                    context%symbols(sym)%value, error_msg)) return
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_load(context%session, slot, &
+                                          context%symbols(sym)%value, error_msg)) return
+        case (VALUE_F64)
+            if (.not. emit_liric_f64_load(context%session, slot, &
+                                          context%symbols(sym)%value, error_msg)) return
+        end select
+    end subroutine lower_read_file_unformatted_item
 
     subroutine branch_on_eof_to_end_label(node, fp, context, error_msg)
         ! Honour a READ end= label: when the read reaches end-of-file, transfer
