@@ -116,6 +116,10 @@
         if (idx > 0) then
             is_proc = context%symbols(idx)%is_proc_pointer
             if (is_proc) return
+            ! Inside a function, the function name denotes its result
+            ! variable.  That symbol is also present in function_names, but
+            ! an actual reference to it is data, not a procedure address.
+            if (idx == context%current_function_result_index) return
             if (find_function_index(context, name) <= 0) return
         end if
         if (find_function_index(context, name) > 0) then
