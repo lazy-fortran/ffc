@@ -228,7 +228,8 @@ contains
         if (is_boz_literal_text(value)) return
         is_real_literal = trim(literal_type) == 'real' .or. &
                           index(value, '.') > 0 .or. index(value, 'e') > 0 .or. &
-                          index(value, 'E') > 0
+                          index(value, 'E') > 0 .or. index(value, 'd') > 0 .or. &
+                          index(value, 'D') > 0
     end procedure is_real_literal
 
     module procedure is_boz_literal_text
