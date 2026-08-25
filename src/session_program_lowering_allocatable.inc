@@ -872,10 +872,10 @@
 
     subroutine lower_allocate_mold_source(arena, node, context, error_msg)
         ! allocate(b, mold=a) / allocate(c, source=a): give the target the same
-        ! rank-1 extent as the mold/source allocatable. SOURCE also copies the
-        ! element bytes; MOLD leaves contents undefined. The source extent must
-        ! be a compile-time constant (allocatable_static_size), which covers the
-        ! straight-line allocate(a(N)); a=... case in the corpus.
+        ! shape as the mold/source allocatable. SOURCE also copies the element
+        ! bytes; MOLD leaves contents undefined. Rank-1 still uses its recorded
+        ! constant extent, while rank-2/rank-3 read all extents from the source
+        ! descriptor.
         type(ast_arena_t), intent(in) :: arena
         type(allocate_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -884,7 +884,8 @@
         integer :: target_sym, source_sym, source_expr, n
         logical :: copy_values
         type(lr_operand_desc_t) :: n_i32, dst_desc, src_desc, dst_data, src_data
-        type(lr_operand_desc_t) :: extent1, extent2, total_i64, bytes_i64
+        type(lr_operand_desc_t) :: extent1, extent2, extent3, total_i32
+        type(lr_operand_desc_t) :: total_i64, bytes_i64
 
         copy_values = node%source_expr_index > 0
         if (copy_values) then
@@ -939,6 +940,50 @@
         if (context%symbols(target_sym)%array_rank /= &
                 context%symbols(source_sym)%array_rank) then
             error_msg = 'mold/source allocate requires matching array ranks'
+            return
+        end if
+        if (context%symbols(source_sym)%array_rank == 3) then
+            call allocatable_descriptor_extent_i32(context, source_sym, 1, &
+                extent1, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call allocatable_descriptor_extent_i32(context, source_sym, 2, &
+                extent2, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call allocatable_descriptor_extent_i32(context, source_sym, 3, &
+                extent3, error_msg)
+            if (len_trim(error_msg) > 0) return
+
+            call lower_allocate_i32_3d_operands(extent1, extent2, extent3, &
+                target_sym, context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            context%symbols(target_sym)%allocatable_static_size = 0
+
+            if (.not. copy_values) then
+                call set_empty(error_msg)
+                return
+            end if
+
+            dst_desc = context%symbols(target_sym)%allocatable_descriptor_address
+            src_desc = context%symbols(source_sym)%allocatable_descriptor_address
+            if (.not. emit_ptr_load(context%session, dst_desc, dst_data, &
+                    error_msg)) return
+            if (.not. emit_ptr_load(context%session, src_desc, src_data, &
+                    error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent1, &
+                    extent2, total_i32, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, total_i32, &
+                    extent3, n_i32, error_msg)) return
+            if (.not. emit_liric_i32_to_i64(context%session, n_i32, total_i64, &
+                    error_msg)) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, total_i64, &
+                    i64_immediate(context%session, int(allocatable_elem_size( &
+                        context%symbols(source_sym)%value_kind), c_int64_t)), &
+                    bytes_i64, error_msg)) return
+            ! Descriptor storage is contiguous in leftmost-index-first order,
+            ! which is Fortran's column-major order.
+            if (.not. emit_memcpy(context%session, dst_data, src_data, &
+                    bytes_i64, error_msg)) return
+            call set_empty(error_msg)
             return
         end if
         if (context%symbols(source_sym)%array_rank == 2) then
