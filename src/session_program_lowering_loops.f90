@@ -74,6 +74,7 @@ contains
         integer :: i
         logical :: body_terminated
         logical :: body_exited
+        logical :: real_loop
         integer(c_int32_t) :: saved_loop_exit_block
         integer(c_int32_t) :: saved_loop_latch_block
         integer(c_int32_t), allocatable :: saved_loop_exit_blocks(:)
@@ -88,19 +89,53 @@ contains
             error_msg = 'DO loop variable was not declared: '//trim(var_name)
             return
         end if
-        if (context%symbols(loop_symbol_index)%value_kind /= VALUE_I32) then
+        real_loop = context%symbols(loop_symbol_index)%value_kind == VALUE_F32 .or. &
+            context%symbols(loop_symbol_index)%value_kind == VALUE_F64
+        if (.not. real_loop .and. &
+            context%symbols(loop_symbol_index)%value_kind /= VALUE_I32) then
             error_msg = 'direct LIRIC session DO loop variable must be integer'
             return
         end if
 
-        call lower_i32_expression(arena, start_expr_index, context, &
-            start_value, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call lower_i32_expression(arena, end_expr_index, context, &
-            end_value, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call resolve_do_step(arena, step_expr_index, context, step_value, &
-            step_operand, step_is_runtime, error_msg)
+        if (real_loop) then
+            if (context%symbols(loop_symbol_index)%value_kind == VALUE_F32) then
+                call lower_f32_expression(arena, start_expr_index, context, &
+                    start_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_f32_expression(arena, end_expr_index, context, &
+                    end_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (step_expr_index > 0) then
+                    call lower_f32_expression(arena, step_expr_index, context, &
+                        step_operand, error_msg)
+                else
+                    step_operand = liric_f32_immediate(context%session, 1.0_c_float)
+                end if
+            else
+                call lower_f64_expression(arena, start_expr_index, context, &
+                    start_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_f64_expression(arena, end_expr_index, context, &
+                    end_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (step_expr_index > 0) then
+                    call lower_f64_expression(arena, step_expr_index, context, &
+                        step_operand, error_msg)
+                else
+                    step_operand = liric_f64_immediate(context%session, 1.0_c_double)
+                end if
+            end if
+            step_is_runtime = .true.
+        else
+            call lower_i32_expression(arena, start_expr_index, context, &
+                start_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_i32_expression(arena, end_expr_index, context, &
+                end_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call resolve_do_step(arena, step_expr_index, context, step_value, &
+                step_operand, step_is_runtime, error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
 
         context%symbols(loop_symbol_index)%value = start_value
@@ -146,7 +181,37 @@ contains
                 header_values(carried_indices(i))
         end do
 
-        if (step_is_runtime) then
+        if (real_loop) then
+            block
+                type(lr_operand_desc_t) :: zero_value
+                type(lr_operand_desc_t) :: step_nonneg
+                type(lr_operand_desc_t) :: ascending_condition
+                type(lr_operand_desc_t) :: descending_condition
+                if (context%symbols(loop_symbol_index)%value_kind == VALUE_F32) then
+                    zero_value = liric_f32_immediate(context%session, 0.0_c_float)
+                    if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OGE, &
+                        step_operand, zero_value, step_nonneg, error_msg)) return
+                    if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OLE, &
+                        context%symbols(loop_symbol_index)%value, end_value, &
+                        ascending_condition, error_msg)) return
+                    if (.not. emit_liric_f32_fcmp(context%session, LR_FCMP_OGE, &
+                        context%symbols(loop_symbol_index)%value, end_value, &
+                        descending_condition, error_msg)) return
+                else
+                    zero_value = liric_f64_immediate(context%session, 0.0_c_double)
+                    if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGE, &
+                        step_operand, zero_value, step_nonneg, error_msg)) return
+                    if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OLE, &
+                        context%symbols(loop_symbol_index)%value, end_value, &
+                        ascending_condition, error_msg)) return
+                    if (.not. emit_liric_f64_fcmp(context%session, LR_FCMP_OGE, &
+                        context%symbols(loop_symbol_index)%value, end_value, &
+                        descending_condition, error_msg)) return
+                end if
+                call select_value(context, step_nonneg, ascending_condition, &
+                    descending_condition, condition, error_msg)
+            end block
+        else if (step_is_runtime) then
             call lower_do_condition_runtime(context, loop_symbol_index, &
                 end_value, step_operand, condition, &
                 error_msg)
@@ -178,10 +243,22 @@ contains
         ! body runs or a body read would see stale storage (#1578).
         if (context%symbols(loop_symbol_index)%has_address .and. &
             context%symbols(loop_symbol_index)%is_reference) then
-            if (.not. emit_i32_store(context%session, &
-                context%symbols(loop_symbol_index)%value, &
-                context%symbols(loop_symbol_index)%address, &
-                error_msg)) return
+            if (real_loop) then
+                if (context%symbols(loop_symbol_index)%value_kind == VALUE_F32) then
+                    if (.not. emit_liric_f32_store(context%session, &
+                        context%symbols(loop_symbol_index)%value, &
+                        context%symbols(loop_symbol_index)%address, error_msg)) return
+                else
+                    if (.not. emit_liric_f64_store(context%session, &
+                        context%symbols(loop_symbol_index)%value, &
+                        context%symbols(loop_symbol_index)%address, error_msg)) return
+                end if
+            else
+                if (.not. emit_i32_store(context%session, &
+                    context%symbols(loop_symbol_index)%value, &
+                    context%symbols(loop_symbol_index)%address, &
+                    error_msg)) return
+            end if
         end if
         call body_emit(context, body_terminated, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -226,9 +303,23 @@ contains
         end if
         reserved_vreg = int(backedge_values(loop_symbol_index)%payload, &
             c_int32_t)
-        if (.not. emit_i32_binary_into(context%session,  &
-            LR_OP_ADD, header_values(loop_symbol_index), step_operand, &
-            reserved_vreg, next_index, error_msg)) return
+        if (real_loop) then
+            if (context%symbols(loop_symbol_index)%value_kind == VALUE_F32) then
+                if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, &
+                    header_values(loop_symbol_index), step_operand, next_index, &
+                    error_msg)) return
+            else
+                if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, &
+                    header_values(loop_symbol_index), step_operand, next_index, &
+                    error_msg)) return
+            end if
+            if (.not. emit_real_copy_to(context%session, next_index, reserved_vreg, &
+                copied_value, error_msg)) return
+        else
+            if (.not. emit_i32_binary_into(context%session,  &
+                LR_OP_ADD, header_values(loop_symbol_index), step_operand, &
+                reserved_vreg, next_index, error_msg)) return
+        end if
         do i = 1, carried_count
             if (carried_indices(i) == loop_symbol_index) cycle
             if (.not. emit_carried_copy(context, carried_indices(i), &
@@ -254,10 +345,22 @@ contains
         ! store above.
         if (context%symbols(loop_symbol_index)%has_address .and. &
             context%symbols(loop_symbol_index)%is_reference) then
-            if (.not. emit_i32_store(context%session, &
-                context%symbols(loop_symbol_index)%value, &
-                context%symbols(loop_symbol_index)%address, &
-                error_msg)) return
+            if (real_loop) then
+                if (context%symbols(loop_symbol_index)%value_kind == VALUE_F32) then
+                    if (.not. emit_liric_f32_store(context%session, &
+                        context%symbols(loop_symbol_index)%value, &
+                        context%symbols(loop_symbol_index)%address, error_msg)) return
+                else
+                    if (.not. emit_liric_f64_store(context%session, &
+                        context%symbols(loop_symbol_index)%value, &
+                        context%symbols(loop_symbol_index)%address, error_msg)) return
+                end if
+            else
+                if (.not. emit_i32_store(context%session, &
+                    context%symbols(loop_symbol_index)%value, &
+                    context%symbols(loop_symbol_index)%address, &
+                    error_msg)) return
+            end if
         end if
         value = i32_immediate(context%session, 0_c_int64_t)
         if (carried_count > 0) then
