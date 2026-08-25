@@ -214,6 +214,8 @@ contains
 
     module procedure is_real_literal
         character(len=:), allocatable :: value, literal_type, err
+        integer :: i, exponent_start, exponent_digits
+        logical :: has_real_exponent
 
         is_real_literal = .false.
         call get_literal_info(arena, node_index, value, literal_type, err)
@@ -226,10 +228,38 @@ contains
         ! ('e', 'd') that the substring heuristic below would mistake for a
         ! real exponent marker.
         if (is_boz_literal_text(value)) return
+        ! FortFront can retain a D-exponent literal as an integer-typed token.
+        ! Recognise only a complete exponent here: a bare `1d` must continue
+        ! through integer lowering and retain its malformed-integer diagnostic.
+        has_real_exponent = .false.
+        do i = 1, len_trim(value)
+            if (value(i:i) /= 'e' .and. value(i:i) /= 'E' .and. &
+                value(i:i) /= 'd' .and. value(i:i) /= 'D') cycle
+            if (i <= 1) cycle
+            if (.not. ((value(i - 1:i - 1) >= '0' .and. &
+                        value(i - 1:i - 1) <= '9') .or. &
+                       value(i - 1:i - 1) == '.')) cycle
+            exponent_start = i + 1
+            if (exponent_start > len_trim(value)) cycle
+            if (value(exponent_start:exponent_start) == '+' .or. &
+                value(exponent_start:exponent_start) == '-') then
+                exponent_start = exponent_start + 1
+            end if
+            exponent_digits = 0
+            do while (exponent_start + exponent_digits <= len_trim(value))
+                if (value(exponent_start + exponent_digits: &
+                          exponent_start + exponent_digits) < '0' .or. &
+                    value(exponent_start + exponent_digits: &
+                         exponent_start + exponent_digits) > '9') exit
+                exponent_digits = exponent_digits + 1
+            end do
+            if (exponent_digits > 0) then
+                has_real_exponent = .true.
+                exit
+            end if
+        end do
         is_real_literal = trim(literal_type) == 'real' .or. &
-                          index(value, '.') > 0 .or. index(value, 'e') > 0 .or. &
-                          index(value, 'E') > 0 .or. index(value, 'd') > 0 .or. &
-                          index(value, 'D') > 0
+                          index(value, '.') > 0 .or. has_real_exponent
     end procedure is_real_literal
 
     module procedure is_boz_literal_text
