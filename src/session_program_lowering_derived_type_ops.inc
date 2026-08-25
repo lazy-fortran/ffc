@@ -606,10 +606,10 @@
         end if
         rank = 0
         if (allocated(node%dimension_indices)) rank = size(node%dimension_indices)
-        if (rank < 1 .or. rank > 2) then
+        if (rank < 1 .or. rank > 3) then
             call unsupported_feature_error('derived allocatable array declaration', &
                 node%line, node%column, 'direct LIRIC session supports rank-1 '// &
-                'and rank-2 derived allocatable arrays', error_msg)
+                'through rank-3 derived allocatable arrays', error_msg)
             return
         end if
         element_bytes = int(total_component_slots(context, type_index), &
@@ -638,8 +638,8 @@
 
     subroutine lower_allocate_derived_array(arena, size_index1, size_index2, &
                                              symbol_index, context, error_msg, &
-                                             dynamic_type_index)
-        ! Allocate a rank-1 or rank-2 derived allocatable through the canonical
+                                             dynamic_type_index, size_index3)
+        ! Allocate a rank-1, rank-2, or rank-3 derived allocatable through the canonical
         ! array descriptor. Shape specs may be scalar extents or lower:upper
         ! ranges; the descriptor retains the declared lower bounds.
         type(ast_arena_t), intent(in) :: arena
@@ -647,15 +647,20 @@
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer, intent(in), optional :: dynamic_type_index
-        type(lr_operand_desc_t) :: lowers(2), extents(2), count_i64, data_ptr
+        integer, intent(in), optional :: size_index3
+        type(lr_operand_desc_t) :: lowers(3), extents(3), count_i64, data_ptr
         type(lr_operand_desc_t) :: product_i64, descriptor
         integer :: rank, type_index
         integer(c_int64_t) :: element_bytes
 
         call set_empty(error_msg)
         rank = context%symbols(symbol_index)%array_rank
-        if (rank < 1 .or. rank > 2) then
+        if (rank < 1 .or. rank > 3) then
             error_msg = 'derived allocatable array rank is not supported'
+            return
+        end if
+        if (rank == 3 .and. .not. present(size_index3)) then
+            error_msg = 'rank-3 derived allocatable shape is missing'
             return
         end if
         call lower_derived_allocate_shape(arena, size_index1, context, lowers(1), &
@@ -668,6 +673,17 @@
             if (.not. emit_i64_binary(context%session, LR_OP_MUL, extents(1), &
                     extents(2), product_i64, error_msg)) return
             count_i64 = product_i64
+        else if (rank == 3) then
+            call lower_derived_allocate_shape(arena, size_index2, context, lowers(2), &
+                                              extents(2), error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_derived_allocate_shape(arena, size_index3, context, lowers(3), &
+                                              extents(3), error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, extents(1), &
+                    extents(2), product_i64, error_msg)) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, product_i64, &
+                    extents(3), count_i64, error_msg)) return
         else
             count_i64 = extents(1)
         end if

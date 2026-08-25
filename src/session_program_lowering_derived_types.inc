@@ -687,7 +687,7 @@
     end subroutine emit_scalar_finalizer_call
 
     subroutine emit_array_finalizer_call(context, symbol_index, error_msg)
-        ! Finalize every element of an allocated rank-1/rank-2 derived
+        ! Finalize every element of an allocated rank-1/rank-2/rank-3 derived
         ! allocatable array by calling the type's scalar FINAL procedure once
         ! on each element's storage address, before the block is released.
         ! An unallocated descriptor (null data pointer) is a no-op, matching
@@ -696,7 +696,8 @@
         integer, intent(in) :: symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: descriptor, data_ptr
-        type(lr_operand_desc_t) :: extent1, extent2, count64, element_bytes
+        type(lr_operand_desc_t) :: extent1, extent2, extent3, count64, element_bytes
+        type(lr_operand_desc_t) :: product3
         type(lr_operand_desc_t) :: index64, byte_offset, element_addr
         type(lr_operand_desc_t) :: entry_index, header_index, next_index
         type(lr_operand_desc_t) :: condition, extent32
@@ -723,9 +724,9 @@
         final_name = trim(context%derived_types(type_index)%final_proc_name)
         if (len_trim(final_name) == 0) return
         rank = context%symbols(symbol_index)%array_rank
-        if (rank < 1 .or. rank > 2) then
+        if (rank < 1 .or. rank > 3) then
             error_msg = 'allocatable derived array finalization supports rank 1 '// &
-                        'and rank 2 only'
+                        'through rank 3 only'
             return
         end if
 
@@ -740,6 +741,18 @@
             if (len_trim(error_msg) > 0) return
             if (.not. emit_i64_binary(context%session, LR_OP_MUL, extent1, &
                     extent2, count64, error_msg)) return
+        else if (rank == 3) then
+            call emit_alloc_desc_load_extent(context, descriptor, 2, extent2, &
+                                             error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_alloc_desc_load_extent(context, descriptor, 3, extent3, &
+                                             error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, extent1, &
+                    extent2, count64, error_msg)) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, count64, &
+                    extent3, product3, error_msg)) return
+            count64 = product3
         else
             count64 = extent1
         end if

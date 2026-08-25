@@ -1,8 +1,8 @@
 program test_session_derived_alloc_array_finalizer_compiler
     ! Finalization of allocatable derived arrays (#643 / #403): the type's
     ! scalar FINAL procedure runs once on every element of an allocated
-    ! rank-1/rank-2 derived array, both when `deallocate` releases the block
-    ! and when the owning procedure reaches the end of its scope. An
+    ! rank-1/rank-2/rank-3 derived array, both when `deallocate` releases the
+    ! block and when the owning procedure reaches the end of its scope. An
     ! unallocated array finalizes nothing.
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
@@ -17,7 +17,8 @@ program test_session_derived_alloc_array_finalizer_compiler
     if (.not. test_rank2_finalizes_all()) all_passed = .false.
     if (.not. test_unallocated_finalizes_nothing()) all_passed = .false.
     if (.not. test_polymorphic_array_refused()) all_passed = .false.
-    if (.not. test_rank3_array_refused()) all_passed = .false.
+    if (.not. test_rank3_finalizes_all()) all_passed = .false.
+    if (.not. test_rank5_array_refused()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: allocatable derived array finalizers lower through direct LIRIC'
@@ -198,33 +199,62 @@ contains
             '/tmp/ffc_alloc_arr_final_polymorphic')
     end function test_polymorphic_array_refused
 
-    logical function test_rank3_array_refused()
-        ! Rank-3 finalization is outside this slice and must not silently skip
-        ! the scalar FINAL procedure during deallocation.
+    logical function test_rank3_finalizes_all()
+        ! Rank-3 allocation builds all three descriptor dimensions. Finalization
+        ! runs once per element on explicit deallocation and scope exit.
         character(len=*), parameter :: source = &
             'module m'//new_line('a')// &
             '  implicit none'//new_line('a')// &
+            '  integer :: n_final = 0'//new_line('a')// &
             '  type :: box_t'//new_line('a')// &
-            '    integer :: id = 0'//new_line('a')// &
             '  contains'//new_line('a')// &
             '    final :: box_final'//new_line('a')// &
             '  end type'//new_line('a')// &
             'contains'//new_line('a')// &
             '  subroutine box_final(self)'//new_line('a')// &
             '    type(box_t), intent(inout) :: self'//new_line('a')// &
+            '    n_final = n_final + 1'//new_line('a')// &
             '  end subroutine box_final'//new_line('a')// &
+            '  subroutine explicit_deallocate()'//new_line('a')// &
+            '    type(box_t), allocatable :: a(:,:,:)'//new_line('a')// &
+            '    allocate(a(2,2,2))'//new_line('a')// &
+            '    deallocate(a)'//new_line('a')// &
+            '  end subroutine explicit_deallocate'//new_line('a')// &
+            '  subroutine scope_exit()'//new_line('a')// &
+            '    type(box_t), allocatable :: a(:,:,:)'//new_line('a')// &
+            '    allocate(a(1,2,3))'//new_line('a')// &
+            '  end subroutine scope_exit'//new_line('a')// &
             'end module m'//new_line('a')// &
             'program main'//new_line('a')// &
             '  use m'//new_line('a')// &
             '  implicit none'//new_line('a')// &
-            '  type(box_t), allocatable :: a(:,:,:)'//new_line('a')// &
-            '  allocate(a(2,2,2))'//new_line('a')// &
-            '  deallocate(a)'//new_line('a')// &
+            '  call explicit_deallocate()'//new_line('a')// &
+            '  if (n_final /= 8) stop 1'//new_line('a')// &
+            '  call scope_exit()'//new_line('a')// &
+            '  if (n_final /= 14) stop 1'//new_line('a')// &
+            '  stop 0'//new_line('a')// &
             'end program main'
 
-        test_rank3_array_refused = expect_error_contains( &
-            source, 'direct LIRIC session supports rank-1 and rank-2 derived allocatable arrays', &
-            '/tmp/ffc_alloc_arr_final_rank3')
-    end function test_rank3_array_refused
+        test_rank3_finalizes_all = expect_exit_status( &
+            source, 0, '/tmp/ffc_alloc_arr_final_rank3')
+    end function test_rank3_finalizes_all
+
+    logical function test_rank5_array_refused()
+        ! Rank-5 derived allocatables remain outside the descriptor contract.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  type :: box_t'//new_line('a')// &
+            '    integer :: id'//new_line('a')// &
+            '  end type'//new_line('a')// &
+            '  type(box_t), allocatable :: a(:,:,:,:,:)'//new_line('a')// &
+            '  allocate(a(1,1,1,1,1))'//new_line('a')// &
+            'end program main'
+
+        test_rank5_array_refused = expect_error_contains( &
+            source, 'direct LIRIC session supports rank-1 through rank-3 '// &
+            'derived allocatable arrays', &
+            '/tmp/ffc_alloc_arr_final_rank5')
+    end function test_rank5_array_refused
 
 end program test_session_derived_alloc_array_finalizer_compiler

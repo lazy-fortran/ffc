@@ -343,14 +343,13 @@
                 end if
             end if
             if (size_index3 > 0) then
-                call unsupported_feature_error('allocate statement', node%line, &
-                    node%column, 'rank-3 derived allocatable arrays are not '// &
-                    'supported', error_msg)
-                return
+                call lower_allocate_derived_array(arena, size_index1, size_index2, &
+                    symbol_index, context, error_msg, dynamic_type_index, size_index3)
+            else
+                call lower_allocate_derived_array(arena, size_index1, size_index2, &
+                                                   symbol_index, context, error_msg, &
+                                                   dynamic_type_index)
             end if
-            call lower_allocate_derived_array(arena, size_index1, size_index2, &
-                                               symbol_index, context, error_msg, &
-                                               dynamic_type_index)
         else if (context%symbols(symbol_index)%array_rank == 3) then
             call lower_allocate_i32_3d(arena, size_index1, size_index2, &
                                        size_index3, symbol_index, context, error_msg)
