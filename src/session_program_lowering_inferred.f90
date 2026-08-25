@@ -30,10 +30,16 @@ contains
         call get_identifier_name(arena, i, id_name, err)
         if (len_trim(err) > 0) cycle
         if (len_trim(id_name) == 0) cycle
-        ! FortFront's binding at this reference is authoritative.  A global
-        ! spelling list would suppress an inferred symbol in a nested scope
-        ! merely because another scope declares the same name.
+        ! FortFront's binding at this reference is authoritative whenever it
+        ! is available.
         if (identifier_has_explicit_binding(arena, i, id_name)) cycle
+        ! Some reference nodes do not carry a FortFront binding even though
+        ! the name is declared in the source.  Do not let that incomplete
+        ! metadata seed a provisional scalar before the real declaration is
+        ! lowered; otherwise ALLOCATABLE and array declarations look like
+        ! duplicate declarations.  The explicit-name list is only a fallback
+        ! for references lacking the authoritative binding above.
+        if (name_is_explicitly_declared(context, id_name)) cycle
         ! Skip if already registered (from a prior inferred seed)
         sym_idx = find_symbol_compat(context, id_name)
         if (sym_idx > 0) cycle
