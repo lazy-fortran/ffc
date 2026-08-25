@@ -327,11 +327,10 @@ contains
 
     subroutine bind_associate_array_section(arena, slice_node, assoc_name, &
             binding, context, error_msg)
-        ! associate(x => a(lo:hi)): bind x to a rank-1, unit-stride view onto
-        ! a(lo:hi)'s own storage (the associate name always starts at lower
-        ! bound 1, Fortran 2018 11.1.3.3). Element access through x GEPs the
-        ! same storage as a, so reads and writes flow through to a. Non-unit
-        ! stride and rank-2 sections keep the prior unsupported diagnostic.
+        ! Bind an associate array section to the source storage.  A rank-1
+        ! section remains a unit-stride view.  A rank-2 view is accepted only
+        ! when its first dimension is complete; that is the condition that
+        ! makes a(:,lo:hi) contiguous in column-major storage.
         type(ast_arena_t), intent(in) :: arena
         type(array_slice_node), intent(in) :: slice_node
         character(len=*), intent(in) :: assoc_name
@@ -340,20 +339,42 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         type(array_section_info_t) :: info
         type(lr_operand_desc_t) :: start_index, view_address
-        integer :: idx, value_kind, source_array_size
+        integer :: idx, value_kind, source_array_size, source_rank
+        integer :: dim1, dim2
         integer(c_int64_t) :: extent
         logical :: ok
 
         call describe_array_section(arena, slice_node, context, info, error_msg)
         if (len_trim(error_msg) > 0) return
-        if (info%result_rank /= 1) then
+        source_rank = info%source_rank
+        if (info%result_rank /= 1 .and. info%result_rank /= 2) then
             call unsupported_feature_error('associate array selector', &
                 slice_node%line, slice_node%column, &
-                'ffc direct-session associate only supports a rank-1 array '// &
-                'section selector', error_msg)
+                'ffc direct-session associate supports rank-1 and rank-2 '// &
+                'array section selectors', error_msg)
             return
         end if
-        if (info%section_strides(info%kept_dims(1)) /= 1_c_int64_t) then
+        if (info%result_rank == 2) then
+            if (source_rank /= 2 .or. info%kept_dims(1) /= 1 .or. &
+                info%kept_dims(2) /= 2) then
+                call unsupported_feature_error('associate array selector', &
+                    slice_node%line, slice_node%column, &
+                    'ffc direct-session rank-2 associate sections must keep '// &
+                    'both source dimensions', error_msg)
+                return
+            end if
+            if (info%section_extents(1) /= info%source_sizes(1) .or. &
+                info%section_lowers(1) /= info%source_lowers(1)) then
+                call unsupported_feature_error('associate array selector', &
+                    slice_node%line, slice_node%column, &
+                    'ffc direct-session rank-2 associate sections must keep '// &
+                    'the complete first dimension', error_msg)
+                return
+            end if
+        end if
+        if (info%section_strides(info%kept_dims(1)) /= 1_c_int64_t .or. &
+            (info%result_rank == 2 .and. &
+             info%section_strides(info%kept_dims(2)) /= 1_c_int64_t)) then
             call unsupported_feature_error('associate array selector', &
                 slice_node%line, slice_node%column, &
                 'ffc direct-session associate only supports a unit-stride '// &
@@ -363,6 +384,9 @@ contains
 
         value_kind = context%symbols(info%source_index)%value_kind
         source_array_size = context%symbols(info%source_index)%array_size
+        if (source_rank == 2) then
+            source_array_size = int(info%source_sizes(1) * info%source_sizes(2))
+        end if
         start_index = i32_immediate(context%session, &
             array_section_source_linear_index(info, 0_c_int64_t))
         select case (value_kind)
@@ -392,11 +416,21 @@ contains
         context%symbols(idx)%name = trim(assoc_name)
         context%symbols(idx)%value_kind = value_kind
         context%symbols(idx)%is_array = .true.
-        context%symbols(idx)%array_rank = 1
+        context%symbols(idx)%array_rank = info%result_rank
         context%symbols(idx)%array_size = int(extent)
         context%symbols(idx)%array_lower_bound = 1
         context%symbols(idx)%array_dim_lowers(1) = 1
-        context%symbols(idx)%array_dim_sizes(1) = int(extent)
+        context%symbols(idx)%array_dim_sizes(1) = int( &
+            info%section_extents(info%kept_dims(1)))
+        if (info%result_rank == 2) then
+            dim1 = int(info%section_extents(info%kept_dims(1)))
+            dim2 = int(info%section_extents(info%kept_dims(2)))
+            context%symbols(idx)%array_dim_lowers(2) = 1
+            context%symbols(idx)%array_dim_sizes(2) = dim2
+            ! Keep the explicit local variables in the lowering path: they
+            ! document the column-major shape used by subsequent GEPs.
+            context%symbols(idx)%array_size = dim1 * dim2
+        end if
         context%symbols(idx)%element_address = view_address
         context%symbols(idx)%has_address = .true.
         context%symbols(idx)%is_reference = .true.

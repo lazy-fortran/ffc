@@ -1,5 +1,5 @@
 program test_session_associate_selectors
-    use ffc_test_support, only: expect_exit_status
+    use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
 
     logical :: all_passed
@@ -9,6 +9,8 @@ program test_session_associate_selectors
     all_passed = .true.
     if (.not. test_associate_array_section_read()) all_passed = .false.
     if (.not. test_associate_array_section_write()) all_passed = .false.
+    if (.not. test_associate_rank2_section()) all_passed = .false.
+    if (.not. test_associate_noncontiguous_rejected()) all_passed = .false.
     if (.not. test_associate_component_read()) all_passed = .false.
     if (.not. test_associate_component_write()) all_passed = .false.
     if (.not. test_associate_allocatable_array_component()) all_passed = .false.
@@ -54,6 +56,41 @@ contains
             source, 99, &
             '/tmp/ffc_session_associate_section_write')
     end function test_associate_array_section_write
+
+    logical function test_associate_rank2_section()
+        ! a(:,2:3) is contiguous in column-major storage.  The associate
+        ! name has a fresh lower bound of one in both dimensions, while writes
+        ! still address the selected columns of a.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: a(2,4)'//new_line('a')// &
+            'a = reshape([1, 2, 3, 4, 5, 6, 7, 8], [2, 4])'//new_line('a')// &
+            'associate (x => a(:,2:3))'//new_line('a')// &
+            '    if (size(x,1) /= 2 .or. size(x,2) /= 2) stop 1'//new_line('a')// &
+            '    if (lbound(x,1) /= 1 .or. lbound(x,2) /= 1) stop 2'//new_line('a')// &
+            '    if (x(1,1) /= 3 .or. x(2,2) /= 6) stop 3'//new_line('a')// &
+            '    x(2,2) = 99'//new_line('a')// &
+            'end associate'//new_line('a')// &
+            'stop a(2,3)'//new_line('a')// &
+            'end program main'
+
+        test_associate_rank2_section = expect_exit_status( &
+            source, 99, '/tmp/ffc_session_associate_rank2_section')
+    end function test_associate_rank2_section
+
+    logical function test_associate_noncontiguous_rejected()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: a(3,4)'//new_line('a')// &
+            'associate (x => a(1:2,2:3))'//new_line('a')// &
+            '    x(1,1) = 7'//new_line('a')// &
+            'end associate'//new_line('a')// &
+            'end program main'
+
+        test_associate_noncontiguous_rejected = expect_error_contains( &
+            source, 'complete first dimension', &
+            '/tmp/ffc_session_associate_noncontiguous')
+    end function test_associate_noncontiguous_rejected
 
     logical function test_associate_component_read()
         ! associate (s => a%comp) aliases the component's own storage.
