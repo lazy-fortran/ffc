@@ -564,6 +564,8 @@
         integer, intent(in) :: character_length
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: index
+        character(len=:), allocatable :: blanks
+        character(len=64) :: string_name
 
         if (find_symbol_compat(context, name) > 0) then
             error_msg = 'duplicate character declaration: '//trim(name)
@@ -579,7 +581,20 @@
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_CHARACTER
         context%symbols(index)%character_length = character_length
-        context%symbols(index)%has_character_value = .false.
+        ! A fixed-length character declaration without an initializer has an
+        ! undefined Fortran value, but it still needs valid storage: later
+        ! character assignment must be able to read the source without
+        ! passing a null pointer to memcpy.  Use a blank buffer until the
+        ! first defined assignment replaces it.
+        allocate (character(len=character_length) :: blanks)
+        blanks = repeat(' ', character_length)
+        context%string_literal_count = context%string_literal_count + 1
+        string_name = ffc_unit_global_name( &
+            context, 'char.uninit.', context%string_literal_count)
+        call materialize_liric_string(context%session, trim(string_name), blanks, &
+                                      context%symbols(index)%value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(index)%has_character_value = .true.
         context%symbol_count = index
         call set_empty(error_msg)
     end subroutine define_character_symbol
