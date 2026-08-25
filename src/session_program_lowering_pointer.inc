@@ -1205,8 +1205,8 @@
             error_msg = 'pointer assignment section expected an array slice node'
             return
         end select
-        if (info%result_rank < 1 .or. info%result_rank > 3) then
-            error_msg = 'pointer array sections support rank-1 through rank-3 views only'
+        if (info%result_rank < 1 .or. info%result_rank > 4) then
+            error_msg = 'pointer array sections support rank-1 through rank-4 views only'
             return
         end if
         if (info%result_rank == 2) then
@@ -1238,6 +1238,22 @@
             end if
             if (any(info%section_strides(1:3) /= 1_c_int64_t)) then
                 error_msg = 'rank-3 pointer sections must be contiguous'
+                return
+            end if
+        else if (info%result_rank == 4) then
+            if (info%source_rank /= 4 .or. info%kept_dims(1) /= 1 .or. &
+                info%kept_dims(2) /= 2 .or. info%kept_dims(3) /= 3 .or. &
+                info%kept_dims(4) /= 4) then
+                error_msg = 'rank-4 pointer sections must keep all source dimensions'
+                return
+            end if
+            if (info%section_extents(1) /= info%source_sizes(1) .or. &
+                info%section_lowers(1) /= info%source_lowers(1)) then
+                error_msg = 'rank-4 pointer sections must keep the complete first dimension'
+                return
+            end if
+            if (any(info%section_strides(1:4) /= 1_c_int64_t)) then
+                error_msg = 'rank-4 pointer sections must be contiguous'
                 return
             end if
         end if
