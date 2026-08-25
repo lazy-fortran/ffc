@@ -2164,6 +2164,15 @@ subroutine collect_component_declaration(component_index, parent_line, &
         call get_array_bounds(component, context, array_lower_bound, array_size, &
                               error_msg)
         if (len_trim(error_msg) > 0) return
+        ! get_array_bounds conservatively classifies a subscript expression as
+        ! runtime-sized. A PARAMETER array element is nevertheless a constant
+        ! specification expression (for example, tgc(1) in a component bound),
+        ! and the integer constant folder already knows how to evaluate it.
+        if (array_size <= 0 .and. allocated(component%dimension_indices)) then
+            call component_array_count_constant_bounds(component, context, &
+                array_lower_bound, array_size, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         if (array_size <= 0) then
             call unsupported_feature_error('derived type array component', &
                 component%line, component%column, 'array components need a '// &
@@ -2172,6 +2181,43 @@ subroutine collect_component_declaration(component_index, parent_line, &
         end if
         call set_empty(error_msg)
     end subroutine component_array_count
+
+    subroutine component_array_count_constant_bounds(component, context, &
+                                                      array_lower_bound, array_size, &
+                                                      error_msg)
+        type(declaration_node), intent(in) :: component
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: array_lower_bound
+        integer, intent(out) :: array_size
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, dim_index
+        integer(c_int64_t) :: lower_value, upper_value, extent
+
+        array_lower_bound = 1
+        array_size = 1
+        call set_empty(error_msg)
+        do i = 1, size(component%dimension_indices)
+            dim_index = component%dimension_indices(i)
+            select type (dim_node => context%arena%entries(dim_index)%node)
+            type is (range_expression_node)
+                call eval_i32_constant(context%arena, dim_node%start_index, &
+                                       context, lower_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call eval_i32_constant(context%arena, dim_node%end_index, &
+                                       context, upper_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                extent = upper_value - lower_value + 1_c_int64_t
+            class default
+                call eval_i32_constant(context%arena, dim_index, context, &
+                                       upper_value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                lower_value = 1_c_int64_t
+                extent = upper_value
+            end select
+            if (i == 1) array_lower_bound = int(lower_value)
+            array_size = array_size * int(extent)
+        end do
+    end subroutine component_array_count_constant_bounds
 
     subroutine add_derived_component(context, type_index, name, line, column, &
                                      has_default, default_value, array_size, &
