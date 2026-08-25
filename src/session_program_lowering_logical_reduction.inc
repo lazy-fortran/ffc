@@ -614,7 +614,7 @@
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: name, op, err
+        character(len=:), allocatable :: name, op, err, logical_op
         integer :: sym, left, right, line, column, opcode, source_vk
         logical :: array_real_call
         type(lr_operand_desc_t) :: lhs, rhs, re_value, im_value, promoted
@@ -634,7 +634,9 @@
                     int(linear_index, c_int64_t), value, error_msg)
                 return
             end if
-            if (compare_vk == VALUE_F32) then
+            if (compare_vk == VALUE_LOGICAL) then
+                call lower_logical_expression(arena, idx, context, value, error_msg)
+            else if (compare_vk == VALUE_F32) then
                 call lower_f32_expression(arena, idx, context, value, error_msg)
             else
                 call lower_f64_expression(arena, idx, context, value, error_msg)
@@ -724,6 +726,11 @@
             end if
         end select
 
+        if (is_literal(arena, idx) .and. compare_vk == VALUE_LOGICAL) then
+            call lower_logical_expression(arena, idx, context, value, error_msg)
+            return
+        end if
+
         if (is_binary_op(arena, idx)) then
             call get_binary_op_info(arena, idx, op, left, right, line, column, err)
             if (len_trim(err) > 0) then
@@ -745,6 +752,36 @@
                 false_val = i32_immediate(context%session, 1_c_int64_t)
                 call select_value(context, cond, true_val, false_val, value, &
                                   error_msg)
+                return
+            end if
+            logical_op = trim(adjustl(lowercase_text(op)))
+            if (is_logical_connective(logical_op)) then
+                call lower_mask_expression_element(arena, left, VALUE_LOGICAL, &
+                    linear_index, context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_mask_expression_element(arena, right, VALUE_LOGICAL, &
+                    linear_index, context, rhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                select case (logical_op)
+                case ('.and.', 'and')
+                    if (.not. emit_i32_binary(context%session, LR_OP_AND, lhs, &
+                            rhs, value, error_msg)) return
+                case ('.or.', 'or')
+                    if (.not. emit_i32_binary(context%session, LR_OP_OR, lhs, &
+                            rhs, value, error_msg)) return
+                case ('.eqv.', 'eqv', '.neqv.', 'neqv')
+                    if (.not. emit_i32_binary(context%session, LR_OP_XOR, lhs, &
+                            rhs, value, error_msg)) return
+                    if (logical_op == '.eqv.' .or. logical_op == 'eqv') then
+                        if (.not. emit_i32_binary(context%session, LR_OP_XOR, value, &
+                                i32_immediate(context%session, 1_c_int64_t), &
+                                value, error_msg)) return
+                    end if
+                end select
+                return
+            end if
+            if (compare_vk == VALUE_LOGICAL) then
+                call lower_logical_expression(arena, idx, context, value, error_msg)
                 return
             end if
             call lower_mask_expression_element(arena, left, compare_vk, linear_index, &
