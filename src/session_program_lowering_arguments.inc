@@ -1228,6 +1228,8 @@
             symbol_index = resolve_symbol_at_node(context, node_index, id_name)
             if (symbol_index <= 0) return
             if (.not. context%symbols(symbol_index)%is_array) return
+            if (context%symbols(symbol_index)%is_assumed_shape_dummy .and. &
+                .not. context%symbols(symbol_index)%has_runtime_descriptor) return
             element_count = int(context%symbols(symbol_index)%array_size, &
                                 c_int64_t)
             known = .true.
@@ -1869,7 +1871,14 @@
             error_msg = 'array argument was not declared: '//trim(id_name)
             return
         end if
-        address = context%symbols(symbol_index)%element_address
+        if (context%symbols(symbol_index)%is_assumed_shape_dummy .and. &
+            .not. context%symbols(symbol_index)%has_runtime_descriptor) then
+            ! An absent OPTIONAL assumed-shape actual is represented by the
+            ! dummy's nullable descriptor pointer, not by element_address.
+            address = context%symbols(symbol_index)%address
+        else
+            address = context%symbols(symbol_index)%element_address
+        end if
         call set_empty(error_msg)
     end subroutine whole_array_actual_address
 
