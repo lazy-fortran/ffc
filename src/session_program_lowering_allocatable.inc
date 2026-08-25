@@ -96,7 +96,7 @@
         if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
             value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL .and. &
             value_kind /= VALUE_CHARACTER .and. value_kind /= VALUE_C4 .and. &
-            value_kind /= VALUE_C8) then
+            value_kind /= VALUE_C8 .and. value_kind /= VALUE_CLASS_STAR) then
             call unsupported_feature_error('allocatable declaration', &
                 node%line, node%column, &
                 'direct LIRIC session supports integer, real, logical, complex, '// &
@@ -166,11 +166,22 @@
                 return
             end if
         end if
+        if (value_kind == VALUE_CLASS_STAR .and. rank /= 1) then
+            call unsupported_feature_error('allocatable declaration', node%line, &
+                node%column, 'class(*) allocatable arrays currently support '// &
+                'rank 1 only', error_msg)
+            return
+        end if
 
         if (node%is_multi_declaration .and. allocated(node%var_names)) then
             do i = 1, size(node%var_names)
-                call declare_allocatable(context, node%var_names(i), rank, &
-                                         value_kind, error_msg)
+                if (value_kind == VALUE_CLASS_STAR) then
+                    call declare_class_star_array(context, node%var_names(i), &
+                                                  error_msg)
+                else
+                    call declare_allocatable(context, node%var_names(i), rank, &
+                                             value_kind, error_msg)
+                end if
                 if (len_trim(error_msg) > 0) return
                 if (value_kind == VALUE_CHARACTER) then
                     symbol_index = find_symbol_compat(context, node%var_names(i))
@@ -180,8 +191,12 @@
                 end if
             end do
         else if (allocated(node%var_name)) then
-            call declare_allocatable(context, node%var_name, rank, value_kind, &
-                                     error_msg)
+            if (value_kind == VALUE_CLASS_STAR) then
+                call declare_class_star_array(context, node%var_name, error_msg)
+            else
+                call declare_allocatable(context, node%var_name, rank, value_kind, &
+                                         error_msg)
+            end if
             if (len_trim(error_msg) == 0 .and. value_kind == VALUE_CHARACTER) then
                 symbol_index = find_symbol_compat(context, node%var_name)
                 if (symbol_index > 0) &
@@ -192,6 +207,35 @@
             error_msg = 'allocatable declaration did not expose a variable name'
         end if
     end subroutine lower_allocatable_declaration
+
+    subroutine declare_class_star_array(context, name, error_msg)
+        ! A rank-1 class(*) allocatable uses the canonical array descriptor for
+        ! storage and shape, plus one local slot for its dynamic type id.
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index
+        type(lr_operand_desc_t) :: type_id
+
+        call declare_allocatable(context, name, 1, VALUE_CLASS_STAR, error_msg, &
+                                 4_c_int64_t)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol_compat(context, name)
+        if (symbol_index <= 0) then
+            error_msg = 'class(*) allocatable array was not declared: '//trim(name)
+            return
+        end if
+        context%symbols(symbol_index)%deferred_data = &
+            context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_alloca_bytes(context%session, &
+                i64_immediate(context%session, 8_c_int64_t), type_id, error_msg)) &
+            return
+        context%symbols(symbol_index)%deferred_length = type_id
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, 0_c_int64_t), type_id, error_msg)) &
+            return
+        call set_empty(error_msg)
+    end subroutine declare_class_star_array
 
     subroutine lower_allocate_statement(arena, node, context, error_msg)
         ! allocate(a(N)) or allocate(a(M,N)) for one integer allocatable.
@@ -3516,6 +3560,11 @@
             return
         end if
         if (context%symbols(symbol_index)%array_rank == 0) then
+            if (context%symbols(symbol_index)%value_kind == VALUE_CLASS_STAR) then
+                call lower_deallocate_class_star_scalar(symbol_index, context, &
+                                                        error_msg)
+                return
+            end if
             call lower_deallocate_scalar(symbol_index, context, error_msg)
             return
         end if
@@ -3579,7 +3628,30 @@
         if (.not. emit_free(context%session, data_ptr, error_msg)) return
 
         call emit_alloc_desc_clear(context, descriptor, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (context%symbols(symbol_index)%value_kind == VALUE_CLASS_STAR) then
+            if (.not. emit_i64_store(context%session, &
+                    i64_immediate(context%session, 0_c_int64_t), &
+                    context%symbols(symbol_index)%deferred_length, error_msg)) return
+        end if
     end subroutine lower_deallocate_i32
+
+    subroutine lower_deallocate_class_star_scalar(symbol_index, context, error_msg)
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: data_ptr
+
+        if (.not. emit_ptr_load(context%session, &
+                context%symbols(symbol_index)%deferred_data, data_ptr, error_msg)) return
+        if (.not. emit_free(context%session, data_ptr, error_msg)) return
+        if (.not. emit_ptr_store(context%session, null_ptr_operand(context), &
+                context%symbols(symbol_index)%deferred_data, error_msg)) return
+        if (.not. emit_i64_store(context%session, &
+                i64_immediate(context%session, 0_c_int64_t), &
+                context%symbols(symbol_index)%deferred_length, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine lower_deallocate_class_star_scalar
 
     subroutine lower_move_alloc(arena, arg_indices, context, error_msg)
         ! move_alloc(from, to): copy the canonical descriptor from -> to, then

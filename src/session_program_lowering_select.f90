@@ -1532,7 +1532,8 @@ contains
     end subroutine select_rank_block_body
 
     logical function allocate_targets_class_star(arena, node, context)
-        ! True for `allocate(<type> :: x)` where x is a class(*) allocatable.
+        ! True for `allocate(<type> :: x)` or `allocate(<type> :: x(n))`
+        ! where x is a class(*) allocatable.
         type(ast_arena_t), intent(in) :: arena
         type(allocate_statement_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
@@ -1540,12 +1541,22 @@ contains
         integer :: idx
 
         allocate_targets_class_star = .false.
+        call set_empty(err)
         if (.not. allocated(node%type_spec)) return
         if (len_trim(node%type_spec) == 0) return
         if (.not. allocated(node%var_indices)) return
         if (size(node%var_indices) /= 1) return
-        if (.not. is_identifier(arena, node%var_indices(1))) return
-        call get_identifier_name(arena, node%var_indices(1), name, err)
+        if (is_identifier(arena, node%var_indices(1))) then
+            call get_identifier_name(arena, node%var_indices(1), name, err)
+        else
+            select type (target => arena%entries(node%var_indices(1))%node)
+            type is (call_or_subscript_node)
+                if (.not. allocated(target%name)) return
+                name = target%name
+            class default
+                return
+            end select
+        end if
         if (len_trim(err) > 0) return
         idx = find_symbol_compat(context, name)
         if (idx <= 0) return
@@ -1563,11 +1574,32 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
         integer :: idx, byte_size, type_id
-        type(lr_operand_desc_t) :: data_ptr
+        type(lr_operand_desc_t) :: data_ptr, descriptor
+        type(lr_operand_desc_t) :: extent_i32, extent_i64
+        type(lr_operand_desc_t) :: extents_i64(1)
+        integer :: target_index
+        logical :: is_array
 
         call set_empty(error_msg)
-        call get_identifier_name(arena, node%var_indices(1), name, error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (is_identifier(arena, node%var_indices(1))) then
+            call get_identifier_name(arena, node%var_indices(1), name, error_msg)
+            target_index = 0
+        else
+            select type (target => arena%entries(node%var_indices(1))%node)
+            type is (call_or_subscript_node)
+                if (.not. allocated(target%name) .or. &
+                    .not. allocated(target%arg_indices) .or. &
+                    size(target%arg_indices) /= 1) then
+                    error_msg = 'class(*) typed allocation requires a rank-1 target'
+                    return
+                end if
+                name = target%name
+                target_index = target%arg_indices(1)
+            class default
+                error_msg = 'class(*) typed allocation target is not a variable'
+                return
+            end select
+        end if
         idx = find_symbol_compat(context, name)
         if (idx <= 0) then
             error_msg = 'allocate target is not declared: '//trim(name)
@@ -1575,6 +1607,33 @@ contains
         end if
         call class_star_type_spec(node%type_spec, byte_size, type_id, error_msg)
         if (len_trim(error_msg) > 0) return
+        is_array = context%symbols(idx)%array_rank > 0
+        if (is_array) then
+            if (target_index <= 0) then
+                error_msg = 'class(*) array allocation requires a shape'
+                return
+            end if
+            call lower_i32_expression(arena, target_index, context, extent_i32, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_i64(context%session, extent_i32, &
+                                           extent_i64, error_msg)) return
+            descriptor = context%symbols(idx)%allocatable_descriptor_address
+            if (.not. emit_malloc(context%session, extent_i64, data_ptr, error_msg, &
+                    elem_size=i64_immediate(context%session, &
+                                             int(byte_size, c_int64_t)))) return
+            if (.not. emit_ptr_store(context%session, data_ptr, descriptor, &
+                                     error_msg)) return
+            extents_i64(1) = extent_i64
+            call emit_alloc_desc_allocate_shape(context, descriptor, &
+                VALUE_CLASS_STAR, 1, extents_i64, error_msg, &
+                element_bytes=int(byte_size, c_int64_t))
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i64_store(context%session, &
+                    i64_immediate(context%session, int(type_id, c_int64_t)), &
+                    context%symbols(idx)%deferred_length, error_msg)) return
+            return
+        end if
         if (.not. emit_malloc(context%session, &
             i64_immediate(context%session, int(byte_size, c_int64_t)), &
             data_ptr, error_msg)) return
