@@ -1270,6 +1270,16 @@
             return
         end if
         select type (node => arena%entries(expr_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(node%arg_indices)) return
+            if (.not. is_contained_elemental_array_call(arena, expr_index, context) &
+                .and. .not. is_elemental_user_call(arena, expr_index, context) &
+                .and. .not. is_array_result_call(arena, expr_index, context)) return
+            do d = 1, size(node%arg_indices)
+                call array_expression_static_shape(arena, node%arg_indices(d), &
+                    context, rank, shape, known)
+                if (known) return
+            end do
         type is (array_literal_node)
             if (.not. allocated(node%element_indices)) return
             rank = 1

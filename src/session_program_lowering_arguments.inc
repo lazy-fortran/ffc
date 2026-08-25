@@ -558,6 +558,10 @@
                        actual_is_array_expression(arena, right_index, context)
             return
         end if
+        if (is_vector_subscript_actual(arena, node_index, context)) then
+            is_array = .true.
+            return
+        end if
         select type (node => arena%entries(node_index)%node)
         type is (array_literal_node)
             is_array = allocated(node%element_indices)
@@ -1193,13 +1197,23 @@
         logical, intent(out) :: known
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: id_name
-        integer :: symbol_index
+        integer :: symbol_index, source_index, index_vector_index, vector_extent
+        logical :: vector_handled
         integer, allocatable :: flat(:)
 
         element_count = 0_c_int64_t
         known = .false.
         call set_empty(error_msg)
         if (.not. node_exists(arena, node_index)) return
+
+        if (is_fixed_rank1_vector_gather_candidate(arena, node_index, context)) then
+            call describe_fixed_rank1_vector_gather(arena, node_index, context, &
+                source_index, index_vector_index, vector_extent, vector_handled, &
+                error_msg)
+            element_count = int(vector_extent, c_int64_t)
+            known = vector_handled
+            return
+        end if
 
         if (is_identifier(arena, node_index)) then
             call get_identifier_name(arena, node_index, id_name, error_msg)
@@ -1517,6 +1531,32 @@
                                 .not. context%symbols(symbol_index)%is_allocatable
     end function actual_is_whole_array
 
+    logical function is_vector_subscript_actual(arena, node_index, context)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+        integer :: source_index, vector_index
+        character(len=:), allocatable :: source_name, vector_name, err
+
+        is_vector_subscript_actual = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. node%is_array_access .or. .not. allocated(node%name) .or. &
+                .not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) return
+            if (.not. is_identifier(arena, node%arg_indices(1))) return
+            source_name = node%name
+            call get_identifier_name(arena, node%arg_indices(1), vector_name, err)
+            if (len_trim(err) > 0) return
+            source_index = resolve_symbol_at_node(context, node_index, source_name)
+            vector_index = resolve_symbol_at_node(context, node%arg_indices(1), vector_name)
+            if (source_index <= 0 .or. vector_index <= 0) return
+            is_vector_subscript_actual = context%symbols(source_index)%is_array .and. &
+                context%symbols(vector_index)%is_array .and. &
+                context%symbols(vector_index)%array_rank == 1
+        end select
+    end function is_vector_subscript_actual
+
     subroutine try_lower_elemental_subroutine_array_call(arena, callee_name, &
                                                          arg_indices, context, &
                                                          handled, error_msg)
@@ -1532,7 +1572,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: param_count, i, symbol_index
         integer(c_int64_t) :: element_count, other_count, k
-        logical :: found, is_elemental, known, other_known
+        logical :: found, is_elemental, known, other_known, is_vector_gather
         logical :: all_fixed, any_array
         character(len=:), allocatable :: name, name_err
         integer, allocatable :: copyback_indices(:)
@@ -1542,16 +1582,27 @@
         call set_empty(error_msg)
         call elemental_subroutine_signature(arena, callee_name, found, &
                                             param_count, is_elemental)
-        if (.not. found .or. .not. is_elemental) return
+        if (.not. found) return
         if (.not. allocated(arg_indices)) return
-        if (size(arg_indices) /= param_count) return
+        if (.not. is_elemental) then
+            if (.not. any_vector_subscript_actual(arena, arg_indices, context)) return
+        end if
+        if (size(arg_indices) < param_count) return
 
         element_count = 0_c_int64_t
         any_array = .false.
         all_fixed = .true.
         do i = 1, size(arg_indices)
-            if (.not. actual_is_whole_array(arena, arg_indices(i), context)) cycle
+            is_vector_gather = is_vector_subscript_actual(arena, &
+                arg_indices(i), context)
+            if (.not. actual_is_whole_array(arena, arg_indices(i), context) .and. &
+                .not. is_vector_gather) cycle
             any_array = .true.
+            if (is_vector_gather) then
+                call materialize_vector_subscript_actual(arena, arg_indices(i), &
+                    context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
             call actual_available_element_count(arena, arg_indices(i), context, &
                                                 other_count, other_known, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -1559,20 +1610,22 @@
                 all_fixed = .false.
                 cycle
             end if
-            if (.not. is_identifier(arena, arg_indices(i))) then
-                all_fixed = .false.
-                cycle
-            end if
-            call get_identifier_name(arena, arg_indices(i), name, name_err)
-            if (len_trim(name_err) > 0) return
-            symbol_index = resolve_symbol_at_node(context, arg_indices(i), name)
-            if (symbol_index <= 0) then
-                all_fixed = .false.
-                cycle
-            end if
-            if (context%symbols(symbol_index)%has_runtime_array_stride) then
-                all_fixed = .false.
-                cycle
+            if (.not. is_vector_gather) then
+                if (.not. is_identifier(arena, arg_indices(i))) then
+                    all_fixed = .false.
+                    cycle
+                end if
+                call get_identifier_name(arena, arg_indices(i), name, name_err)
+                if (len_trim(name_err) > 0) return
+                symbol_index = resolve_symbol_at_node(context, arg_indices(i), name)
+                if (symbol_index <= 0) then
+                    all_fixed = .false.
+                    cycle
+                end if
+                if (context%symbols(symbol_index)%has_runtime_array_stride) then
+                    all_fixed = .false.
+                    cycle
+                end if
             end if
             if (element_count == 0_c_int64_t) then
                 element_count = other_count
@@ -1589,7 +1642,10 @@
         do k = 0_c_int64_t, element_count - 1_c_int64_t
             copyback_indices = 0
             do i = 1, size(arg_indices)
-                if (actual_is_whole_array(arena, arg_indices(i), context)) then
+                is_vector_gather = is_vector_subscript_actual(arena, &
+                    arg_indices(i), context)
+                if (actual_is_whole_array(arena, arg_indices(i), context) .or. &
+                    is_vector_gather) then
                     call whole_array_element_address(arena, arg_indices(i), context, &
                                                      k, args(i), error_msg)
                 else
@@ -1606,6 +1662,71 @@
         end do
         handled = .true.
     end subroutine try_lower_elemental_subroutine_array_call
+
+    logical function any_vector_subscript_actual(arena, arg_indices, context)
+        type(ast_arena_t), intent(in) :: arena
+        integer, allocatable, intent(in) :: arg_indices(:)
+        type(lowering_context_t), intent(in) :: context
+        integer :: i
+
+        any_vector_subscript_actual = .false.
+        do i = 1, size(arg_indices)
+            if (is_vector_subscript_actual(arena, arg_indices(i), context)) then
+                any_vector_subscript_actual = .true.
+                return
+            end if
+        end do
+    end function any_vector_subscript_actual
+
+    subroutine materialize_vector_subscript_actual(arena, node_index, context, &
+                                                   error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(call_or_subscript_node) :: node
+        type(lr_operand_desc_t) :: raw_index, gathered_value, linear_index
+        integer :: source_index, vector_index, literal_index, extent, result_temp, k
+        logical :: handled
+
+        call set_empty(error_msg)
+        select type (actual => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            node = actual
+        class default
+            error_msg = 'vector subscript actual is not an array access'
+            return
+        end select
+        call describe_vector_subscript(arena, node, context, source_index, &
+            vector_index, literal_index, extent, handled, error_msg)
+        if (len_trim(error_msg) > 0 .or. .not. handled) then
+            if (len_trim(error_msg) == 0) error_msg = &
+                'unsupported vector subscript actual'
+            return
+        end if
+        call create_array_expression_temp(context, &
+            context%symbols(source_index)%value_kind, extent, 0, result_temp, &
+            error_msg)
+        if (len_trim(error_msg) > 0) return
+        do k = 0, extent - 1
+            call load_array_linear_element(context, vector_index, int(k, c_int64_t), &
+                raw_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call emit_fixed_vector_subscript_check(context, raw_index, &
+                context%symbols(source_index)%array_dim_lowers(1), &
+                context%symbols(source_index)%array_dim_lowers(1) + &
+                context%symbols(source_index)%array_dim_sizes(1) - 1, &
+                linear_index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call load_array_element_at_operand(context, source_index, linear_index, &
+                gathered_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call store_array_linear_element(context, result_temp, int(k, c_int64_t), &
+                gathered_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call cache_array_expression_symbol(context, node_index, result_temp)
+    end subroutine materialize_vector_subscript_actual
 
     subroutine elemental_subroutine_signature(arena, name, found, param_count, &
                                               is_elemental)
@@ -1653,9 +1774,17 @@
         type(lr_operand_desc_t) :: index
         logical :: ok
 
-        call get_identifier_name(arena, node_index, name, error_msg)
-        if (len_trim(error_msg) > 0) return
-        symbol_index = resolve_symbol_at_node(context, node_index, name)
+        if (is_vector_subscript_actual(arena, node_index, context)) then
+            symbol_index = cached_array_expression_symbol(context, node_index)
+            if (symbol_index <= 0) then
+                error_msg = 'vector gather was not materialized'
+                return
+            end if
+        else
+            call get_identifier_name(arena, node_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = resolve_symbol_at_node(context, node_index, name)
+        end if
         if (symbol_index <= 0) then
             error_msg = 'array argument was not declared: '//trim(name)
             return
