@@ -10,7 +10,7 @@
     ! machinery as a substring, and anything that needs a C string materialises
     ! a terminated copy of exactly the element length.
     !
-    ! Scope: local rank-1 and rank-2 arrays with a compile-time length and
+    ! Scope: local rank-1 through rank-4 arrays with a compile-time length and
     ! extent; dummy character arrays stay unsupported. A character parameter
     ! array may infer its element length from its folded constructor.
 
@@ -411,6 +411,12 @@
         end if
         dim_count = 0
         if (allocated(node%dimension_indices)) dim_count = size(node%dimension_indices)
+        if (dim_count > 4) then
+            call unsupported_feature_error('character array declaration', &
+                node%line, node%column, 'direct LIRIC session supports character '// &
+                'arrays through rank 4', error_msg)
+            return
+        end if
 
         context%symbols(index)%name = trim(name)
         context%symbols(index)%value_kind = VALUE_CHARACTER
@@ -625,6 +631,10 @@
         type(lr_operand_desc_t) :: lower_bound_value
         type(lr_operand_desc_t) :: i_offset, j_offset
         type(lr_operand_desc_t) :: scaled_index
+        type(lr_operand_desc_t) :: stride
+        type(lr_operand_desc_t) :: next_index
+        type(lr_operand_desc_t) :: next_stride
+        integer :: dimension
 
         call validate_i32_array_subscript(arena, node%arg_indices(1), context, &
                                           error_msg)
@@ -633,38 +643,40 @@
                                   error_msg)
         if (len_trim(error_msg) > 0) return
 
-        if (context%symbols(symbol_index)%array_rank == 1) then
-            lower_bound_value = i32_immediate(context%session, &
-                int(context%symbols(symbol_index)%array_lower_bound, c_int64_t))
-            if (.not. emit_i32_binary(context%session, LR_OP_SUB, i_value, &
-                    lower_bound_value, linear_index, error_msg)) then
-                error_msg = 'char_arr_sub: '//error_msg
-                return
-            end if
-            return
-        end if
-
-        call validate_i32_array_subscript(arena, node%arg_indices(2), context, &
-                                          error_msg)
-        if (len_trim(error_msg) > 0) return
-        call lower_i32_expression(arena, node%arg_indices(2), context, j_value, &
-                                  error_msg)
-        if (len_trim(error_msg) > 0) return
-
         lower_bound_value = i32_immediate(context%session, &
             int(context%symbols(symbol_index)%array_dim_lowers(1), c_int64_t))
         if (.not. emit_i32_binary(context%session, LR_OP_SUB, i_value, &
                 lower_bound_value, i_offset, error_msg)) return
-        lower_bound_value = i32_immediate(context%session, &
-            int(context%symbols(symbol_index)%array_dim_lowers(2), c_int64_t))
-        if (.not. emit_i32_binary(context%session, LR_OP_SUB, j_value, &
-                lower_bound_value, j_offset, error_msg)) return
-        lower_bound_value = i32_immediate(context%session, &
+        linear_index = i_offset
+        stride = i32_immediate(context%session, &
             int(context%symbols(symbol_index)%array_dim_sizes(1), c_int64_t))
-        if (.not. emit_i32_binary(context%session, LR_OP_MUL, j_offset, &
-                lower_bound_value, scaled_index, error_msg)) return
-        if (.not. emit_i32_binary(context%session, LR_OP_ADD, i_offset, &
-                scaled_index, linear_index, error_msg)) return
+
+        do dimension = 2, context%symbols(symbol_index)%array_rank
+            call validate_i32_array_subscript(arena, node%arg_indices(dimension), &
+                                              context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_i32_expression(arena, node%arg_indices(dimension), context, &
+                                      j_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            lower_bound_value = i32_immediate(context%session, &
+                int(context%symbols(symbol_index)%array_dim_lowers(dimension), &
+                    c_int64_t))
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, j_value, &
+                    lower_bound_value, j_offset, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, j_offset, &
+                    stride, scaled_index, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_ADD, linear_index, &
+                    scaled_index, next_index, error_msg)) return
+            linear_index = next_index
+            if (dimension < context%symbols(symbol_index)%array_rank) then
+                lower_bound_value = i32_immediate(context%session, &
+                    int(context%symbols(symbol_index)%array_dim_sizes(dimension), &
+                        c_int64_t))
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, stride, &
+                        lower_bound_value, next_stride, error_msg)) return
+                stride = next_stride
+            end if
+        end do
     end subroutine character_array_linear_index
 
     subroutine lower_character_array_element_assignment(arena, node, target, &
