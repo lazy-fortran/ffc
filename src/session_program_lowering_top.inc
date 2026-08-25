@@ -1072,7 +1072,7 @@
                 call check_io_spec_types(node%io_control_list, context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end if
-            if (allocated(node%namelist_group)) then
+            if (is_namelist_read(node, context)) then
                 call lower_namelist_read(node, context, error_msg)
                 return
             end if
@@ -1120,7 +1120,7 @@
                 call check_io_spec_types(node%io_control_list, context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end if
-            if (allocated(node%namelist_group)) then
+            if (is_namelist_write(node, context)) then
                 call lower_namelist_write(node, context, error_msg)
             else if (is_internal_write(node, context)) then
                 call lower_internal_write(arena, node, context, error_msg)

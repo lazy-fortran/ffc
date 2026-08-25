@@ -76,6 +76,40 @@
         end do
     end function find_namelist_group
 
+    logical function is_namelist_read(node, context) result(is_nml)
+        type(read_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: candidate
+
+        is_nml = .false.
+        if (allocated(node%namelist_group)) then
+            is_nml = find_namelist_group(context, node%namelist_group) > 0
+            return
+        end if
+        if (.not. allocated(node%format_spec)) return
+        candidate = trim(node%format_spec)
+        if (len_trim(candidate) > 0) then
+            is_nml = find_namelist_group(context, candidate) > 0
+        end if
+    end function is_namelist_read
+
+    logical function is_namelist_write(node, context) result(is_nml)
+        type(write_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable :: candidate
+
+        is_nml = .false.
+        if (allocated(node%namelist_group)) then
+            is_nml = find_namelist_group(context, node%namelist_group) > 0
+            return
+        end if
+        if (.not. allocated(node%format_spec)) return
+        candidate = trim(node%format_spec)
+        if (len_trim(candidate) > 0) then
+            is_nml = find_namelist_group(context, candidate) > 0
+        end if
+    end function is_namelist_write
+
     subroutine lower_namelist_write(node, context, error_msg)
         ! Emit the group banner, each member line, and the closing slash.
         ! Routes to stdout (printf) for unit '*'/'6', else fprintf to the file
@@ -86,9 +120,11 @@
         type(lr_operand_desc_t) :: fp
         logical :: to_stdout, have_fp
         integer :: gidx, i
+        character(len=:), allocatable :: group_name
 
         call set_empty(error_msg)
-        gidx = find_namelist_group(context, trim(node%namelist_group))
+        group_name = namelist_write_group_name(node)
+        gidx = find_namelist_group(context, group_name)
         if (gidx <= 0) then
             call unsupported_feature_error('namelist write', node%line, &
                 node%column, 'namelist group not declared in this scope', &
@@ -394,10 +430,12 @@
         type(lr_operand_desc_t) :: tmps(MAX_NAMELIST_MEMBERS)
         integer :: syms(MAX_NAMELIST_MEMBERS)
         integer :: gidx, i, nmem
+        character(len=:), allocatable :: group_name
         integer(c_int32_t) :: scan_blk, body_blk, done_blk
 
         call set_empty(error_msg)
-        gidx = find_namelist_group(context, trim(node%namelist_group))
+        group_name = namelist_read_group_name(node)
+        gidx = find_namelist_group(context, group_name)
         if (gidx <= 0) then
             call unsupported_feature_error('namelist read', node%line, &
                 node%column, 'namelist group not declared in this scope', &
@@ -453,6 +491,31 @@
         end do
         call namelist_read_store_iostat(node, context, status_slot, error_msg)
     end subroutine lower_namelist_read
+
+    function namelist_read_group_name(node) result(name)
+        type(read_statement_node), intent(in) :: node
+        character(len=:), allocatable :: name
+
+        name = ''
+        if (allocated(node%namelist_group)) then
+            name = trim(node%namelist_group)
+        else if (allocated(node%format_spec)) then
+            name = trim(node%format_spec)
+        end if
+    end function namelist_read_group_name
+
+    function namelist_write_group_name(node) result(name)
+        type(write_statement_node), intent(in) :: node
+        character(len=:), allocatable :: name
+
+        name = ''
+        if (allocated(node%namelist_group)) then
+            name = trim(node%namelist_group)
+        else if (allocated(node%format_spec)) then
+            name = trim(node%format_spec)
+        end if
+    end function namelist_write_group_name
+
 
     logical function namelist_read_from_file_unit(node) result(is_file)
         ! Namelist input reads from an opened numbered unit; stdin namelist
