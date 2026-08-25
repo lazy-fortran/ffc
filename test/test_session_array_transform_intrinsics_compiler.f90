@@ -13,6 +13,7 @@ program test_session_array_transform_intrinsics_compiler
     if (.not. test_merge_rank3_array_mask()) all_passed = .false.
     if (.not. test_pack_unpack_roundtrip()) all_passed = .false.
     if (.not. test_spread_real_dim1()) all_passed = .false.
+    if (.not. test_spread_integer_rank2_dim2()) all_passed = .false.
     if (.not. test_spread_invalid_dim()) all_passed = .false.
     if (.not. test_spread_invalid_ncopies()) all_passed = .false.
     if (.not. test_merge_nonconformable()) all_passed = .false.
@@ -191,6 +192,39 @@ contains
             '   2.50000000    '//new_line('a'), &
             '/tmp/ffc_session_transform_spread_real_dim1')
     end function test_spread_real_dim1
+
+    ! spread(a, 2, 2) inserts a copy dimension into a rank-2 integer source.
+    logical function test_spread_integer_rank2_dim2()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: a(2, 3)'//new_line('a')// &
+            '  integer :: r(2, 2, 3)'//new_line('a')// &
+            '  integer :: i, j, k'//new_line('a')// &
+            '  a = reshape([1, 2, 3, 4, 5, 6], [2, 3])'//new_line('a')// &
+            '  r = spread(a, 2, 2)'//new_line('a')// &
+            '  do k = 1, 3'//new_line('a')// &
+            '     do j = 1, 2'//new_line('a')// &
+            '        do i = 1, 2'//new_line('a')// &
+            '           print *, r(i, j, k)'//new_line('a')// &
+            '        end do'//new_line('a')// &
+            '     end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            'end program main'
+        test_spread_integer_rank2_dim2 = expect_output( &
+            source, '           1'//new_line('a')// &
+            '           2'//new_line('a')// &
+            '           1'//new_line('a')// &
+            '           2'//new_line('a')// &
+            '           3'//new_line('a')// &
+            '           4'//new_line('a')// &
+            '           3'//new_line('a')// &
+            '           4'//new_line('a')// &
+            '           5'//new_line('a')// &
+            '           6'//new_line('a')// &
+            '           5'//new_line('a')// &
+            '           6'//new_line('a'), &
+            '/tmp/ffc_session_transform_spread_integer_rank2_dim2')
+    end function test_spread_integer_rank2_dim2
 
     ! A DIM outside 1..rank+1 is rejected with a diagnostic.
     logical function test_spread_invalid_dim()

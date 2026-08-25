@@ -5409,10 +5409,9 @@
         end select
     end subroutine lower_merge_assignment
 
-    ! spread(source, dim, ncopies) for a rank-1 source replicated into a rank-2
-    ! target. dim and ncopies must be compile-time integers. With dim=2 the
-    ! result is (m, ncopies) and result(i,j) = source(i); with dim=1 it is
-    ! (ncopies, m) and result(i,j) = source(j).
+    ! spread(source, dim, ncopies) for fixed-size integer arrays. Rank-1
+    ! sources produce rank-2 targets; rank-2 sources produce rank-3 targets.
+    ! dim and ncopies must be compile-time integers.
     subroutine lower_spread_assignment(arena, node, symbol_index, context, &
                                        error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -5422,9 +5421,10 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value
         integer :: source_index
-        integer :: i, j, m
+        integer :: i, j, k, m, source_rank
         integer(c_int64_t) :: dim_val, ncopies
-        integer(c_int64_t) :: target_rows, target_cols
+        integer(c_int64_t) :: target_rows, target_cols, target_depth
+        integer(c_int64_t) :: source_rows, source_cols
         integer(c_int64_t) :: src_index, linear_index
 
         select type (rhs => arena%entries(node%value_index)%node)
@@ -5436,12 +5436,17 @@
             call resolve_i32_array_argument(arena, rhs, 1, context, 'spread', &
                                             'source array', source_index, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (context%symbols(source_index)%array_rank /= 1) then
-                error_msg = 'spread supports only a rank-1 source array'
+            source_rank = context%symbols(source_index)%array_rank
+            if (source_rank /= 1 .and. source_rank /= 2) then
+                error_msg = 'spread supports only rank-1 or rank-2 source arrays'
                 return
             end if
-            if (context%symbols(symbol_index)%array_rank /= 2) then
-                error_msg = 'spread result must be assigned to a rank-2 array'
+            if (context%symbols(symbol_index)%array_rank /= source_rank + 1) then
+                if (source_rank == 1) then
+                    error_msg = 'spread result must be assigned to a rank-2 array'
+                else
+                    error_msg = 'spread result must be assigned to a rank-3 array'
+                end if
                 return
             end if
             call eval_i32_constant(arena, rhs%arg_indices(2), context, dim_val, &
@@ -5450,46 +5455,104 @@
             call eval_i32_constant(arena, rhs%arg_indices(3), context, ncopies, &
                                    error_msg)
             if (len_trim(error_msg) > 0) return
-            if (dim_val /= 1_c_int64_t .and. dim_val /= 2_c_int64_t) then
-                error_msg = 'spread dim must be 1 or 2 for a rank-1 source'
+            if (dim_val < 1_c_int64_t .or. dim_val > int(source_rank + 1, c_int64_t)) then
+                error_msg = 'spread dim is outside the source rank'
                 return
             end if
             if (ncopies < 0_c_int64_t) then
                 error_msg = 'spread ncopies must be nonnegative'
                 return
             end if
-            m = context%symbols(source_index)%array_size
-            target_rows = int(context%symbols(symbol_index)%array_dim_sizes(1), &
-                              c_int64_t)
-            target_cols = int(context%symbols(symbol_index)%array_dim_sizes(2), &
-                              c_int64_t)
-            if (dim_val == 2_c_int64_t) then
-                if (target_rows /= int(m, c_int64_t) .or. target_cols /= ncopies) then
-                    error_msg = 'spread result shape does not match the target array'
-                    return
-                end if
-            else
-                if (target_rows /= ncopies .or. target_cols /= int(m, c_int64_t)) then
-                    error_msg = 'spread result shape does not match the target array'
-                    return
-                end if
-            end if
-            do j = 0, int(target_cols) - 1
-                do i = 0, int(target_rows) - 1
-                    if (dim_val == 2_c_int64_t) then
-                        src_index = int(i, c_int64_t)
-                    else
-                        src_index = int(j, c_int64_t)
+            if (source_rank == 1) then
+                m = context%symbols(source_index)%array_size
+                target_rows = int(context%symbols(symbol_index)%array_dim_sizes(1), &
+                                  c_int64_t)
+                target_cols = int(context%symbols(symbol_index)%array_dim_sizes(2), &
+                                  c_int64_t)
+                if (dim_val == 2_c_int64_t) then
+                    if (target_rows /= int(m, c_int64_t) .or. target_cols /= ncopies) then
+                        error_msg = 'spread result shape does not match the target array'
+                        return
                     end if
-                    call load_array_linear_element(context, source_index, &
-                                                   src_index, value, error_msg)
-                    if (len_trim(error_msg) > 0) return
-                    linear_index = int(i, c_int64_t) + target_rows * int(j, c_int64_t)
-                    call store_array_linear_element(context, symbol_index, &
-                                                    linear_index, value, error_msg)
-                    if (len_trim(error_msg) > 0) return
+                else
+                    if (target_rows /= ncopies .or. target_cols /= int(m, c_int64_t)) then
+                        error_msg = 'spread result shape does not match the target array'
+                        return
+                    end if
+                end if
+                do j = 0, int(target_cols) - 1
+                    do i = 0, int(target_rows) - 1
+                        if (dim_val == 2_c_int64_t) then
+                            src_index = int(i, c_int64_t)
+                        else
+                            src_index = int(j, c_int64_t)
+                        end if
+                        call load_array_linear_element(context, source_index, &
+                                                       src_index, value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        linear_index = int(i, c_int64_t) + target_rows * int(j, c_int64_t)
+                        call store_array_linear_element(context, symbol_index, &
+                                                        linear_index, value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    end do
                 end do
-            end do
+            else
+                source_rows = int(context%symbols(source_index)%array_dim_sizes(1), &
+                                  c_int64_t)
+                source_cols = int(context%symbols(source_index)%array_dim_sizes(2), &
+                                  c_int64_t)
+                target_rows = int(context%symbols(symbol_index)%array_dim_sizes(1), &
+                                  c_int64_t)
+                target_cols = int(context%symbols(symbol_index)%array_dim_sizes(2), &
+                                  c_int64_t)
+                target_depth = int(context%symbols(symbol_index)%array_dim_sizes(3), &
+                                   c_int64_t)
+                if (dim_val == 1_c_int64_t) then
+                    if (target_rows /= ncopies .or. target_cols /= source_rows .or. &
+                        target_depth /= source_cols) then
+                        error_msg = 'spread result shape does not match the target array'
+                        return
+                    end if
+                else if (dim_val == 2_c_int64_t) then
+                    if (target_rows /= source_rows .or. target_cols /= ncopies .or. &
+                        target_depth /= source_cols) then
+                        error_msg = 'spread result shape does not match the target array'
+                        return
+                    end if
+                else
+                    if (target_rows /= source_rows .or. target_cols /= source_cols .or. &
+                        target_depth /= ncopies) then
+                        error_msg = 'spread result shape does not match the target array'
+                        return
+                    end if
+                end if
+                do k = 0, int(target_depth) - 1
+                    do j = 0, int(target_cols) - 1
+                        do i = 0, int(target_rows) - 1
+                            select case (dim_val)
+                            case (1_c_int64_t)
+                                src_index = int(j, c_int64_t) + source_rows * &
+                                            int(k, c_int64_t)
+                            case (2_c_int64_t)
+                                src_index = int(i, c_int64_t) + source_rows * &
+                                            int(k, c_int64_t)
+                            case default
+                                src_index = int(i, c_int64_t) + source_rows * &
+                                            int(j, c_int64_t)
+                            end select
+                            call load_array_linear_element(context, source_index, &
+                                                           src_index, value, error_msg)
+                            if (len_trim(error_msg) > 0) return
+                            linear_index = int(i, c_int64_t) + target_rows * &
+                                           (int(j, c_int64_t) + target_cols * &
+                                            int(k, c_int64_t))
+                            call store_array_linear_element(context, symbol_index, &
+                                                            linear_index, value, error_msg)
+                            if (len_trim(error_msg) > 0) return
+                        end do
+                    end do
+                end do
+            end if
             call set_empty(error_msg)
         class default
             error_msg = 'spread requires an intrinsic call'
