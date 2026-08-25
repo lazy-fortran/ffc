@@ -4126,7 +4126,47 @@
                             trim(reduction_name)
                 return
             end select
-        case (VALUE_I64, VALUE_I8, VALUE_I16)
+        case (VALUE_I64)
+            select case (trim(reduction_name))
+            case ('maxval')
+                call load_array_linear_element(context, source_index, 0_c_int64_t, &
+                                               value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                do i = 1, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_i64_icmp(context%session, LR_CMP_SGT, &
+                                                   candidate, value, condition, &
+                                                   error_msg)) return
+                    call select_value(context, condition, candidate, value, selected, &
+                                      error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    value = selected
+                end do
+            case ('minval')
+                call load_array_linear_element(context, source_index, 0_c_int64_t, &
+                                               value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                do i = 1, array_size - 1
+                    call load_array_linear_element(context, source_index, &
+                                                   int(i, c_int64_t), candidate, &
+                                                   error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_i64_icmp(context%session, LR_CMP_SLT, &
+                                                   candidate, value, condition, &
+                                                   error_msg)) return
+                    call select_value(context, condition, candidate, value, selected, &
+                                      error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    value = selected
+                end do
+            case default
+                error_msg = trim(reduction_name)//' over integer(8) arrays is not supported'
+                return
+            end select
+        case (VALUE_I8, VALUE_I16)
             error_msg = trim(reduction_name)//' over a non-default-kind '// &
                         'integer array is not supported'
             return
