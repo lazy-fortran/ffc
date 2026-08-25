@@ -10,6 +10,7 @@ program test_session_array_transform_intrinsics_compiler
     if (.not. test_merge_scalar_mask_true()) all_passed = .false.
     if (.not. test_merge_scalar_mask_variable()) all_passed = .false.
     if (.not. test_merge_rank2_array_mask()) all_passed = .false.
+    if (.not. test_merge_rank3_array_mask()) all_passed = .false.
     if (.not. test_pack_unpack_roundtrip()) all_passed = .false.
     if (.not. test_spread_real_dim1()) all_passed = .false.
     if (.not. test_spread_invalid_dim()) all_passed = .false.
@@ -101,6 +102,47 @@ contains
             '           4'//new_line('a'), &
             '/tmp/ffc_session_transform_merge_rank2')
     end function test_merge_rank2_array_mask
+
+    ! A rank-3 array mask is traversed in Fortran column-major order.
+    logical function test_merge_rank3_array_mask()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: t(2, 2, 2)'//new_line('a')// &
+            '  integer :: f(2, 2, 2)'//new_line('a')// &
+            '  integer :: r(2, 2, 2)'//new_line('a')// &
+            '  logical :: m(2, 2, 2)'//new_line('a')// &
+            '  integer :: i, j, k, n'//new_line('a')// &
+            '  n = 0'//new_line('a')// &
+            '  do k = 1, 2'//new_line('a')// &
+            '     do j = 1, 2'//new_line('a')// &
+            '        do i = 1, 2'//new_line('a')// &
+            '           n = n + 1'//new_line('a')// &
+            '           t(i, j, k) = n'//new_line('a')// &
+            '           f(i, j, k) = 100 + n'//new_line('a')// &
+            '           m(i, j, k) = mod(n, 2) == 1'//new_line('a')// &
+            '        end do'//new_line('a')// &
+            '     end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            '  r = merge(t, f, m)'//new_line('a')// &
+            '  do k = 1, 2'//new_line('a')// &
+            '     do j = 1, 2'//new_line('a')// &
+            '        do i = 1, 2'//new_line('a')// &
+            '           print *, r(i, j, k)'//new_line('a')// &
+            '        end do'//new_line('a')// &
+            '     end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            'end program main'
+        test_merge_rank3_array_mask = expect_output( &
+            source, '           1'//new_line('a')// &
+            '         102'//new_line('a')// &
+            '           3'//new_line('a')// &
+            '         104'//new_line('a')// &
+            '           5'//new_line('a')// &
+            '         106'//new_line('a')// &
+            '           7'//new_line('a')// &
+            '         108'//new_line('a'), &
+            '/tmp/ffc_session_transform_merge_rank3')
+    end function test_merge_rank3_array_mask
 
     ! pack then unpack with the same mask restores the masked positions.
     logical function test_pack_unpack_roundtrip()

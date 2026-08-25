@@ -5287,7 +5287,7 @@
         if (context%symbols(sym)%is_array) is_scalar = .false.
     end function merge_mask_is_scalar
 
-    ! merge(tsource, fsource, mask) for rank-1 and rank-2 arrays: per element pick from
+    ! merge(tsource, fsource, mask) for rank-1 through rank-4 arrays: per element pick from
     ! tsource where mask is .true., else from fsource. tsource and fsource must
     ! share the result shape. The mask is either a conforming logical array
     ! stored as i32 (nonzero means .true.) or a scalar logical broadcast over
@@ -5325,9 +5325,9 @@
                                                    'merge', m_index, error_msg)
                 if (len_trim(error_msg) > 0) return
             end if
-            if (context%symbols(symbol_index)%array_rank /= 1 .and. &
-                context%symbols(symbol_index)%array_rank /= 2) then
-                error_msg = 'merge supports only rank-1 and rank-2 arrays'
+            if (context%symbols(symbol_index)%array_rank < 1 .or. &
+                context%symbols(symbol_index)%array_rank > 4) then
+                error_msg = 'merge supports only rank-1 through rank-4 arrays'
                 return
             end if
             if (context%symbols(t_index)%array_rank /= &
@@ -5356,24 +5356,22 @@
                     return
                 end if
             end if
-            if (context%symbols(symbol_index)%array_rank == 2) then
-                do d = 1, 2
-                    if (context%symbols(t_index)%array_dim_sizes(d) /= &
-                            context%symbols(symbol_index)%array_dim_sizes(d) .or. &
-                        context%symbols(f_index)%array_dim_sizes(d) /= &
+            do d = 1, context%symbols(symbol_index)%array_rank
+                if (context%symbols(t_index)%array_dim_sizes(d) /= &
+                        context%symbols(symbol_index)%array_dim_sizes(d) .or. &
+                    context%symbols(f_index)%array_dim_sizes(d) /= &
+                        context%symbols(symbol_index)%array_dim_sizes(d)) then
+                    error_msg = 'merge operands must share the result shape'
+                    return
+                end if
+                if (m_index > 0) then
+                    if (context%symbols(m_index)%array_dim_sizes(d) /= &
                             context%symbols(symbol_index)%array_dim_sizes(d)) then
                         error_msg = 'merge operands must share the result shape'
                         return
                     end if
-                    if (m_index > 0) then
-                        if (context%symbols(m_index)%array_dim_sizes(d) /= &
-                                context%symbols(symbol_index)%array_dim_sizes(d)) then
-                            error_msg = 'merge operands must share the result shape'
-                            return
-                        end if
-                    end if
-                end do
-            end if
+                end if
+            end do
             zero = i32_immediate(context%session, 0_c_int64_t)
             if (mask_is_scalar) then
                 call lower_logical_expression(arena, rhs%arg_indices(3), &
