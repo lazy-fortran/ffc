@@ -15,6 +15,8 @@ program test_session_allocatable_reduction_compiler
     if (.not. test_integer_sum()) all_passed = .false.
     if (.not. test_real_sum_product()) all_passed = .false.
     if (.not. test_minval_maxval()) all_passed = .false.
+    if (.not. test_rank2_fixed_reductions()) all_passed = .false.
+    if (.not. test_rank2_runtime_reductions()) all_passed = .false.
     if (.not. test_realloc_on_assign()) all_passed = .false.
     if (.not. test_assign_to_unallocated()) all_passed = .false.
 
@@ -76,6 +78,53 @@ contains
             source, '           1           3'//new_line('a'), &
             '/tmp/ffc_alloc_reduce_mm')
     end function test_minval_maxval
+
+    logical function test_rank2_fixed_reductions()
+        ! Fixed-shape rank-2 allocatable reductions use the flat descriptor data.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer, allocatable :: a(:,:)'//new_line('a')// &
+            '  allocate(a(2,3))'//new_line('a')// &
+            '  a(1,1) = 1; a(2,1) = 2'//new_line('a')// &
+            '  a(1,2) = 3; a(2,2) = 4'//new_line('a')// &
+            '  a(1,3) = 5; a(2,3) = 6'//new_line('a')// &
+            '  print *, sum(a), product(a)'//new_line('a')// &
+            '  print *, minval(a), maxval(a)'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            'end program main'
+
+        test_rank2_fixed_reductions = expect_output( &
+            source, &
+            '          21         720'//new_line('a')// &
+            '           1           6'//new_line('a'), &
+            '/tmp/ffc_alloc_reduce_rank2_fixed')
+    end function test_rank2_fixed_reductions
+
+    logical function test_rank2_runtime_reductions()
+        ! Runtime-shaped rank-2 allocatable reductions read both extents from
+        ! the descriptor and walk the same linear column-major data.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer, allocatable :: a(:,:)'//new_line('a')// &
+            '  integer :: m, n, i, j'//new_line('a')// &
+            '  m = 2; n = 3'//new_line('a')// &
+            '  allocate(a(m,n))'//new_line('a')// &
+            '  do j = 1, n'//new_line('a')// &
+            '    do i = 1, m'//new_line('a')// &
+            '      a(i,j) = (j-1)*m + i'//new_line('a')// &
+            '    end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            '  print *, sum(a), product(a)'//new_line('a')// &
+            '  print *, minval(a), maxval(a)'//new_line('a')// &
+            '  deallocate(a)'//new_line('a')// &
+            'end program main'
+
+        test_rank2_runtime_reductions = expect_output( &
+            source, &
+            '          21         720'//new_line('a')// &
+            '           1           6'//new_line('a'), &
+            '/tmp/ffc_alloc_reduce_rank2_runtime')
+    end function test_rank2_runtime_reductions
 
     logical function test_realloc_on_assign()
         ! Intrinsic assignment from an array expression whose extent differs from

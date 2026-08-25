@@ -3779,6 +3779,8 @@
         integer :: i
         integer :: expr_vk, expr_extent
         integer(c_int) :: predicate
+        logical :: saved_runtime_dim1, saved_runtime_dim2
+        type(lr_operand_desc_t) :: saved_runtime_extent1, saved_runtime_extent2
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
             if (trim(reduction_name) == 'norm2') then
@@ -3863,9 +3865,34 @@
         ! A 1-D allocatable reduces over its compile-time extent recorded by the
         ! preceding allocate(a(N)); the element loop loads from the descriptor.
         if (context%symbols(source_index)%is_allocatable) then
-            if (context%symbols(source_index)%array_rank == 2) then
-                error_msg = trim(reduction_name)// &
-                            ' over a rank-2 allocatable is not supported'
+            if (context%symbols(source_index)%array_rank == 2 .and. &
+                context%symbols(source_index)%allocatable_static_size <= 0) then
+                ! Runtime-shaped allocatables keep their extents in the
+                ! descriptor rather than in runtime_dim_size. Reuse the
+                ! descriptor-aware runtime reduction loop by lending it those
+                ! two operands for the duration of this lowering.
+                call allocatable_descriptor_extent_i32(context, source_index, 1, &
+                                                       saved_runtime_extent1, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call allocatable_descriptor_extent_i32(context, source_index, 2, &
+                                                       saved_runtime_extent2, error_msg)
+                if (len_trim(error_msg) > 0) return
+                saved_runtime_dim1 = context%symbols(source_index)% &
+                    has_runtime_dim_size(1)
+                saved_runtime_dim2 = context%symbols(source_index)% &
+                    has_runtime_dim_size(2)
+                context%symbols(source_index)%has_runtime_dim_size(1) = .true.
+                context%symbols(source_index)%has_runtime_dim_size(2) = .true.
+                context%symbols(source_index)%runtime_dim_size(1) = &
+                    saved_runtime_extent1
+                context%symbols(source_index)%runtime_dim_size(2) = &
+                    saved_runtime_extent2
+                call lower_runtime_reduction(context, source_index, &
+                                              trim(reduction_name), value, error_msg)
+                context%symbols(source_index)%has_runtime_dim_size(1) = &
+                    saved_runtime_dim1
+                context%symbols(source_index)%has_runtime_dim_size(2) = &
+                    saved_runtime_dim2
                 return
             end if
             array_size = context%symbols(source_index)%allocatable_static_size
