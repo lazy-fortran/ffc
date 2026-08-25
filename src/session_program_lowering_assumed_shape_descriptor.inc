@@ -467,7 +467,8 @@
             .not. actual_is_contiguous_section(arena, node_index, context, &
                                                allow_derived=.true.) .and. &
             .not. actual_is_rank1_section_view(arena, node_index, context) .and. &
-            actual_is_array_expression(arena, node_index, context)) then
+            actual_is_array_expression(arena, node_index, context) .and. &
+            .not. assumed_shape_empty_constructor(arena, node_index)) then
             call array_expression_static_extent(arena, node_index, context, &
                                                 expression_extent, &
                                                 expression_extent_known)
