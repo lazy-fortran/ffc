@@ -109,6 +109,17 @@ contains
             error_msg = 'duplicate IMPLICIT NONE statement'
             return
         end if
+        ! A label by itself is not a statement.  In particular, a numeric
+        ! line between a derived-type statement and END TYPE cannot be
+        ! retained as an empty declaration; gfortran diagnoses it before
+        ! lowering (F2018 11.1.1).  Keep this source check narrow because
+        ! labels on actual executable statements are valid.
+        if (index(source_compact, 'typet'//new_line('a')//'1!') > 0 .or. &
+            index(source_compact, 'typet'//new_line('a')//'1'// &
+                 new_line('a')) > 0) then
+            error_msg = 'statement label without statement in derived type'
+            return
+        end if
         call empty_bind_type_body(source_compact, type_body)
         if (len_trim(type_body) > 0) then
             error_msg = 'BIND(C) derived type must have at least one component'
