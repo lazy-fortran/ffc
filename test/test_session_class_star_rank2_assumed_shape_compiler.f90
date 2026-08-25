@@ -12,8 +12,9 @@ program test_session_class_star_rank2_assumed_shape_compiler
     if (.not. test_integer_rank2()) stop 1
     if (.not. test_real8_rank2()) stop 1
     if (.not. test_integer_rank3()) stop 1
+    if (.not. test_integer_rank4()) stop 1
     if (.not. test_refusal_contract()) stop 1
-    print *, 'PASS: rank-1 through rank-3 CLASS(*) arrays preserve descriptor shape and narrowing'
+    print *, 'PASS: rank-1 through rank-4 CLASS(*) arrays preserve descriptor shape and narrowing'
 
 contains
 
@@ -115,6 +116,38 @@ contains
         test_integer_rank3 = run_differential(source, &
             '/var/tmp/ert/ffc_class_star_rank3_integer')
     end function test_integer_rank3
+
+    logical function test_integer_rank4()
+        character(len=*), parameter :: source = &
+            'module rank4_integer_m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine inspect(values)'//new_line('a')// &
+            '    class(*), intent(in) :: values(:,:,:,:)'//new_line('a')// &
+            '    select type (items => values)'//new_line('a')// &
+            '    type is (integer)'//new_line('a')// &
+            '      print *, size(items,1), size(items,2), size(items,3), '// &
+            'size(items,4), size(items)'//new_line('a')// &
+            '      print *, items(1,1,1,1), items(2,1,1,2), '// &
+            'items(1,2,2,2)'//new_line('a')// &
+            '    class default'//new_line('a')// &
+            '      print *, -1'//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '  end subroutine inspect'//new_line('a')// &
+            'end module rank4_integer_m'//new_line('a')// &
+            'program rank4_integer_main'//new_line('a')// &
+            '  use rank4_integer_m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: values(2,2,2,2)'//new_line('a')// &
+            '  values(1,1,1,1) = 11'//new_line('a')// &
+            '  values(2,1,1,2) = 42'//new_line('a')// &
+            '  values(1,2,2,2) = 33'//new_line('a')// &
+            '  call inspect(values)'//new_line('a')// &
+            'end program rank4_integer_main'
+
+        test_integer_rank4 = run_differential(source, &
+            '/var/tmp/ert/ffc_class_star_rank4_integer')
+    end function test_integer_rank4
 
     logical function test_refusal_contract()
         character(len=*), parameter :: unsupported_kind = &

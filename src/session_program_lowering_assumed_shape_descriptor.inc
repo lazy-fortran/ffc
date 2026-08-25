@@ -121,7 +121,7 @@
         if (source_symbol <= 0) return
         if (.not. context%symbols(source_symbol)%is_assumed_shape_dummy) return
         if (context%symbols(source_symbol)%array_rank < 1 .or. &
-            context%symbols(source_symbol)%array_rank > 3) return
+            context%symbols(source_symbol)%array_rank > 4) return
         if (.not. context%symbols(source_symbol)%has_runtime_descriptor) return
         is_forward = .true.
     end function assumed_shape_descriptor_forward_actual
@@ -591,9 +591,9 @@
                 return
             class default
             end select
-            if (rank < 1 .or. rank > 3) then
+            if (rank < 1 .or. rank > 4) then
                 error_msg = 'class(*) assumed-shape lowering currently supports '// &
-                    'only rank-1 through rank-3 whole-array actuals'
+                    'only rank-1 through rank-4 whole-array actuals'
                 return
             end if
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F64) then
@@ -750,7 +750,7 @@
                                                         callee_name, param_pos, &
                                                         source_symbol, descriptor, &
                                                         error_msg)
-        ! Compose a rank-1 through rank-3 descriptor for a forwarded assumed-shape dummy. The
+        ! Compose a rank-1 through rank-4 descriptor for a forwarded assumed-shape dummy. The
         ! source descriptor is borrowed and remains the owner of no storage;
         ! the new stack descriptor copies its base, element metadata, extent,
         ! and signed stride, changing only the callee's lower bound.
@@ -767,8 +767,8 @@
         integer :: dim
         logical :: has_dummy_lowers
 
-        if (rank < 1 .or. rank > 3) then
-            error_msg = 'assumed-shape descriptor forwarding supports ranks 1 through 3'
+        if (rank < 1 .or. rank > 4) then
+            error_msg = 'assumed-shape descriptor forwarding supports ranks 1 through 4'
             return
         end if
         source_descriptor = context%symbols(source_symbol)%runtime_descriptor_address
