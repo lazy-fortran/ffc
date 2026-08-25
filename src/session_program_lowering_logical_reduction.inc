@@ -615,7 +615,9 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name, op, err, logical_op
+        character(len=:), allocatable :: lit_value, lit_type
         integer :: sym, left, right, line, column, opcode, source_vk
+        integer, allocatable :: flat(:)
         logical :: array_real_call
         type(lr_operand_desc_t) :: lhs, rhs, re_value, im_value, promoted
         type(lr_operand_desc_t) :: operand, zero, cond, true_val, false_val
@@ -724,6 +726,39 @@
                     return
                 end if
             end if
+        type is (array_literal_node)
+            if (allocated(node%syntax_style)) then
+                if (node%syntax_style == 'implied_do') then
+                    error_msg = 'nested implied-do array constructors are '// &
+                        'not supported'
+                    return
+                end if
+            end if
+            if (.not. allocated(node%element_indices)) then
+                error_msg = 'array constructor has no elements'
+                return
+            end if
+            allocate (flat(0))
+            call flatten_constructor_elements(arena, node%element_indices, flat, err)
+            if (len_trim(err) > 0) then
+                error_msg = err
+                return
+            end if
+            if (linear_index < 0 .or. linear_index >= size(flat)) then
+                error_msg = 'array constructor element index is out of bounds'
+                return
+            end if
+            if (is_logical_literal(arena, flat(linear_index + 1))) then
+                call get_literal_info(arena, flat(linear_index + 1), lit_value, &
+                                      lit_type, error_msg)
+                if (len_trim(error_msg) > 0) return
+                value = i32_immediate(context%session, logical_i32_value(lit_value))
+                call set_empty(error_msg)
+            else
+                call mask_scalar_element(arena, flat(linear_index + 1), context, &
+                                         compare_vk, .true., value, error_msg)
+            end if
+            return
         end select
 
         if (is_literal(arena, idx) .and. compare_vk == VALUE_LOGICAL) then
@@ -756,6 +791,81 @@
             end if
             logical_op = trim(adjustl(lowercase_text(op)))
             if (is_logical_connective(logical_op)) then
+                ! Fold a constructor-only connective before emitting a nested
+                ! logical instruction.  The result is then a regular i32
+                ! operand when this expression is itself an array-mask element.
+                block
+                    integer, allocatable :: left_flat(:), right_flat(:)
+                    integer :: left_value, right_value
+                    character(len=:), allocatable :: left_text, right_text
+                    character(len=:), allocatable :: left_type, right_type
+                    character(len=:), allocatable :: constructor_error
+                    logical :: left_constructor, right_constructor
+
+                    left_constructor = .false.
+                    right_constructor = .false.
+                    if (node_exists(arena, left) .and. node_exists(arena, right)) then
+                        select type (left_node => arena%entries(left)%node)
+                        type is (array_literal_node)
+                            left_constructor = .true.
+                        end select
+                        select type (right_node => arena%entries(right)%node)
+                        type is (array_literal_node)
+                            right_constructor = .true.
+                        end select
+                    end if
+                    if (left_constructor .and. right_constructor) then
+                        select type (left_node => arena%entries(left)%node)
+                        type is (array_literal_node)
+                            allocate (left_flat(0))
+                            call flatten_constructor_elements(arena, &
+                                left_node%element_indices, left_flat, constructor_error)
+                        end select
+                        if (len_trim(constructor_error) == 0) then
+                            select type (right_node => arena%entries(right)%node)
+                            type is (array_literal_node)
+                                allocate (right_flat(0))
+                                call flatten_constructor_elements(arena, &
+                                    right_node%element_indices, right_flat, &
+                                    constructor_error)
+                            end select
+                        end if
+                        if (len_trim(constructor_error) == 0 .and. &
+                            size(left_flat) == size(right_flat) .and. &
+                            linear_index >= 0 .and. &
+                            linear_index < size(left_flat)) then
+                            if (is_logical_literal(arena, left_flat(linear_index + 1)) &
+                                .and. is_logical_literal(arena, right_flat(linear_index + 1))) then
+                                call get_literal_info(arena, left_flat(linear_index + 1), &
+                                    left_text, left_type, error_msg)
+                                if (len_trim(error_msg) > 0) return
+                                call get_literal_info(arena, right_flat(linear_index + 1), &
+                                    right_text, right_type, error_msg)
+                                if (len_trim(error_msg) > 0) return
+                                left_value = logical_i32_value(left_text)
+                                right_value = logical_i32_value(right_text)
+                                select case (logical_op)
+                                case ('.and.', 'and')
+                                    left_value = merge(1, 0, left_value /= 0 .and. &
+                                        right_value /= 0)
+                                case ('.or.', 'or')
+                                    left_value = merge(1, 0, left_value /= 0 .or. &
+                                        right_value /= 0)
+                                case ('.eqv.', 'eqv')
+                                    left_value = merge(1, 0, (left_value /= 0) .eqv. &
+                                        (right_value /= 0))
+                                case default
+                                    left_value = merge(1, 0, (left_value /= 0) .neqv. &
+                                        (right_value /= 0))
+                                end select
+                                value = i32_immediate(context%session, &
+                                    int(left_value, c_int64_t))
+                                call set_empty(error_msg)
+                                return
+                            end if
+                        end if
+                    end if
+                end block
                 call lower_mask_expression_element(arena, left, VALUE_LOGICAL, &
                     linear_index, context, lhs, error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -811,6 +921,10 @@
                 if (.not. emit_liric_f64_binary(context%session, opcode, lhs, rhs, &
                         value, error_msg)) return
             end if
+            return
+        end if
+        if (compare_vk == VALUE_LOGICAL) then
+            call lower_logical_expression(arena, idx, context, value, error_msg)
             return
         end if
         error_msg = 'array mask expression is not supported'

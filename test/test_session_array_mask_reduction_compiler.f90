@@ -11,6 +11,7 @@ program test_session_array_mask_reduction_compiler
     if (.not. test_array_vs_scalar()) all_passed = .false.
     if (.not. test_array_vs_array()) all_passed = .false.
     if (.not. test_array_vs_constructor()) all_passed = .false.
+    if (.not. test_logical_constructor_equivalence()) all_passed = .false.
     if (.not. test_real_and_allocatable()) all_passed = .false.
     if (.not. test_elemental_abs_mask()) all_passed = .false.
     if (.not. test_complex_allocatable_abs_mask()) all_passed = .false.
@@ -67,6 +68,21 @@ contains
         test_array_vs_constructor = expect_output( &
             source, ' ok'//new_line('a'), '/tmp/ffc_mask_ctor')
     end function test_array_vs_constructor
+
+    logical function test_logical_constructor_equivalence()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '    logical, parameter :: x(2) = [.true., .false.]'//new_line('a')// &
+            '    if (all((x .neqv. .true.) .neqv. [.false., .true.])) '// &
+            'error stop 1'//new_line('a')// &
+            '    if (all(([.false., .true.] .eqv. [.false., .true.]) '// &
+            '.neqv. [.true., .true.])) error stop 2'//new_line('a')// &
+            '    print *, "ok"'//new_line('a')// &
+            'end program main'
+
+        test_logical_constructor_equivalence = expect_output_matches_gfortran( &
+            source, 'logical_constructor_equivalence')
+    end function test_logical_constructor_equivalence
 
     logical function test_real_and_allocatable()
         character(len=*), parameter :: source = &
