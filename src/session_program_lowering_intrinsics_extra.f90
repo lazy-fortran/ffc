@@ -272,9 +272,8 @@ contains
             scalar_index, array_on_left, source_op, reduction_name, value, &
             error_msg)
         ! Runtime-extent whole-array comparisons use the same descriptor-aware
-        ! element loader as bare logical reductions.  Keep this deliberately
-        ! rank-1: resolve_comparison_mask only admits one array operand, and
-        ! higher-rank comparison masks remain an explicit unsupported form.
+        ! element loader as bare logical reductions.  The linear index is
+        ! column-major, so rank-2 uses extent(1) as its leading stride.
         type(ast_arena_t), intent(in) :: arena
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: mask_sym, scalar_index
@@ -282,19 +281,32 @@ contains
         character(len=*), intent(in) :: source_op, reduction_name
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: extent, accumulator, identity, element, &
+        type(lr_operand_desc_t) :: extent, total_extent, accumulator, identity, &
+            element, &
             condition, next_accumulator, entry_index, header_index, &
             backedge_index, next_index
         integer(c_int32_t) :: entry_block, header_block, body_block, &
             latch_block, exit_block, index_vreg
 
         call set_empty(error_msg)
-        if (context%symbols(mask_sym)%array_rank /= 1) then
+        if (context%symbols(mask_sym)%array_rank < 1 .or. &
+            context%symbols(mask_sym)%array_rank > 2) then
             error_msg = trim(reduction_name)// &
-                ' over runtime comparison masks supports rank 1 only'
+                ' over runtime comparison masks supports ranks 1 and 2 only'
             return
         end if
         extent = context%symbols(mask_sym)%runtime_dim_size(1)
+        if (context%symbols(mask_sym)%array_rank == 2) then
+            if (.not. context%symbols(mask_sym)%has_runtime_dim_size(2)) then
+                error_msg = trim(reduction_name)// &
+                    ' over runtime comparison masks is missing rank-2 extent'
+                return
+            end if
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
+                context%symbols(mask_sym)%runtime_dim_size(2), total_extent, &
+                error_msg)) return
+            extent = total_extent
+        end if
         call runtime_reduction_accumulator_slot(context, VALUE_I32, &
             reduction_name, accumulator, identity, error_msg)
         if (len_trim(error_msg) > 0) return
