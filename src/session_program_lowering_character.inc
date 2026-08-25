@@ -749,6 +749,19 @@
             end if
         end if
 
+        ! MERGE of scalar character values is a character expression, but its
+        ! mask is lowered through the scalar logical ABI rather than through
+        ! char_expr_operands.  Keep this before the generic character
+        ! classifier so fixed-length assignment can select and copy the chosen
+        ! source with the normal padding/truncation rules.
+        if (.not. context%symbols(symbol_index)%is_deferred_character) then
+            if (is_character_merge_call(arena, node%value_index, context)) then
+                call lower_fixed_char_merge_assignment(arena, node, context, &
+                    symbol_index, error_msg)
+                return
+            end if
+        end if
+
         if (is_binary_op(arena, node%value_index)) then
             call concat_character_literals(arena, node%value_index, &
                                            literal_text, fold_ok)
@@ -1355,6 +1368,96 @@
         call store_fixed_character_value(context, dest_symbol_index, src_data, &
                                          src_len, error_msg)
     end subroutine lower_fixed_char_expr_assignment
+
+    logical function is_character_merge_call(arena, node_index, context) &
+            result(is_merge)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(in) :: context
+
+        is_merge = .false.
+        if (.not. node_exists(arena, node_index)) return
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (node%is_array_access .or. .not. allocated(node%name)) return
+            if (.not. same_name(node%name, 'merge')) return
+            if (.not. allocated(node%arg_indices) .or. &
+                size(node%arg_indices) /= 3) return
+            is_merge = is_direct_character_operand(arena, node%arg_indices(1), &
+                context) .and. is_direct_character_operand(arena, &
+                node%arg_indices(2), context)
+        end select
+    end function is_character_merge_call
+
+    subroutine lower_fixed_char_merge_assignment(arena, assignment, context, &
+                                                 dest_symbol_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: assignment
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: dest_symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: true_data, true_len
+        type(lr_operand_desc_t) :: false_data, false_len
+        type(lr_operand_desc_t) :: mask, zero, condition
+        type(lr_operand_desc_t) :: selected_data, selected_len
+
+        select type (merge_call => arena%entries(assignment%value_index)%node)
+        type is (call_or_subscript_node)
+            call char_expr_operands(arena, merge_call%arg_indices(1), context, &
+                true_data, true_len, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call char_expr_operands(arena, merge_call%arg_indices(2), context, &
+                false_data, false_len, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_merge_character_mask(arena, merge_call%arg_indices(3), &
+                context, mask, error_msg)
+            if (len_trim(error_msg) > 0) return
+            zero = i32_immediate(context%session, 0_c_int64_t)
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, mask, &
+                    zero, condition, error_msg)) return
+            call select_value(context, condition, true_data, false_data, &
+                selected_data, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call select_value(context, condition, true_len, false_len, &
+                selected_len, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call store_fixed_character_value(context, dest_symbol_index, &
+                selected_data, selected_len, error_msg)
+        class default
+            error_msg = 'character MERGE requires an intrinsic call'
+        end select
+    end subroutine lower_fixed_char_merge_assignment
+
+    subroutine lower_merge_character_mask(arena, mask_index, context, value, &
+                                          error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: mask_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: symbol_index
+        type(lr_operand_desc_t) :: narrow
+
+        if (is_identifier(arena, mask_index)) then
+            call get_identifier_name(arena, mask_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = resolve_symbol_at_node(context, mask_index, name)
+            if (symbol_index > 0 .and. &
+                context%symbols(symbol_index)%value_kind == VALUE_LOGICAL .and. &
+                context%symbols(symbol_index)%logical_kind_bytes == 1 .and. &
+                context%symbols(symbol_index)%has_address .and. &
+                context%symbols(symbol_index)%is_reference) then
+                if (.not. emit_i8_load(context%session, &
+                        context%symbols(symbol_index)%address, narrow, &
+                        error_msg)) return
+                if (.not. emit_liric_i8_to_i32(context%session, narrow, value, &
+                        error_msg)) return
+                return
+            end if
+        end if
+        call lower_logical_expression(arena, mask_index, context, value, error_msg)
+    end subroutine lower_merge_character_mask
 
     subroutine store_fixed_character_value(context, dest_symbol_index, src_data, &
                                            src_len, error_msg)
