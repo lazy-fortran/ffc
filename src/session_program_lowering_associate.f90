@@ -356,9 +356,10 @@ contains
     subroutine bind_associate_array_section(arena, slice_node, assoc_name, &
             binding, context, error_msg)
         ! Bind an associate array section to the source storage.  A rank-1
-        ! section remains a unit-stride view.  A rank-2 view is accepted only
-        ! when its first dimension is complete; that is the condition that
-        ! makes a(:,lo:hi) contiguous in column-major storage.
+        ! section remains a unit-stride view.  A rank-2/rank-3/rank-4 view is
+        ! accepted only when it keeps every source dimension and its first
+        ! dimension is complete; that is the condition that makes the view
+        ! contiguous in column-major storage.
         type(ast_arena_t), intent(in) :: arena
         type(array_slice_node), intent(in) :: slice_node
         character(len=*), intent(in) :: assoc_name
@@ -368,52 +369,62 @@ contains
         type(array_section_info_t) :: info
         type(lr_operand_desc_t) :: start_index, view_address
         integer :: idx, value_kind, source_array_size, source_rank
-        integer :: dim1, dim2
+        integer :: dim
         integer(c_int64_t) :: extent
         logical :: ok
 
         call describe_array_section(arena, slice_node, context, info, error_msg)
         if (len_trim(error_msg) > 0) return
         source_rank = info%source_rank
-        if (info%result_rank /= 1 .and. info%result_rank /= 2) then
+        if (info%result_rank < 1 .or. info%result_rank > 4) then
             call unsupported_feature_error('associate array selector', &
                 slice_node%line, slice_node%column, &
-                'ffc direct-session associate supports rank-1 and rank-2 '// &
+                'ffc direct-session associate supports rank-1 through rank-4 '// &
                 'array section selectors', error_msg)
             return
         end if
-        if (info%result_rank == 2) then
-            if (source_rank /= 2 .or. info%kept_dims(1) /= 1 .or. &
-                info%kept_dims(2) /= 2) then
+        if (info%result_rank > 1) then
+            if (source_rank /= info%result_rank) then
                 call unsupported_feature_error('associate array selector', &
                     slice_node%line, slice_node%column, &
-                    'ffc direct-session rank-2 associate sections must keep '// &
-                    'both source dimensions', error_msg)
+                    'ffc direct-session rank-2/rank-3/rank-4 associate sections '// &
+                    'must keep all source dimensions', error_msg)
                 return
             end if
+            do dim = 1, info%result_rank
+                if (info%kept_dims(dim) /= dim) then
+                    call unsupported_feature_error('associate array selector', &
+                        slice_node%line, slice_node%column, &
+                        'ffc direct-session rank-2/rank-3/rank-4 associate '// &
+                        'sections must keep all source dimensions', error_msg)
+                    return
+                end if
+            end do
             if (info%section_extents(1) /= info%source_sizes(1) .or. &
                 info%section_lowers(1) /= info%source_lowers(1)) then
                 call unsupported_feature_error('associate array selector', &
                     slice_node%line, slice_node%column, &
-                    'ffc direct-session rank-2 associate sections must keep '// &
+                    'ffc direct-session rank-2/rank-3/rank-4 associate sections '// &
                     'the complete first dimension', error_msg)
                 return
             end if
         end if
-        if (info%section_strides(info%kept_dims(1)) /= 1_c_int64_t .or. &
-            (info%result_rank == 2 .and. &
-             info%section_strides(info%kept_dims(2)) /= 1_c_int64_t)) then
-            call unsupported_feature_error('associate array selector', &
-                slice_node%line, slice_node%column, &
-                'ffc direct-session associate only supports a unit-stride '// &
-                'array section selector', error_msg)
-            return
-        end if
-
+        do dim = 1, info%result_rank
+            if (info%section_strides(info%kept_dims(dim)) /= 1_c_int64_t) then
+                call unsupported_feature_error('associate array selector', &
+                    slice_node%line, slice_node%column, &
+                    'ffc direct-session associate only supports a unit-stride '// &
+                    'array section selector', error_msg)
+                return
+            end if
+        end do
         value_kind = context%symbols(info%source_index)%value_kind
         source_array_size = context%symbols(info%source_index)%array_size
-        if (source_rank == 2) then
-            source_array_size = int(info%source_sizes(1) * info%source_sizes(2))
+        if (source_rank > 1) then
+            source_array_size = 1
+            do dim = 1, source_rank
+                source_array_size = source_array_size * int(info%source_sizes(dim))
+            end do
         end if
         start_index = i32_immediate(context%session, &
             array_section_source_linear_index(info, 0_c_int64_t))
@@ -450,15 +461,11 @@ contains
         context%symbols(idx)%array_dim_lowers(1) = 1
         context%symbols(idx)%array_dim_sizes(1) = int( &
             info%section_extents(info%kept_dims(1)))
-        if (info%result_rank == 2) then
-            dim1 = int(info%section_extents(info%kept_dims(1)))
-            dim2 = int(info%section_extents(info%kept_dims(2)))
-            context%symbols(idx)%array_dim_lowers(2) = 1
-            context%symbols(idx)%array_dim_sizes(2) = dim2
-            ! Keep the explicit local variables in the lowering path: they
-            ! document the column-major shape used by subsequent GEPs.
-            context%symbols(idx)%array_size = dim1 * dim2
-        end if
+        do dim = 2, info%result_rank
+            context%symbols(idx)%array_dim_lowers(dim) = 1
+            context%symbols(idx)%array_dim_sizes(dim) = int( &
+                info%section_extents(info%kept_dims(dim)))
+        end do
         context%symbols(idx)%element_address = view_address
         context%symbols(idx)%has_address = .true.
         context%symbols(idx)%is_reference = .true.
