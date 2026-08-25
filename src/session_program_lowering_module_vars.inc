@@ -161,7 +161,7 @@
     subroutine module_allocatable_array_info(arena, var_idx, value_kind, rank, &
                                              context, error_msg)
         ! Resolve the element kind and rank of a module-scope allocatable array.
-        ! Only the rank-1/rank-2 numeric and logical element kinds whose local
+        ! Only the rank-1 through rank-4 numeric and logical element kinds whose local
         ! descriptor paths are complete are in scope; anything else keeps its
         ! previous clean diagnostic.
         type(ast_arena_t), intent(in) :: arena
@@ -189,8 +189,8 @@
             error_msg = 'module export is not a declaration'
             return
         end select
-        if (rank < 1 .or. rank > 2) then
-            error_msg = 'only rank-1 and rank-2 allocatable module arrays are '// &
+        if (rank < 1 .or. rank > 4) then
+            error_msg = 'only rank-1 through rank-4 allocatable module arrays are '// &
                         'stored as descriptor globals'
             return
         end if
@@ -736,6 +736,7 @@
         context%symbols(sym_idx) = symbol_t()
         context%symbols(sym_idx)%name = trim(sym_name)
         context%symbols(sym_idx)%value_kind = value_kind
+        context%symbols(sym_idx)%is_array = .true.
         context%symbols(sym_idx)%is_allocatable = .true.
         context%symbols(sym_idx)%array_rank = rank
         context%symbols(sym_idx)%allocatable_descriptor_address%kind = &
