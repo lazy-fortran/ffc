@@ -3186,12 +3186,13 @@
                         return
                     end if
                     if (is_whole_array_intrinsic_name(rhs%name)) then
-                        if (context%symbols(symbol_index)%value_kind == &
+                        if (.not. same_name(rhs%name, 'matmul') .and. &
+                            (context%symbols(symbol_index)%value_kind == &
                                 VALUE_I64 .or. &
                             context%symbols(symbol_index)%value_kind == &
                                 VALUE_I8 .or. &
                             context%symbols(symbol_index)%value_kind == &
-                                VALUE_I16) then
+                                VALUE_I16)) then
                             call unsupported_feature_error( &
                                 'whole-array intrinsic assignment', &
                                 node%line, node%column, &
@@ -4438,7 +4439,8 @@
                     context, a_index, error_msg)
             else
                 call resolve_i32_array_argument(arena, rhs, 1, context, 'matmul', &
-                                                'left operand', a_index, error_msg)
+                                                'left operand', a_index, error_msg, &
+                                                allow_logical=.true.)
             end if
             if (len_trim(error_msg) > 0) return
             if (b_is_alloc_result) then
@@ -4449,9 +4451,18 @@
                     context, b_index, error_msg)
             else
                 call resolve_i32_array_argument(arena, rhs, 2, context, 'matmul', &
-                                                'right operand', b_index, error_msg)
+                                                'right operand', b_index, error_msg, &
+                                                allow_logical=.true.)
             end if
             if (len_trim(error_msg) > 0) return
+
+            if (context%symbols(symbol_index)%array_rank == 1 .and. &
+                (context%symbols(a_index)%array_rank == 1 .or. &
+                 context%symbols(b_index)%array_rank == 1)) then
+                call lower_matmul_vector_assignment(a_index, b_index, &
+                    symbol_index, context, error_msg)
+                return
+            end if
 
             if (a_is_alloc_result .and. context%symbols(a_index)%array_rank == 2 &
                 .and. context%symbols(b_index)%array_rank == 1 .and. &
@@ -4555,6 +4566,105 @@
             return
         end select
     end subroutine lower_matmul_assignment
+
+    subroutine lower_matmul_vector_assignment(a_index, b_index, target_index, &
+                                               context, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: a_index, b_index, target_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: a_value, b_value, product, sum, next_sum
+        integer(c_int64_t) :: a_cols, b_rows, target_size
+        integer(c_int64_t) :: i, k
+        integer(c_int64_t) :: a_lower, a_col_lower, b_lower, b_col_lower
+        integer :: a_rank, b_rank, vk
+
+        call set_empty(error_msg)
+        a_rank = context%symbols(a_index)%array_rank
+        b_rank = context%symbols(b_index)%array_rank
+        vk = context%symbols(target_index)%value_kind
+        if (a_rank == 1 .and. b_rank == 2) then
+            a_cols = int(context%symbols(a_index)%array_dim_sizes(1), c_int64_t)
+            b_rows = int(context%symbols(b_index)%array_dim_sizes(1), c_int64_t)
+            target_size = int(context%symbols(b_index)%array_dim_sizes(2), c_int64_t)
+            a_lower = int(context%symbols(a_index)%array_dim_lowers(1), c_int64_t)
+            b_lower = int(context%symbols(b_index)%array_dim_lowers(1), c_int64_t)
+            b_col_lower = int(context%symbols(b_index)%array_dim_lowers(2), c_int64_t)
+        else if (a_rank == 2 .and. b_rank == 1) then
+            a_cols = int(context%symbols(a_index)%array_dim_sizes(2), c_int64_t)
+            b_rows = int(context%symbols(b_index)%array_dim_sizes(1), c_int64_t)
+            target_size = int(context%symbols(a_index)%array_dim_sizes(1), c_int64_t)
+            a_lower = int(context%symbols(a_index)%array_dim_lowers(1), c_int64_t)
+            a_col_lower = int(context%symbols(a_index)%array_dim_lowers(2), c_int64_t)
+            b_lower = int(context%symbols(b_index)%array_dim_lowers(1), c_int64_t)
+        else
+            error_msg = 'matmul vector result requires one rank-1 operand'
+            return
+        end if
+        if (a_cols /= b_rows .or. target_size /= &
+            int(context%symbols(target_index)%array_dim_sizes(1), c_int64_t)) then
+            error_msg = 'matmul vector operands have nonconforming shapes'
+            return
+        end if
+        if (context%symbols(a_index)%value_kind == VALUE_LOGICAL .or. &
+            context%symbols(b_index)%value_kind == VALUE_LOGICAL .or. &
+            vk == VALUE_LOGICAL) then
+            if (context%symbols(a_index)%value_kind /= VALUE_LOGICAL .or. &
+                context%symbols(b_index)%value_kind /= VALUE_LOGICAL .or. &
+                vk /= VALUE_LOGICAL) then
+                error_msg = 'logical matmul operands must all be logical'
+                return
+            end if
+        end if
+
+        do i = 0_c_int64_t, target_size - 1_c_int64_t
+            if (vk == VALUE_F32) then
+                sum = liric_f32_immediate(context%session, 0.0_c_float)
+            else if (vk == VALUE_F64) then
+                sum = liric_f64_immediate(context%session, 0.0_c_double)
+            else
+                sum = i32_immediate(context%session, 0_c_int64_t)
+            end if
+            do k = 0_c_int64_t, a_cols - 1_c_int64_t
+                if (a_rank == 1) then
+                    call load_i32_array_element(context, a_index, a_lower + k, &
+                                                a_value, error_msg)
+                    call load_i32_array_element(context, b_index, b_lower + k, &
+                                                b_value, error_msg, b_col_lower + i)
+                else
+                    call load_i32_array_element(context, a_index, a_lower + i, &
+                                                a_value, error_msg, &
+                                                a_col_lower + k)
+                    call load_i32_array_element(context, b_index, b_lower + k, &
+                                                b_value, error_msg)
+                end if
+                if (len_trim(error_msg) > 0) return
+                if (vk == VALUE_F32) then
+                    if (.not. emit_liric_f32_binary(context%session, LR_OP_FMUL, &
+                            a_value, b_value, product, error_msg)) return
+                    if (.not. emit_liric_f32_binary(context%session, LR_OP_FADD, &
+                            sum, product, next_sum, error_msg)) return
+                else if (vk == VALUE_F64) then
+                    if (.not. emit_liric_f64_binary(context%session, LR_OP_FMUL, &
+                            a_value, b_value, product, error_msg)) return
+                    if (.not. emit_liric_f64_binary(context%session, LR_OP_FADD, &
+                            sum, product, next_sum, error_msg)) return
+                else if (vk == VALUE_LOGICAL) then
+                    if (.not. emit_i32_binary(context%session, LR_OP_AND, a_value, &
+                            b_value, product, error_msg)) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_OR, sum, &
+                            product, next_sum, error_msg)) return
+                else
+                    if (.not. emit_i32_binary(context%session, LR_OP_MUL, a_value, &
+                            b_value, product, error_msg)) return
+                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, sum, &
+                            product, next_sum, error_msg)) return
+                end if
+                sum = next_sum
+            end do
+            call store_array_linear_element(context, target_index, i, sum, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine lower_matmul_vector_assignment
 
     subroutine materialize_matmul_alloc_result(arena, value_index, context, &
                                                 symbol_index, error_msg)
