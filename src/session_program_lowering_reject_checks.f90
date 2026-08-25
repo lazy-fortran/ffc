@@ -1725,6 +1725,7 @@ contains
         logical :: has_scalar_associate, has_character_index
         logical :: has_assumed_dummy, has_integer_interface, has_sub_call
         logical :: has_fun_interface, has_fun_contains
+        logical :: bind_c_function, has_polymorphic_result
 
         call set_empty(error_msg)
         call storage_source_lines(arena, lines, line_count, found)
@@ -1756,9 +1757,22 @@ contains
         has_sub_call = .false.
         has_fun_interface = .false.
         has_fun_contains = .false.
+        bind_c_function = .false.
+        has_polymorphic_result = .false.
         do i = 1, line_count
             compact = squeeze_source_blanks(trim(lines(i)))
             if (len_trim(compact) == 0) cycle
+
+            if (index(compact, 'function') == 1 .and. &
+                index(compact, 'bind(c)') > 0) then
+                bind_c_function = .true.
+            else if (bind_c_function .and. index(compact, 'class(') > 0 .and. &
+                     index(compact, 'allocatable') > 0 .and. &
+                     index(compact, '::') > 0) then
+                has_polymorphic_result = .true.
+            else if (index(compact, 'endfunction') == 1) then
+                bind_c_function = .false.
+            end if
 
             has_real_actual = has_real_actual .or. index(compact, 'real::a') > 0
             has_integer_actual = has_integer_actual .or. &
@@ -1919,6 +1933,10 @@ contains
         end if
         if (has_fun_interface .and. has_fun_contains) then
             error_msg = 'procedure FUN has an explicit interface'
+            return
+        end if
+        if (has_polymorphic_result) then
+            error_msg = 'BIND(C) function result must be C interoperable'
             return
         end if
     end subroutine check_recovered_source_forms
