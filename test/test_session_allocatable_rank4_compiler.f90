@@ -175,7 +175,7 @@ contains
             'end program main'
 
         test_pointer_rejected = expect_error_contains(source, &
-            'supports rank-1 and rank-2 fixed-size integer, real, logical, and complex pointer/target arrays only', &
+            'supports rank-1, rank-2, and rank-3 fixed-size integer, real, logical, and complex pointer/target arrays only', &
             '/tmp/ffc_alloc_rank4_pointer_reject')
     end function test_pointer_rejected
 
@@ -186,7 +186,7 @@ contains
             'end program main'
 
         test_target_rejected = expect_error_contains(source, &
-            'direct LIRIC session supports rank-1 and rank-2 fixed-size integer, '// &
+            'direct LIRIC session supports rank-1, rank-2, and rank-3 fixed-size integer, '// &
             'real, logical, and complex pointer/target arrays only', &
             '/tmp/ffc_alloc_rank4_target_reject')
     end function test_target_rejected

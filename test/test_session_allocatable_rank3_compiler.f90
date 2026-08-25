@@ -157,22 +157,22 @@ contains
     logical function test_pointer_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer, pointer :: a(:,:,:)'//new_line('a')// &
+            '  integer, pointer :: a(:,:,:,:)'//new_line('a')// &
             'end program main'
 
         test_pointer_rejected = expect_error_contains(source, &
-            'supports rank-1 and rank-2 fixed-size integer, real, logical, and complex pointer/target arrays only', &
+            'supports rank-1, rank-2, and rank-3 fixed-size integer, real, logical, and complex pointer/target arrays only', &
             '/tmp/ffc_alloc_rank3_pointer_reject')
     end function test_pointer_rejected
 
     logical function test_target_rejected()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer, allocatable, target :: a(:,:,:)'//new_line('a')// &
+            '  integer, allocatable, target :: a(:,:,:,:)'//new_line('a')// &
             'end program main'
 
         test_target_rejected = expect_error_contains(source, &
-            'supports rank-1 and rank-2 fixed-size integer, real, logical, and complex pointer/target arrays only', &
+            'supports rank-1, rank-2, and rank-3 fixed-size integer, real, logical, and complex pointer/target arrays only', &
             '/tmp/ffc_alloc_rank3_target_reject')
     end function test_target_rejected
 
