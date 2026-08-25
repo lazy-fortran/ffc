@@ -913,6 +913,19 @@
                 return
             end if
         end if
+        if (is_identifier(arena, source_expr)) then
+            call get_identifier_name(arena, source_expr, source_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            source_sym = find_symbol_compat(context, source_name)
+            if (source_sym > 0) then
+                if (context%symbols(source_sym)%is_array .and. &
+                    .not. context%symbols(source_sym)%is_allocatable) then
+                    call lower_allocate_array_expression_source(arena, source_expr, &
+                        target_sym, context, copy_values, error_msg)
+                    return
+                end if
+            end if
+        end if
         if (.not. is_identifier(arena, source_expr)) then
             if (target_sym <= 0 .or. .not. context%symbols(target_sym)%is_allocatable) &
                     then
@@ -1120,33 +1133,150 @@
         type(lowering_context_t), intent(inout) :: context
         logical, intent(in) :: copy_values
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: extent
+        integer :: extent, rank, d
+        integer :: shape(4)
         logical :: known
+        logical :: shape_known
         type(array_expr_plan_t) :: plan
         type(lr_operand_desc_t) :: n_i32
+        type(lr_operand_desc_t) :: extents(4)
 
         call set_empty(error_msg)
-        if (context%symbols(target_sym)%array_rank == 2) then
-            error_msg = 'mold/source allocate supports only rank-1 arrays'
+        rank = context%symbols(target_sym)%array_rank
+        call array_expression_static_shape(arena, source_expr, context, rank, &
+                                           shape, shape_known)
+        if (.not. shape_known .or. rank < 1 .or. rank > 4) then
+            error_msg = 'mold/source allocate requires a fixed-shape source expression'
             return
         end if
-        call array_expression_static_extent(arena, source_expr, context, extent, &
-                                            known)
-        if (.not. known .or. extent <= 0) then
-            error_msg = 'mold/source allocate requires a constant source extent'
+        if (rank /= context%symbols(target_sym)%array_rank) then
+            error_msg = 'mold/source allocate requires matching array ranks'
             return
         end if
-        n_i32 = i32_immediate(context%session, int(extent, c_int64_t))
-        call lower_allocate_i32_1d_operand(n_i32, target_sym, context, error_msg)
+        do d = 1, rank
+            if (shape(d) <= 0) then
+                error_msg = 'mold/source allocate requires a positive source shape'
+                return
+            end if
+            extents(d) = i32_immediate(context%session, int(shape(d), c_int64_t))
+        end do
+
+        if (rank == 2) then
+            call lower_allocate_i32_2d_operands(extents(1), extents(2), &
+                target_sym, context, error_msg)
+        else if (rank == 3) then
+            call lower_allocate_i32_3d_operands(extents(1), extents(2), &
+                extents(3), target_sym, context, error_msg)
+        else if (rank == 4) then
+            call lower_allocate_i32_4d_operands(extents(1), extents(2), &
+                extents(3), extents(4), target_sym, context, error_msg)
+        else
+            call array_expression_static_extent(arena, source_expr, context, &
+                                                extent, known)
+            if (.not. known .or. extent <= 0) then
+                error_msg = 'mold/source allocate requires a constant source extent'
+                return
+            end if
+            n_i32 = i32_immediate(context%session, int(extent, c_int64_t))
+            call lower_allocate_i32_1d_operand(n_i32, target_sym, context, &
+                                                error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
-        context%symbols(target_sym)%allocatable_static_size = extent
+        context%symbols(target_sym)%allocatable_static_size = 1
+        do d = 1, rank
+            context%symbols(target_sym)%allocatable_static_size = &
+                context%symbols(target_sym)%allocatable_static_size * shape(d)
+            context%symbols(target_sym)%array_dim_sizes(d) = shape(d)
+        end do
         if (.not. copy_values) return
 
         call build_array_expression(context, target_sym, source_expr, plan, &
                                     error_msg)
         if (len_trim(error_msg) > 0) return
+        plan%rank = rank
+        plan%extents = 0
+        plan%extents(1:rank) = shape(1:rank)
+        call validate_conformability(plan, error_msg)
+        if (len_trim(error_msg) > 0) return
         call emit_array_expression_assignment(arena, plan, context, error_msg)
     end subroutine lower_allocate_array_expression_source
+
+    recursive subroutine array_expression_static_shape(arena, expr_index, &
+                                                       context, rank, shape, known)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: expr_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: rank
+        integer, intent(out) :: shape(4)
+        logical, intent(out) :: known
+        integer :: left_index, right_index, line, column, left_rank, right_rank
+        integer :: left_shape(4), right_shape(4), sym, d
+        character(len=:), allocatable :: name, op, err
+
+        rank = 0
+        shape = 0
+        known = .false.
+        if (.not. node_exists(arena, expr_index)) return
+        if (is_identifier(arena, expr_index)) then
+            call get_identifier_name(arena, expr_index, name, err)
+            if (len_trim(err) > 0) return
+            sym = find_symbol_compat(context, name)
+            if (sym <= 0) return
+            if (context%symbols(sym)%is_allocatable) return
+            if (context%symbols(sym)%array_rank < 1 .or. &
+                context%symbols(sym)%array_rank > 4) return
+            if (context%symbols(sym)%is_runtime_array .or. &
+                any(context%symbols(sym)%has_runtime_dim_size)) return
+            rank = context%symbols(sym)%array_rank
+            shape(1:rank) = context%symbols(sym)%array_dim_sizes(1:rank)
+            known = all(shape(1:rank) > 0)
+            return
+        end if
+        if (is_binary_op(arena, expr_index)) then
+            call get_binary_op_info(arena, expr_index, op, left_index, &
+                                    right_index, line, column, err)
+            if (len_trim(err) > 0) return
+            call array_expression_static_shape(arena, left_index, context, &
+                                               left_rank, left_shape, known)
+            if (.not. known) then
+                call array_expression_static_shape(arena, right_index, context, &
+                                                   right_rank, right_shape, known)
+                if (known) then
+                    rank = right_rank
+                    shape = right_shape
+                end if
+                return
+            end if
+            call array_expression_static_shape(arena, right_index, context, &
+                                               right_rank, right_shape, known)
+            if (.not. known) then
+                rank = left_rank
+                shape = left_shape
+                known = .true.
+                return
+            end if
+            if (left_rank /= right_rank) then
+                known = .false.
+                return
+            end if
+            do d = 1, left_rank
+                if (left_shape(d) /= right_shape(d)) then
+                    known = .false.
+                    return
+                end if
+            end do
+            rank = left_rank
+            shape = left_shape
+            return
+        end if
+        select type (node => arena%entries(expr_index)%node)
+        type is (array_literal_node)
+            if (.not. allocated(node%element_indices)) return
+            rank = 1
+            shape(1) = size(node%element_indices)
+            known = shape(1) > 0
+        end select
+    end subroutine array_expression_static_shape
 
     recursive subroutine array_expression_static_extent(arena, expr_index, &
                                                          context, extent, known)
