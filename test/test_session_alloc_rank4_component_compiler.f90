@@ -33,6 +33,7 @@ contains
             '  end type box_t'//new_line('a')// &
             '  type(box_t) :: x'//new_line('a')// &
             '  integer :: i, j, k, l, m, n, p, q, isum, lsum'//new_line('a')// &
+            '  integer :: rhs(2,2,2,3)'//new_line('a')// &
             '  real :: rsum'//new_line('a')// &
             '  m = 2'//new_line('a')// &
             '  n = 2'//new_line('a')// &
@@ -44,11 +45,14 @@ contains
             '  if (size(x%iv) /= m*n*p*q) error stop 3'//new_line('a')// &
             '  if (size(x%iv,1) /= m .or. size(x%iv,2) /= n .or. '// &
             'size(x%iv,3) /= p .or. size(x%iv,4) /= q) error stop 4'//new_line('a')// &
+            '  x%iv = 7'//new_line('a')// &
+            '  if (x%iv(1,1,1,1) /= 7 .or. x%iv(2,2,2,3) /= 7) error stop 6'// &
+            new_line('a')// &
             '  do l = 1, q'//new_line('a')// &
             '    do k = 1, p'//new_line('a')// &
             '      do j = 1, n'//new_line('a')// &
             '        do i = 1, m'//new_line('a')// &
-            '          x%iv(i,j,k,l) = 1000*i + 100*j + 10*k + l'//new_line('a')// &
+            '          rhs(i,j,k,l) = 1000*i + 100*j + 10*k + l'//new_line('a')// &
             '          x%rv(i,j,k,l) = real(i) + 0.25*real(j) + '// &
             '0.5*real(k) + 0.75*real(l)'//new_line('a')// &
             '          x%lv(i,j,k,l) = mod(i+j+k+l, 2) == 0'//new_line('a')// &
@@ -56,6 +60,9 @@ contains
             '      end do'//new_line('a')// &
             '    end do'//new_line('a')// &
             '  end do'//new_line('a')// &
+            '  x%iv = rhs'//new_line('a')// &
+            '  if (x%iv(1,1,1,1) /= 1111 .or. '// &
+            'x%iv(2,2,2,3) /= 2223) error stop 7'//new_line('a')// &
             '  call touch(x)'//new_line('a')// &
             '  isum = x%iv(1,1,1,1) + x%iv(2,2,2,3)'//new_line('a')// &
             '  rsum = x%rv(1,1,1,1) + x%rv(2,2,2,3)'//new_line('a')// &
