@@ -3,15 +3,25 @@
         ! number or '*'.
         type(read_statement_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
-        integer :: symbol_index
+        integer :: symbol_index, open_pos
+        character(len=:), allocatable :: base_name
 
         is_internal_read = .false.
         if (.not. allocated(node%unit_spec)) return
         if (trim(node%unit_spec) == '*') return
         symbol_index = find_symbol_compat(context, trim(node%unit_spec))
+        if (symbol_index > 0) then
+            is_internal_read = context%symbols(symbol_index)%value_kind == &
+                VALUE_CHARACTER
+            return
+        end if
+        open_pos = index(trim(node%unit_spec), '(')
+        if (open_pos <= 1) return
+        base_name = trim(node%unit_spec(:open_pos - 1))
+        symbol_index = find_symbol_compat(context, base_name)
         if (symbol_index <= 0) return
-        is_internal_read = &
-            context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
+        is_internal_read = context%symbols(symbol_index)%value_kind == &
+            VALUE_CHARACTER
     end function is_internal_read
 
     subroutine lower_internal_read(arena, node, context, error_msg)
@@ -29,7 +39,10 @@
         integer :: buf_index, target_index
         integer(c_int32_t) :: fmt_id
         type(lr_operand_desc_t) :: slot, fmt_ptr, value, args(3)
+        type(lr_operand_desc_t) :: buffer_value, base_value, offset
         character(len=64) :: fmt_name
+        character(len=:), allocatable :: unit_text, base_name, bounds_text
+        integer :: open_pos, colon_pos, close_pos, lower_bound, ios
 
         if (.not. allocated(node%format_spec)) then
             call unsupported_feature_error('internal read', node%line, &
@@ -43,7 +56,54 @@
             return
         end if
 
-        buf_index = find_symbol_compat(context, trim(node%unit_spec))
+        unit_text = trim(node%unit_spec)
+        buf_index = find_symbol_compat(context, unit_text)
+        if (buf_index <= 0) then
+            open_pos = index(unit_text, '(')
+            if (open_pos <= 1) then
+                call unsupported_feature_error('internal read', node%line, &
+                    node%column, 'internal read unit must be a character variable '// &
+                    'or constant substring', error_msg)
+                return
+            end if
+            close_pos = index(unit_text(open_pos + 1:), ')')
+            if (close_pos <= 0) then
+                call unsupported_feature_error('internal read', node%line, &
+                    node%column, 'internal read unit must be a character variable '// &
+                    'or constant substring', error_msg)
+                return
+            end if
+            close_pos = close_pos + open_pos
+            colon_pos = index(unit_text(open_pos + 1:close_pos - 1), ':')
+            if (colon_pos <= 0) then
+                call unsupported_feature_error('internal read', node%line, &
+                    node%column, 'internal read substring bounds must be constant', &
+                    error_msg)
+                return
+            end if
+            base_name = trim(unit_text(:open_pos - 1))
+            buf_index = find_symbol_compat(context, base_name)
+            if (buf_index <= 0) then
+                call unsupported_feature_error('internal read', node%line, &
+                    node%column, 'internal read source was not declared', error_msg)
+                return
+            end if
+            bounds_text = trim(unit_text(open_pos + 1:open_pos + colon_pos - 1))
+            read (bounds_text, *, iostat=ios) lower_bound
+            if (ios /= 0 .or. lower_bound < 1) then
+                call unsupported_feature_error('internal read', node%line, &
+                    node%column, 'internal read substring bounds must be constant', &
+                    error_msg)
+                return
+            end if
+            base_value = context%symbols(buf_index)%value
+            offset = i32_immediate(context%session, &
+                                   int(lower_bound - 1, c_int64_t))
+            call ptr_plus_i32(context, base_value, offset, buffer_value, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            buffer_value = context%symbols(buf_index)%value
+        end if
         if (.not. context%symbols(buf_index)%has_character_value) then
             call unsupported_feature_error('internal read', node%line, &
                 node%column, 'internal read source must be assigned first', &
@@ -69,7 +129,8 @@
         if (trim(adjustl(node%format_spec)) == '*') then
             call lower_list_directed_internal_read(context, buf_index, &
                                                     target_index, node%line, &
-                                                    node%column, error_msg)
+                                                    node%column, buffer_value, &
+                                                    error_msg)
             return
         end if
 
@@ -115,12 +176,13 @@
 
     subroutine lower_list_directed_internal_read(context, buf_index, &
                                                  target_index, line, col, &
-                                                 error_msg)
+                                                 buffer_value, error_msg)
         ! read (buf, *) value: sscanf the character buffer with a conversion
         ! chosen from the target's kind (integer/real via file_read_slot_for_
         ! kind's numeric slots, character via a blank-padded token read).
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: buf_index, target_index, line, col
+        type(lr_operand_desc_t), intent(in) :: buffer_value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: scanf_fmt
         integer(c_int32_t) :: fmt_id
@@ -131,13 +193,13 @@
         if (context%symbols(target_index)%value_kind == VALUE_CHARACTER) then
             call lower_list_directed_internal_read_char(context, buf_index, &
                                                          target_index, line, &
-                                                         col, error_msg)
+                                                         col, buffer_value, error_msg)
             return
         end if
 
         if (context%symbols(target_index)%value_kind == VALUE_LOGICAL) then
             call lower_list_directed_internal_read_logical(context, buf_index, &
-                                                           target_index, error_msg)
+                                                           target_index, buffer_value, error_msg)
             return
         end if
 
@@ -159,7 +221,7 @@
         if (len_trim(error_msg) > 0) return
         fmt_ptr = printf_format_ptr(context%session, fmt_id)
 
-        args(1) = context%symbols(buf_index)%value
+        args(1) = buffer_value
         args(2) = fmt_ptr
         args(3) = slot
         if (.not. emit_sscanf(context%session, args, error_msg)) return
@@ -187,9 +249,10 @@
 
     subroutine lower_list_directed_internal_read_char(context, buf_index, &
                                                        target_index, line, &
-                                                       col, error_msg)
+                                                       col, buffer_value, error_msg)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: buf_index, target_index, line, col
+        type(lr_operand_desc_t), intent(in) :: buffer_value
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: buflen
         type(lr_operand_desc_t) :: tmp, dest, fmt_ptr, args(3)
@@ -224,7 +287,7 @@
         if (len_trim(error_msg) > 0) return
         fmt_ptr = printf_format_ptr(context%session, fmt_id)
 
-        args(1) = context%symbols(buf_index)%value
+        args(1) = buffer_value
         args(2) = fmt_ptr
         args(3) = tmp
         if (.not. emit_sscanf(context%session, args, error_msg)) return
@@ -238,11 +301,12 @@
     end subroutine lower_list_directed_internal_read_char
 
     subroutine lower_list_directed_internal_read_logical(context, buf_index, &
-                                                          target_index, error_msg)
+                                                          target_index, buffer_value, error_msg)
         ! read (buf, *) flag: scan the logical field out of the character
         ! buffer and convert it exactly like the file-unit path does.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: buf_index, target_index
+        type(lr_operand_desc_t), intent(in) :: buffer_value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=*), parameter :: token_fmt = ' %15s'
         type(lr_operand_desc_t) :: token, fmt_ptr, args(3)
@@ -261,7 +325,7 @@
         if (len_trim(error_msg) > 0) return
         fmt_ptr = printf_format_ptr(context%session, fmt_id)
 
-        args(1) = context%symbols(buf_index)%value
+        args(1) = buffer_value
         args(2) = fmt_ptr
         args(3) = token
         if (.not. emit_sscanf(context%session, args, error_msg)) return
