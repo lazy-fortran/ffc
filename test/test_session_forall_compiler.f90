@@ -8,6 +8,7 @@ program test_session_forall_compiler
 
     all_passed = .true.
     if (.not. test_indexed_forall()) all_passed = .false.
+    if (.not. test_rank2_indexed_forall()) all_passed = .false.
     if (.not. test_block_forall()) all_passed = .false.
     if (.not. test_masked_forall()) all_passed = .false.
 
@@ -28,6 +29,27 @@ contains
         test_indexed_forall = expect_exit_status( &
             source, 30, '/tmp/ffc_forall_indexed')
     end function test_indexed_forall
+
+    logical function test_rank2_indexed_forall()
+        ! Both indices, column-major selection, mask, and snapshot semantics.
+        ! Only column 1 is selected; both rows swap from the old column.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: i, j'//new_line('a')// &
+            '  integer :: a(2,3)'//new_line('a')// &
+            '  a(1,1) = 1'//new_line('a')// &
+            '  a(2,1) = 2'//new_line('a')// &
+            '  a(1,2) = 3'//new_line('a')// &
+            '  a(2,2) = 4'//new_line('a')// &
+            '  a(1,3) = 5'//new_line('a')// &
+            '  a(2,3) = 6'//new_line('a')// &
+            '  forall (i = 1:2, j = 1:3, j == 1) '// &
+            'a(i,j) = a(3-i,j) + i + j'//new_line('a')// &
+            '  stop sum(a)'//new_line('a')// &
+            'end program main'
+        test_rank2_indexed_forall = expect_exit_status( &
+            source, 26, '/tmp/ffc_forall_rank2_indexed')
+    end function test_rank2_indexed_forall
 
     logical function test_block_forall()
         ! Block FORALL form. sum(a) = 1+2+3+4+5 = 15.
