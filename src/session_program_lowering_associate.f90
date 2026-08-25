@@ -52,6 +52,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: value_kind, idx, src_idx
         integer :: expression_symbol, expression_source, expression_extent
+        integer :: expression_rank, expression_dim1, expression_dim2
         character(len=:), allocatable :: sel_name, name_err
         type(lr_operand_desc_t) :: value
         type(array_expr_plan_t) :: expression_plan
@@ -131,15 +132,25 @@ contains
                 error_msg = 'associate array selector has no resolvable array source'
                 return
             end if
-            if (context%symbols(expression_source)%array_rank /= 1) then
+            expression_rank = context%symbols(expression_source)%array_rank
+            if (expression_rank /= 1 .and. expression_rank /= 2) then
                 call unsupported_feature_error('associate array selector', &
                     get_node_line(arena, assoc%expr_index), &
                     get_node_column(arena, assoc%expr_index), &
-                    'ffc direct-session associate expression storage currently '// &
-                    'supports rank-1 arrays only', error_msg)
+                    'ffc direct-session associate expression storage supports '// &
+                    'rank-1 and rank-2 arrays only', error_msg)
                 return
             end if
-            expression_extent = context%symbols(expression_source)%array_size
+            if (expression_rank == 1) then
+                expression_dim1 = context%symbols(expression_source)%array_dim_sizes(1)
+                if (expression_dim1 <= 0) expression_dim1 = &
+                    context%symbols(expression_source)%array_size
+                expression_extent = expression_dim1
+            else
+                expression_dim1 = context%symbols(expression_source)%array_dim_sizes(1)
+                expression_dim2 = context%symbols(expression_source)%array_dim_sizes(2)
+                expression_extent = expression_dim1 * expression_dim2
+            end if
             if (expression_extent <= 0) then
                 error_msg = 'associate array selector has no static extent'
                 return
@@ -148,6 +159,12 @@ contains
             call create_array_expression_temp(context, value_kind, expression_extent, &
                 0, expression_symbol, error_msg)
             if (len_trim(error_msg) > 0) return
+            context%symbols(expression_symbol)%array_rank = expression_rank
+            context%symbols(expression_symbol)%array_dim_sizes(1) = expression_dim1
+            if (expression_rank == 2) then
+                context%symbols(expression_symbol)%array_dim_lowers(2) = 1
+                context%symbols(expression_symbol)%array_dim_sizes(2) = expression_dim2
+            end if
             call build_array_expression(context, expression_symbol, assoc%expr_index, &
                 expression_plan, error_msg)
             if (len_trim(error_msg) > 0) return

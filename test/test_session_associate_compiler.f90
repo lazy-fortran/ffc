@@ -10,6 +10,7 @@ program test_session_associate
     if (.not. test_associate_scalar_alias()) all_passed = .false.
     if (.not. test_associate_scalar_write_alias()) all_passed = .false.
     if (.not. test_associate_expression_selector()) all_passed = .false.
+    if (.not. test_associate_rank2_expression_selector()) all_passed = .false.
     if (.not. test_associate_two_names()) all_passed = .false.
     if (.not. test_associate_scope_drops_binding()) all_passed = .false.
     if (.not. test_associate_print_value()) all_passed = .false.
@@ -71,6 +72,34 @@ contains
             source, 8, &
             '/tmp/ffc_session_associate_expr')
     end function test_associate_expression_selector
+
+    logical function test_associate_rank2_expression_selector()
+        ! An array-valued expression selector is materialized once.  Check both
+        ! the rank-2 shape and column-major element order through the associate
+        ! name, without relying on a source-array alias.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: a(2,3), b(2,3), code'//new_line('a')// &
+            'a(1,1) = 1'//new_line('a')// &
+            'a(2,1) = 2'//new_line('a')// &
+            'a(1,2) = 3'//new_line('a')// &
+            'a(2,2) = 4'//new_line('a')// &
+            'a(1,3) = 5'//new_line('a')// &
+            'a(2,3) = 6'//new_line('a')// &
+            'b = 10'//new_line('a')// &
+            'code = 0'//new_line('a')// &
+            'associate (s => a + b)'//new_line('a')// &
+            '    if (s(1,1) /= 11 .or. s(2,1) /= 12) code = 1'//new_line('a')// &
+            '    if (s(1,2) /= 13 .or. s(2,2) /= 14) code = 1'//new_line('a')// &
+            '    if (s(1,3) /= 15 .or. s(2,3) /= 16) code = 1'//new_line('a')// &
+            'end associate'//new_line('a')// &
+            'if (code == 0) stop 37'//new_line('a')// &
+            'stop 1'//new_line('a')// &
+            'end program main'
+
+        test_associate_rank2_expression_selector = expect_exit_status( &
+            source, 37, '/tmp/ffc_session_associate_rank2_expr')
+    end function test_associate_rank2_expression_selector
 
     logical function test_associate_two_names()
         character(len=*), parameter :: source = &
