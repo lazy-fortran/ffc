@@ -52,16 +52,17 @@
         derived_ok = .false.
         if (present(allow_derived)) derived_ok = allow_derived
         select case (context%symbols(source_index)%value_kind)
-        case (VALUE_I32, VALUE_F32, VALUE_F64)
-            ! supported element types for array sections
+        case (VALUE_I32, VALUE_F32, VALUE_F64, VALUE_LOGICAL)
+            ! Logical elements use the same i32 storage path as integer values.
         case (VALUE_DERIVED)
             if (.not. derived_ok) then
-                error_msg = 'array sections support integer, real(4), and '// &
-                            'real(8) arrays'
+                error_msg = 'array sections support integer, logical, real(4), '// &
+                            'and real(8) arrays'
                 return
             end if
         case default
-            error_msg = 'array sections support integer, real(4), and real(8) arrays'
+            error_msg = 'array sections support integer, logical, real(4), and '// &
+                        'real(8) arrays'
             return
         end select
 
