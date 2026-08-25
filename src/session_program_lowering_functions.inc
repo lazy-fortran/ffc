@@ -689,6 +689,9 @@
 
         count = -1
         nested_node_index = visible_nested_procedure_node(context, name)
+        if (nested_node_index <= 0) then
+            nested_node_index = visible_same_unit_procedure_node(context, name)
+        end if
         if (nested_node_index > 0) then
             node_type = get_node_type_at(context%arena, nested_node_index)
             if (node_type == 'function_def_node' .or. &
@@ -2815,6 +2818,9 @@
 
         value_kind = 0
         nested_node_index = visible_nested_procedure_node(context, name)
+        if (nested_node_index <= 0) then
+            nested_node_index = visible_same_unit_procedure_node(context, name)
+        end if
         if (nested_node_index > 0) then
             value_kind = procedure_value_kind(context, nested_node_index)
             return
