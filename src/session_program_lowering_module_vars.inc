@@ -216,10 +216,10 @@
     subroutine module_array_variable_kind(arena, var_idx, value_kind, status, &
                                            context, error_msg)
         ! Classify a module-level ARRAY declaration. A fixed-size rank-1 through
-        ! rank-3 array of
+        ! rank-4 array of
         ! integer(4), real, logical, or complex whose extent folds to a compile-time
         ! constant is MODVAR_OK (value_kind is the element kind). Allocatable,
-        ! pointer, character, derived, rank-4+, or runtime-sized arrays
+        ! pointer, character, derived, rank-5+, or runtime-sized arrays
         ! stay MODVAR_UNSUPPORTED with a clean diagnostic, so a case that never
         ! compiled keeps its xfail rather than miscompiling.
         type(ast_arena_t), intent(in) :: arena
@@ -302,8 +302,8 @@
                 return
             end if
             dim_count = size(decl%dimension_indices)
-            if (dim_count < 1 .or. dim_count > 3) then
-                error_msg = 'only rank-1 through rank-3 module arrays are stored '// &
+            if (dim_count < 1 .or. dim_count > 4) then
+                error_msg = 'only rank-1 through rank-4 module arrays are stored '// &
                             'as globals'
                 return
             end if
