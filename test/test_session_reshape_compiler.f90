@@ -8,8 +8,10 @@ program test_session_reshape_compiler
 
     all_passed = .true.
     if (.not. test_identifier_source_rank2()) all_passed = .false.
+    if (.not. test_integer_rank3_with_pad_and_order()) all_passed = .false.
     if (.not. test_literal_source_rank2()) all_passed = .false.
     if (.not. test_real_literal_source_rank2()) all_passed = .false.
+    if (.not. test_real_literal_source_rank3()) all_passed = .false.
     if (.not. test_zero_sized_expression_source()) all_passed = .false.
     if (.not. test_zero_sized_assignment()) all_passed = .false.
     if (.not. test_pad_from_zero_sized_source()) all_passed = .false.
@@ -52,6 +54,34 @@ contains
             '/tmp/ffc_session_reshape_ident_test')
     end function test_identifier_source_rank2
 
+    ! Rank-3 reshape uses the existing pad cycling and order permutation.
+    logical function test_integer_rank3_with_pad_and_order()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: m(2, 2, 2)'//new_line('a')// &
+            '  integer :: i, j, k'//new_line('a')// &
+            '  m = reshape([1, 2, 3, 4, 5], [2, 2, 2], '// &
+            'pad=[9, 8], order=[2, 3, 1])'//new_line('a')// &
+            '  do k = 1, 2'//new_line('a')// &
+            '     do j = 1, 2'//new_line('a')// &
+            '        do i = 1, 2'//new_line('a')// &
+            '           print *, m(i, j, k)'//new_line('a')// &
+            '        end do'//new_line('a')// &
+            '     end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            'end program main'
+        test_integer_rank3_with_pad_and_order = expect_output( &
+            source, '           1'//new_line('a')// &
+            '           5'//new_line('a')// &
+            '           2'//new_line('a')// &
+            '           9'//new_line('a')// &
+            '           3'//new_line('a')// &
+            '           8'//new_line('a')// &
+            '           4'//new_line('a')// &
+            '           9'//new_line('a'), &
+            '/tmp/ffc_session_reshape_rank3_integer_test')
+    end function test_integer_rank3_with_pad_and_order
+
     ! reshape of an inline array literal into a rank-2 target.
     logical function test_literal_source_rank2()
         character(len=*), parameter :: source = &
@@ -85,6 +115,22 @@ contains
             '   4.50000000    '//new_line('a'), &
             '/tmp/ffc_session_reshape_real_test')
     end function test_real_literal_source_rank2
+
+    ! A real rank-3 target follows the same typed element conversion path.
+    logical function test_real_literal_source_rank3()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  real :: r(2, 2, 2)'//new_line('a')// &
+            '  r = reshape([1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5], '// &
+            '[2, 2, 2])'//new_line('a')// &
+            '  print *, r(1, 1, 1)'//new_line('a')// &
+            '  print *, r(2, 2, 2)'//new_line('a')// &
+            'end program main'
+        test_real_literal_source_rank3 = expect_output( &
+            source, '   1.50000000    '//new_line('a')// &
+            '   8.50000000    '//new_line('a'), &
+            '/tmp/ffc_session_reshape_rank3_real_test')
+    end function test_real_literal_source_rank3
 
     ! reshape of a zero-sized array expression (shape(1) has zero elements)
     ! into a zero-sized target: no source element is read and the result is
