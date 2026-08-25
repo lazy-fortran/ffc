@@ -1161,11 +1161,12 @@
             else if (context%in_internal_function) then
                 call lower_function_return(node, context, error_msg)
             else
-                call unsupported_feature_error('return statement', node%line, &
-                                               node%column, &
-                                               'direct LIRIC session does not '// &
-                                               'support return at top level', &
-                                               error_msg)
+                ! A RETURN in the main program terminates execution normally;
+                ! the generated main has the C-style integer result ABI, so
+                ! return zero just as an implicit end-of-program return does.
+                if (.not. emit_ret_i32_operand(context%session, &
+                    i32_immediate(context%session, 0_c_int64_t), error_msg)) return
+                context%current_block_terminated = .true.
             end if
         type is (stop_node)
             call lower_stop(arena, node, context, value, error_msg)
