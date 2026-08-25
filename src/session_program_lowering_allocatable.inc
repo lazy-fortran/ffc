@@ -2928,6 +2928,11 @@
         integer(c_int32_t) :: j_vreg, i_vreg, k_vreg, sum_vreg
 
         call set_empty(error_msg)
+        if (context%symbols(target_sym)%array_rank == 1) then
+            call lower_allocatable_matmul_vector_result(arena, node, target_sym, &
+                                                        context, error_msg)
+            return
+        end if
         if (.not. node_exists(arena, node%value_index)) then
             error_msg = 'allocatable matmul assignment has no right-hand side'
             return
@@ -3149,6 +3154,82 @@
         if (.not. enter_liric_block(context, outer_exit, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_allocatable_matmul_assignment
+
+    subroutine lower_allocatable_matmul_vector_result(arena, node, target_sym, &
+                                                      context, error_msg)
+        !! Allocate a rank-1 allocatable MATMUL result from fixed-shape vector
+        !! operands, then reuse the ordinary vector MATMUL evaluator.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        integer, intent(in) :: target_sym
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: a_sym, b_sym, result_extent
+        type(lr_operand_desc_t) :: old_data, extent
+
+        call set_empty(error_msg)
+        select type (rhs => arena%entries(node%value_index)%node)
+        type is (call_or_subscript_node)
+            if (.not. allocated(rhs%arg_indices) .or. size(rhs%arg_indices) /= 2) then
+                error_msg = 'matmul requires exactly two array arguments'
+                return
+            end if
+            call resolve_i32_array_argument(arena, rhs, 1, context, 'matmul', &
+                                            'left operand', a_sym, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call resolve_i32_array_argument(arena, rhs, 2, context, 'matmul', &
+                                            'right operand', b_sym, error_msg)
+            if (len_trim(error_msg) > 0) return
+        class default
+            error_msg = 'matmul requires an intrinsic call'
+            return
+        end select
+
+        if (context%symbols(a_sym)%array_rank == 1 .and. &
+            context%symbols(b_sym)%array_rank == 2) then
+            if (context%symbols(a_sym)%array_dim_sizes(1) /= &
+                context%symbols(b_sym)%array_dim_sizes(1)) then
+                error_msg = 'matmul requires conforming vector and matrix operands'
+                return
+            end if
+            result_extent = context%symbols(b_sym)%array_dim_sizes(2)
+        else if (context%symbols(a_sym)%array_rank == 2 .and. &
+                 context%symbols(b_sym)%array_rank == 1) then
+            if (context%symbols(a_sym)%array_dim_sizes(2) /= &
+                context%symbols(b_sym)%array_dim_sizes(1)) then
+                error_msg = 'matmul requires conforming matrix and vector operands'
+                return
+            end if
+            result_extent = context%symbols(a_sym)%array_dim_sizes(1)
+        else
+            error_msg = 'allocatable matmul vector result requires one rank-1 operand'
+            return
+        end if
+        if (result_extent <= 0) then
+            error_msg = 'allocatable matmul result requires a positive extent'
+            return
+        end if
+        if (context%symbols(a_sym)%value_kind /= &
+            context%symbols(target_sym)%value_kind .or. &
+            context%symbols(b_sym)%value_kind /= &
+            context%symbols(target_sym)%value_kind) then
+            error_msg = 'matmul operands and result must have the same kind'
+            return
+        end if
+
+        extent = i32_immediate(context%session, int(result_extent, c_int64_t))
+        if (.not. emit_ptr_load(context%session, &
+                context%symbols(target_sym)%allocatable_descriptor_address, old_data, &
+                error_msg)) return
+        if (.not. emit_free(context%session, old_data, error_msg)) return
+        call lower_allocate_i32_1d_operand(extent, target_sym, context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        context%symbols(target_sym)%allocatable_static_size = result_extent
+        context%symbols(target_sym)%array_size = result_extent
+        context%symbols(target_sym)%array_dim_sizes(1) = result_extent
+        call lower_matmul_vector_assignment(a_sym, b_sym, target_sym, context, &
+                                             error_msg)
+    end subroutine lower_allocatable_matmul_vector_result
 
     subroutine lower_allocatable_matvec_assignment(a_sym, b_sym, target_sym, &
                                                    context, error_msg)
