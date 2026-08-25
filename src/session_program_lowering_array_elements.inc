@@ -4722,8 +4722,8 @@
             call validate_i32_array_subscript(arena, node%arg_indices(k), context, &
                                               error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_i32_expression(arena, node%arg_indices(k), context, idx_op, &
-                                      error_msg)
+            call lower_i32_array_subscript(arena, node%arg_indices(k), context, &
+                                           idx_op, error_msg)
             if (len_trim(error_msg) > 0) return
             lower_k = int(context%symbols(symbol_index)%array_dim_lowers(k), &
                           c_int64_t)
@@ -4784,8 +4784,8 @@
             call validate_i32_array_subscript(arena, node%arg_indices(k), context, &
                                               error_msg)
             if (len_trim(error_msg) > 0) return
-            call lower_i32_expression(arena, node%arg_indices(k), context, idx_op, &
-                                      error_msg)
+            call lower_i32_array_subscript(arena, node%arg_indices(k), context, &
+                                           idx_op, error_msg)
             if (len_trim(error_msg) > 0) return
             lower_k = int(context%symbols(symbol_index)%array_dim_lowers(k), &
                           c_int64_t)
@@ -4937,6 +4937,36 @@
         call set_empty(error_msg)
     end subroutine lower_real_array_element_address
 
+    subroutine lower_i32_array_subscript(arena, node_index, context, value, &
+                                         error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: lit_value, lit_type, parse_error
+        real(c_double) :: real_literal_value
+
+        if (is_literal(arena, node_index)) then
+            if (is_real_literal(arena, node_index)) then
+                call get_literal_info(arena, node_index, lit_value, lit_type, &
+                                      error_msg)
+                if (len_trim(error_msg) > 0) return
+                call parse_f64_literal(lit_value, context, real_literal_value, &
+                                       parse_error, node_index)
+                if (len_trim(parse_error) > 0) then
+                    error_msg = parse_error
+                    return
+                end if
+                value = i32_immediate(context%session, &
+                                      int(real_literal_value, c_int64_t))
+                call set_empty(error_msg)
+                return
+            end if
+        end if
+        call lower_i32_expression(arena, node_index, context, value, error_msg)
+    end subroutine lower_i32_array_subscript
+
     recursive subroutine validate_i32_array_subscript(arena, node_index, context, &
                                                       error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -4944,6 +4974,7 @@
         type(lowering_context_t), intent(in) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int64_t) :: literal_value
+        real(c_double) :: real_literal_value
         integer :: opcode
         integer :: symbol_index
         character(len=:), allocatable :: parse_error
@@ -4980,6 +5011,18 @@
             call get_literal_info(arena, node_index, lit_value, lit_type, &
                                   error_msg)
             if (len_trim(error_msg) > 0) return
+            if (is_real_literal(arena, node_index)) then
+                call parse_f64_literal(lit_value, context, real_literal_value, &
+                                       parse_error, node_index)
+                if (len_trim(parse_error) == 0) then
+                    call set_empty(error_msg)
+                else
+                    call unsupported_array_subscript(arena, node_index, &
+                                                     'non-integer literals', &
+                                                     error_msg)
+                end if
+                return
+            end if
             call parse_i32_literal(lit_value, literal_value, parse_error)
             if (len_trim(parse_error) > 0) then
                 call unsupported_array_subscript(arena, node_index, &

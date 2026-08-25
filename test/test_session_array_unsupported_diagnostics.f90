@@ -1,7 +1,7 @@
 program test_session_array_unsupported_diagnostics
     use ffc_test_support, only: expect_error_contains, &
         expect_cli_error_contains, expect_no_error, &
-        expect_cli_no_error
+        expect_cli_no_error, expect_exit_status
     implicit none
 
     logical :: all_passed
@@ -19,7 +19,7 @@ program test_session_array_unsupported_diagnostics
     if (.not. test_whole_array_expression_diagnostic()) all_passed = .false.
     if (.not. test_array_rhs_assignment_diagnostic()) all_passed = .false.
     if (.not. test_array_slice_subscript_diagnostic()) all_passed = .false.
-    if (.not. test_array_real_subscript_diagnostic()) all_passed = .false.
+    if (.not. test_array_real_subscript_extension()) all_passed = .false.
     if (.not. test_whole_array_assignment_target_diagnostic()) &
         all_passed = .false.
     if (.not. test_whole_array_argument_diagnostic()) all_passed = .false.
@@ -154,17 +154,19 @@ contains
             '/tmp/ffc_session_array_slice_test')
     end function test_array_slice_subscript_diagnostic
 
-    logical function test_array_real_subscript_diagnostic()
+    logical function test_array_real_subscript_extension()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  integer :: values(3)'//new_line('a')// &
-            '  print *, values(1.0)'//new_line('a')// &
+            '  integer :: result'//new_line('a')// &
+            '  values = 2'//new_line('a')// &
+            '  result = values(1.0)'//new_line('a')// &
+            '  if (result /= 2) stop 1'//new_line('a')// &
             'end program main'
 
-        test_array_real_subscript_diagnostic = expect_error_contains( &
-            source, 'unsupported array subscript', &
-            '/tmp/ffc_session_array_real_index_test')
-    end function test_array_real_subscript_diagnostic
+        test_array_real_subscript_extension = expect_exit_status( &
+            source, 0, '/tmp/ffc_session_array_real_index_test')
+    end function test_array_real_subscript_extension
 
     logical function test_whole_array_assignment_target_diagnostic()
         character(len=*), parameter :: source = &
