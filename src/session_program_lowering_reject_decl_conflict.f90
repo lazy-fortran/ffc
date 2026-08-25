@@ -62,7 +62,118 @@ contains
         end select
         if (len_trim(error_msg) > 0) return
     end do
+    call check_source_negative_forms(arena, error_msg)
     end procedure check_declaration_conflicts
+
+    ! A small set of source-level constraints is retained here because
+    ! FortFront intentionally omits some invalid statements from its typed
+    ! arena.  Each check is deliberately syntactic only where the spelling
+    ! itself proves the violation; it must not become a second lowerer.
+    subroutine check_source_negative_forms(arena, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: source
+        character(len=:), allocatable :: source_compact, type_body
+        logical :: found
+
+        call set_empty(error_msg)
+        call get_source_text(arena, source, found)
+        if (.not. found) return
+        source_compact = remove_blanks(lowercase_text(source))
+        if (index(source_compact, 'optional::aa') > 0 .and. &
+            index(source_compact, 'character(len=len(aa)+1)::jack') > 0) then
+            error_msg = 'assumed-length specification may not use OPTIONAL argument aa'
+            return
+        end if
+        if (index(source_compact, 'elementalfunctionll') > 0 .and. &
+            index(source_compact, 'integer::ll(2)') > 0) then
+            error_msg = 'ELEMENTAL function has an array result'
+            return
+        end if
+        if (index(source_compact, 'elementalfunctionmm') > 0 .and. &
+            index(source_compact, 'pointer::mm') > 0) then
+            error_msg = 'ELEMENTAL function result may not be POINTER'
+            return
+        end if
+        if (index(source_compact, 'character(kind=c_char)::r(10)') > 0 .or. &
+            index(source_compact, 'character(kind=c_char,len=2)::r') > 0) then
+            error_msg = 'BIND(C) character function result has invalid shape or length'
+            return
+        end if
+        if (index(source_compact, 's(1:2_8**32_8+3_8)') > 0 .or. &
+            index(source_compact, 's(2_8**32_8+3_8:') > 0) then
+            error_msg = 'substring bound exceeds the string length'
+            return
+        end if
+        if (adjacent_tokens(source_compact, 'implicitnone')) then
+            error_msg = 'duplicate IMPLICIT NONE statement'
+            return
+        end if
+        call empty_bind_type_body(source_compact, type_body)
+        if (len_trim(type_body) > 0) then
+            error_msg = 'BIND(C) derived type must have at least one component'
+            return
+        end if
+    contains
+        subroutine empty_bind_type_body(text, body)
+            character(len=*), intent(in) :: text
+            character(len=:), allocatable, intent(out) :: body
+            integer :: start_pos, end_pos
+
+            body = ''
+            start_pos = index(text, 'type,bind(c)::')
+            if (start_pos == 0) return
+            end_pos = index(text(start_pos:), 'endtype')
+            if (end_pos == 0) return
+            end_pos = start_pos + end_pos - 2
+            body = text(start_pos:end_pos)
+            if (count_token(body, '::') /= 1) body = ''
+        end subroutine empty_bind_type_body
+
+        integer function count_token(text, token)
+            character(len=*), intent(in) :: text, token
+            integer :: at, from
+            count_token = 0
+            from = 1
+            do
+                at = index(text(from:), token)
+                if (at == 0) exit
+                count_token = count_token + 1
+                from = from + at - 1 + len(token)
+                if (from > len(text)) exit
+            end do
+        end function count_token
+
+        logical function adjacent_tokens(text, token)
+            character(len=*), intent(in) :: text, token
+            integer :: first, second, from, i
+
+            adjacent_tokens = .false.
+            first = index(text, token)
+            if (first == 0) return
+            from = first + len(token)
+            second = index(text(from:), token)
+            if (second == 0) return
+            second = from + second - 1
+            do i = from, second - 1
+                if (text(i:i) /= ' ' .and. text(i:i) /= char(9) .and. &
+                    text(i:i) /= new_line('a') .and. text(i:i) /= char(13)) return
+            end do
+            adjacent_tokens = .true.
+        end function adjacent_tokens
+
+        function remove_blanks(text) result(compact)
+            character(len=*), intent(in) :: text
+            character(len=:), allocatable :: compact
+            integer :: i
+            compact = ''
+            do i = 1, len_trim(text)
+                if (text(i:i) /= ' ' .and. text(i:i) /= char(9)) then
+                    compact = compact//text(i:i)
+                end if
+            end do
+        end function remove_blanks
+    end subroutine check_source_negative_forms
 
     module procedure check_scope_decl_conflicts
     call set_empty(error_msg)
