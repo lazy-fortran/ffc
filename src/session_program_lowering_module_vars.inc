@@ -256,23 +256,32 @@
     end subroutine module_array_variable_kind
 
     subroutine module_array_variable_info(arena, var_idx, context, value_kind, &
-                                          array_size, array_lower, error_msg)
+                                          array_size, array_lower, error_msg, &
+                                          array_rank, array_dim_sizes, array_dim_lowers)
         ! Resolve the element kind, total extent, and lower bound of a supported
         ! fixed-size module array. error_msg names the reason a form is out of
         ! scope; callers turn that into an xfail diagnostic.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: var_idx
         type(lowering_context_t), intent(in) :: context
         integer, intent(out) :: value_kind
         integer, intent(out) :: array_size
         integer, intent(out) :: array_lower
+        integer, intent(out), optional :: array_rank
+        integer, intent(out), optional :: array_dim_sizes(:)
+        integer, intent(out), optional :: array_dim_lowers(:)
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: type_name, kind_err
-        integer :: line, column
+        integer :: line, column, dim_count, dim, dim_index
+        integer(c_int64_t) :: lower_value, upper_value, extent
 
         value_kind = VALUE_I32
         array_size = 0
         array_lower = 1
+        if (present(array_rank)) array_rank = 0
+        if (present(array_dim_sizes)) array_dim_sizes = 0
+        if (present(array_dim_lowers)) array_dim_lowers = 0
         call set_empty(error_msg)
         line = get_node_line(arena, var_idx)
         column = get_node_column(arena, var_idx)
@@ -291,20 +300,54 @@
                 error_msg = 'module array has no static dimension'
                 return
             end if
-            if (size(decl%dimension_indices) /= 1) then
-                error_msg = 'only rank-1 module arrays are stored as globals'
+            dim_count = size(decl%dimension_indices)
+            if (dim_count < 1 .or. dim_count > 2) then
+                error_msg = 'only rank-1 and rank-2 module arrays are stored '// &
+                            'as globals'
                 return
             end if
-            call get_array_bounds(decl, context, array_lower, array_size, &
-                                  error_msg)
-            if (len_trim(error_msg) > 0) then
-                error_msg = 'module array extent must be a compile-time constant'
-                return
-            end if
-            if (array_size < 0) then
-                error_msg = 'module array has a non-positive extent'
-                return
-            end if
+            array_size = 1
+            do dim = 1, dim_count
+                dim_index = decl%dimension_indices(dim)
+                if (.not. node_exists(arena, dim_index)) then
+                    error_msg = 'module array dimension is missing'
+                    return
+                end if
+                select type (dim_node => arena%entries(dim_index)%node)
+                type is (range_expression_node)
+                    call eval_i32_constant(arena, dim_node%start_index, &
+                                           context, lower_value, error_msg)
+                    if (len_trim(error_msg) > 0) then
+                        error_msg = 'module array extent must be a compile-time constant'
+                        return
+                    end if
+                    call eval_i32_constant(arena, dim_node%end_index, context, &
+                                           upper_value, error_msg)
+                    if (len_trim(error_msg) > 0) then
+                        error_msg = 'module array extent must be a compile-time constant'
+                        return
+                    end if
+                    extent = upper_value - lower_value + 1_c_int64_t
+                class default
+                    call eval_i32_constant(arena, dim_index, context, &
+                                           upper_value, error_msg)
+                    if (len_trim(error_msg) > 0) then
+                        error_msg = 'module array extent must be a compile-time constant'
+                        return
+                    end if
+                    lower_value = 1_c_int64_t
+                    extent = upper_value
+                end select
+                if (extent < 0_c_int64_t) then
+                    error_msg = 'module array has a non-positive extent'
+                    return
+                end if
+                if (dim == 1) array_lower = int(lower_value)
+                if (present(array_dim_sizes)) array_dim_sizes(dim) = int(extent)
+                if (present(array_dim_lowers)) array_dim_lowers(dim) = int(lower_value)
+                array_size = array_size * int(extent)
+            end do
+            if (present(array_rank)) array_rank = dim_count
         class default
             error_msg = 'module export is not a declaration'
             return
@@ -1428,13 +1471,15 @@
         integer(c_int32_t), intent(in) :: global_id
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: sym_idx, value_kind_local, array_size, array_lower
+        integer :: sym_idx, value_kind_local, array_size, array_lower, array_rank
+        integer :: array_dim_sizes(ARRAY_MAX_RANK), array_dim_lowers(ARRAY_MAX_RANK)
         character(len=:), allocatable :: mangled, imaginary_mangled
         character(kind=c_char), allocatable :: c_name(:)
         integer(c_int32_t) :: imaginary_global_id
 
         call module_array_variable_info(arena, var_idx, context, value_kind_local, &
-                                        array_size, array_lower, error_msg)
+                                        array_size, array_lower, error_msg, array_rank, &
+                                        array_dim_sizes, array_dim_lowers)
         if (len_trim(error_msg) > 0) return
         call grow_symbols(context)
         sym_idx = context%symbol_count + 1
@@ -1443,10 +1488,10 @@
         context%symbols(sym_idx)%has_address = .true.
         context%symbols(sym_idx)%is_reference = .true.
         context%symbols(sym_idx)%is_array = .true.
-        context%symbols(sym_idx)%array_rank = 1
+        context%symbols(sym_idx)%array_rank = array_rank
         context%symbols(sym_idx)%array_size = array_size
-        context%symbols(sym_idx)%array_dim_sizes(1) = array_size
-        context%symbols(sym_idx)%array_dim_lowers(1) = array_lower
+        context%symbols(sym_idx)%array_dim_sizes = array_dim_sizes
+        context%symbols(sym_idx)%array_dim_lowers = array_dim_lowers
         context%symbols(sym_idx)%address%kind = LR_OP_KIND_GLOBAL
         if (value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
             mangled = module_procedure_mangled(module_name, trim(sym_name))

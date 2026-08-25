@@ -8,6 +8,7 @@ program test_session_module_array_variable_compiler
 
     all_passed = .true.
     if (.not. test_fixed_size_element_rw()) all_passed = .false.
+    if (.not. test_fixed_size_rank2_numeric_logical()) all_passed = .false.
     if (.not. test_parameter_sized_size_inquiry()) all_passed = .false.
     if (.not. test_zero_size_module_array()) all_passed = .false.
     if (.not. test_constructor_initializer()) all_passed = .false.
@@ -39,6 +40,31 @@ contains
         test_fixed_size_element_rw = expect_exit_status( &
             source, 17, '/tmp/ffc_session_modarr_rw')
     end function test_fixed_size_element_rw
+
+    logical function test_fixed_size_rank2_numeric_logical()
+        ! Rank-2 module arrays retain both dimensions and share storage with a
+        ! contained procedure and its USE-associated caller.
+        character(len=*), parameter :: source = &
+            'module m'//new_line('a')// &
+            '  integer :: a(0:1, 2:3) = 5'//new_line('a')// &
+            '  logical :: flags(2, 2) = .false.'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine fill()'//new_line('a')// &
+            '    a(1, 3) = 9'//new_line('a')// &
+            '    flags(1, 1) = .true.'//new_line('a')// &
+            '    flags(2, 2) = .true.'//new_line('a')// &
+            '  end subroutine fill'//new_line('a')// &
+            'end module m'//new_line('a')// &
+            'program main'//new_line('a')// &
+            '  use m'//new_line('a')// &
+            '  call fill()'//new_line('a')// &
+            '  if (.not. any(flags)) stop 1'//new_line('a')// &
+            '  stop a(0, 2) + a(1, 3) + size(a) + lbound(a, 1) + ubound(a, 2)'//new_line('a')// &
+            'end program main'
+
+        test_fixed_size_rank2_numeric_logical = expect_exit_status( &
+            source, 21, '/tmp/ffc_session_modarr_rank2')
+    end function test_fixed_size_rank2_numeric_logical
 
     logical function test_parameter_sized_size_inquiry()
         ! A module array whose extent is a named PARAMETER; SIZE must fold to
