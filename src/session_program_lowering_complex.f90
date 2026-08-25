@@ -97,14 +97,22 @@ contains
             if (sym <= 0) return
             if (.not. context%symbols(sym)%is_array .and. &
                 .not. context%symbols(sym)%is_allocatable) return
-            is_c = context%symbols(sym)%value_kind == want_kind
+            ! A complex expression may be consumed at either component width.
+            ! Keep the source complex here and let eval_c4_rhs/eval_c8_rhs
+            ! perform the explicit narrowing or widening.  Requiring an exact
+            ! kind made mixed-kind expressions such as
+            ! `complex, parameter :: x = 123; x - (123, 0)` fall through to
+            ! the real operand path.
+            is_c = context%symbols(sym)%value_kind == VALUE_C4 .or. &
+                   context%symbols(sym)%value_kind == VALUE_C8
         class default
             if (.not. is_identifier(arena, node_index)) return
             call get_identifier_name(arena, node_index, name, err)
             if (len_trim(err) > 0) return
             sym = find_symbol_compat(context, name)
             if (sym <= 0) return
-            is_c = context%symbols(sym)%value_kind == want_kind
+            is_c = context%symbols(sym)%value_kind == VALUE_C4 .or. &
+                   context%symbols(sym)%value_kind == VALUE_C8
         end select
     end function is_complex_valued
 
