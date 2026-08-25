@@ -6125,8 +6125,8 @@
             return
         end if
         if (context%symbols(symbol_index)%array_rank < 1 .or. &
-            context%symbols(symbol_index)%array_rank > 3) then
-            error_msg = 'reshape result must be assigned to a rank-1, rank-2, or rank-3 array'
+            context%symbols(symbol_index)%array_rank > 4) then
+            error_msg = 'reshape result must be assigned to a rank-1, rank-2, rank-3, or rank-4 array'
             return
         end if
         call check_reshape_shape(arena, shape_index, symbol_index, &
