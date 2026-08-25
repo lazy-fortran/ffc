@@ -766,8 +766,13 @@
             return
         end select
 
-        if (is_literal(arena, idx) .and. compare_vk == VALUE_LOGICAL) then
-            call lower_logical_expression(arena, idx, context, value, error_msg)
+        if (is_literal(arena, idx)) then
+            if (compare_vk == VALUE_LOGICAL) then
+                call lower_logical_expression(arena, idx, context, value, error_msg)
+            else
+                call mask_scalar_element(arena, idx, context, compare_vk, .false., &
+                                         value, error_msg)
+            end if
             return
         end if
 
