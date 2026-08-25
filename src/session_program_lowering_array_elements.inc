@@ -4180,21 +4180,27 @@
     end subroutine load_array_element_at_operand
 
     subroutine load_i32_array_element(context, symbol_index, index1, value, error_msg, &
-                                      index2)
+                                      index2, index3, index4)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
         integer(c_int64_t), intent(in) :: index1
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int64_t), intent(in), optional :: index2
+        integer(c_int64_t), intent(in), optional :: index3
+        integer(c_int64_t), intent(in), optional :: index4
         integer(c_int64_t) :: linear_index
         integer(c_int64_t) :: lower1
         integer(c_int64_t) :: lower2
+        integer(c_int64_t) :: lower3
+        integer(c_int64_t) :: lower4
         integer(c_int64_t) :: extent1
+        integer(c_int64_t) :: extent2
+        integer(c_int64_t) :: extent3
 
         select case (context%symbols(symbol_index)%array_rank)
         case (1)
-            if (present(index2)) then
+            if (present(index2) .or. present(index3) .or. present(index4)) then
                 error_msg = 'rank-1 array element requires one subscript'
                 return
             end if
@@ -4202,7 +4208,7 @@
                           c_int64_t)
             linear_index = index1 - lower1
         case (2)
-            if (.not. present(index2)) then
+            if (.not. present(index2) .or. present(index3) .or. present(index4)) then
                 error_msg = 'rank-2 array element requires two subscripts'
                 return
             end if
@@ -4213,8 +4219,49 @@
             extent1 = int(context%symbols(symbol_index)%array_dim_sizes(1), &
                            c_int64_t)
             linear_index = (index1 - lower1) + extent1 * (index2 - lower2)
+        case (3)
+            if (.not. present(index2) .or. .not. present(index3) .or. &
+                present(index4)) then
+                error_msg = 'rank-3 array element requires three subscripts'
+                return
+            end if
+            lower1 = int(context%symbols(symbol_index)%array_dim_lowers(1), &
+                          c_int64_t)
+            lower2 = int(context%symbols(symbol_index)%array_dim_lowers(2), &
+                          c_int64_t)
+            lower3 = int(context%symbols(symbol_index)%array_dim_lowers(3), &
+                          c_int64_t)
+            extent1 = int(context%symbols(symbol_index)%array_dim_sizes(1), &
+                           c_int64_t)
+            extent2 = int(context%symbols(symbol_index)%array_dim_sizes(2), &
+                           c_int64_t)
+            linear_index = (index1 - lower1) + extent1 * (index2 - lower2) + &
+                           extent1 * extent2 * (index3 - lower3)
+        case (4)
+            if (.not. present(index2) .or. .not. present(index3) .or. &
+                .not. present(index4)) then
+                error_msg = 'rank-4 array element requires four subscripts'
+                return
+            end if
+            lower1 = int(context%symbols(symbol_index)%array_dim_lowers(1), &
+                          c_int64_t)
+            lower2 = int(context%symbols(symbol_index)%array_dim_lowers(2), &
+                          c_int64_t)
+            lower3 = int(context%symbols(symbol_index)%array_dim_lowers(3), &
+                          c_int64_t)
+            lower4 = int(context%symbols(symbol_index)%array_dim_lowers(4), &
+                          c_int64_t)
+            extent1 = int(context%symbols(symbol_index)%array_dim_sizes(1), &
+                           c_int64_t)
+            extent2 = int(context%symbols(symbol_index)%array_dim_sizes(2), &
+                           c_int64_t)
+            extent3 = int(context%symbols(symbol_index)%array_dim_sizes(3), &
+                           c_int64_t)
+            linear_index = (index1 - lower1) + extent1 * (index2 - lower2) + &
+                           extent1 * extent2 * (index3 - lower3) + &
+                           extent1 * extent2 * extent3 * (index4 - lower4)
         case default
-            error_msg = 'direct LIRIC session only supports rank-1 and rank-2 arrays'
+            error_msg = 'direct LIRIC session only supports rank-1 through rank-4 arrays'
             return
         end select
 
