@@ -884,6 +884,7 @@
         integer :: target_sym, source_sym, source_expr, n
         logical :: copy_values
         type(lr_operand_desc_t) :: n_i32, dst_desc, src_desc, dst_data, src_data
+        type(lr_operand_desc_t) :: extent1, extent2, total_i64, bytes_i64
 
         copy_values = node%source_expr_index > 0
         if (copy_values) then
@@ -935,8 +936,50 @@
             error_msg = 'mold/source allocate requires allocatable operands'
             return
         end if
+        if (context%symbols(target_sym)%array_rank /= &
+                context%symbols(source_sym)%array_rank) then
+            error_msg = 'mold/source allocate requires matching array ranks'
+            return
+        end if
         if (context%symbols(source_sym)%array_rank == 2) then
-            error_msg = 'mold/source allocate supports only rank-1 arrays'
+            call allocatable_descriptor_extent_i32(context, source_sym, 1, &
+                extent1, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call allocatable_descriptor_extent_i32(context, source_sym, 2, &
+                extent2, error_msg)
+            if (len_trim(error_msg) > 0) return
+
+            call lower_allocate_i32_2d_operands(extent1, extent2, target_sym, &
+                context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            context%symbols(target_sym)%allocatable_static_size = 0
+
+            if (.not. copy_values) then
+                call set_empty(error_msg)
+                return
+            end if
+
+            dst_desc = context%symbols(target_sym)%allocatable_descriptor_address
+            src_desc = context%symbols(source_sym)%allocatable_descriptor_address
+            if (.not. emit_ptr_load(context%session, dst_desc, dst_data, &
+                    error_msg)) return
+            if (.not. emit_ptr_load(context%session, src_desc, src_data, &
+                    error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent1, &
+                    extent2, n_i32, error_msg)) return
+            if (.not. emit_liric_i32_to_i64(context%session, n_i32, total_i64, &
+                    error_msg)) return
+            if (.not. emit_i64_binary(context%session, LR_OP_MUL, total_i64, &
+                    i64_immediate(context%session, int(allocatable_elem_size( &
+                        context%symbols(source_sym)%value_kind), c_int64_t)), &
+                    bytes_i64, error_msg)) return
+            if (.not. emit_memcpy(context%session, dst_data, src_data, &
+                    bytes_i64, error_msg)) return
+            call set_empty(error_msg)
+            return
+        end if
+        if (context%symbols(source_sym)%array_rank /= 1) then
+            error_msg = 'mold/source allocate supports only rank-1 and rank-2 arrays'
             return
         end if
         n = context%symbols(source_sym)%allocatable_static_size

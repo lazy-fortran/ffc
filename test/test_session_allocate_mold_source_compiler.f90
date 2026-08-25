@@ -12,6 +12,8 @@ program test_session_allocate_mold_source
     all_passed = .true.
     if (.not. test_mold_copies_shape()) all_passed = .false.
     if (.not. test_source_copies_values()) all_passed = .false.
+    if (.not. test_rank2_mold_copies_shape()) all_passed = .false.
+    if (.not. test_rank2_source_copies_values()) all_passed = .false.
     if (.not. test_issue_2820_roundtrip()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -47,6 +49,36 @@ contains
         test_source_copies_values = expect_exit_status( &
             source, 6, '/tmp/ffc_alloc_source_values')
     end function test_source_copies_values
+
+    logical function test_rank2_mold_copies_shape()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer, allocatable :: a(:,:), b(:,:)'//new_line('a')// &
+            '  allocate(a(2,3))'//new_line('a')// &
+            '  allocate(b, mold=a)'//new_line('a')// &
+            '  stop size(b) + 10 * (size(b, 1) - 2) + '// &
+            '       100 * (size(b, 2) - 3)'//new_line('a')// &
+            'end program main'
+
+        test_rank2_mold_copies_shape = expect_exit_status( &
+            source, 6, '/tmp/ffc_alloc_mold_rank2_shape')
+    end function test_rank2_mold_copies_shape
+
+    logical function test_rank2_source_copies_values()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer, allocatable :: a(:,:), c(:,:)'//new_line('a')// &
+            '  allocate(a(2,3))'//new_line('a')// &
+            '  a = 1'//new_line('a')// &
+            '  a(2,2) = 4'//new_line('a')// &
+            '  a(2,3) = 6'//new_line('a')// &
+            '  allocate(c, source=a)'//new_line('a')// &
+            '  stop c(1,1) + 10 * c(2,2) + 100 * c(2,3)'//new_line('a')// &
+            'end program main'
+
+        test_rank2_source_copies_values = expect_exit_status( &
+            source, 129, '/tmp/ffc_alloc_source_rank2_values')
+    end function test_rank2_source_copies_values
 
     logical function test_issue_2820_roundtrip()
         ! The corpus program: print size(b) then c (all ones).
