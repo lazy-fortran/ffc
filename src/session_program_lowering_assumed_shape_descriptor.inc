@@ -321,13 +321,19 @@
                                                  symbol_index, type_index, &
                                                  component_index, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (dim /= 1) then
-                error_msg = 'derived array component assumed-shape actual supports '// &
-                            'rank 1 only'
+            if (dim < 1 .or. dim > rank .or. dim > &
+                context%symbols(symbol_index)%array_rank) then
+                error_msg = 'derived array component assumed-shape actual has '// &
+                            'no resolvable extent for this dimension'
+                return
+            end if
+            if (context%symbols(symbol_index)%array_dim_sizes(dim) <= 0) then
+                error_msg = 'derived array component assumed-shape actual has '// &
+                            'no resolvable extent'
                 return
             end if
             extent = i64_immediate(context%session, int( &
-                derived_array_component_extent(context, symbol_index), c_int64_t))
+                context%symbols(symbol_index)%array_dim_sizes(dim), c_int64_t))
             return
         end if
         if (actual_is_allocatable_array(arena, node_index, context)) then
