@@ -180,11 +180,11 @@
     end subroutine lower_c_f_strpointer
 
     subroutine lower_pointer_target_array(node, context, value_kind, error_msg)
-        ! Rank-1/rank-2/rank-3 fixed-size integer/real/logical/complex POINTER/TARGET
+        ! Rank-1/rank-2/rank-3/rank-4 fixed-size integer/real/logical/complex POINTER/TARGET
         ! arrays (#245 B3a). A target array gets ordinary explicit-shape
         ! storage; a deferred-shape pointer array (p(:), p(:,:), or p(:,:,:)) starts
         ! unassociated and adopts a target array's base, shape, and element
-        ! kind at `p => t`. Anything outside this subset (rank>3, allocatable,
+        ! kind at `p => t`. Anything outside this subset (allocatable,
         ! derived, character, bounds-remapped pointers) keeps the prior
         ! unsupported diagnostic.
         type(declaration_node), intent(in) :: node
@@ -200,7 +200,7 @@
         dim_count = 0
         if (allocated(node%dimension_indices)) &
             dim_count = size(node%dimension_indices)
-        if (dim_count < 1 .or. dim_count > 3) then
+        if (dim_count < 1 .or. dim_count > 4) then
             call unsupported_pointer_target_array(node, error_msg)
             return
         end if
@@ -263,7 +263,7 @@
 
         call unsupported_feature_error('pointer/target array declaration', &
             node%line, node%column, &
-            'direct LIRIC session supports rank-1, rank-2, and rank-3 fixed-size '// &
+            'direct LIRIC session supports rank-1 through rank-4 fixed-size '// &
             'integer, real, logical, and complex pointer/target arrays '// &
             'only (#245 slice B3a)', error_msg)
     end subroutine unsupported_pointer_target_array
@@ -556,6 +556,12 @@
                 context, ptr_index, error_msg)
             return
         end if
+        if (component_access_is_alloc_array_target(arena, node%target_index, &
+                                                   context)) then
+            call alias_pointer_to_alloc_array_component(arena, node%target_index, &
+                                                        context, ptr_index, error_msg)
+            return
+        end if
         ! p => a(i): a scalar pointer may bind to an element of an intrinsic
         ! TARGET array.  FortFront represents the element as a call-shaped
         ! node, distinct from the array-section node handled below.
@@ -771,6 +777,83 @@
                  component_kind(context, type_index, component_index) == VALUE_DERIVED
     end function component_access_is_scalar_derived_pointer
 
+    logical function component_access_is_alloc_array_target(arena, access_index, &
+                                                            context) result(is_target)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index
+        type(lowering_context_t), intent(in) :: context
+        is_target = .false.
+        if (.not. node_exists(arena, access_index)) return
+        select type (access => arena%entries(access_index)%node)
+        type is (component_access_node)
+            is_target = component_access_is_alloc_array(arena, access, context)
+        end select
+    end function component_access_is_alloc_array_target
+
+    subroutine alias_pointer_to_alloc_array_component(arena, access_index, &
+                                                       context, ptr_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: access_index, ptr_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_address, extent_i32, extent_i64
+        character(len=:), allocatable :: component_name
+        integer :: symbol_index, type_index, component_index, rank, i, value_kind
+
+        call resolve_component_ref(arena, access_index, context, symbol_index, &
+                                   type_index, component_index, component_name, &
+                                   error_msg)
+        if (len_trim(error_msg) > 0) return
+        rank = component_alloc_rank_at(context, type_index, component_index)
+        if (rank < 1 .or. rank > 4) then
+            error_msg = 'allocatable component pointer association supports '// &
+                        'rank 1 through rank 4 only'
+            return
+        end if
+        if (.not. context%symbols(ptr_index)%is_array) then
+            error_msg = 'left of => is a scalar pointer but the target is an array'
+            return
+        end if
+        if (context%symbols(ptr_index)%array_rank /= rank) then
+            error_msg = 'pointer and target array ranks do not match'
+            return
+        end if
+        value_kind = component_kind(context, type_index, component_index)
+        if (context%symbols(ptr_index)%value_kind /= value_kind) then
+            error_msg = 'pointer and target array element kinds do not match'
+            return
+        end if
+        call alloc_array_component_descriptor(arena, access_index, context, &
+                                              descriptor, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_load(context%session, descriptor, data_address, &
+                                error_msg)) return
+        context%symbols(ptr_index)%is_array = .true.
+        context%symbols(ptr_index)%array_size = 0
+        context%symbols(ptr_index)%array_lower_bound = 1
+        context%symbols(ptr_index)%array_dim_sizes = 0
+        context%symbols(ptr_index)%array_dim_lowers = 1
+        context%symbols(ptr_index)%has_runtime_dim_size = .false.
+        do i = 1, rank
+            if (.not. emit_i64_load_at(context%session, descriptor, &
+                    int(i * 8, c_int64_t), extent_i64, error_msg)) return
+            if (.not. emit_liric_i64_to_i32(context%session, extent_i64, &
+                    extent_i32, error_msg)) return
+            context%symbols(ptr_index)%has_runtime_dim_size(i) = .true.
+            context%symbols(ptr_index)%runtime_dim_size(i) = extent_i32
+        end do
+        context%symbols(ptr_index)%element_address = data_address
+        context%symbols(ptr_index)%address = data_address
+        context%symbols(ptr_index)%has_address = .true.
+        context%symbols(ptr_index)%is_reference = .true.
+        context%symbols(ptr_index)%is_associated = .true.
+        context%symbols(ptr_index)%has_runtime_association = .false.
+        context%symbols(ptr_index)%has_runtime_array_stride = .true.
+        context%symbols(ptr_index)%runtime_array_stride_bytes = i64_immediate( &
+            context%session, int(allocatable_elem_size(value_kind), c_int64_t))
+        call set_empty(error_msg)
+    end subroutine alias_pointer_to_alloc_array_component
+
     subroutine alias_pointer_to_derived_component(arena, access_index, context, &
                                                    ptr_index, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -812,8 +895,8 @@
     subroutine alias_pointer_to_derived_array_component(arena, target_index, &
                                                         context, ptr_index, &
                                                         error_msg)
-        ! Bind p => arr%component. The pointer is a rank-1 view whose base is
-        ! the first component slot and whose stride is one complete arr element.
+        ! Bind p => arr%component. The pointer is a view whose base is the
+        ! first component slot and whose stride is one complete arr element.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: target_index, ptr_index
         type(lowering_context_t), intent(inout) :: context
@@ -840,8 +923,9 @@
             return
         end if
         rank = context%symbols(target_symbol)%array_rank
-        if (rank /= 1) then
-            error_msg = 'derived array component pointer association supports rank 1 only'
+        if (rank < 1 .or. rank > 4) then
+            error_msg = 'derived array component pointer association supports '// &
+                        'rank 1 through rank 4 only'
             return
         end if
         if (context%symbols(ptr_index)%array_rank /= rank) then
