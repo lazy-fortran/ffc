@@ -272,6 +272,15 @@
                 ! An unlimited-polymorphic assumed-shape dummy uses the array
                 ! descriptor ABI, not the scalar {data,type_id} box. The
                 ! descriptor's reserved word carries the runtime type id.
+                if (.not. actual_is_whole_array(arena, arg_indices(i), context)) then
+                    select type (actual => arena%entries(arg_indices(i))%node)
+                    type is (array_slice_node)
+                        error_msg = 'unsupported class(*) assumed-shape actual in '// &
+                            trim(callee_name)//': sections and non-array actuals are refused'
+                        return
+                    class default
+                    end select
+                end if
                 if (.not. actual_is_whole_array(arena, arg_indices(i), context) .and. &
                     .not. actual_is_array_expression(arena, arg_indices(i), context)) then
                     if (actual_is_allocatable_array(arena, arg_indices(i), context)) then

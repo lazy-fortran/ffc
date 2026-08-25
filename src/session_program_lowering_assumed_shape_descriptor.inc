@@ -584,18 +584,24 @@
             end if
         end if
         if (is_class_star_dummy) then
+            select type (actual => arena%entries(node_index)%node)
+            type is (array_slice_node)
+                error_msg = 'class(*) assumed-shape actuals do not support '// &
+                    'sections and non-array actuals'
+                return
+            class default
+            end select
             if (rank < 1 .or. rank > 3) then
                 error_msg = 'class(*) assumed-shape lowering currently supports '// &
                     'only rank-1 through rank-3 whole-array actuals'
                 return
             end if
-            if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
-                value_kind /= VALUE_F64) then
+            if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F64) then
                 error_msg = 'class(*) assumed-shape lowering currently supports '// &
-                    'only default integer and real whole-array actuals'
+                    'only default integer and real(8) whole-array actuals'
                 return
             end if
-            if (value_kind == VALUE_F32 .or. value_kind == VALUE_F64) then
+            if (value_kind == VALUE_F64) then
                 class_star_type_id = int(TYPE_ID_REAL, c_int32_t)
             else
                 class_star_type_id = int(TYPE_ID_INTEGER, c_int32_t)
