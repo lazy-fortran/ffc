@@ -584,9 +584,9 @@
             end if
         end if
         if (is_class_star_dummy) then
-            if (rank /= 1 .and. rank /= 2) then
+            if (rank < 1 .or. rank > 3) then
                 error_msg = 'class(*) assumed-shape lowering currently supports '// &
-                    'only rank-1 and rank-2 whole-array actuals'
+                    'only rank-1 through rank-3 whole-array actuals'
                 return
             end if
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &

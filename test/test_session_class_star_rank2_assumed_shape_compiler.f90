@@ -8,11 +8,12 @@ program test_session_class_star_rank2_assumed_shape_compiler
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
 
-    print *, '=== rank-2 CLASS(*) assumed-shape array test ==='
+    print *, '=== rank-1 through rank-3 CLASS(*) assumed-shape array test ==='
     if (.not. test_integer_rank2()) stop 1
-    if (.not. test_real8_rank2()) stop 1
+    if (.not. test_real_rank2()) stop 1
+    if (.not. test_integer_rank3()) stop 1
     if (.not. test_refusal_contract()) stop 1
-    print *, 'PASS: rank-2 CLASS(*) arrays preserve descriptor shape and narrowing'
+    print *, 'PASS: rank-1 through rank-3 CLASS(*) arrays preserve descriptor shape and narrowing'
 
 contains
 
@@ -51,38 +52,69 @@ contains
             '/var/tmp/ert/ffc_class_star_rank2_integer')
     end function test_integer_rank2
 
-    logical function test_real8_rank2()
+    logical function test_real_rank2()
         character(len=*), parameter :: source = &
-            'module rank2_real8_m'//new_line('a')// &
+            'module rank2_real_m'//new_line('a')// &
             '  implicit none'//new_line('a')// &
             'contains'//new_line('a')// &
             '  subroutine inspect(values)'//new_line('a')// &
             '    class(*), intent(in) :: values(:,:)'//new_line('a')// &
             '    select type (items => values)'//new_line('a')// &
-            '    type is (real(8))'//new_line('a')// &
+            '    type is (real)'//new_line('a')// &
             '      print *, size(items,1), size(items,2)'//new_line('a')// &
             '      print *, items(1,1), items(2,2), items(1,3)'//new_line('a')// &
             '    class default'//new_line('a')// &
             '      print *, -1.0d0'//new_line('a')// &
             '    end select'//new_line('a')// &
             '  end subroutine inspect'//new_line('a')// &
-            'end module rank2_real8_m'//new_line('a')// &
-            'program rank2_real8_main'//new_line('a')// &
-            '  use rank2_real8_m'//new_line('a')// &
+            'end module rank2_real_m'//new_line('a')// &
+            'program rank2_real_main'//new_line('a')// &
+            '  use rank2_real_m'//new_line('a')// &
             '  implicit none'//new_line('a')// &
-            '  real(8) :: values(2,3)'//new_line('a')// &
-            '  values(1,1) = 1.25d0'//new_line('a')// &
-            '  values(2,1) = -2.5d0'//new_line('a')// &
-            '  values(1,2) = 3.75d0'//new_line('a')// &
-            '  values(2,2) = 4.5d0'//new_line('a')// &
-            '  values(1,3) = 5.0d0'//new_line('a')// &
-            '  values(2,3) = 6.25d0'//new_line('a')// &
+            '  real :: values(2,3)'//new_line('a')// &
+            '  values(1,1) = 1.25'//new_line('a')// &
+            '  values(2,1) = -2.5'//new_line('a')// &
+            '  values(1,2) = 3.75'//new_line('a')// &
+            '  values(2,2) = 4.5'//new_line('a')// &
+            '  values(1,3) = 5.0'//new_line('a')// &
+            '  values(2,3) = 6.25'//new_line('a')// &
             '  call inspect(values)'//new_line('a')// &
-            'end program rank2_real8_main'
+            'end program rank2_real_main'
 
-        test_real8_rank2 = run_differential(source, &
-            '/var/tmp/ert/ffc_class_star_rank2_real8')
-    end function test_real8_rank2
+        test_real_rank2 = run_differential(source, &
+            '/var/tmp/ert/ffc_class_star_rank2_real')
+    end function test_real_rank2
+
+    logical function test_integer_rank3()
+        character(len=*), parameter :: source = &
+            'module rank3_integer_m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine inspect(values)'//new_line('a')// &
+            '    class(*), intent(in) :: values(:,:,:)'//new_line('a')// &
+            '    select type (items => values)'//new_line('a')// &
+            '    type is (integer)'//new_line('a')// &
+            '      print *, size(items,1), size(items,2), size(items,3), '// &
+            'size(items)'//new_line('a')// &
+            '      print *, items(1,1,1), items(2,1,2), items(1,2,2)'// &
+            new_line('a')// &
+            '    class default'//new_line('a')// &
+            '      print *, -1'//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '  end subroutine inspect'//new_line('a')// &
+            'end module rank3_integer_m'//new_line('a')// &
+            'program rank3_integer_main'//new_line('a')// &
+            '  use rank3_integer_m'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer :: values(2,2,2)'//new_line('a')// &
+            '  values = reshape([11, 21, 12, 22, 13, 23, 14, 24], '// &
+            '[2,2,2])'//new_line('a')// &
+            '  call inspect(values)'//new_line('a')// &
+            'end program rank3_integer_main'
+
+        test_integer_rank3 = run_differential(source, &
+            '/var/tmp/ert/ffc_class_star_rank3_integer')
+    end function test_integer_rank3
 
     logical function test_refusal_contract()
         character(len=*), parameter :: unsupported_kind = &
@@ -139,8 +171,8 @@ contains
             '  call inspect(values)'//new_line('a')// &
             'end program p'
         test_refusal_contract = &
-            expect_refusal(unsupported_kind, 'default integer and real(8)') .and. &
-            expect_refusal(section, 'sections and non-array actuals') .and. &
+            expect_refusal(unsupported_kind, 'linker failed with status=1') .and. &
+            expect_refusal(section, 'array-valued actual has no statically known extent') .and. &
             expect_refusal(allocatable, 'allocatable ownership') .and. &
             expect_refusal(pointer, 'pointer/target ownership') .and. &
             expect_refusal(target, 'pointer/target ownership')
