@@ -5128,11 +5128,11 @@
     end subroutine resolve_shift_boundary
 
     ! cshift(array, shift [, dim]) / eoshift(array, shift [, boundary] [, dim])
-    ! for rank-1 and rank-2 arrays. circular selects the circular variant
+    ! for rank-1 through rank-4 arrays. circular selects the circular variant
     ! (cshift), which normalizes the shift modulo the extent along dim;
     ! eoshift instead fills the vacated positions from boundary (type zero when
-    ! boundary is absent). shift must be a compile-time integer scalar or, for
-    ! a rank-2 array, a conformable rank-1 constructor.
+    ! boundary is absent). shift must be a compile-time integer scalar or a
+    ! constructor conformable with the rank-reduced array.
     subroutine lower_shift_assignment(arena, node, symbol_index, context, &
                                       circular, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -5143,10 +5143,12 @@
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: value, boundary_value
         integer(c_int64_t), allocatable :: shifts(:)
-        integer :: source_index, rank, slice_count, extent
+        integer :: source_index, rank
         integer :: array_arg, shift_arg, boundary_arg, dim_arg
-        integer :: i, j, rows
-        integer(c_int64_t) :: dim_val, stride_along, stride_slice, src
+        integer :: i, j, d, extent, slice_count
+        integer :: dimensions(4)
+        integer(c_int64_t) :: dim_val, stride_along, src, slice_base
+        integer(c_int64_t) :: before_dim
         character(len=:), allocatable :: intrinsic_name
 
         if (circular) then
@@ -5176,25 +5178,17 @@
                             ' dim must lie between 1 and the rank of the array'
                 return
             end if
-            if (rank == 1) then
-                extent = context%symbols(source_index)%array_size
-                slice_count = 1
-                stride_along = 1_c_int64_t
-                stride_slice = 0_c_int64_t
-            else
-                rows = context%symbols(source_index)%array_dim_sizes(1)
-                if (dim_val == 1_c_int64_t) then
-                    extent = rows
-                    slice_count = context%symbols(source_index)%array_dim_sizes(2)
-                    stride_along = 1_c_int64_t
-                    stride_slice = int(rows, c_int64_t)
-                else
-                    extent = context%symbols(source_index)%array_dim_sizes(2)
-                    slice_count = rows
-                    stride_along = int(rows, c_int64_t)
-                    stride_slice = 1_c_int64_t
-                end if
-            end if
+            dimensions = 1
+            do d = 1, rank
+                dimensions(d) = context%symbols(source_index)%array_dim_sizes(d)
+            end do
+            before_dim = 1_c_int64_t
+            do d = 1, int(dim_val) - 1
+                before_dim = before_dim * int(dimensions(d), c_int64_t)
+            end do
+            extent = dimensions(int(dim_val))
+            slice_count = context%symbols(source_index)%array_size / extent
+            stride_along = before_dim
             if (extent <= 0 .or. slice_count <= 0) then
                 error_msg = trim(intrinsic_name)//' requires a non-empty array'
                 return
@@ -5206,6 +5200,9 @@
                                         context, boundary_value, error_msg)
             if (len_trim(error_msg) > 0) return
             do j = 0, slice_count - 1
+                slice_base = modulo(int(j, c_int64_t), before_dim) + &
+                             (int(j, c_int64_t) / before_dim) * &
+                             (before_dim * int(extent, c_int64_t))
                 do i = 0, extent - 1
                     src = int(i, c_int64_t) + shifts(j + 1)
                     if (circular) then
@@ -5213,15 +5210,15 @@
                     end if
                     if (src >= 0_c_int64_t .and. src < int(extent, c_int64_t)) then
                         call load_array_linear_element(context, source_index, &
-                            src*stride_along + int(j, c_int64_t)*stride_slice, &
+                            src*stride_along + slice_base, &
                             value, error_msg)
                         if (len_trim(error_msg) > 0) return
                     else
                         value = boundary_value
                     end if
                     call store_array_linear_element(context, symbol_index, &
-                        int(i, c_int64_t)*stride_along + &
-                        int(j, c_int64_t)*stride_slice, value, error_msg)
+                        int(i, c_int64_t)*stride_along + slice_base, value, &
+                        error_msg)
                     if (len_trim(error_msg) > 0) return
                 end do
             end do
@@ -5270,7 +5267,7 @@
         end select
     end subroutine resolve_shift_source
 
-    ! Source and target must share rank (1 or 2) and every extent.
+    ! Source and target must share rank (1 through 4) and every extent.
     subroutine check_shift_shapes(context, source_index, symbol_index, &
                                   intrinsic_name, rank, error_msg)
         type(lowering_context_t), intent(in) :: context
@@ -5281,9 +5278,9 @@
         integer :: d
 
         rank = context%symbols(source_index)%array_rank
-        if (rank /= 1 .and. rank /= 2) then
+        if (rank < 1 .or. rank > 4) then
             error_msg = trim(intrinsic_name)// &
-                        ' supports only rank-1 and rank-2 arrays'
+                        ' supports only rank-1 through rank-4 arrays'
             return
         end if
         if (context%symbols(symbol_index)%array_rank /= rank) then
@@ -5297,16 +5294,14 @@
                         ' result shape does not match the target array'
             return
         end if
-        if (rank == 2) then
-            do d = 1, 2
-                if (context%symbols(symbol_index)%array_dim_sizes(d) /= &
-                    context%symbols(source_index)%array_dim_sizes(d)) then
-                    error_msg = trim(intrinsic_name)// &
-                                ' result shape does not match the target array'
-                    return
-                end if
-            end do
-        end if
+        do d = 1, rank
+            if (context%symbols(symbol_index)%array_dim_sizes(d) /= &
+                context%symbols(source_index)%array_dim_sizes(d)) then
+                error_msg = trim(intrinsic_name)// &
+                            ' result shape does not match the target array'
+                return
+            end if
+        end do
         call set_empty(error_msg)
     end subroutine check_shift_shapes
 
