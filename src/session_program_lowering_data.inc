@@ -106,7 +106,10 @@
         type(data_value_cursor_t), intent(inout) :: cursor
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        type(call_or_subscript_node) :: target
+        type(mono_type_t), allocatable :: inferred, element_type
         character(len=:), allocatable :: name
+        logical :: found
         integer :: sym, k, asz
 
         call set_empty(error_msg)
@@ -128,6 +131,40 @@
         call identifier_name(arena, obj_index, name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol_compat(context, name)
+        if (sym <= 0) then
+            ! DATA is flushed before executable references. Materialize an
+            ! implicit array with a bare DIMENSION here, using the same
+            ! registration path as an array-element reference; other missing
+            ! targets retain the existing diagnostic below.
+            target = call_or_subscript_node()
+            target%name = name
+            select type (object => arena%entries(obj_index)%node)
+            type is (call_or_subscript_node)
+                target = object
+            class default
+                call get_type_for_node(arena, obj_index, inferred, found)
+                if (found .and. allocated(inferred)) then
+                    target%resolved_type_kind = inferred%kind
+                    if (inferred%kind == TARRAY .and. inferred%has_args() .and. &
+                        inferred%get_args_count() > 0) then
+                        element_type = inferred%get_arg(1)
+                        target%resolved_type_kind = element_type%kind
+                    end if
+                else
+                    target%resolved_type_kind = &
+                        arena%entries(obj_index)%node%resolved_type_kind
+                end if
+            end select
+            if (allocated(node%value_indices) .and. size(node%value_indices) > 0) then
+                call get_type_for_node(arena, node%value_indices(1), inferred, found)
+                if (found .and. allocated(inferred) .and. &
+                    inferred%kind == TDOUBLE) target%resolved_type_kind = TDOUBLE
+            end if
+            call materialize_bare_dimension_array(arena, target, context, sym, &
+                                                   error_msg)
+            if (len_trim(error_msg) > 0) return
+            sym = find_symbol_compat(context, name)
+        end if
         if (sym <= 0) then
             error_msg = 'data statement target was not declared: '//trim(name)
             return
