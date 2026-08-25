@@ -290,9 +290,9 @@ contains
 
         call set_empty(error_msg)
         if (context%symbols(mask_sym)%array_rank < 1 .or. &
-            context%symbols(mask_sym)%array_rank > 3) then
+            context%symbols(mask_sym)%array_rank > 4) then
             error_msg = trim(reduction_name)// &
-                ' over runtime comparison masks supports ranks 1 through 3 only'
+                ' over runtime comparison masks supports ranks 1 through 4 only'
             return
         end if
         extent = context%symbols(mask_sym)%runtime_dim_size(1)
@@ -315,6 +315,17 @@ contains
             end if
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
                 context%symbols(mask_sym)%runtime_dim_size(3), total_extent, &
+                error_msg)) return
+            extent = total_extent
+        end if
+        if (context%symbols(mask_sym)%array_rank >= 4) then
+            if (.not. context%symbols(mask_sym)%has_runtime_dim_size(4)) then
+                error_msg = trim(reduction_name)// &
+                    ' over runtime comparison masks is missing rank-4 extent'
+                return
+            end if
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
+                context%symbols(mask_sym)%runtime_dim_size(4), total_extent, &
                 error_msg)) return
             extent = total_extent
         end if

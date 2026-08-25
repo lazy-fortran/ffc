@@ -1,5 +1,6 @@
 program test_session_array_mask_reduction_compiler
-    use ffc_test_support, only: expect_error_contains, expect_output
+    use ffc_test_support, only: expect_error_contains, expect_output, &
+        expect_output_matches_gfortran
     implicit none
 
     logical :: all_passed
@@ -17,6 +18,7 @@ program test_session_array_mask_reduction_compiler
     if (.not. test_runtime_comparison_mask()) all_passed = .false.
     if (.not. test_runtime_rank2_comparison_mask()) all_passed = .false.
     if (.not. test_runtime_rank3_comparison_mask()) all_passed = .false.
+    if (.not. test_runtime_rank4_comparison_mask()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: any/all over whole-array comparisons lower correctly'
@@ -196,5 +198,30 @@ contains
         test_runtime_rank3_comparison_mask = expect_output( &
             source, ' ok'//new_line('a'), '/tmp/ffc_mask_runtime_rank3')
     end function test_runtime_rank3_comparison_mask
+
+    logical function test_runtime_rank4_comparison_mask()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '    integer, allocatable :: a(:,:,:,:), empty(:,:,:,:)'//new_line('a')// &
+            '    allocate(a(2,2,2,2), empty(0,2,2,2))'//new_line('a')// &
+            '    a(1,1,1,1) = 1; a(2,1,1,1) = 2'//new_line('a')// &
+            '    a(1,2,1,1) = 3; a(2,2,1,1) = 4'//new_line('a')// &
+            '    a(1,1,2,1) = 5; a(2,1,2,1) = 6'//new_line('a')// &
+            '    a(1,2,2,1) = 7; a(2,2,2,1) = 8'//new_line('a')// &
+            '    a(1,1,1,2) = 9; a(2,1,1,2) = 10'//new_line('a')// &
+            '    a(1,2,1,2) = 11; a(2,2,1,2) = 12'//new_line('a')// &
+            '    a(1,1,2,2) = 13; a(2,1,2,2) = 14'//new_line('a')// &
+            '    a(1,2,2,2) = 15; a(2,2,2,2) = 16'//new_line('a')// &
+            '    print *, count(a > 8)'//new_line('a')// &
+            '    print *, any(a == 16)'//new_line('a')// &
+            '    print *, all(a > 0)'//new_line('a')// &
+            '    print *, count(empty > 0)'//new_line('a')// &
+            '    print *, any(empty > 0)'//new_line('a')// &
+            '    print *, all(empty > 0)'//new_line('a')// &
+            'end program main'
+
+        test_runtime_rank4_comparison_mask = expect_output_matches_gfortran( &
+            source, 'runtime_rank4_comparison')
+    end function test_runtime_rank4_comparison_mask
 
 end program test_session_array_mask_reduction_compiler
