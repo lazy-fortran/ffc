@@ -1041,6 +1041,10 @@
             error_msg = 'array section has too many subscripts'
             return
         end if
+        if (source_rank > 2) then
+            call validate_runtime_rank34_section(arena, slice_node, context, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         keep_dim = .false.
         kept_dim = 0
@@ -1232,6 +1236,46 @@
         call lower_runtime_descriptor_array_element_address(context, source_index, &
             source_linear, element_address, error_msg)
     end subroutine lower_runtime_array_section_element_address_operand_generic
+
+    subroutine validate_runtime_rank34_section(arena, slice_node, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(array_slice_node), intent(in) :: slice_node
+        type(lowering_context_t), intent(in) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: dim, bounds_index, stride_index
+        integer(c_int64_t) :: stride_value
+
+        call set_empty(error_msg)
+        do dim = 1, slice_node%num_dimensions
+            bounds_index = slice_node%bounds_indices(dim)
+            if (.not. node_exists(arena, bounds_index)) then
+                error_msg = 'array section bound index does not reference an AST node'
+                return
+            end if
+            stride_index = 0
+            select type (bounds_node => arena%entries(bounds_index)%node)
+            type is (range_expression_node)
+                stride_index = bounds_node%stride_index
+            type is (array_bounds_node)
+                stride_index = bounds_node%stride_index
+            class default
+                cycle
+            end select
+            if (stride_index <= 0) cycle
+            call eval_i32_constant(arena, stride_index, context, stride_value, error_msg)
+            if (len_trim(error_msg) > 0) then
+                error_msg = 'runtime rank-3/rank-4 array sections require '// &
+                            'compile-time unit stride'
+                return
+            end if
+            if (stride_value /= 1_c_int64_t) then
+                error_msg = 'runtime rank-3/rank-4 array sections require '// &
+                            'unit stride'
+                return
+            end if
+        end do
+        call set_empty(error_msg)
+    end subroutine validate_runtime_rank34_section
 
     subroutine lower_runtime_section_safe_extent(context, extent, safe_extent, error_msg)
         type(lowering_context_t), intent(inout) :: context
