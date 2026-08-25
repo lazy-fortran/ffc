@@ -3464,7 +3464,7 @@
         ! Scalar broadcast: arr(section) = expr, for rank-1 through rank-4 sections.
         if (tinfo%result_rank < 1 .or. tinfo%result_rank > 4 .or. &
             tinfo%source_rank < tinfo%result_rank) then
-            error_msg = 'array section assignment supports rank-1 through rank-3 '// &
+            error_msg = 'array section assignment supports rank-1 through rank-4 '// &
                         'result sections'
             return
         end if
