@@ -1121,9 +1121,26 @@
             error_msg = 'pointer assignment section expected an array slice node'
             return
         end select
-        if (info%result_rank /= 1) then
-            error_msg = 'pointer array sections support rank-1 views only'
+        if (info%result_rank /= 1 .and. info%result_rank /= 2) then
+            error_msg = 'pointer array sections support rank-1 and rank-2 views only'
             return
+        end if
+        if (info%result_rank == 2) then
+            if (info%source_rank /= 2 .or. info%kept_dims(1) /= 1 .or. &
+                info%kept_dims(2) /= 2) then
+                error_msg = 'rank-2 pointer sections must keep both source dimensions'
+                return
+            end if
+            if (info%section_extents(1) /= info%source_sizes(1) .or. &
+                info%section_lowers(1) /= info%source_lowers(1)) then
+                error_msg = 'rank-2 pointer sections must keep the complete first dimension'
+                return
+            end if
+            if (info%section_strides(1) /= 1_c_int64_t .or. &
+                info%section_strides(2) /= 1_c_int64_t) then
+                error_msg = 'rank-2 pointer sections must be contiguous'
+                return
+            end if
         end if
         if (info%has_runtime_bounds) then
             error_msg = 'pointer array sections require compile-time bounds'
@@ -1212,25 +1229,32 @@
                     error_msg)) return
         end select
 
-        stride_bytes = info%section_strides(info%kept_dims(1)) * &
-                       allocatable_elem_size(vk)
         context%symbols(ptr_index)%element_address = base_addr
-        context%symbols(ptr_index)%array_size = int(info%section_extents( &
-            info%kept_dims(1)))
+        context%symbols(ptr_index)%array_size = int(array_section_total_elements(info))
         context%symbols(ptr_index)%array_lower_bound = 1
-        context%symbols(ptr_index)%array_rank = 1
         ! Keep the descriptor's per-dimension shape in sync with array_size.
         ! Inquiry lowering reads these fields for a pointer view, so leaving
         ! them zero makes size/shape/lbound inquiries disagree with element
         ! access through the same section.
         context%symbols(ptr_index)%array_dim_lowers = 0
         context%symbols(ptr_index)%array_dim_sizes = 0
-        context%symbols(ptr_index)%array_dim_lowers(1) = 1
-        context%symbols(ptr_index)%array_dim_sizes(1) = &
-            int(info%section_extents(info%kept_dims(1)))
-        context%symbols(ptr_index)%has_runtime_array_stride = .true.
-        context%symbols(ptr_index)%runtime_array_stride_bytes = &
-            i64_immediate(context%session, stride_bytes)
+        do src = 1, info%result_rank
+            context%symbols(ptr_index)%array_dim_lowers(src) = 1
+            context%symbols(ptr_index)%array_dim_sizes(src) = int( &
+                info%section_extents(info%kept_dims(src)))
+        end do
+        context%symbols(ptr_index)%array_rank = info%result_rank
+        if (info%result_rank == 1) then
+            stride_bytes = info%section_strides(info%kept_dims(1)) * &
+                           allocatable_elem_size(vk)
+            context%symbols(ptr_index)%has_runtime_array_stride = .true.
+            context%symbols(ptr_index)%runtime_array_stride_bytes = &
+                i64_immediate(context%session, stride_bytes)
+        else
+            context%symbols(ptr_index)%has_runtime_array_stride = .false.
+            context%symbols(ptr_index)%runtime_array_stride_bytes = &
+                i64_immediate(context%session, 0_c_int64_t)
+        end if
         context%symbols(ptr_index)%has_address = .true.
         context%symbols(ptr_index)%is_reference = .true.
         context%symbols(ptr_index)%is_associated = .true.

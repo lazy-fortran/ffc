@@ -1,5 +1,5 @@
 program test_session_pointer_array_rank2
-    use ffc_test_support, only: expect_exit_status, expect_output
+    use ffc_test_support, only: expect_error_contains, expect_exit_status, expect_output
     implicit none
 
     print *, '=== direct session rank-2/complex pointer/target array compiler test ==='
@@ -29,6 +29,36 @@ program test_session_pointer_array_rank2
         'end program main', 0, &
         '/tmp/ffc_session_pointer_array_rank2_bounds')) stop 2
 
+    ! A contiguous rank-2 section keeps the complete first dimension.  The
+    ! pointer gets the section shape and writes through it reach the target in
+    ! column-major order.
+    if (.not. expect_exit_status( &
+        'program main'//new_line('a')// &
+        'integer, target :: t(2, 4)'//new_line('a')// &
+        'integer, pointer :: p(:, :)'//new_line('a')// &
+        't = reshape([11, 12, 21, 22, 31, 32, 41, 42], [2, 4])'//new_line('a')// &
+        'p => t(:, 2:3)'//new_line('a')// &
+        'if (size(p) /= 4) stop 1'//new_line('a')// &
+        'if (size(p, 1) /= 2 .or. size(p, 2) /= 2) stop 2'//new_line('a')// &
+        'if (lbound(p, 1) /= 1 .or. lbound(p, 2) /= 1) stop 3'//new_line('a')// &
+        'if (ubound(p, 1) /= 2 .or. ubound(p, 2) /= 2) stop 4'//new_line('a')// &
+        'if (p(1, 1) /= 21 .or. p(2, 2) /= 32) stop 5'//new_line('a')// &
+        'p(2, 1) = 99'//new_line('a')// &
+        'if (t(2, 2) /= 99) stop 6'//new_line('a')// &
+        'stop 0'//new_line('a')// &
+        'end program main', 0, &
+        '/tmp/ffc_session_pointer_array_rank2_section')) stop 3
+
+    ! A rank-2 section with a non-unit stride is not contiguous and must remain
+    ! a diagnosed unsupported association rather than an incorrect descriptor.
+    if (.not. expect_error_contains( &
+        'program main'//new_line('a')// &
+        'integer, target :: t(2, 4)'//new_line('a')// &
+        'integer, pointer :: p(:, :)'//new_line('a')// &
+        'p => t(:, 1:4:2)'//new_line('a')// &
+        'end program main', 'rank-2 pointer sections must be contiguous', &
+        '/tmp/ffc_session_pointer_array_rank2_noncontiguous')) stop 4
+
     ! A rank-1 complex(4) target array: p => t aliases the re/im storage, and
     ! element writes through the pointer flow back to the target.
     if (.not. expect_output( &
@@ -44,7 +74,7 @@ program test_session_pointer_array_rank2
         'end program main', &
         '             (1.00000000,2.00000000)'//new_line('a')// &
         '             (9.00000000,8.00000000)'//new_line('a'), &
-        '/tmp/ffc_session_pointer_array_complex')) stop 3
+        '/tmp/ffc_session_pointer_array_complex')) stop 5
 
     print *, 'PASS: rank-2 and complex pointer/target array, => , element access'
 end program test_session_pointer_array_rank2
