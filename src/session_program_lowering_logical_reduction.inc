@@ -598,8 +598,13 @@
             call mask_scalar_element(arena, expr_idx, context, compare_vk, &
                                      is_equiv, value, error_msg)
         case (4)
-            call lower_mask_expression_element(arena, side%scalar_idx, side%vk, &
-                                               i, context, value, error_msg)
+            if (side%vk == VALUE_LOGICAL .and. side%sym > 0) then
+                call lower_array_elementwise_value(arena, side%scalar_idx, &
+                    side%sym, i, context, value, error_msg)
+            else
+                call lower_mask_expression_element(arena, side%scalar_idx, side%vk, &
+                                                   i, context, value, error_msg)
+            end if
         case default
             call mask_scalar_element(arena, side%scalar_idx, context, &
                                      compare_vk, is_equiv, value, error_msg)
