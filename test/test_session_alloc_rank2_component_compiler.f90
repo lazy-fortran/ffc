@@ -14,6 +14,7 @@ program test_session_alloc_rank2_component_compiler
     print *, '=== direct session rank-2 allocatable component test ==='
     all_passed = .true.
     if (.not. test_runtime_lifecycle()) all_passed = .false.
+    if (.not. test_rank2_section_scalar_broadcast()) all_passed = .false.
     if (.not. test_whole_component_assignment_rejected()) all_passed = .false.
     if (.not. test_actual_argument_rejected()) all_passed = .false.
     if (.not. test_alias_rejected()) all_passed = .false.
@@ -86,6 +87,29 @@ contains
 
         test_runtime_lifecycle = matches_gfortran(source, 'runtime_lifecycle')
     end function test_runtime_lifecycle
+
+    logical function test_rank2_section_scalar_broadcast()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: box_t'//new_line('a')// &
+            '    integer, allocatable :: v(:,:)'//new_line('a')// &
+            '  end type box_t'//new_line('a')// &
+            '  type(box_t) :: obj'//new_line('a')// &
+            '  integer :: i, j'//new_line('a')// &
+            '  allocate(obj%v(2,3))'//new_line('a')// &
+            '  obj%v(:,:) = 7'//new_line('a')// &
+            '  do j = 1, 3'//new_line('a')// &
+            '    do i = 1, 2'//new_line('a')// &
+            '      if (obj%v(i,j) /= 7) error stop 1'//new_line('a')// &
+            '    end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
+            '  print *, size(obj%v,1), size(obj%v,2), obj%v(1,1), obj%v(2,3)'// &
+            new_line('a')// &
+            'end program main'
+
+        test_rank2_section_scalar_broadcast = matches_gfortran(source, &
+            'rank2_broadcast')
+    end function test_rank2_section_scalar_broadcast
 
     logical function test_whole_component_assignment_rejected()
         character(len=*), parameter :: source = &

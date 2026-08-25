@@ -4349,18 +4349,19 @@
 
     subroutine lower_alloc_array_component_section_assignment(arena, node, target, &
                                                                context, error_msg)
-        ! Assign a scalar or constructor to a rank-1 allocatable component
-        ! section. The component descriptor supplies the runtime extent for a
-        ! scalar broadcast; constructor values are lowered before any store.
+        ! Assign a scalar or constructor to an allocatable component section.
+        ! Rank-1 sections use the first descriptor extent; rank-2 sections use
+        ! both extents and retain the descriptor's column-major linear layout.
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
         type(array_slice_node), intent(in) :: target
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: desc_addr, data_ptr, value
+        type(lr_operand_desc_t) :: second_extent_i64, second_extent_i32, total_extent
         type(lr_operand_desc_t), allocatable :: rhs_values(:)
         integer, allocatable :: flat(:)
-        integer :: comp_kind, i, n
+        integer :: comp_kind, i, n, comp_rank, base_type, comp_index
         integer(c_int32_t) :: entry_block, header_block, body_block, &
                               latch_block, exit_block, idx_vreg
         type(lr_operand_desc_t) :: extent, entry_idx, header_idx, backedge_idx
@@ -4378,6 +4379,23 @@
                 return
             end if
             comp_kind = derived_component_access_kind(arena, component, context)
+            base_type = component_base_type_index(arena, component%base_expr_index, &
+                                                  context)
+            comp_index = 0
+            if (base_type > 0) comp_index = find_derived_component(context, &
+                                                                    base_type, &
+                                                                    component%component_name)
+            comp_rank = component_alloc_rank_at(context, base_type, comp_index)
+            if (target%num_dimensions /= comp_rank) then
+                error_msg = 'allocatable component section rank does not match '// &
+                            'component rank'
+                return
+            end if
+            if (comp_rank < 1 .or. comp_rank > 2) then
+                error_msg = 'allocatable component section assignment supports '// &
+                            'rank 1 and rank 2 only'
+                return
+            end if
         class default
             error_msg = 'allocatable component section requires obj%component'
             return
@@ -4423,6 +4441,15 @@
         if (len_trim(error_msg) > 0) return
         call alloc_component_extent_i32(context, desc_addr, extent, error_msg)
         if (len_trim(error_msg) > 0) return
+        if (comp_rank == 2) then
+            if (.not. emit_i64_load_at(context%session, desc_addr, 16_c_int64_t, &
+                                       second_extent_i64, error_msg)) return
+            if (.not. emit_liric_i64_to_i32(context%session, second_extent_i64, &
+                                            second_extent_i32, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
+                                      second_extent_i32, total_extent, error_msg)) return
+            extent = total_extent
+        end if
         entry_idx = i32_immediate(context%session, 0_c_int64_t)
         entry_block = context%current_block_id
         header_block = create_liric_block(context%session)
