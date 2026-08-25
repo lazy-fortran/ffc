@@ -953,8 +953,9 @@
             return
         end if
 
-        ! An allocatable rank-1/2 array result returns via the allocatable
-        ! descriptor sret ABI; the callee allocates the data at run time.
+        ! An allocatable rank-1 through rank-4 array result returns via the
+        ! allocatable descriptor sret ABI; the callee allocates the data at run
+        ! time.
         if (result_var_is_alloc_array(node, context)) then
             value_kind = VALUE_ALLOC_ARRAY_RESULT
             return
@@ -1510,7 +1511,7 @@
 
     logical function result_var_is_alloc_array(node, context) result(is_alloc)
         ! True when the function result variable is declared as an allocatable
-        ! rank-1 or rank-2 array of an intrinsic element kind in the body.
+        ! rank-1 through rank-4 array of an intrinsic element kind in the body.
         type(function_def_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
         integer :: elem_kind, rank
@@ -1521,7 +1522,7 @@
     subroutine alloc_array_result_info(node, context, is_alloc, elem_kind, rank)
         ! Element scalar kind and rank of an allocatable array function result,
         ! read from the result variable's body declaration. is_alloc is false for
-        ! non-allocatable, derived-element, or higher-rank results (out of scope).
+        ! non-allocatable, derived-element, or rank-above-four results (out of scope).
         type(function_def_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
         logical, intent(out) :: is_alloc
@@ -1567,7 +1568,8 @@
 
     subroutine classify_alloc_array_decl(decl, context, is_alloc, elem_kind, rank, &
                                          decl_err, reference_index)
-        ! An allocatable rank-1/2 declaration of an intrinsic element kind.
+        ! An allocatable rank-1 through rank-4 declaration of an intrinsic
+        ! element kind.
         type(declaration_node), intent(in) :: decl
         type(lowering_context_t), intent(in) :: context
         logical, intent(out) :: is_alloc
@@ -1588,7 +1590,7 @@
         else
             rank = 1
         end if
-        if (rank < 1 .or. rank > 2) then
+        if (rank < 1 .or. rank > 4) then
             rank = 0
             return
         end if
