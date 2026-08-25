@@ -4147,6 +4147,10 @@
                 call lower_alloc_rank2_component_assignment(arena, node, target, &
                                                             context, error_msg)
                 return
+            else if (component_alloc_rank_at(context, base_type, comp_index) == 3) then
+                call lower_alloc_rank3_component_assignment(arena, node, target, &
+                                                           context, error_msg)
+                return
             else if (component_alloc_rank_at(context, base_type, comp_index) /= 1) then
                 call unsupported_feature_error('allocatable array component '// &
                     'assignment', target%line, target%column, &
@@ -4392,6 +4396,190 @@
         context%current_block_terminated = .false.
         call set_empty(error_msg)
     end subroutine lower_alloc_rank2_component_assignment
+
+    subroutine lower_alloc_rank3_component_assignment(arena, node, target, &
+                                                       context, error_msg)
+        ! Whole assignment for an intrinsic rank-3 allocatable component. A
+        ! rank-3 whole-array source reallocates the component to its shape;
+        ! scalar assignment fills the existing allocation in column-major order.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(component_access_node), intent(in) :: target
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: desc_addr, data_ptr, value
+        type(lr_operand_desc_t) :: extent1, extent2_i64, extent3_i64
+        type(lr_operand_desc_t) :: extent2_i32, extent3_i32, total12, total_extent
+        type(lr_operand_desc_t) :: entry_idx, header_idx, backedge_idx
+        type(lr_operand_desc_t) :: condition, next_idx
+        integer :: comp_kind, source_sym, i, n, n1, n2, n3
+        integer :: entry_block, header_block, body_block, latch_block, exit_block
+        integer :: idx_vreg
+        character(len=:), allocatable :: name
+        logical :: is_scalar
+
+        call set_empty(error_msg)
+        comp_kind = derived_component_access_kind(arena, target, context)
+        if (comp_kind == VALUE_DERIVED .or. comp_kind == VALUE_CHARACTER) then
+            call unsupported_feature_error('rank-3 allocatable array component assignment', &
+                target%line, target%column, 'only integer, real, and logical '// &
+                'allocatable array components are supported', error_msg)
+            return
+        end if
+        call alloc_array_component_descriptor(arena, node%target_index, context, &
+                                              desc_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        source_sym = 0
+        is_scalar = .false.
+        n1 = 0
+        n2 = 0
+        n3 = 0
+        if (.not. node_exists(arena, node%value_index)) then
+            error_msg = 'rank-3 allocatable component assignment rhs is not a node'
+            return
+        end if
+        select type (rhs => arena%entries(node%value_index)%node)
+        type is (array_literal_node)
+            call unsupported_feature_error('rank-3 allocatable array component '// &
+                'assignment', rhs%line, rhs%column, &
+                'an array constructor is rank 1; use a rank-3 whole-array rhs', &
+                error_msg)
+            return
+        class default
+            if (is_identifier(arena, node%value_index)) then
+                call get_identifier_name(arena, node%value_index, name, error_msg)
+                if (len_trim(error_msg) > 0) return
+                source_sym = find_symbol_compat(context, name)
+                if (source_sym <= 0) then
+                    error_msg = 'rank-3 allocatable component assignment rhs was not '// &
+                        'declared: '//trim(name)
+                    return
+                end if
+                if (context%symbols(source_sym)%array_rank == 0) then
+                    is_scalar = .true.
+                else if (context%symbols(source_sym)%array_rank == 3) then
+                    n1 = context%symbols(source_sym)%array_dim_sizes(1)
+                    n2 = context%symbols(source_sym)%array_dim_sizes(2)
+                    n3 = context%symbols(source_sym)%array_dim_sizes(3)
+                else
+                    call unsupported_feature_error( &
+                        'rank-3 allocatable array component assignment', &
+                        get_node_line(arena, node%value_index), &
+                        get_node_column(arena, node%value_index), &
+                        'a whole-array rhs must also have rank 3', error_msg)
+                    return
+                end if
+            else
+                select type (rhs => arena%entries(node%value_index)%node)
+                type is (call_or_subscript_node)
+                    if (rhs%base_expr_index > 0 .or. .not. allocated(rhs%name) .or. &
+                        (allocated(rhs%arg_indices) .and. &
+                         size(rhs%arg_indices) /= 0)) then
+                        is_scalar = .true.
+                    else
+                        name = rhs%name
+                        source_sym = find_symbol_compat(context, name)
+                        if (source_sym <= 0) then
+                            error_msg = 'rank-3 allocatable component assignment rhs '// &
+                                'was not declared: '//trim(name)
+                            return
+                        end if
+                        if (context%symbols(source_sym)%array_rank /= 3) then
+                            call unsupported_feature_error( &
+                                'rank-3 allocatable array component assignment', &
+                                get_node_line(arena, node%value_index), &
+                                get_node_column(arena, node%value_index), &
+                                'a whole-array rhs must also have rank 3', error_msg)
+                            return
+                        end if
+                        n1 = context%symbols(source_sym)%array_dim_sizes(1)
+                        n2 = context%symbols(source_sym)%array_dim_sizes(2)
+                        n3 = context%symbols(source_sym)%array_dim_sizes(3)
+                    end if
+                class default
+                    is_scalar = .true.
+                end select
+            end if
+        end select
+
+        if (.not. is_scalar) then
+            if (n1 <= 0 .or. n2 <= 0 .or. n3 <= 0) then
+                error_msg = 'rank-3 whole-array rhs has no positive shape'
+                return
+            end if
+            call realloc_alloc_component_rank3(context, desc_addr, comp_kind, n1, n2, n3, &
+                                                data_ptr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            n = n1 * n2 * n3
+            do i = 1, n
+                call load_array_linear_element(context, source_sym, &
+                    int(i - 1, c_int64_t), value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call store_alloc_component_element(context, data_ptr, comp_kind, &
+                                                   i - 1, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+            return
+        end if
+
+        call lower_component_rhs_value(arena, node%value_index, comp_kind, context, &
+                                       value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call alloc_component_extent_i32(context, desc_addr, extent1, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_i64_load_at(context%session, desc_addr, 16_c_int64_t, &
+                                   extent2_i64, error_msg)) return
+        if (.not. emit_i64_load_at(context%session, desc_addr, 24_c_int64_t, &
+                                   extent3_i64, error_msg)) return
+        if (.not. emit_liric_i64_to_i32(context%session, extent2_i64, extent2_i32, &
+                                        error_msg)) return
+        if (.not. emit_liric_i64_to_i32(context%session, extent3_i64, extent3_i32, &
+                                        error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent1, extent2_i32, &
+                                  total12, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_MUL, total12, extent3_i32, &
+                                  total_extent, error_msg)) return
+        entry_idx = i32_immediate(context%session, 0_c_int64_t)
+        entry_block = context%current_block_id
+        header_block = create_liric_block(context%session)
+        body_block = create_liric_block(context%session)
+        latch_block = create_liric_block(context%session)
+        exit_block = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+        if (.not. set_liric_block(context%session, header_block, error_msg)) return
+        context%current_block_id = header_block
+        context%current_block_terminated = .false.
+        idx_vreg = reserve_i32_vreg(context%session)
+        if (idx_vreg <= 0) then
+            error_msg = 'LIRIC could not reserve a rank-3 component index vreg'
+            return
+        end if
+        backedge_idx = i32_vreg(context%session, idx_vreg)
+        if (.not. emit_liric_i32_phi(context%session, entry_idx, entry_block, &
+                backedge_idx, latch_block, header_idx, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_idx, &
+                total_extent, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, body_block, &
+                exit_block, error_msg)) return
+        if (.not. set_liric_block(context%session, body_block, error_msg)) return
+        context%current_block_id = body_block
+        context%current_block_terminated = .false.
+        call store_alloc_component_element_runtime(context, desc_addr, comp_kind, &
+            header_idx, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+        if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+        context%current_block_id = latch_block
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_idx, &
+                i32_immediate(context%session, 1_c_int64_t), idx_vreg, next_idx, &
+                error_msg)) return
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+        if (.not. set_liric_block(context%session, exit_block, error_msg)) return
+        context%current_block_id = exit_block
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine lower_alloc_rank3_component_assignment
 
     subroutine lower_alloc_derived_array_component_assignment(arena, node, target, &
                                                               context, error_msg)
@@ -4858,6 +5046,39 @@
                                     16_c_int64_t, error_msg)) return
         call set_empty(error_msg)
     end subroutine realloc_alloc_component_rank2
+
+    subroutine realloc_alloc_component_rank3(context, desc_addr, comp_kind, n1, n2, n3, &
+                                              data_ptr, error_msg)
+        ! Reallocate a rank-3 intrinsic allocatable component and record all
+        ! three extents in the inline descriptor.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: desc_addr
+        integer, intent(in) :: comp_kind, n1, n2, n3
+        type(lr_operand_desc_t), intent(out) :: data_ptr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: old_ptr, bytes, extent1, extent2, extent3
+        integer(c_int64_t) :: elem_size, total
+
+        elem_size = allocatable_elem_size(comp_kind)
+        total = int(n1, c_int64_t) * int(n2, c_int64_t) * int(n3, c_int64_t)
+        if (.not. emit_ptr_load(context%session, desc_addr, old_ptr, error_msg)) &
+            return
+        if (.not. emit_free(context%session, old_ptr, error_msg)) return
+        bytes = i64_immediate(context%session, total * elem_size)
+        if (.not. emit_malloc(context%session, bytes, data_ptr, error_msg)) return
+        if (.not. emit_ptr_store(context%session, data_ptr, desc_addr, error_msg)) &
+            return
+        extent1 = i64_immediate(context%session, int(n1, c_int64_t))
+        extent2 = i64_immediate(context%session, int(n2, c_int64_t))
+        extent3 = i64_immediate(context%session, int(n3, c_int64_t))
+        if (.not. emit_i64_store_at(context%session, extent1, desc_addr, &
+                                    8_c_int64_t, error_msg)) return
+        if (.not. emit_i64_store_at(context%session, extent2, desc_addr, &
+                                    16_c_int64_t, error_msg)) return
+        if (.not. emit_i64_store_at(context%session, extent3, desc_addr, &
+                                    24_c_int64_t, error_msg)) return
+        call set_empty(error_msg)
+    end subroutine realloc_alloc_component_rank3
 
     subroutine store_alloc_component_element(context, data_ptr, comp_kind, &
                                              zero_based, value, error_msg)

@@ -15,7 +15,7 @@ program test_session_alloc_rank3_component_compiler
     print *, '=== direct session rank-3 allocatable component test ==='
     all_passed = .true.
     if (.not. test_runtime_lifecycle()) all_passed = .false.
-    if (.not. test_whole_component_copy_rejected()) all_passed = .false.
+    if (.not. test_whole_component_assignment()) all_passed = .false.
     if (.not. test_rank5_rejected()) all_passed = .false.
     if (.not. test_unsupported_kind_rejected()) all_passed = .false.
     if (.not. test_target_rejected()) all_passed = .false.
@@ -89,21 +89,40 @@ contains
         test_runtime_lifecycle = matches_gfortran(source, 'runtime_lifecycle')
     end function test_runtime_lifecycle
 
-    logical function test_whole_component_copy_rejected()
+    logical function test_whole_component_assignment()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: t'//new_line('a')// &
             '    integer, allocatable :: a(:,:,:)'//new_line('a')// &
             '  end type t'//new_line('a')// &
             '  type(t) :: x'//new_line('a')// &
-            '  integer :: b(2,2,2)'//new_line('a')// &
+            '  integer :: b(2,1,2), i, j, k'//new_line('a')// &
+            '  do k = 1, 2'//new_line('a')// &
+            '    do j = 1, 1'//new_line('a')// &
+            '      do i = 1, 2'//new_line('a')// &
+            '        b(i,j,k) = 100*i + 10*j + k'//new_line('a')// &
+            '      end do'//new_line('a')// &
+            '    end do'//new_line('a')// &
+            '  end do'//new_line('a')// &
             '  x%a = b'//new_line('a')// &
+            '  if (size(x%a) /= 4 .or. size(x%a,1) /= 2 .or. '// &
+            'size(x%a,2) /= 1 .or. size(x%a,3) /= 2) error stop 1'// &
+            new_line('a')// &
+            '  print *, x%a(1,1,1), x%a(2,1,1), x%a(1,1,2), x%a(2,1,2)'// &
+            new_line('a')// &
+            '  if (x%a(1,1,1) /= 111 .or. x%a(2,1,2) /= 212) error stop 2'// &
+            new_line('a')// &
+            '  x%a = 7'//new_line('a')// &
+            '  if (x%a(1,1,1) /= 7 .or. x%a(2,1,1) /= 7 .or. '// &
+            'x%a(1,1,2) /= 7 .or. x%a(2,1,2) /= 7) error stop 3'// &
+            new_line('a')// &
+            '  print *, size(x%a), size(x%a,1), size(x%a,2), size(x%a,3), '// &
+            'x%a(1,1,1), x%a(2,1,2)'//new_line('a')// &
             'end program main'
 
-        test_whole_component_copy_rejected = expect_error_contains(source, &
-            'whole-component assignment supports rank-1 components only', &
-            '/tmp/ffc_alloc_rank3_component_copy_reject')
-    end function test_whole_component_copy_rejected
+        test_whole_component_assignment = matches_gfortran(source, &
+            'whole_component_assignment')
+    end function test_whole_component_assignment
 
     logical function test_rank5_rejected()
         character(len=*), parameter :: source = &
