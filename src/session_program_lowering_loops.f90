@@ -10,7 +10,11 @@ contains
 
         value = i32_immediate(context%session, 0_c_int64_t)
         if (.not. allocated(node%var_name)) then
-            error_msg = 'direct LIRIC session DO requires a loop variable'
+            call lower_infinite_loop(arena, node, context, value, error_msg)
+            return
+        end if
+        if (len_trim(node%var_name) == 0) then
+            call lower_infinite_loop(arena, node, context, value, error_msg)
             return
         end if
         call lower_counted_loop(arena, node%var_name, node%start_expr_index, &
@@ -32,6 +36,119 @@ contains
             end if
         end subroutine emit_do_body
     end subroutine lower_do_loop
+
+    subroutine lower_infinite_loop(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(do_loop_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: entry_block, header_block, body_block
+        integer(c_int32_t) :: latch_block, exit_block, reserved_vreg
+        integer(c_int32_t) :: saved_exit_block, saved_latch_block
+        integer(c_int32_t), allocatable :: saved_exit_blocks(:)
+        type(lr_operand_desc_t), allocatable :: entry_values(:)
+        type(lr_operand_desc_t), allocatable :: header_values(:)
+        type(lr_operand_desc_t), allocatable :: backedge_values(:)
+        type(lr_operand_desc_t), allocatable :: saved_exit_values(:,:)
+        type(lr_operand_desc_t) :: copied_value
+        integer, allocatable :: carried_indices(:)
+        integer :: carried_count, saved_exit_count, initial_symbol_count, i
+        logical :: body_terminated, body_exited, saved_in_loop
+
+        value = i32_immediate(context%session, 0_c_int64_t)
+        call set_empty(error_msg)
+        entry_block = context%current_block_id
+        initial_symbol_count = context%symbol_count
+        call collect_carried_symbols(context, carried_indices, carried_count)
+        if (carried_count > 0) then
+            allocate(entry_values(context%symbol_count))
+            allocate(header_values(context%symbol_count))
+            allocate(backedge_values(context%symbol_count))
+        end if
+        do i = 1, carried_count
+            entry_values(carried_indices(i)) = context%symbols( &
+                carried_indices(i))%value
+            call reserve_backedge_value(context, reserved_vreg, error_msg)
+            if (len_trim(error_msg) > 0) return
+            backedge_values(carried_indices(i)) = carried_backedge_operand( &
+                context, carried_indices(i), reserved_vreg)
+        end do
+
+        header_block = create_liric_block(context%session)
+        body_block = create_liric_block(context%session)
+        latch_block = create_liric_block(context%session)
+        exit_block = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+        if (.not. set_liric_block(context%session, header_block, error_msg)) return
+        context%current_block_id = header_block
+        context%current_block_terminated = .false.
+        do i = 1, carried_count
+            if (.not. emit_carried_phi(context, carried_indices(i), &
+                entry_values(carried_indices(i)), entry_block, &
+                backedge_values(carried_indices(i)), latch_block, &
+                header_values(carried_indices(i)), error_msg)) return
+            context%symbols(carried_indices(i))%value = header_values( &
+                carried_indices(i))
+        end do
+        if (.not. emit_liric_br(context%session, body_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, body_block, error_msg)) return
+        context%current_block_id = body_block
+        context%current_block_terminated = .false.
+        saved_exit_block = context%current_loop_exit_block
+        saved_latch_block = context%current_loop_latch_block
+        saved_in_loop = context%in_loop
+        context%current_loop_exit_block = exit_block
+        context%current_loop_latch_block = latch_block
+        context%in_loop = .true.
+        context%current_block_exited_loop = .false.
+        call begin_loop_exit_tracking(context, saved_exit_blocks, saved_exit_values, &
+            saved_exit_count)
+        if (allocated(node%body_indices)) then
+            call lower_statement_list(arena, node%body_indices, context, value, &
+                body_terminated, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else
+            body_terminated = .false.
+        end if
+        body_exited = context%current_block_exited_loop
+        context%current_loop_exit_block = saved_exit_block
+        context%current_loop_latch_block = saved_latch_block
+        context%in_loop = saved_in_loop
+        context%current_block_exited_loop = .false.
+        if (context%symbol_count /= initial_symbol_count) then
+            error_msg = 'direct LIRIC session DO cannot merge loop declarations'
+            return
+        end if
+        if (body_terminated .and. .not. body_exited) then
+            error_msg = 'direct LIRIC session does not support terminating '// &
+                'infinite DO bodies'
+            return
+        end if
+        if (.not. body_terminated) then
+            if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+        end if
+        if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+        context%current_block_id = latch_block
+        context%current_block_terminated = .false.
+        do i = 1, carried_count
+            if (.not. emit_carried_copy(context, carried_indices(i), &
+                backedge_values(carried_indices(i)), copied_value, error_msg)) return
+        end do
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, exit_block, error_msg)) return
+        context%current_block_id = exit_block
+        context%current_block_terminated = .false.
+        do i = 1, carried_count
+            call merge_loop_exit_values(context, carried_indices(i), &
+                header_values(carried_indices(i)), header_block, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        call end_loop_exit_tracking(context, saved_exit_blocks, saved_exit_values, &
+            saved_exit_count)
+    end subroutine lower_infinite_loop
 
     module subroutine lower_counted_loop(arena, var_name, start_expr_index, &
             end_expr_index, step_expr_index, line, column, &
