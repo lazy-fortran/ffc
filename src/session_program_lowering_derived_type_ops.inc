@@ -867,8 +867,9 @@
         end select
     end function constructor_call_is_argumentless
 
-    subroutine lower_derived_array_declaration(node, context, derived_type_index, &
-                                               error_msg)
+    recursive subroutine lower_derived_array_declaration(node, context, &
+                                                         derived_type_index, &
+                                                         error_msg)
         ! type(t) :: arr(N): storage is N * slots(t) i32 slots.
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -883,9 +884,32 @@
         logical :: is_assumed
         type(declaration_binding_t) :: binding
         character(len=:), allocatable :: binding_error
+        type(declaration_node) :: single_node
+        integer :: i
 
         if (node%is_multi_declaration) then
-            error_msg = 'multi-variable derived array declarations are not supported'
+            ! Each entity in `type(t) :: a(n), b(n)` has independent storage.
+            ! Lower the shared declaration once per name so the normal binding,
+            ! shape, allocation, and default-initialisation paths remain the
+            ! single source of truth.
+            if (.not. allocated(node%var_names)) then
+                error_msg = 'derived array declaration did not expose variable names'
+                return
+            end if
+            if (size(node%var_names) == 0) then
+                error_msg = 'derived array declaration did not expose variable names'
+                return
+            end if
+            do i = 1, size(node%var_names)
+                single_node = node
+                single_node%is_multi_declaration = .false.
+                single_node%var_name = node%var_names(i)
+                if (allocated(single_node%var_names)) deallocate(single_node%var_names)
+                call lower_derived_array_declaration(single_node, context, &
+                    derived_type_index, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+            call set_empty(error_msg)
             return
         end if
         if (.not. allocated(node%var_name)) then
