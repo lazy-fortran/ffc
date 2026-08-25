@@ -352,6 +352,10 @@
                     'statement'//trim(location)
                 return
             end if
+            if (name == 'advance' .and. kw == 'write') then
+                call check_io_advance_value(val, location, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
             if (.not. is_character_io_spec(name)) cycle
             if (io_value_is_array(val)) then
                 error_msg = io_spec_upper(name)//' specifier must be scalar'// &
@@ -368,6 +372,25 @@
         if (has_unit) return
         error_msg = 'UNIT not specified in WRITE statement'//trim(location)
     end subroutine check_io_control_list
+
+    subroutine check_io_advance_value(val, location, error_msg)
+        character(len=*), intent(in) :: val, location
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: text
+        integer :: n
+
+        call set_empty(error_msg)
+        text = trim(adjustl(val))
+        n = len(text)
+        if (n < 2) return
+        if ((text(1:1) /= '''' .and. text(1:1) /= '"') .or. &
+            text(n:n) /= text(1:1)) return
+        text = lowercase_text(text(2:n - 1))
+        if (trim(text) /= 'yes' .and. trim(text) /= 'no') then
+            error_msg = 'ADVANCE= specifier at (1) must have value = YES '// &
+                        'or NO.'//trim(location)
+        end if
+    end subroutine check_io_advance_value
 
     subroutine check_io_unit_value(val, kw, location, error_msg)
         character(len=*), intent(in) :: val, kw, location
