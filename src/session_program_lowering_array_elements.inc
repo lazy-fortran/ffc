@@ -5400,14 +5400,14 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: name
         integer :: reduce_op, source_arg, dim_arg, mask_arg
-        integer :: src_sym, i, j
+        integer :: src_sym, mask_shape_sym, i, j
         integer :: cmp_lsym, cmp_lscalar, cmp_rsym, cmp_rscalar
         integer :: d1, d2, out_size, reduce_extent
         integer :: source_vk, result_vk, compare_vk, predicate
         integer(c_int64_t) :: dim_value, lin
         logical :: is_comparison, target_runtime, has_mask
         character(len=:), allocatable :: cmp_op
-        type(lr_operand_desc_t) :: acc, cond, elem, candidate, best_value
+        type(lr_operand_desc_t) :: acc, identity, cond, elem, candidate, best_value
         type(lr_operand_desc_t) :: best_index, better, selected
 
         handled = .false.
@@ -5471,9 +5471,13 @@
         end if
         if (has_mask .and. src_sym > 0) then
             call dim_reduction_comparison(arena, mask_arg, context, cmp_op, &
-                cmp_lsym, cmp_lscalar, cmp_rsym, cmp_rscalar, src_sym, &
+                cmp_lsym, cmp_lscalar, cmp_rsym, cmp_rscalar, mask_shape_sym, &
                 compare_vk, is_comparison)
             if (.not. is_comparison) return
+            if (context%symbols(mask_shape_sym)%array_rank /= &
+                context%symbols(src_sym)%array_rank) return
+            if (any(context%symbols(mask_shape_sym)%array_dim_sizes(1:2) /= &
+                    context%symbols(src_sym)%array_dim_sizes(1:2))) return
         end if
         if (context%symbols(src_sym)%array_rank /= 2) return
 
@@ -5559,6 +5563,7 @@
             else
                 call reduction_identity(context, reduce_op, source_vk, acc, error_msg)
                 if (len_trim(error_msg) > 0) return
+                identity = acc
             end if
             do j = 0, reduce_extent - 1
                 if (dim_value == 1_c_int64_t) then
@@ -5604,7 +5609,7 @@
                                 cmp_rscalar, src_sym, compare_vk, predicate, lin, &
                                 cond, error_msg)
                             if (len_trim(error_msg) > 0) return
-                            call select_value(context, cond, elem, acc, candidate, &
+                            call select_value(context, cond, elem, identity, candidate, &
                                               error_msg)
                             if (len_trim(error_msg) > 0) return
                         else
