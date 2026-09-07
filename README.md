@@ -457,7 +457,9 @@ arrays, derived types, internal-character NAMELIST, separate `.fmod` metadata,
 and general NAMELIST writing remain unsupported. Internal `read (buf, *)
 value` (list-directed) and `write (buf, fmt) value` with a compound literal
 format (`I`/`A` descriptors) are supported. `inquire` covers `exist=`,
-`opened=`, and `iostat=` on `file=` and `unit=`. Invalid programs are
+`size=`, and `iostat=` on `file=` and `unit=`, plus `opened=` on `unit=`.
+`FILE=` accepts character variables and expressions, trims trailing blanks,
+and preserves the source value. Invalid programs are
 rejected during lowering: an integer `SELECT CASE` with overlapping
 integer-literal CASE labels; a character-valued I/O specifier
 (`STATUS=`, `ACCESS=`, `ADVANCE=`, `IOMSG=`, ...) handed a numeric or

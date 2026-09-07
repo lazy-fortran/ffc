@@ -1064,7 +1064,7 @@
             if (allocated(node%spec_list)) &
                 call check_io_spec_types(node%spec_list, context, error_msg)
             if (len_trim(error_msg) == 0) &
-                call lower_inquire(node, context, error_msg)
+                call lower_inquire(arena, node, context, error_msg)
         type is (print_statement_node)
             call lower_print(arena, node, context, error_msg)
         type is (read_statement_node)

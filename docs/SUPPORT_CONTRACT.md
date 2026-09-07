@@ -117,6 +117,13 @@ lengths above `2147483647` produce a runtime diagnostic before allocation.
 The gfortran oracle is `test_session_integer_character_width_compiler`.
 General length expressions and automatic local declarations remain under #348.
 
+## File inquiry expressions
+
+`INQUIRE(FILE=...)` evaluates a character expression once and queries a trimmed,
+terminated copy without changing the Fortran value. The copy is released after
+the query. Variables, concatenation, and filenames containing commas are covered
+by `test_session_inquire_file_expression_compiler` against gfortran.
+
 ## Binding and module-boundary contract
 
 Default-integer contained and module function results convert to the enclosing

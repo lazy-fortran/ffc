@@ -4,119 +4,74 @@
     ! delegated to the runtime so closed files and connected units share one
     ! byte-size contract.
 
-    subroutine parse_inquire_spec(spec, unit_str, file_path, exist_var, &
+    subroutine parse_inquire_spec(specifiers, unit_str, file_node, exist_var, &
                                   opened_var, size_var, iostat_var, error_msg)
-        ! Extract keyword values from an INQUIRE specifier-list text, mirroring
-        ! parse_open_spec's tokenizer (keywords may carry stray spaces around
-        ! '=' from the parser's token-joining rules).
-        character(len=*), intent(in) :: spec
-        character(len=:), allocatable, intent(out) :: unit_str, file_path
-        character(len=:), allocatable, intent(out) :: exist_var, opened_var
-        character(len=:), allocatable, intent(out) :: size_var, iostat_var
-        character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: text, kw, val
-        integer :: p, eq_pos, cp, qend, arg_end
-        logical :: first_arg
-        character :: qc
+        type(io_specifier_t), intent(in) :: specifiers(:)
+        character(len=:), allocatable, intent(out) :: unit_str, exist_var
+        character(len=:), allocatable, intent(out) :: opened_var, size_var
+        character(len=:), allocatable, intent(out) :: iostat_var, error_msg
+        integer, intent(out) :: file_node
+        integer :: i
 
         call set_empty(error_msg)
         unit_str = ''
-        file_path = ''
+        file_node = 0
         exist_var = ''
         opened_var = ''
         size_var = ''
         iostat_var = ''
-        text = trim(adjustl(spec))
-        p = 1
-        first_arg = .true.
-        do while (p <= len(text))
-            do while (p <= len(text))
-                if (text(p:p) == ' ' .or. text(p:p) == ',') then
-                    p = p + 1
-                else
-                    exit
-                end if
-            end do
-            if (p > len(text)) exit
-            cp = index(text(p:), ',')
-            if (cp <= 0) then
-                arg_end = len(text)
-            else
-                arg_end = p + cp - 2
-            end if
-            eq_pos = index(text(p:arg_end), '=')
-            if (eq_pos <= 0) then
-                if (first_arg) unit_str = trim(adjustl(text(p:arg_end)))
-                p = arg_end + 2
-                first_arg = .false.
-                cycle
-            end if
-            first_arg = .false.
-            eq_pos = p + eq_pos - 1
-            kw = spec_lower(trim(text(p:eq_pos - 1)))
-            p = eq_pos + 1
-            do while (p <= len(text) .and. text(p:p) == ' ')
-                p = p + 1
-            end do
-            if (p > len(text)) exit
-            if (text(p:p) == "'" .or. text(p:p) == '"') then
-                qc = text(p:p)
-                qend = index(text(p + 1:), qc)
-                if (qend <= 0) then
-                    error_msg = 'unterminated string in INQUIRE spec'
+        do i = 1, size(specifiers)
+            if (.not. allocated(specifiers(i)%name)) cycle
+            if (.not. allocated(specifiers(i)%value)) cycle
+            select case (trim(spec_lower(specifiers(i)%name)))
+            case ('unit')
+                unit_str = trim(specifiers(i)%value)
+            case ('file')
+                file_node = specifiers(i)%value_node_index
+                if (file_node <= 0) then
+                    error_msg = 'inquire file= requires character expression metadata'
                     return
                 end if
-                qend = p + qend
-                val = text(p + 1:qend - 1)
-                p = qend + 1
-            else
-                cp = index(text(p:), ',')
-                if (cp <= 0) then
-                    val = adjustl(text(p:))
-                    p = len(text) + 1
-                else
-                    val = adjustl(text(p:p + cp - 2))
-                    p = p + cp
-                end if
-            end if
-            select case (trim(kw))
-            case ('unit')
-                unit_str = trim(val)
-            case ('file')
-                file_path = trim(val)
             case ('exist')
-                exist_var = trim(val)
+                exist_var = trim(specifiers(i)%value)
             case ('opened')
-                opened_var = trim(val)
+                opened_var = trim(specifiers(i)%value)
             case ('size')
-                size_var = trim(val)
+                size_var = trim(specifiers(i)%value)
             case ('iostat')
-                iostat_var = trim(val)
+                iostat_var = trim(specifiers(i)%value)
             end select
         end do
     end subroutine parse_inquire_spec
 
-    subroutine lower_inquire(node, context, error_msg)
+    subroutine lower_inquire(arena, node, context, error_msg)
+        type(ast_arena_t), intent(in) :: arena
         type(inquire_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: unit_str, file_path, exist_var
+        character(len=:), allocatable :: unit_str, exist_var
         character(len=:), allocatable :: opened_var, size_var, iostat_var
+        integer :: file_node
+        type(lr_operand_desc_t) :: path_ptr
 
         call set_empty(error_msg)
-        if (.not. allocated(node%spec_list)) then
+        if (.not. allocated(node%specifiers)) then
             call unsupported_feature_error('inquire statement', node%line, &
                 node%column, 'missing specifier list', error_msg)
             return
         end if
-        call parse_inquire_spec(node%spec_list, unit_str, file_path, &
+        call parse_inquire_spec(node%specifiers, unit_str, file_node, &
                                 exist_var, opened_var, size_var, iostat_var, &
                                 error_msg)
         if (len_trim(error_msg) > 0) return
 
-        if (len_trim(file_path) > 0) then
-            call lower_inquire_by_file(node, context, file_path, exist_var, &
+        if (file_node > 0) then
+            call lower_inquire_file_path(arena, file_node, context, path_ptr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_inquire_by_file(node, context, path_ptr, exist_var, &
                                        size_var, iostat_var, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_free(context%session, path_ptr, error_msg)) return
             return
         end if
 
@@ -198,18 +153,38 @@
         end select
     end subroutine store_inquire_size
 
-    subroutine lower_inquire_by_file(node, context, file_path, exist_var, &
+    subroutine lower_inquire_file_path(arena, file_node, context, path_ptr, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: file_node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: path_ptr
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: path_data, path_len, trimmed_len
+
+        ! FILE is evaluated once. The C APIs need an owned, terminated copy;
+        ! trimming that copy must leave the Fortran expression's bytes intact.
+        call char_expr_operands(arena, file_node, context, path_data, path_len, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        call compute_len_trim(context, path_data, path_len, trimmed_len, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call materialize_character_view(context, path_data, trimmed_len, &
+                                        path_ptr, error_msg)
+    end subroutine lower_inquire_file_path
+
+    subroutine lower_inquire_by_file(node, context, path_ptr, exist_var, &
                                      size_var, iostat_var, error_msg)
         ! exist= probes the filesystem with a guarded fopen(path, "r")/fclose
         ! rather than access(2). size= uses the runtime stat query so it also
         ! reports the standard -1 sentinel for a missing file.
         type(inquire_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
-        character(len=*), intent(in) :: file_path, exist_var, size_var, iostat_var
+        type(lr_operand_desc_t), intent(in) :: path_ptr
+        character(len=*), intent(in) :: exist_var, size_var, iostat_var
         character(len=:), allocatable, intent(out) :: error_msg
-        integer(c_int32_t) :: path_id, mode_id
-        character(len=64) :: path_name, mode_name
-        type(lr_operand_desc_t) :: path_ptr, mode_ptr, fp, is_open
+        integer(c_int32_t) :: mode_id
+        character(len=64) :: mode_name
+        type(lr_operand_desc_t) :: mode_ptr, fp, is_open
         type(lr_operand_desc_t) :: args(2)
         type(lr_operand_desc_t) :: single_arg(1)
         type(lr_operand_desc_t) :: size_value
@@ -217,13 +192,6 @@
         integer :: sym
 
         call set_empty(error_msg)
-        context%string_literal_count = context%string_literal_count + 1
-        path_name = ffc_unit_global_name( &
-            context, 'inq.file.', context%string_literal_count)
-        call create_printf_format_global(context%session, trim(path_name), &
-                                         trim(file_path), path_id, error_msg)
-        if (len_trim(error_msg) > 0) return
-        path_ptr = printf_format_ptr(context%session, path_id)
 
         if (len_trim(exist_var) > 0) then
             sym = find_symbol_compat(context, exist_var)
