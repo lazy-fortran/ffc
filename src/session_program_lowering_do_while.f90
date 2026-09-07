@@ -43,8 +43,9 @@ contains
             allocate(backedge_values(context%symbol_count))
         end if
         do i = 1, carried_count
-            entry_values(carried_indices(i)) = &
-                context%symbols(carried_indices(i))%value
+            call prepare_carried_entry_value(context, carried_indices(i), &
+                entry_values(carried_indices(i)), error_msg)
+            if (len_trim(error_msg) > 0) return
             call reserve_backedge_value(context, reserved_vreg, error_msg)
             if (len_trim(error_msg) > 0) return
             backedge_values(carried_indices(i)) = &

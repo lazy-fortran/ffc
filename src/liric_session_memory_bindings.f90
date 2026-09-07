@@ -29,7 +29,7 @@ module liric_session_memory_bindings
     public :: i64_immediate, ptr_param, &
         reserve_i32_vreg, ptr_vreg, i64_vreg
     public :: emit_i32_binary, emit_i32_binary_into, emit_i32_copy_to
-    public :: emit_real_copy_to
+    public :: emit_real_copy_to, emit_i64_copy_to
     public :: emit_i32_alloca, emit_i64_alloca, emit_ptr_alloca
     public :: emit_i32_load, emit_i64_load, emit_ptr_load
     public :: emit_i32_store, emit_i64_store
@@ -138,6 +138,15 @@ module liric_session_memory_bindings
             type(c_ptr) :: typ
         end function lr_type_void_s
 
+        module function emit_i64_copy_to(session, value, dest_vreg, result, &
+                                         error_msg) result(ok)
+            type(liric_session_t), intent(inout) :: session
+            type(lr_operand_desc_t), intent(in) :: value
+            integer(c_int32_t), intent(in) :: dest_vreg
+            type(lr_operand_desc_t), intent(out) :: result
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical :: ok
+        end function emit_i64_copy_to
         module function emit_binary(handle, opcode, lhs, rhs, error) result(vreg)
             type(c_ptr), intent(in) :: handle
             integer(c_int), intent(in) :: opcode

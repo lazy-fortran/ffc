@@ -91,7 +91,10 @@ For supported scalar loop state, `CYCLE` retains updates made on each branch
 of a counted `DO`, `DO WHILE`, or bare `DO` before advancing the loop. Nested
 loops preserve their separate branch state. The independent gfortran oracle
 is `test_session_cycle_branch_values_compiler`; named outer targets remain
-part of #455.
+part of #455. Scalar `integer(8)` loop state and branch merges retain their
+native width, including reference dummies and EXIT/CYCLE paths. The wide-value
+oracle is `test_session_integer8_loop_accumulation_compiler`. This does not
+extend the supported kind of the counted-DO induction variable.
 
 For fixed-size intrinsic array-element assignments, the direct session lowerer
 copies the target's canonical element storage to stack memory before entering

@@ -68,8 +68,9 @@ contains
             allocate(backedge_values(context%symbol_count))
         end if
         do i = 1, carried_count
-            entry_values(carried_indices(i)) = context%symbols( &
-                carried_indices(i))%value
+            call prepare_carried_entry_value(context, carried_indices(i), &
+                entry_values(carried_indices(i)), error_msg)
+            if (len_trim(error_msg) > 0) return
             call reserve_backedge_value(context, reserved_vreg, error_msg)
             if (len_trim(error_msg) > 0) return
             backedge_values(carried_indices(i)) = carried_backedge_operand( &
@@ -672,6 +673,9 @@ contains
         case (VALUE_F64)
             if (.not. emit_liric_f64_load(context%session, &
                 context%symbols(symbol_index)%address, value, error_msg)) return
+        case (VALUE_I64)
+            if (.not. emit_i64_load(context%session, &
+                context%symbols(symbol_index)%address, value, error_msg)) return
         case (VALUE_I32, VALUE_LOGICAL)
             if (.not. emit_i32_load(context%session, &
                 context%symbols(symbol_index)%address, value, error_msg)) return
@@ -695,6 +699,8 @@ contains
             operand = f32_vreg(context%session, reserved_vreg)
         case (VALUE_F64)
             operand = f64_vreg(context%session, reserved_vreg)
+        case (VALUE_I64)
+            operand = i64_vreg(context%session, reserved_vreg)
         case default
             operand = i32_vreg(context%session, reserved_vreg)
         end select
@@ -713,7 +719,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
 
         select case (context%symbols(symbol_index)%value_kind)
-        case (VALUE_F32, VALUE_F64)
+        case (VALUE_F32, VALUE_F64, VALUE_I64)
             emit_carried_phi = emit_liric_phi(context%session, entry_value, &
                 entry_block, backedge_value, back_block, header_value, error_msg)
         case default
@@ -738,6 +744,9 @@ contains
             emit_carried_copy = emit_real_copy_to(context%session, &
                 context%symbols(symbol_index)%value, dest_vreg, result, &
                 error_msg)
+        case (VALUE_I64)
+            emit_carried_copy = emit_i64_copy_to(context%session, &
+                context%symbols(symbol_index)%value, dest_vreg, result, error_msg)
         case default
             if (.not. is_i32_like_kind( &
                 context%symbols(symbol_index)%value_kind)) then
@@ -766,7 +775,8 @@ contains
 
         is_carried_kind = is_i32_like_kind(value_kind) .or. &
             value_kind == VALUE_F32 .or. &
-            value_kind == VALUE_F64
+            value_kind == VALUE_F64 .or. &
+            value_kind == VALUE_I64
     end function is_carried_kind
 
     module subroutine reserve_backedge_value(context, vreg, error_msg)

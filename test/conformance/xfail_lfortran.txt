@@ -694,7 +694,6 @@ cycle_and_exit1.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch
 cycle_and_exit2.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 cycle_and_exit3.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 cycle_and_exit4.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
-cycle_and_exit5.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 dabs_01.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 data_02.f90 # owner=lazy-fortran/ffc#540; reason=fold typed scalar and array named constants
 data_03.f90 # owner=lazy-fortran/ffc#540; reason=fold typed scalar and array named constants

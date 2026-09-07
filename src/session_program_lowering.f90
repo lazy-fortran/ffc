@@ -99,9 +99,9 @@ module session_program_lowering_impl
         LR_OP_SHL, LR_OP_LSHR, LR_OP_KIND_IMM_I64, LR_OP_KIND_VREG, &
         LR_OP_KIND_GLOBAL, c_false, c_true
     use liric_session_memory_bindings, only: reserve_i32_vreg, i64_immediate, &
-        ptr_vreg, &
+        ptr_vreg, i64_vreg, &
         emit_i32_binary, emit_i32_binary_into, &
-        emit_i32_copy_to, emit_real_copy_to, emit_i32_alloca, &
+        emit_i32_copy_to, emit_real_copy_to, emit_i64_copy_to, emit_i32_alloca, &
         emit_ptr_alloca, &
         emit_i32_load, emit_i32_store, &
         emit_i64_load, emit_ptr_load, &
@@ -533,6 +533,7 @@ module session_program_lowering_impl
     ! part of the ancestor implementation API so GCC emits linkable symbols
     ! for cold submodule builds instead of private local definitions.
     public :: collect_carried_symbols, reserve_backedge_value
+    public :: prepare_carried_entry_value
     public :: carried_backedge_operand, emit_carried_phi, emit_carried_copy
     public :: begin_loop_exit_tracking, end_loop_exit_tracking
     public :: merge_loop_exit_values
@@ -3139,6 +3140,13 @@ module session_program_lowering_impl
             integer, allocatable, intent(out) :: indices(:)
             integer, intent(out) :: count
         end subroutine collect_carried_symbols
+        module subroutine prepare_carried_entry_value(context, symbol_index, &
+                                                      value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine prepare_carried_entry_value
         module function carried_backedge_operand(context, symbol_index, &
                                                  reserved_vreg) result(operand)
             type(lowering_context_t), intent(in) :: context

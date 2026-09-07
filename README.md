@@ -394,6 +394,10 @@ time: a source of only top-level procedures compiles with `-c` to an object
 that defines no `main` and links beside a separately compiled driver. Asking
 for an executable from such a procedure-only source is rejected with `no main
 program unit`.
+Scalar `integer(8)` loop accumulators and IF branch merges retain their native
+width across counted `DO`, `DO WHILE`, bare `DO`, and EXIT/CYCLE paths. This
+support includes reference dummies; counted-DO induction variables retain
+their existing kind restrictions.
 The `associate` construct binds scalar selectors, a rank-1 unit-stride
 array-section selector (`associate (x => a(lo:hi))`, reindexed to lower
 bound 1), and a derived-type component selector (`associate (s => a%comp)`);
