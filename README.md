@@ -327,7 +327,10 @@ contained) returns through the i64 ABI, so a result wider than 32 bits round
 trips correctly; an `integer(8)` scalar dummy argument is passed by reference at
 its native width. A module function with a deferred-length
 (`character(len=:)`) or runtime-length (`character(len=len(arg))`) character
-result is callable and printable from a program in the same file. Module-level
+result is callable and printable from a program in the same file. An explicit
+`character(len=k)` function result captures a scalar integer dummy's entry
+value, preserving padding and truncation. Negative lengths become zero; values
+above `2147483647` produce a runtime diagnostic before allocation. Module-level
 integer, real, and logical scalar variables persist as globals and are visible
 across `use`, in the same file or across separate compilation. A module
 subroutine or integer function with integer, real, or logical scalar arguments

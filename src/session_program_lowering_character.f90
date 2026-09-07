@@ -210,4 +210,213 @@ contains
                 context%symbols(symbol_index)%value_kind == VALUE_CHARACTER
         end if
     end function actual_is_character
+
+    module subroutine capture_runtime_fixed_character_length(context, &
+                                                  symbol_index, source_index, error_msg)
+        ! Capture a runtime character width once at declaration.
+        ! The storage layout stays the ordinary {data, length} descriptor, but
+        ! the runtime-fixed flag makes later assignments retain this length.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        integer, intent(in) :: source_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: source_len_i32, source_len_i64
+        type(lr_operand_desc_t) :: buffer_size, buffer, null_pos
+        integer(c_int64_t) :: storage_class
+
+        context%symbols(symbol_index)%is_runtime_fixed_character = .true.
+        call runtime_character_source_length(context, source_index, &
+                                             source_len_i32, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, source_len_i32, &
+                                        source_len_i64, error_msg)) return
+        if (.not. emit_i64_store(context%session, source_len_i64, &
+                            context%symbols(symbol_index)%deferred_length, error_msg)) &
+            return
+
+        ! Runtime-fixed character results and locals need storage before a
+        ! substring assignment can address one of their bytes.  Contained
+        ! function results outlive this frame; ordinary top-level locals do
+        ! not, so retain the matching ownership class in the descriptor.
+        if (.not. context%symbols(symbol_index)%has_character_value) then
+            if (.not. emit_i64_binary(context%session, LR_OP_ADD, &
+                          source_len_i64, i64_immediate(context%session, 1_c_int64_t), &
+                                      buffer_size, error_msg)) return
+            ! The descriptor retains the buffer and later expression lowering
+            ! may keep operand pointers live across the copy. Dynamic stack
+            ! storage can overlap those temporaries in the direct LIRIC
+            ! backend, so use owned heap storage in both scopes.
+            if (.not. emit_malloc(context%session, buffer_size, buffer, &
+                                  error_msg)) return
+            storage_class = LOWERING_CHARACTER_STORAGE_OWNED
+            call fill_spaces(context, buffer, source_len_i32, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i64_binary(context%session, LR_OP_ADD, buffer, &
+                                      source_len_i64, null_pos, error_msg)) return
+            if (.not. emit_liric_store_char_byte(context%session, null_pos, &
+                                          i32_immediate(context%session, 0_c_int64_t), &
+                              i32_immediate(context%session, 0_c_int64_t), error_msg)) &
+                return
+            if (.not. emit_ptr_store(context%session, buffer, &
+                              context%symbols(symbol_index)%deferred_data, error_msg)) &
+                return
+            call set_character_storage(context, symbol_index, source_len_i64, &
+                                       storage_class, error_msg)
+            if (len_trim(error_msg) > 0) return
+            context%symbols(symbol_index)%value = buffer
+            context%symbols(symbol_index)%has_character_value = .true.
+        end if
+        call set_empty(error_msg)
+    end subroutine capture_runtime_fixed_character_length
+
+    module subroutine resolve_runtime_character_length_source(context, &
+            node, source_index, allow_integer)
+        ! Recognize LEN(character) or a scalar integer specification variable.
+        ! source_index is left at 0 when the expression does not match.
+        type(lowering_context_t), intent(in) :: context
+        type(declaration_node), intent(in) :: node
+        integer, intent(out) :: source_index
+        logical, intent(in) :: allow_integer
+        character(len=:), allocatable :: expr
+        character(len=:), allocatable :: lowered
+        character(len=:), allocatable :: inner
+
+        source_index = 0
+        if (.not. node%has_character_length) return
+        if (.not. allocated(node%character_length_expr)) return
+        expr = trim(adjustl(node%character_length_expr))
+        if (len(expr) == 0) return
+        if (verify(expr, &
+                   'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
+            == 0) then
+            if (.not. allow_integer) return
+            source_index = resolve_symbol_at_node(context, &
+                                                context%current_declaration_index, expr)
+            if (source_index <= 0) return
+            if (context%symbols(source_index)%is_array) then
+                source_index = 0
+                return
+            end if
+            select case (context%symbols(source_index)%value_kind)
+            case (VALUE_I8, VALUE_I16, VALUE_I32, VALUE_I64)
+            case default
+                source_index = 0
+            end select
+            return
+        end if
+        if (len(expr) < 6) return
+        lowered = lowercase_text(expr)
+        if (lowered(1:4) /= 'len(') return
+        if (lowered(len(lowered):len(lowered)) /= ')') return
+        inner = trim(adjustl(expr(5:len(expr) - 1)))
+        if (len(inner) == 0) return
+        if (verify(inner, &
+                   'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
+            /= 0) return
+
+        source_index = find_symbol_compat(context, inner)
+        if (source_index <= 0) return
+        if (context%symbols(source_index)%value_kind /= VALUE_CHARACTER) &
+            source_index = 0
+    end subroutine resolve_runtime_character_length_source
+
+    subroutine runtime_character_source_length(context, source_index, length, &
+                                               error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: source_index
+        type(lr_operand_desc_t), intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: raw, narrowed, zero, positive, source_data
+        integer :: value_kind
+
+        call set_empty(error_msg)
+        value_kind = context%symbols(source_index)%value_kind
+        if (value_kind == VALUE_CHARACTER) then
+            call char_length_operands(context, source_index, source_data, &
+                                      length, error_msg)
+            return
+        end if
+        raw = context%symbols(source_index)%value
+        if (context%symbols(source_index)%has_address) then
+            call emit_array_value_load(context, value_kind, &
+                                  context%symbols(source_index)%address, raw, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
+        select case (value_kind)
+        case (VALUE_I8)
+            if (.not. emit_liric_i8_to_i32(context%session, raw, narrowed, &
+                                           error_msg)) return
+        case (VALUE_I16)
+            if (.not. emit_liric_i16_to_i32(context%session, raw, narrowed, &
+                                            error_msg)) return
+        case (VALUE_I64)
+            call narrow_runtime_character_length(context, raw, length, error_msg)
+            return
+        case default
+            narrowed = raw
+        end select
+        ! Fortran interprets a negative character length as zero.
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGT, narrowed, &
+                                      zero, positive, error_msg)) return
+        call select_value(context, positive, narrowed, zero, length, error_msg)
+    end subroutine runtime_character_source_length
+
+    subroutine narrow_runtime_character_length(context, raw, length, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: raw
+        type(lr_operand_desc_t), intent(out) :: length
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: zero, positive, nonnegative, too_long
+        integer(c_int32_t) :: error_block, valid_block
+
+        ! Clamp in the declared integer kind: narrowing first could turn a
+        ! negative length into a positive value or wrap an oversized length.
+        zero = i64_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_liric_i64_icmp(context%session, LR_CMP_SGT, raw, zero, &
+                                    positive, error_msg)) return
+        call select_value(context, positive, raw, zero, nonnegative, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i64_icmp(context%session, LR_CMP_SGT, nonnegative, &
+                i64_immediate(context%session, 2147483647_c_int64_t), too_long, &
+                error_msg)) return
+        error_block = create_liric_block(context%session)
+        valid_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, too_long, error_block, &
+                                   valid_block, error_msg)) return
+        if (.not. set_liric_block(context%session, error_block, error_msg)) return
+        context%current_block_id = error_block
+        call emit_character_length_limit_error(context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_br(context%session, valid_block, error_msg)) return
+        if (.not. set_liric_block(context%session, valid_block, error_msg)) return
+        context%current_block_id = valid_block
+        context%current_block_terminated = .false.
+        if (.not. emit_liric_i64_to_i32(context%session, nonnegative, length, &
+                                      error_msg)) return
+        call set_empty(error_msg)
+    end subroutine narrow_runtime_character_length
+
+    subroutine emit_character_length_limit_error(context, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: global_name
+        type(lr_operand_desc_t) :: args(2)
+        integer(c_int32_t) :: format_id
+
+        context%string_literal_count = context%string_literal_count + 1
+        global_name = ffc_unit_global_name(context, 'char.length.error.', &
+                                           context%string_literal_count)
+        call create_printf_format_global(context%session, global_name, &
+            'Fortran runtime error: Character length exceeds supported maximum '// &
+            '2147483647'//achar(10), format_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        args(1) = i32_immediate(context%session, 2_c_int64_t)
+        args(2) = printf_format_ptr(context%session, format_id)
+        if (.not. emit_dprintf(context%session, args, error_msg)) return
+        if (.not. emit_exit(context%session, &
+                           i32_immediate(context%session, 2_c_int64_t), &
+                           error_msg)) return
+        call set_empty(error_msg)
+    end subroutine emit_character_length_limit_error
 end submodule session_program_lowering_character

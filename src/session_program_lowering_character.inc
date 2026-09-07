@@ -15,7 +15,7 @@
                                                   character_length, error_msg)
                 ! A runtime length (character(len=n) where n is a dummy arg or
                 ! other non-constant) keeps the deferred descriptor ABI: the
-                ! length is resolved when the body assigns the result value.
+                ! declared width is captured before the body assigns the result.
                 if (len_trim(error_msg) > 0) then
                     ! F2018 10.1.11: a nonconstant result length must be a
                     ! specification expression. A plain local variable of the
@@ -36,8 +36,8 @@
                                 existing_index, error_msg)
                             if (len_trim(error_msg) > 0) return
                         else
-                            call resolve_len_of_character_length(context, node, &
-                                source_index)
+                            call resolve_runtime_character_length_source( &
+                                context, node, source_index, .true.)
                             if (source_index > 0) then
                                 call capture_runtime_fixed_character_length( &
                                     context, existing_index, source_index, &
@@ -125,7 +125,8 @@
         call declaration_character_length(context, node, character_length, &
                                           error_msg)
         if (len_trim(error_msg) > 0) then
-            call resolve_len_of_character_length(context, node, source_index)
+            call resolve_runtime_character_length_source(context, node, &
+                                                         source_index, .false.)
             if (source_index > 0) then
                 call define_runtime_length_character_local(context, name, &
                     source_index, error_msg)
@@ -221,95 +222,6 @@
         if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine define_runtime_length_character_local
-
-    subroutine capture_runtime_fixed_character_length(context, symbol_index, &
-                                                       source_index, error_msg)
-        ! Capture a `character(len=len(source))` width once at declaration.
-        ! The storage layout stays the ordinary {data, length} descriptor, but
-        ! the runtime-fixed flag makes later assignments retain this length.
-        type(lowering_context_t), intent(inout) :: context
-        integer, intent(in) :: symbol_index
-        integer, intent(in) :: source_index
-        character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: source_data, source_len_i32, source_len_i64
-        type(lr_operand_desc_t) :: buffer_size, buffer, null_pos
-        integer(c_int64_t) :: storage_class
-
-        context%symbols(symbol_index)%is_runtime_fixed_character = .true.
-        call char_length_operands(context, source_index, source_data, &
-                                  source_len_i32, error_msg)
-        if (len_trim(error_msg) > 0) return
-        if (.not. emit_liric_i32_to_i64(context%session, source_len_i32, &
-                source_len_i64, error_msg)) return
-        if (.not. emit_i64_store(context%session, source_len_i64, &
-                context%symbols(symbol_index)%deferred_length, error_msg)) &
-            return
-
-        ! Runtime-fixed character results and locals need storage before a
-        ! substring assignment can address one of their bytes.  Contained
-        ! function results outlive this frame; ordinary top-level locals do
-        ! not, so retain the matching ownership class in the descriptor.
-        if (.not. context%symbols(symbol_index)%has_character_value) then
-            if (.not. emit_i64_binary(context%session, LR_OP_ADD, &
-                    source_len_i64, i64_immediate(context%session, 1_c_int64_t), &
-                    buffer_size, error_msg)) return
-            ! The descriptor retains the buffer and later expression lowering
-            ! may keep operand pointers live across the copy. Dynamic stack
-            ! storage can overlap those temporaries in the direct LIRIC
-            ! backend, so use owned heap storage in both scopes.
-            if (.not. emit_malloc(context%session, buffer_size, buffer, &
-                    error_msg)) return
-            storage_class = LOWERING_CHARACTER_STORAGE_OWNED
-            call fill_spaces(context, buffer, source_len_i32, error_msg)
-            if (len_trim(error_msg) > 0) return
-            if (.not. emit_i64_binary(context%session, LR_OP_ADD, buffer, &
-                    source_len_i64, null_pos, error_msg)) return
-            if (.not. emit_liric_store_char_byte(context%session, null_pos, &
-                    i32_immediate(context%session, 0_c_int64_t), &
-                    i32_immediate(context%session, 0_c_int64_t), error_msg)) &
-                return
-            if (.not. emit_ptr_store(context%session, buffer, &
-                    context%symbols(symbol_index)%deferred_data, error_msg)) &
-                return
-            call set_character_storage(context, symbol_index, source_len_i64, &
-                                       storage_class, error_msg)
-            if (len_trim(error_msg) > 0) return
-            context%symbols(symbol_index)%value = buffer
-            context%symbols(symbol_index)%has_character_value = .true.
-        end if
-        call set_empty(error_msg)
-    end subroutine capture_runtime_fixed_character_length
-
-    subroutine resolve_len_of_character_length(context, node, source_index)
-        ! Recognize a character length expression of the exact shape
-        ! len(<name>), where <name> is a declared character variable.
-        ! source_index is left at 0 when the expression does not match.
-        type(lowering_context_t), intent(in) :: context
-        type(declaration_node), intent(in) :: node
-        integer, intent(out) :: source_index
-        character(len=:), allocatable :: expr
-        character(len=:), allocatable :: lowered
-        character(len=:), allocatable :: inner
-
-        source_index = 0
-        if (.not. node%has_character_length) return
-        if (.not. allocated(node%character_length_expr)) return
-        expr = trim(adjustl(node%character_length_expr))
-        if (len(expr) < 6) return
-        lowered = lowercase_text(expr)
-        if (lowered(1:4) /= 'len(') return
-        if (lowered(len(lowered):len(lowered)) /= ')') return
-        inner = trim(adjustl(expr(5:len(expr) - 1)))
-        if (len(inner) == 0) return
-        if (verify(inner, &
-            'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &
-            /= 0) return
-
-        source_index = find_symbol_compat(context, inner)
-        if (source_index <= 0) return
-        if (context%symbols(source_index)%value_kind /= VALUE_CHARACTER) &
-            source_index = 0
-    end subroutine resolve_len_of_character_length
 
     ! #384: reject a character length specification that cannot be a scalar
     ! INTEGER expression: a real, complex, logical or character literal, or a

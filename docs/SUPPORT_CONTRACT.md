@@ -85,7 +85,7 @@ so `select type (a)` can access both inherited and extension components of
 each element. Incompatible type-specs and `SOURCE=`/`MOLD=` allocation of a
 differing dynamic array type remain unsupported.
 
-## FORALL evaluation contract
+## Loop evaluation contract
 
 For supported scalar loop state, `CYCLE` retains updates made on each branch
 of a counted `DO`, `DO WHILE`, or bare `DO` before advancing the loop. Nested
@@ -103,6 +103,16 @@ statement ordering case, are covered by
 test_session_forall_alias_compiler. Allocatable, runtime-shaped, character,
 derived, and nonconforming-shape FORALL targets remain rejected or pending
 their descriptor-specific contracts.
+
+## Integer-specified character result widths
+
+An explicit `character(len=k)` function result captures the scalar integer
+specification variable before body assignments. Its descriptor retains that
+width for padding, truncation, and initial substring writes, even if the dummy
+changes later. Negative lengths become zero before integer-kind conversion;
+lengths above `2147483647` produce a runtime diagnostic before allocation.
+The gfortran oracle is `test_session_integer_character_width_compiler`.
+General length expressions and automatic local declarations remain under #348.
 
 ## Binding and module-boundary contract
 

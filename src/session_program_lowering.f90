@@ -3615,6 +3615,19 @@ module session_program_lowering_impl
     ! so the expression/descriptor contract is explicit instead of being
     ! hidden in the textual character-family include.
     interface
+        module subroutine capture_runtime_fixed_character_length(context, &
+                symbol_index, source_index, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index, source_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine capture_runtime_fixed_character_length
+        module subroutine resolve_runtime_character_length_source(context, &
+                node, source_index, allow_integer)
+            type(lowering_context_t), intent(in) :: context
+            type(declaration_node), intent(in) :: node
+            integer, intent(out) :: source_index
+            logical, intent(in) :: allow_integer
+        end subroutine resolve_runtime_character_length_source
         module function is_character_substring(arena, node_index, context) &
                 result(is_substring)
             type(ast_arena_t), intent(in) :: arena
