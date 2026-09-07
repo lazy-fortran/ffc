@@ -9,6 +9,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: condition
         type(lr_operand_desc_t) :: copied_value
+        type(loop_cycle_state_t) :: saved_cycles
         type(lr_operand_desc_t), allocatable :: entry_values(:)
         type(lr_operand_desc_t), allocatable :: header_values(:)
         type(lr_operand_desc_t), allocatable :: backedge_values(:)
@@ -93,6 +94,7 @@ contains
         context%current_loop_latch_block = latch_block
         context%in_loop = .true.
         context%current_block_exited_loop = .false.
+        call begin_loop_cycle_tracking(context, saved_cycles)
         call begin_loop_exit_tracking(context, saved_loop_exit_blocks, &
             saved_loop_exit_values, &
             saved_loop_exit_count)
@@ -120,6 +122,8 @@ contains
             return
         end if
         if (.not. body_terminated) then
+            call record_loop_cycle(context, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
         end if
 
@@ -129,6 +133,9 @@ contains
         if (.not. set_liric_block(context%session, latch_block, error_msg)) return
         context%current_block_id = latch_block
         context%current_block_terminated = .false.
+        call merge_loop_cycle_values(context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call end_loop_cycle_tracking(context, saved_cycles)
         do i = 1, carried_count
             if (.not. emit_carried_copy(context, carried_indices(i), &
                 backedge_values(carried_indices(i)), copied_value, &

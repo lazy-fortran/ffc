@@ -1243,6 +1243,8 @@
                                                error_msg)
                 return
             end if
+            call record_loop_cycle(context, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_liric_br(context%session, &
                                     context%current_loop_latch_block, &
                                     error_msg)) return

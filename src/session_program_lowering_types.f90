@@ -690,6 +690,11 @@ module session_program_lowering_types
         integer :: body_expr_index = 0
     end type statement_function_t
 
+    type, public :: loop_cycle_state_t
+        integer(c_int32_t), allocatable :: blocks(:)
+        type(lr_operand_desc_t), allocatable :: values(:,:)
+    end type loop_cycle_state_t
+
     type, public :: lowering_context_t
         type(liric_session_t) :: session
         ! Non-owning, read-only-by-contract view of the translation unit AST.
@@ -843,6 +848,8 @@ module session_program_lowering_types
         integer(c_int32_t) :: current_loop_latch_block = 0_c_int32_t
         logical :: in_loop = .false.
         logical :: current_block_exited_loop = .false.
+        ! CYCLE and fallthrough values merge at the common loop latch.
+        type(loop_cycle_state_t) :: loop_cycles
         ! Values captured at explicit EXIT edges. The loop's common exit block
         ! merges these with the normal condition-false edge so an EXIT from a
         ! branch preserves the values computed on that path.

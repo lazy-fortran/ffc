@@ -87,6 +87,12 @@ differing dynamic array type remain unsupported.
 
 ## FORALL evaluation contract
 
+For supported scalar loop state, `CYCLE` retains updates made on each branch
+of a counted `DO`, `DO WHILE`, or bare `DO` before advancing the loop. Nested
+loops preserve their separate branch state. The independent gfortran oracle
+is `test_session_cycle_branch_values_compiler`; named outer targets remain
+part of #455.
+
 For fixed-size intrinsic array-element assignments, the direct session lowerer
 copies the target's canonical element storage to stack memory before entering
 the index loop. Every RHS and mask read resolves against that snapshot, while

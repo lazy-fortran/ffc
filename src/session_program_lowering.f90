@@ -265,6 +265,7 @@ module session_program_lowering_impl
         multi_unit_container_node, submodule_node
     use fortfront, only: get_node_line, get_node_column
     use session_program_lowering_types, only: lowering_context_t, &
+        loop_cycle_state_t, &
         branch_result_t, symbol_t, declaration_record_t, &
         abi_mangle_identity, &
         array_section_info_t, &
@@ -535,6 +536,8 @@ module session_program_lowering_impl
     public :: carried_backedge_operand, emit_carried_phi, emit_carried_copy
     public :: begin_loop_exit_tracking, end_loop_exit_tracking
     public :: merge_loop_exit_values
+    public :: begin_loop_cycle_tracking, end_loop_cycle_tracking
+    public :: record_loop_cycle, merge_loop_cycle_values, is_carried_kind
     public :: is_contained_i32_function, is_proc_pointer_call
     public :: resolve_proc_pointer_callee_name
     public :: is_statement_function_call, is_type_bound_method_call
@@ -3088,6 +3091,22 @@ module session_program_lowering_impl
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_counted_loop
+        module subroutine begin_loop_cycle_tracking(context, saved)
+            type(lowering_context_t), intent(inout) :: context
+            type(loop_cycle_state_t), intent(out) :: saved
+        end subroutine begin_loop_cycle_tracking
+        module subroutine end_loop_cycle_tracking(context, saved)
+            type(lowering_context_t), intent(inout) :: context
+            type(loop_cycle_state_t), intent(inout) :: saved
+        end subroutine end_loop_cycle_tracking
+        module subroutine record_loop_cycle(context, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine record_loop_cycle
+        module subroutine merge_loop_cycle_values(context, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine merge_loop_cycle_values
         module subroutine record_loop_exit(context, error_msg)
             type(lowering_context_t), intent(inout) :: context
             character(len=:), allocatable, intent(out) :: error_msg
