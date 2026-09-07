@@ -119,6 +119,11 @@ General length expressions and automatic local declarations remain under #348.
 
 ## Binding and module-boundary contract
 
+Default-integer contained and module function results convert to the enclosing
+real expression's kind. Generic selection uses argument kinds and ranks before
+classifying the result, and array bindings retain precedence over host procedure
+names. The behavioral oracle is `test_session_integer_call_real_operand_compiler`.
+
 Host association, `ASSOCIATE`, `USE`, module, and submodule references are
 resolved by FortFront binding identity. The lowering context may retain a
 Fortran spelling for diagnostics, but it must not synthesize storage or an

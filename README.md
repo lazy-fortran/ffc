@@ -321,7 +321,9 @@ allocatable destination. When the result extent is a compile-time constant
 (an array constructor or a constant-extent `allocate`), it propagates to the
 destination so `size`, indexing, and whole-array print of `lhs` work.
 A module procedure may `contains` internal procedures, lowered as
-flat functions. A `logical`-valued function call (contained or module) prints
+flat functions. A default-integer function call can participate in real
+arithmetic, including named generics and procedures that shadow intrinsics.
+A `logical`-valued function call (contained or module) prints
 directly as `T`/`F`. A non-contained `integer(8)` function (module or
 contained) returns through the i64 ABI, so a result wider than 32 bits round
 trips correctly; an `integer(8)` scalar dummy argument is passed by reference at

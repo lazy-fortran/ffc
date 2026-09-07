@@ -419,6 +419,9 @@
         type(lowering_context_t), intent(in) :: context
         integer :: symbol_index, bl, br, blin, bcol, left_kind, right_kind
         character(len=:), allocatable :: id_name, id_err, bin_op
+        integer :: call_arg_count, call_arg_kinds(MAX_PROC_ARGS)
+        integer :: call_arg_ranks(MAX_PROC_ARGS)
+        character(len=:), allocatable :: call_name
 
         kind = 0
         if (.not. node_exists(arena, node_index)) return
@@ -450,6 +453,24 @@
             end select
             return
         end if
+
+        select type (node => arena%entries(node_index)%node)
+        type is (call_or_subscript_node)
+            if (node%base_expr_index > 0) return
+            if (.not. allocated(node%name)) return
+            symbol_index = resolve_symbol_at_node(context, node_index, node%name)
+            if (symbol_index > 0) then
+                if (context%symbols(symbol_index)%is_array) return
+            end if
+            call call_argument_kinds(arena, node, context, VALUE_I32, &
+                                     call_arg_count, call_arg_kinds)
+            call call_argument_ranks(arena, node, context, call_arg_count, &
+                                     call_arg_ranks)
+            call_name = degeneric_call_name(context, node%name, &
+                call_arg_count, call_arg_kinds, call_arg_ranks)
+            if (is_contained_i32_function(context, call_name)) kind = VALUE_I32
+            return
+        end select
 
         if (is_binary_op(arena, node_index)) then
             call get_binary_op_info(arena, node_index, bin_op, bl, br, &
