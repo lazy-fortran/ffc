@@ -29,8 +29,58 @@ program test_session_contained_call_operand_compiler
         '  end function bump'//new_line('a')// &
         'end program main'
 
+    character(len=*), parameter :: shadowed_source = &
+        'program main'//new_line('a')// &
+        '  implicit none'//new_line('a')// &
+        '  integer :: calls'//new_line('a')// &
+        '  real(8) :: value'//new_line('a')// &
+        '  calls = 0'//new_line('a')// &
+        '  value = 2.0*sqrt(4.0)'//new_line('a')// &
+        '  value = value + abs(-1.0d0)'//new_line('a')// &
+        '  if (calls /= 2) stop 81'//new_line('a')// &
+        '  if (value < 13.199999999d0) stop 82'//new_line('a')// &
+        '  if (value > 13.200000001d0) stop 83'//new_line('a')// &
+        '  stop calls'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  real(8) function sqrt(x)'//new_line('a')// &
+        '    real, intent(in) :: x'//new_line('a')// &
+        '    calls = calls + 1'//new_line('a')// &
+        '    sqrt = x + 0.1d0'//new_line('a')// &
+        '  end function sqrt'//new_line('a')// &
+        '  real function abs(x)'//new_line('a')// &
+        '    real(8), intent(in) :: x'//new_line('a')// &
+        '    calls = calls + 1'//new_line('a')// &
+        '    abs = x + 6.0d0'//new_line('a')// &
+        '  end function abs'//new_line('a')// &
+        'end program main'
+
+    character(len=*), parameter :: generic_source = &
+        'module choices'//new_line('a')// &
+        '  interface choose'//new_line('a')// &
+        '    module procedure choose, choose8'//new_line('a')// &
+        '  end interface'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  real function choose(x)'//new_line('a')// &
+        '    real, intent(in) :: x'//new_line('a')// &
+        '    choose = x + 10.0'//new_line('a')// &
+        '  end function choose'//new_line('a')// &
+        '  real function choose8(x)'//new_line('a')// &
+        '    real(8), intent(in) :: x'//new_line('a')// &
+        '    choose8 = x + 20.0d0'//new_line('a')// &
+        '  end function choose8'//new_line('a')// &
+        'end module choices'//new_line('a')// &
+        'program main'//new_line('a')// &
+        '  use choices'//new_line('a')// &
+        '  implicit none'//new_line('a')// &
+        '  real :: value'//new_line('a')// &
+        '  value = choose(2.0d0) + choose(2.0)'//new_line('a')// &
+        '  if (value /= 34.0) stop 81'//new_line('a')// &
+        'end program main'
+
     print *, '=== contained-call expression operand compiler test ==='
     if (.not. matches_gfortran(source)) stop 1
+    if (.not. matches_gfortran(shadowed_source)) stop 2
+    if (.not. matches_gfortran(generic_source)) stop 3
     print *, 'PASS: contained calls execute in scalar expression operands'
 
 contains

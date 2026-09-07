@@ -708,10 +708,12 @@
                                             error_msg)) return
             return
         end if
-        if (complex_component_kind(arena, node, context) /= SCALAR_REAL_NONE) then
-            call lower_complex_component_conversion(arena, node, context, &
-                                                    VALUE_F32, value, error_msg)
-            return
+        if (.not. is_contained_function_reference(node, context)) then
+            if (complex_component_kind(arena, node, context) /= SCALAR_REAL_NONE) then
+                call lower_complex_component_conversion(arena, node, context, &
+                                                        VALUE_F32, value, error_msg)
+                return
+            end if
         end if
         if (is_proc_pointer_call(context, node%name)) then
             call lower_f32_proc_ptr_call(arena, node, context, value, error_msg)
@@ -727,6 +729,12 @@
         if (len_trim(error_msg) > 0) return
         call_name = degeneric_call_name(context, node%name, &
             call_arg_count, call_arg_kinds, call_arg_ranks)
+
+        if (is_contained_f32_function(context, call_name)) then
+            call lower_contained_f32_call_named(arena, node, context, call_name, &
+                                                value, error_msg)
+            return
+        end if
 
         if (same_name(call_name, 'ieee_value') .and. &
             .not. is_contained_f32_function(context, call_name)) then
@@ -823,15 +831,24 @@
             return
         end if
 
-        if (.not. is_contained_f32_function(context, call_name)) then
-            call unsupported_feature_error('scalar real(4) function call', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session only '// &
-                                           'supports contained real(4) '// &
-                                           'functions and supported intrinsics', &
-                                           error_msg)
-            return
-        end if
+        call unsupported_feature_error('scalar real(4) function call', &
+                                       node%line, node%column, &
+                                       'direct LIRIC session only '// &
+                                       'supports contained real(4) '// &
+                                       'functions and supported intrinsics', &
+                                       error_msg)
+    end subroutine lower_f32_call
+
+    subroutine lower_contained_f32_call_named(arena, node, context, call_name, &
+                                              value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: call_name
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), allocatable :: args(:)
+        integer, allocatable :: copyback_indices(:)
 
         if (allocated(node%arg_indices)) then
             call prepare_reference_args(arena, node%arg_indices, context, &
@@ -849,7 +866,7 @@
                 call_emit_name(arena, call_name, context), args, value, &
                                       error_msg)) return
         call copy_back_reference_args(context, args, copyback_indices, error_msg)
-    end subroutine lower_f32_call
+    end subroutine lower_contained_f32_call_named
 
     recursive subroutine lower_f64_expression(arena, node_index, context, &
                                               value, error_msg)
@@ -1010,10 +1027,12 @@
             error_msg = 'direct LIRIC session real function call requires a name'
             return
         end if
-        if (complex_component_kind(arena, node, context) /= SCALAR_REAL_NONE) then
-            call lower_complex_component_conversion(arena, node, context, &
-                                                    VALUE_F64, value, error_msg)
-            return
+        if (.not. is_contained_function_reference(node, context)) then
+            if (complex_component_kind(arena, node, context) /= SCALAR_REAL_NONE) then
+                call lower_complex_component_conversion(arena, node, context, &
+                                                        VALUE_F64, value, error_msg)
+                return
+            end if
         end if
         ! Indirect call through a procedure dummy or a resolved scalar
         ! procedure pointer (#467).  The latter is validated inside the
@@ -1033,6 +1052,12 @@
         if (len_trim(error_msg) > 0) return
         call_name = degeneric_call_name(context, node%name, &
             call_arg_count, call_arg_kinds, call_arg_ranks)
+
+        if (is_contained_f64_function(context, call_name)) then
+            call lower_contained_f64_call_named(arena, node, context, call_name, &
+                                                value, error_msg)
+            return
+        end if
 
         if (same_name(call_name, 'ieee_value') .and. &
             .not. is_contained_f64_function(context, call_name)) then
@@ -1143,11 +1168,6 @@
             return
         end if
 
-        if (is_contained_f64_function(context, call_name)) then
-            call lower_contained_f64_call_named(arena, node, context, call_name, &
-                                                value, error_msg)
-            return
-        end if
         if (node%is_intrinsic) then
             call unsupported_intrinsic_error(node, error_msg)
         else

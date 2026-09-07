@@ -75,6 +75,19 @@ contains
             return
         end if
 
+        ! A resolved procedure shadows an intrinsic of the same spelling.
+        ! Its result kind comes from the signature, not the actual arguments.
+        if (is_contained_function_reference(node, context)) then
+            call call_argument_kinds(arena, node, context, VALUE_I32, &
+                                     call_arg_count, call_arg_kinds)
+            call call_argument_ranks(arena, node, context, call_arg_count, &
+                                     call_arg_ranks)
+            callee_name = degeneric_call_name(context, node%name, &
+                call_arg_count, call_arg_kinds, call_arg_ranks)
+            vk = real_value_kind_of(contained_function_kind(context, callee_name))
+            return
+        end if
+
         ! real(z)/aimag(z) yields the component kind of the complex operand.
         if (is_complex_component_extract(arena, node, context, VALUE_C8)) then
             vk = VALUE_F64

@@ -10,6 +10,12 @@ scalar integer arguments of kinds 1, 2, 4, and 8. They return default
 `real(4)` and `real(8)`, respectively, and require exactly one argument;
 contained procedures with the same name retain normal procedure shadowing.
 
+Contained real procedures shadow intrinsics in scalar expressions. Their
+declared result kinds control arithmetic and conversion, and each call's side
+effects execute once. Generic resolution still selects the matching specific,
+including a generic that shares a name with one of its specifics. The gfortran
+oracle is `test_session_contained_call_operand_compiler`.
+
 ## Architecture boundary
 
 - FortFront owns lexing, parsing, AST storage, semantic analysis, type

@@ -365,7 +365,10 @@ empty executable, matching gfortran's own module-only object. When such a file
 also holds a main program after its modules, the program's own contained
 procedures are registered and lowered from inside the multi-unit container, so
 a call to a program-contained scalar function resolves as contained instead of
-raising the unsupported-call diagnostic. A contained procedure may reference a
+raising the unsupported-call diagnostic. Contained real procedures also shadow
+intrinsics of the same name: their declared result kinds and side effects are
+preserved in expressions, while generic calls retain normal specific selection.
+A contained procedure may reference a
 host-associated named constant (an `integer, parameter` declared in the
 containing program or module) in an integer expression: the value folds from
 the declaration that FortFront's binding resolution names at the reference, so

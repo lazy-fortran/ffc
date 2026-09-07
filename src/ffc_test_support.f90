@@ -314,9 +314,19 @@ contains
         character(len=:), allocatable :: gfortran_exe, ffc_out, gfortran_out
         character(len=:), allocatable :: error_msg
         integer :: unit, ffc_status, gfortran_status, cmd_stat, diff_status
+        integer :: temp_length, temp_status
 
         ok = .false.
-        base = '/tmp/ffc_gfortran_'//trim(stem)
+        call get_environment_variable('TMPDIR', length=temp_length, &
+                                      status=temp_status)
+        if (temp_status == 0 .and. temp_length > 0) then
+            allocate (character(len=temp_length) :: base)
+            call get_environment_variable('TMPDIR', base)
+        else
+            base = '/tmp'
+        end if
+        if (len_trim(base) == 0) base = '/tmp'
+        base = trim(base)//'/ffc_gfortran_'//trim(stem)
         source_path = base//'.f90'
         ffc_exe = base//'.ffc'
         gfortran_exe = base//'.gfortran'
