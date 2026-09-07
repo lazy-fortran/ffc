@@ -502,6 +502,17 @@ module session_program_lowering_impl
     public :: total_component_slots, class_receiver_dispatches_dynamically
     public :: class_dispatch_callee, contained_elemental_signature
     public :: method_call_info
+    ! Keep ancestor helpers used by descendants externally visible during
+    ! release optimization, including on older GFortran submodule builds.
+    public :: emit_array_value_load, create_array_expression_temp
+    public :: emit_array_expression_assignment
+    public :: fill_spaces, set_character_storage, materialize_character_view
+    public :: is_character_io_spec, io_spec_upper
+    public :: emit_formatted_character_array_expression
+    public :: bind_io_implied_do_var, release_io_implied_do_var
+    public :: runtime_reduction_accumulator_slot, runtime_reduction_accumulate
+    public :: runtime_sum_result, eval_kind_inquiry_constant
+    public :: is_implied_do_constructor, select_type_component_selector, has_bind_c
     public :: lower_select_case, lower_select_type, lower_select_type_default
     public :: lower_select_rank, allocate_targets_class_star
     public :: lower_class_star_allocate
