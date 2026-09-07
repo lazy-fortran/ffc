@@ -352,6 +352,10 @@
                                          name, folded, folded_found, fold_error)
         if (len_trim(fold_error) == 0 .and. folded_found) then
             if (folded <= 0_c_int64_t) return
+            if (folded > 2147483647_c_int64_t) then
+                error_msg = 'character length exceeds supported maximum 2147483647'
+                return
+            end if
             character_length = int(folded)
             call set_empty(error_msg)
             return
@@ -363,6 +367,10 @@
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%has_i32_constant) return
         if (context%symbols(symbol_index)%i32_constant <= 0) return
+        if (context%symbols(symbol_index)%i32_constant > 2147483647_c_int64_t) then
+            error_msg = 'character length exceeds supported maximum 2147483647'
+            return
+        end if
         character_length = int(context%symbols(symbol_index)%i32_constant)
         call set_empty(error_msg)
     end subroutine resolve_named_character_length

@@ -332,7 +332,11 @@ its native width. A module function with a deferred-length
 result is callable and printable from a program in the same file. An explicit
 `character(len=k)` function result captures a scalar integer dummy's entry
 value, preserving padding and truncation. Negative lengths become zero; values
-above `2147483647` produce a runtime diagnostic before allocation. Module-level
+above `2147483647` produce a runtime diagnostic before allocation.
+`character(n)` function prefixes use the same result descriptor for supported
+dummy or host lengths and positive named constants. Oversized named constants
+are rejected before narrowing; zero and negative named constants remain
+unsupported. Module-level
 integer, real, and logical scalar variables persist as globals and are visible
 across `use`, in the same file or across separate compilation. A module
 subroutine or integer function with integer, real, or logical scalar arguments

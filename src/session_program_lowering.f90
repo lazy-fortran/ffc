@@ -443,6 +443,8 @@ module session_program_lowering_impl
     public :: assign_i32_to_symbol, char_length_operands, cmp_class_name
     public :: declared_type_of_name, define_symbol, dummy_signature
     public :: define_i32_symbol
+    public :: define_declared_character_symbol, parse_character_length
+    public :: is_character_type_name
     public :: expression_value_kind, ffc_unit_global_name
     public :: file_unit_pseudo_name, identifier_name, identifier_name_at
     public :: inquiry_arg_real_kind, io_control_value
@@ -3634,6 +3636,20 @@ module session_program_lowering_impl
     ! so the expression/descriptor contract is explicit instead of being
     ! hidden in the textual character-family include.
     interface
+        module subroutine initialize_character_prefix_result(node, binding, &
+                                                              context, error_msg)
+            type(function_def_node), intent(in) :: node
+            type(declaration_binding_t), intent(in) :: binding
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine initialize_character_prefix_result
+        module subroutine character_prefix_host_reference(arena, node_index, &
+                                                          name, procedure_index)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=:), allocatable, intent(out) :: name
+            integer, intent(out) :: procedure_index
+        end subroutine character_prefix_host_reference
         module subroutine capture_runtime_fixed_character_length(context, &
                 symbol_index, source_index, error_msg)
             type(lowering_context_t), intent(inout) :: context

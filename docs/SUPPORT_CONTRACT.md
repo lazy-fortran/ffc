@@ -115,6 +115,11 @@ width for padding, truncation, and initial substring writes, even if the dummy
 changes later. Negative lengths become zero before integer-kind conversion;
 lengths above `2147483647` produce a runtime diagnostic before allocation.
 The gfortran oracle is `test_session_integer_character_width_compiler`.
+`character(n)` function prefixes use the same declaration path, resolving
+dummy and host bindings before capturing the width. Positive named constants
+are supported through `2147483647`; larger constants diagnose before narrowing.
+Zero and negative named constants retain an explicit refusal. The differential
+and ownership oracle is `test_session_character_prefix_compiler`.
 General length expressions and automatic local declarations remain under #348.
 
 ## File inquiry expressions

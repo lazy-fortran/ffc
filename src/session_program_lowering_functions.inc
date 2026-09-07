@@ -938,7 +938,7 @@
         integer, intent(out) :: value_kind
         integer, intent(out) :: derived_type_index
         integer, intent(in), optional :: reference_index
-        integer :: char_len, paren, rparen
+        integer :: paren, rparen
         integer :: pointee_kind
         character(len=:), allocatable :: derived_name, base_type, kind_spec
         character(len=:), allocatable, intent(out) :: error_msg
@@ -1073,13 +1073,11 @@
             value_kind = VALUE_LOGICAL
         case default
             if (is_character_type_name(node%return_type)) then
-                call parse_character_length(node%return_type, &
-                                            char_len, error_msg)
-                if (len_trim(error_msg) > 0) return
+                ! The header determines the descriptor ABI; its declared
+                ! width is initialized after dummy and host bindings exist.
                 ! Both fixed- and deferred-length character results use the
-                ! descriptor return ABI. The body result declaration records a
-                ! fixed width when one is present, so assignments still pad or
-                ! truncate correctly.
+                ! descriptor return ABI. A prefix or body result declaration
+                ! supplies its width before executable statements are lowered.
                 value_kind = VALUE_DEFERRED_CHARACTER_RESULT
                 return
             end if
@@ -1793,12 +1791,17 @@
         call set_empty(error_msg)
         do i = 1, arena%size
             if (.not. node_exists(arena, i)) cycle
-            if (.not. is_identifier(arena, i)) cycle
-            procedure_index = containing_procedure_node(arena, i)
+            if (is_identifier(arena, i)) then
+                procedure_index = containing_procedure_node(arena, i)
+                call get_identifier_name(arena, i, name, resolve_error)
+                if (len_trim(resolve_error) > 0) cycle
+            else
+                call character_prefix_host_reference(arena, i, name, &
+                                                     procedure_index)
+                if (len_trim(name) == 0) cycle
+            end if
             if (procedure_index <= 0) cycle
             if (.not. procedure_is_internal(arena, procedure_index)) cycle
-            call get_identifier_name(arena, i, name, resolve_error)
-            if (len_trim(resolve_error) > 0) cycle
             call resolve_name_at_node(arena, i, name, binding, resolve_error)
             if (len_trim(resolve_error) > 0 .or. .not. binding%found) cycle
             if (binding%association /= ASSOCIATION_HOST) cycle
@@ -3771,6 +3774,12 @@
         ! Host-associate module-scope named constants and enumerators (#1826).
         call bind_module_constants_in_context(context, error_msg)
         if (len_trim(error_msg) > 0) return
+
+        if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
+            call initialize_character_prefix_result(node, result_binding, &
+                                                    context, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         ! Keep scalar function results in a real stack slot while lowering the
         ! body. A result updated across a loop/EXIT path cannot rely solely on

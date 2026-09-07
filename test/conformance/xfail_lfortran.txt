@@ -1199,7 +1199,6 @@ functions_46.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays t
 functions_47.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 functions_48.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 functions_49.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
-functions_50.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 functions_51.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 functions_52.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable arrays to descriptors
 functions_54.f90 # owner=lazy-fortran/ffc#422; reason=track runtime type identity for class scalars
