@@ -265,6 +265,11 @@ module session_program_lowering_types
         ! without storing them, so the initializer applies once rather than on
         ! every call.
         logical :: is_static_data_initialized = .false.
+        ! Its contiguous storage was zero-filled once at the first DATA touch
+        ! (#2349): any DATA on an array makes the whole object static and
+        ! default-initialized, so elements the DATA list omits read as zero,
+        ! not stack garbage. Applies to fixed contiguous numeric arrays only.
+        logical :: data_storage_zeroed = .false.
         integer :: character_length = 0
         logical :: has_character_value = .false.
         logical :: is_array = .false.

@@ -98,6 +98,86 @@
         end do
     end subroutine lower_data_statement
 
+    recursive integer function data_object_array_base_sym(arena, obj_index, &
+                                                           context) result(sym)
+        !! Base array symbol index for a DATA object designator, descending
+        !! through implied-do objects and array sections to the named array.
+        !! Returns 0 when the object does not name a resolvable array symbol.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: obj_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable :: name
+        character(len=:), allocatable :: err
+        integer :: j
+
+        sym = 0
+        if (.not. node_exists(arena, obj_index)) return
+        select type (node => arena%entries(obj_index)%node)
+        type is (io_implied_do_node)
+            if (allocated(node%object_indices)) then
+                do j = 1, size(node%object_indices)
+                    sym = data_object_array_base_sym(arena, node%object_indices(j), &
+                                                    context)
+                    if (sym > 0) return
+                end do
+            end if
+        type is (array_slice_node)
+            call identifier_name(arena, node%array_index, name, err)
+            if (len_trim(err) == 0) sym = find_symbol_compat(context, name)
+        type is (call_or_subscript_node)
+            sym = find_symbol_compat(context, node%name)
+        type is (identifier_node)
+            if (allocated(node%name)) sym = find_symbol_compat(context, node%name)
+        end select
+    end function data_object_array_base_sym
+
+    subroutine zero_fill_data_array_once(context, sym, error_msg)
+        !! Any DATA initialization of an array gives the whole object the
+        !! default initial value for its type (zero for numeric), so elements
+        !! the DATA list omits must read as zero, not stack garbage (#2349).
+        !! Zero-fill the fixed contiguous numeric array's storage once, before
+        !! any DATA element store lands in it. Non-contiguous, allocatable,
+        !! COMMON, statically pre-initialized, derived, character, and complex
+        !! arrays keep their existing paths.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: args(3), unused
+        integer :: vk
+        integer(c_int64_t) :: bytes, elem
+
+        call set_empty(error_msg)
+        if (sym <= 0) return
+        if (context%symbols(sym)%data_storage_zeroed) return
+        if (.not. context%symbols(sym)%is_array) return
+        if (context%symbols(sym)%is_allocatable) return
+        if (context%symbols(sym)%is_derived) return
+        if (context%symbols(sym)%is_common_bound) return
+        if (context%symbols(sym)%is_static_data_initialized) return
+        if (context%symbols(sym)%element_address%kind /= LR_OP_KIND_VREG) return
+        if (context%symbols(sym)%array_size <= 0) return
+        vk = context%symbols(sym)%value_kind
+        select case (vk)
+        case (VALUE_I32, VALUE_F32, VALUE_LOGICAL)
+            elem = 4_c_int64_t
+        case (VALUE_F64, VALUE_I64)
+            elem = 8_c_int64_t
+        case (VALUE_I8)
+            elem = 1_c_int64_t
+        case (VALUE_I16)
+            elem = 2_c_int64_t
+        case default
+            return
+        end select
+        bytes = int(context%symbols(sym)%array_size, c_int64_t) * elem
+        args(1) = context%symbols(sym)%element_address
+        args(2) = i32_immediate(context%session, 0_c_int64_t)
+        args(3) = i64_immediate(context%session, bytes)
+        if (.not. emit_ptr_call(context%session, 'memset', args, unused, &
+                                error_msg)) return
+        context%symbols(sym)%data_storage_zeroed = .true.
+    end subroutine zero_fill_data_array_once
+
     recursive subroutine lower_data_object(arena, node, obj_index, cursor, &
                                            context, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -113,6 +193,20 @@
         integer :: sym, k, asz
 
         call set_empty(error_msg)
+        ! A DATA reference makes the whole base array static/default-initialized
+        ! before any element store, so omitted elements read zero (#2349).
+        block
+            integer :: bsym
+            character(len=:), allocatable :: zerr
+            bsym = data_object_array_base_sym(arena, obj_index, context)
+            if (bsym > 0) then
+                call zero_fill_data_array_once(context, bsym, zerr)
+                if (len_trim(zerr) > 0) then
+                    error_msg = zerr
+                    return
+                end if
+            end if
+        end block
         if (is_data_implied_do(arena, obj_index)) then
             call lower_data_implied_do_object(arena, node, obj_index, cursor, &
                                               context, error_msg)
