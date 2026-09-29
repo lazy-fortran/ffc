@@ -133,12 +133,15 @@ contains
         end if
         if (len_trim(error_msg) > 0) then
             ! A procedure-only source is a valid compile-only translation unit,
-            ! even when the caller did not spell out -c (as in gfortran's
-            ! dg-do compile tests).  The lowering layer deliberately rejects
-            ! an executable request without a main; retry only that diagnostic
-            ! as object emission so unrelated source errors remain errors.
+            ! but gfortran only treats the invocation as compile-only when the
+            ! requested output names an object file (`-o foo.o`, or an explicit
+            ! -c).  For every other output name the request is a link, and
+            ! gfortran answers it with a collect2 failure and a nonzero exit
+            ! without writing the file.  Mirror that boundary: retry as object
+            ! emission only when the output suffix is an object suffix, so a
+            ! valid exe request never silently produces a relocatable file.
             if (.not. opts%emit_object .and. procedure_only_object_diagnostic( &
-                    error_msg)) then
+                    error_msg) .and. output_suffix_is_object(output_file)) then
                 if (len_trim(opts%output_file) == 0) then
                     output_file = default_output_name(.true.)
                 end if
@@ -154,6 +157,30 @@ contains
         end if
         ok = .true.
     end function try_compile
+
+    logical function output_suffix_is_object(name) result(is_object)
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable :: lowered
+        integer :: dot
+
+        lowered = to_lower(trim(name))
+        dot = scan(lowered, ".", back = .true.)
+        is_object = dot > 0 .and. (lowered(dot:) == ".o" .or. &
+            lowered(dot:) == ".obj")
+    end function output_suffix_is_object
+
+    function to_lower(text) result(out)
+        character(len=*), intent(in) :: text
+        character(len=len(text)) :: out
+        integer :: i, ic
+
+        out = text
+        do i = 1, len_trim(out)
+            ic = iachar(out(i:i))
+            if (ic >= iachar('A') .and. ic <= iachar('Z')) &
+                out(i:i) = achar(ic + 32)
+        end do
+    end function to_lower
 
     logical function procedure_only_object_diagnostic(message) result(matches)
         character(len=*), intent(in) :: message

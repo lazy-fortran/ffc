@@ -13,6 +13,9 @@ program test_session_external_only_unit_compiler
     all_passed = .true.
     if (.not. test_procedure_only_object_links_with_driver()) all_passed = .false.
     if (.not. test_default_driver_falls_back_to_object()) all_passed = .false.
+    if (.not. test_default_driver_exe_request_without_main_fails()) then
+        all_passed = .false.
+    end if
     if (.not. test_executable_without_main_is_rejected()) all_passed = .false.
     if (.not. test_multiple_procedures_keep_their_order()) all_passed = .false.
 
@@ -133,6 +136,39 @@ contains
         call execute_command_line('rm -f '//src//' '//ffc_obj//' '//gcc_obj)
         ok = .true.
     end function test_default_driver_falls_back_to_object
+
+    logical function test_default_driver_exe_request_without_main_fails() result(ok)
+        ! A non-object output name is a link request.  gfortran answers a
+        ! procedure-only link request with a nonzero exit and writes no file;
+        ! ffc must not silently emit a relocatable ELF there.
+        character(len=*), parameter :: src2 = '/tmp/ffc_ext416_exe.f90'
+        character(len=*), parameter :: exe_out = '/tmp/ffc_ext416_exe.bin'
+        character(len=*), parameter :: err_file = '/tmp/ffc_ext416_exe.err'
+        character(len=1), parameter :: sq = achar(39)
+        character(len=:), allocatable :: cmd
+        integer :: exit_stat, cmd_stat
+
+        ok = .false.
+        if (.not. write_file(src2, &
+            'subroutine shout()'//new_line('a')// &
+            "    print *, 'EXTERNAL_SHOUT'"//new_line('a')// &
+            'end subroutine shout')) return
+        call execute_command_line('rm -f '//exe_out//' '//err_file)
+        cmd = 'sh -c '//sq//'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc ' &
+            //'2>/dev/null | head -n 1); test -n "$exe" || exit 90; "$exe" '// &
+            src2//' -o '//exe_out//' >'//err_file//' 2>&1; rc=$?; '// &
+            'if [ $rc -eq 0 ]; then exit 91; fi; test ! -e '//exe_out// &
+            '; grep -q "no main program unit" '//err_file//' || exit 93'//sq
+        call execute_command_line(cmd, &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. exit_stat /= 0) then
+            print *, 'FAIL: procedure-only exe request boundary failed, code ', &
+                exit_stat
+            return
+        end if
+        call execute_command_line('rm -f '//src2//' '//exe_out//' '//err_file)
+        ok = .true.
+    end function test_default_driver_exe_request_without_main_fails
 
     logical function test_executable_without_main_is_rejected() result(ok)
         ! An executable build request needs a main program unit; a
