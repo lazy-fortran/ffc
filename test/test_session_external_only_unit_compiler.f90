@@ -143,6 +143,8 @@ contains
         ! ffc must not silently emit a relocatable ELF there.
         character(len=*), parameter :: src2 = '/tmp/ffc_ext416_exe.f90'
         character(len=*), parameter :: exe_out = '/tmp/ffc_ext416_exe.bin'
+        character(len=*), parameter :: dotless_out = '/tmp/ffc_ext416_exe'
+        character(len=*), parameter :: upper_out = '/tmp/ffc_ext416_exe.O'
         character(len=*), parameter :: err_file = '/tmp/ffc_ext416_exe.err'
         character(len=1), parameter :: sq = achar(39)
         character(len=:), allocatable :: cmd
@@ -152,23 +154,68 @@ contains
         if (.not. write_file(src2, &
             'subroutine shout()'//new_line('a')// &
             "    print *, 'EXTERNAL_SHOUT'"//new_line('a')// &
-            'end subroutine shout')) return
-        call execute_command_line('rm -f '//exe_out//' '//err_file)
+            'end subroutine shout')) then
+            call cleanup_exe_request_temps()
+            return
+        end if
+        call execute_command_line('rm -f '//exe_out//' '//dotless_out// &
+            ' '//upper_out//' '//err_file)
+        ! Refusal half: dotted non-object name is a link request; ffc must
+        ! exit nonzero AND write no file, with the no-main diagnostic.
         cmd = 'sh -c '//sq//'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc ' &
             //'2>/dev/null | head -n 1); test -n "$exe" || exit 90; "$exe" '// &
             src2//' -o '//exe_out//' >'//err_file//' 2>&1; rc=$?; '// &
             'if [ $rc -eq 0 ]; then exit 91; fi; test ! -e '//exe_out// &
-            '; grep -q "no main program unit" '//err_file//' || exit 93'//sq
+            ' || exit 92; grep -q "no main program unit" '//err_file// &
+            ' || exit 93'//sq
         call execute_command_line(cmd, &
             exitstat=exit_stat, cmdstat=cmd_stat)
         if (cmd_stat /= 0 .or. exit_stat /= 0) then
             print *, 'FAIL: procedure-only exe request boundary failed, code ', &
                 exit_stat
+            call cleanup_exe_request_temps()
             return
         end if
-        call execute_command_line('rm -f '//src2//' '//exe_out//' '//err_file)
+        ! Refusal half, dot-less name: the scan finds no dot at all, so the
+        ! object-suffix gate must not form a substring or accept the name.
+        cmd = 'sh -c '//sq//'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc ' &
+            //'2>/dev/null | head -n 1); test -n "$exe" || exit 90; "$exe" '// &
+            src2//' -o '//dotless_out//' >'//err_file//' 2>&1; rc=$?; '// &
+            'if [ $rc -eq 0 ]; then exit 91; fi; test ! -e '//dotless_out// &
+            ' || exit 92; grep -q "no main program unit" '//err_file// &
+            ' || exit 93'//sq
+        call execute_command_line(cmd, &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. exit_stat /= 0) then
+            print *, 'FAIL: procedure-only dot-less exe request failed, code ', &
+                exit_stat
+            call cleanup_exe_request_temps()
+            return
+        end if
+        ! Documented superset half (docs/SUPPORT_CONTRACT.md, Procedure-only
+        ! units): an object suffix in any case is accepted as object
+        ! emission, even though gfortran itself only compiles with -c.
+        cmd = 'sh -c '//sq//'exe=$(ls -t build/*/app/ffc build/fo/bin/ffc ' &
+            //'2>/dev/null | head -n 1); test -n "$exe" || exit 90; "$exe" '// &
+            src2//' -o '//upper_out//' || exit 94; test -s '//upper_out// &
+            ' || exit 95'//sq
+        call execute_command_line(cmd, &
+            exitstat=exit_stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. exit_stat /= 0) then
+            print *, 'FAIL: uppercase object-suffix superset failed, code ', &
+                exit_stat
+            call cleanup_exe_request_temps()
+            return
+        end if
+        call cleanup_exe_request_temps()
         ok = .true.
     end function test_default_driver_exe_request_without_main_fails
+
+    subroutine cleanup_exe_request_temps()
+        call execute_command_line('rm -f /tmp/ffc_ext416_exe.f90 '// &
+            '/tmp/ffc_ext416_exe.bin /tmp/ffc_ext416_exe '// &
+            '/tmp/ffc_ext416_exe.O /tmp/ffc_ext416_exe.err')
+    end subroutine cleanup_exe_request_temps
 
     logical function test_executable_without_main_is_rejected() result(ok)
         ! An executable build request needs a main program unit; a

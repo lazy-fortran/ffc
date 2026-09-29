@@ -23,7 +23,7 @@ program ffc_main
     character(len=CLI_PATH_LEN), allocatable :: search_paths(:)
     character(len=:), allocatable :: program_source
     character(len=:), allocatable :: include_error
-    integer :: nargs, i
+    integer :: nargs, i, arg_len
 
     nargs = command_argument_count()
     if (nargs < 1) then
@@ -33,6 +33,9 @@ program ffc_main
 
     allocate (argv(nargs))
     do i = 1, nargs
+        call get_command_argument(i, argv(i), length=arg_len)
+        if (arg_len >= CLI_PATH_LEN) &
+            call report_failure('command-line path too long (>= 512 chars)')
         call get_command_argument(i, argv(i))
     end do
     call parse_arguments(argv, opts)
@@ -132,19 +135,17 @@ contains
                 lazy_mode=input_mode == INPUT_MODE_LAZY)
         end if
         if (len_trim(error_msg) > 0) then
-            ! A procedure-only source is a valid compile-only translation unit,
-            ! but gfortran only treats the invocation as compile-only when the
-            ! requested output names an object file (`-o foo.o`, or an explicit
-            ! -c).  For every other output name the request is a link, and
-            ! gfortran answers it with a collect2 failure and a nonzero exit
-            ! without writing the file.  Mirror that boundary: retry as object
-            ! emission only when the output suffix is an object suffix, so a
-            ! valid exe request never silently produces a relocatable file.
+            ! A procedure-only source is a valid compile-only translation unit.
+            ! gfortran treats it as compile-only only with an explicit -c; any
+            ! other invocation is a link and gfortran answers with a collect2
+            ! failure, nonzero exit, and no file.  ffc keeps one documented
+            ! superset (docs/SUPPORT_CONTRACT.md, Procedure-only units): an
+            ! output name carrying an object suffix (.o/.obj, any case) is also
+            ! accepted as object emission.  Every other output name must exit
+            ! nonzero without writing, so a valid exe request never silently
+            ! produces a relocatable file.
             if (.not. opts%emit_object .and. procedure_only_object_diagnostic( &
-                    error_msg) .and. output_suffix_is_object(output_file)) then
-                if (len_trim(opts%output_file) == 0) then
-                    output_file = default_output_name(.true.)
-                end if
+                error_msg) .and. output_suffix_is_object(output_file)) then
                 call lower_program_to_liric_object(frontend_result%arena, &
                     frontend_result%root_index, trim(output_file), error_msg, &
                     search_paths, backend=opts%backend, opt_level=opts%opt_level, &
@@ -163,10 +164,11 @@ contains
         character(len=:), allocatable :: lowered
         integer :: dot
 
+        is_object = .false.
         lowered = to_lower(trim(name))
         dot = scan(lowered, ".", back = .true.)
-        is_object = dot > 0 .and. (lowered(dot:) == ".o" .or. &
-            lowered(dot:) == ".obj")
+        if (dot < 1) return
+        is_object = lowered(dot:) == ".o" .or. lowered(dot:) == ".obj"
     end function output_suffix_is_object
 
     function to_lower(text) result(out)
