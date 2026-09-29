@@ -10,10 +10,13 @@
     ! There is exactly one callable-address convention in the lowerer.
 
     logical function dummy_is_procedure(arena, body_indices, name) result(is_proc)
-        ! True when `name` is declared by an interface body in this scope, or by
-        ! a PROCEDURE(interface) declaration.  The latter is how a dummy names
-        ! an ABSTRACT INTERFACE declared in a host/module scope; it is still a
-        ! callable address and must not be lowered as data.
+        ! True when `name` is declared by an interface body in this scope, by
+        ! a PROCEDURE(interface) declaration, or by an EXTERNAL statement.
+        ! The latter is how a dummy names an ABSTRACT INTERFACE declared in a
+        ! host/module scope; it is still a callable address and must not be
+        ! lowered as data.  An EXTERNAL statement inside a procedure body can
+        ! only name a dummy procedure (F2018 8.5.17), so any name it lists
+        ! here takes the callable-address convention.
         type(ast_arena_t), intent(in) :: arena
         integer, allocatable, intent(in) :: body_indices(:)
         character(len=*), intent(in) :: name
@@ -26,6 +29,23 @@
             if (.not. node_exists(arena, body_indices(i))) cycle
             select type (iface => arena%entries(body_indices(i))%node)
             type is (declaration_node)
+                if (iface%is_external .and. .not. iface%is_pointer) then
+                    if (allocated(iface%var_name)) then
+                        if (same_name(iface%var_name, name)) then
+                            is_proc = .true.
+                            return
+                        end if
+                    end if
+                    if (iface%is_multi_declaration .and. &
+                        allocated(iface%var_names)) then
+                        do k = 1, size(iface%var_names)
+                            if (same_name(iface%var_names(k), name)) then
+                                is_proc = .true.
+                                return
+                            end if
+                        end do
+                    end if
+                end if
                 if (.not. declaration_names_procedure(iface)) cycle
                 if (allocated(iface%var_name)) then
                     if (same_name(iface%var_name, name)) then
