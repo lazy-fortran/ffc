@@ -864,7 +864,7 @@
                 if (.not. data_flushed .and. &
                     .not. is_specification_statement_at(arena, body_indices(i))) then
                     call flush_data_statements(arena, body_indices, context, &
-                                               error_msg)
+                                               error_msg, .true.)
                     if (len_trim(error_msg) > 0) return
                     data_flushed = .true.
                 end if
@@ -875,7 +875,8 @@
                 has_executable_statements = .true.
             end do
             if (.not. data_flushed) then
-                call flush_data_statements(arena, body_indices, context, error_msg)
+                call flush_data_statements(arena, body_indices, context, error_msg, &
+                                           .true.)
                 if (len_trim(error_msg) > 0) return
             end if
         else if (get_node_type_at(arena, root_index) == 'module_node' .or. &

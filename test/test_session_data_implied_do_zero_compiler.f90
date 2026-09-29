@@ -28,5 +28,16 @@ program test_session_data_implied_do_zero_compiler
         'end program p', &
         'data_implied_do_zero_r32')) stop 1
 
+    ! integer(1) tail zeroing exercises the 1-byte element stride in the
+    ! memset size (the i8/i16 claim needs a compilable differential case).
+    if (.not. expect_output_matches_gfortran( &
+        'program p'//new_line('a')// &
+        '    implicit none'//new_line('a')// &
+        '    integer(1) :: b(4)'//new_line('a')// &
+        '    data b(1) / 5 /'//new_line('a')// &
+        '    print *, b'//new_line('a')// &
+        'end program p', &
+        'data_partial_zero_i8')) stop 1
+
     print *, 'PASS: DATA partial init zero-fills omitted elements'
 end program test_session_data_implied_do_zero_compiler

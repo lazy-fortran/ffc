@@ -7,21 +7,54 @@
     ! variable's SSA value is bound to each constant in turn, so subscript
     ! expressions like coeff(i+2) resolve to the right element.
 
-    subroutine flush_data_statements(arena, body_indices, context, error_msg)
+    subroutine flush_data_statements(arena, body_indices, context, error_msg, &
+                                      zero_fill)
         !! Apply every DATA statement in the body, in textual order, as program
         !! initialisation. Called once at the specification/execution boundary so
-        !! DATA values precede execution regardless of textual position.
+        !! DATA values precede execution regardless of textual position. This is
+        !! the main program's scope and runs exactly once per program, so the
+        !! whole-array zero-fill it owes to F2018 8.5.16 (#2349) is emitted
+        !! here; subprogram DATA replays through lower_statement per invocation
+        !! and must not re-zero (static subprogram locals are #466 territory).
+        !! zero_fill=.false. at the textual-position tail flush, where earlier
+        !! executable assignments already ran and a memset would erase them.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: body_indices(:)
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: i
+        logical, intent(in) :: zero_fill
+        integer :: i, oi
+        integer :: seen(64)
+        integer :: seen_n, s
+        logical :: do_fill
 
         call set_empty(error_msg)
+        seen_n = 0
+        do_fill = zero_fill
         do i = 1, size(body_indices)
             if (.not. is_data_statement_at(arena, body_indices(i))) cycle
             select type (node => arena%entries(body_indices(i))%node)
             type is (data_statement_node)
+                ! Zero-fill each distinct eligible numeric array once, before
+                ! any of this statement's element stores land (#2349). The seen
+                ! list persists across all DATA statements of this flush so a
+                ! second statement on the same array never erases the first.
+                if (do_fill .and. allocated(node%object_indices)) then
+                    do oi = 1, size(node%object_indices)
+                        s = data_object_array_base_sym(arena, &
+                            node%object_indices(oi), context)
+                        if (s <= 0) cycle
+                        if (seen_n > 0) then
+                            if (any(seen(1:seen_n) == s)) cycle
+                        end if
+                        call zero_fill_data_array_once(context, s, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        if (seen_n < 64) then
+                            seen_n = seen_n + 1
+                            seen(seen_n) = s
+                        end if
+                    end do
+                end if
                 call lower_data_statement(arena, node, context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end select
@@ -148,7 +181,6 @@
 
         call set_empty(error_msg)
         if (sym <= 0) return
-        if (context%symbols(sym)%data_storage_zeroed) return
         if (.not. context%symbols(sym)%is_array) return
         if (context%symbols(sym)%is_allocatable) return
         if (context%symbols(sym)%is_derived) return
@@ -156,6 +188,9 @@
         if (context%symbols(sym)%is_static_data_initialized) return
         if (context%symbols(sym)%element_address%kind /= LR_OP_KIND_VREG) return
         if (context%symbols(sym)%array_size <= 0) return
+        ! Once-per-program guard lives in flush_data_statements' seen list;
+        ! this routine itself does not mutate symbol state (E: subprogram
+        ! replays must never re-zero, and main's flush runs once per unit).
         vk = context%symbols(sym)%value_kind
         select case (vk)
         case (VALUE_I32, VALUE_F32, VALUE_LOGICAL)
@@ -175,7 +210,6 @@
         args(3) = i64_immediate(context%session, bytes)
         if (.not. emit_ptr_call(context%session, 'memset', args, unused, &
                                 error_msg)) return
-        context%symbols(sym)%data_storage_zeroed = .true.
     end subroutine zero_fill_data_array_once
 
     recursive subroutine lower_data_object(arena, node, obj_index, cursor, &
@@ -193,20 +227,6 @@
         integer :: sym, k, asz
 
         call set_empty(error_msg)
-        ! A DATA reference makes the whole base array static/default-initialized
-        ! before any element store, so omitted elements read zero (#2349).
-        block
-            integer :: bsym
-            character(len=:), allocatable :: zerr
-            bsym = data_object_array_base_sym(arena, obj_index, context)
-            if (bsym > 0) then
-                call zero_fill_data_array_once(context, bsym, zerr)
-                if (len_trim(zerr) > 0) then
-                    error_msg = zerr
-                    return
-                end if
-            end if
-        end block
         if (is_data_implied_do(arena, obj_index)) then
             call lower_data_implied_do_object(arena, node, obj_index, cursor, &
                                               context, error_msg)
