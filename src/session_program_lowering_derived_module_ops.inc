@@ -2302,7 +2302,7 @@
                         if (.not. allocated(block%kind)) cycle
                         if (trim(lowercase_text(block%kind)) /= 'operator') cycle
                         if (.not. allocated(block%operator)) cycle
-                        if (same_name(block%operator, op_token)) then
+                        if (same_operator_name(block%operator, op_token)) then
                             module_exports_operator = .true.
                             return
                         end if
@@ -2312,6 +2312,44 @@
             end select
         end do
     end function module_exports_operator
+
+    logical function same_operator_name(lhs, rhs)
+        ! Whether two operator spellings denote one generic spec. F2018
+        ! 19.3.2.3: a user-defined relational operator may be referenced
+        ! through either spelling, so `interface operator(.ne.)` exports the
+        ! generic spec that `use m, only: operator(/=)` imports. Comparing the
+        ! literal token rejects that valid pair (#2887); distinct classes must
+        ! still stay distinct so a genuinely absent operator keeps failing.
+        character(len=*), intent(in) :: lhs, rhs
+        character(len=:), allocatable :: a, b
+
+        a = canonical_operator_name(lhs)
+        b = canonical_operator_name(rhs)
+        same_operator_name = a == b
+    end function same_operator_name
+
+    function canonical_operator_name(token) result(canon)
+        ! Map every relational spelling onto one class name.
+        character(len=*), intent(in) :: token
+        character(len=:), allocatable :: canon
+
+        select case (trim(lowercase_text(token)))
+        case ('.eq.', '==')
+            canon = 'eq'
+        case ('.ne.', '/=')
+            canon = 'ne'
+        case ('.lt.', '<')
+            canon = 'lt'
+        case ('.le.', '<=')
+            canon = 'le'
+        case ('.gt.', '>')
+            canon = 'gt'
+        case ('.ge.', '>=')
+            canon = 'ge'
+        case default
+            canon = trim(lowercase_text(token))
+        end select
+    end function canonical_operator_name
 
     logical function module_exports_procedure(arena, module_name, name)
         ! Whether the named module contains a public function or subroutine

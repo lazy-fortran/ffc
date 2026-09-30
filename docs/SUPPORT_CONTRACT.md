@@ -154,6 +154,27 @@ FortFront #2974). FortFront's nested `ASSOCIATE` owner binding is corrected at
 `d1c6a894`, with the direct-session regression covered by
 `test_session_associate_selectors_compiler`.
 
+## USE ONLY operator generic specs (#2887)
+
+A `USE m, only: operator(X)` item names a generic spec, and the six relational
+operators each have two spellings that denote one spec (F2018 19.3.2.3): `==`
+and `.eq.`, `/=` and `.ne.`, `<` and `.lt.`, `<=` and `.le.`, `>` and `.gt.`,
+`>=` and `.ge.`. Export validation therefore compares canonical classes, not
+literal tokens: a module declaring `interface operator(.ne.)` exports the spec
+that `only: operator(/=)` imports, and the reverse.
+
+Equivalence does not cross classes. `.lt.` does not export `<=`, `.gt.` does
+not export `>=`, and an operator the module never declares is still a hard
+rejection. A user-defined relational operator over default integers conflicts
+with the intrinsic, so the fixtures use a derived-type operand.
+
+BIND(C) name checking is unchanged and remains strict: a module subroutine whose
+`bind(c, name=...)` differs from its interface body's label is rejected, naming
+both labels, matching gfortran on `pr89943_3` (`runFu`/`runFoo`). That cluster
+was reported as a false reject and is not one; the negative fixture is pinned in
+`test/test_use_only_operator_spelling.sh` so a later relaxation cannot pass
+silently.
+
 ## Supported now
 
 ### Unlimited-polymorphic assumed-shape arrays
