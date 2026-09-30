@@ -1,0 +1,18 @@
+# Intended rejections confirmed invalid by the reference compiler.
+#
+# This is not a suppressor list. The gate reports every corpus file that the
+# baseline accepted and the current build rejects, because a new rejection is
+# usually a regression. A row may appear here ONLY when the reference compiler
+# rejects the same file, so the new rejection is the fix and the baseline was
+# wrong. Each entry therefore carries the gfortran verdict that justifies it.
+# The gate's own validity triage (`<out>.validity.tsv`) must say INVALID for
+# the listed path; if gfortran ever starts accepting a listed file, the entry
+# is a live regression and must be removed, not kept.
+
+# issue #1351 - ELEMENTAL procedure called through an implicit interface.
+# `real, external :: square` plus `square(arr)` (rank-1 actual, scalar dummy)
+# needs an explicit interface (F2018 15.4.2.1). ffc accepted it silently.
+# gfortran -std=f2018 -fsyntax-only: INVALID, "Explicit interface required for
+# 'square' at (1): elemental procedure". ffc now emits the same diagnostic and
+# exits nonzero. Verified in gate validity triage as INVALID.
+fortfront/examples/f90/issue_1351_elemental_pure.f90
