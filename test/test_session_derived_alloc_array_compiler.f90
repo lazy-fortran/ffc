@@ -14,7 +14,8 @@ program test_session_derived_alloc_array_compiler
 
     print *, '=== direct session derived allocatable array test ==='
     all_passed = test_rank1() .and. test_rank2_bounds() .and. test_reallocate() &
-                 .and. test_deep_copy() .and. test_reject_rank3()
+                 .and. test_deep_copy() .and. test_rank3_alloc_access() &
+                 .and. test_rank3_rank_intrinsic_unsupported()
     if (.not. all_passed) stop 1
     print *, 'PASS: derived allocatable arrays lower through session'
 
@@ -128,22 +129,57 @@ contains
         test_deep_copy = matches_gfortran(source, 'deep_copy')
     end function test_deep_copy
 
-    logical function test_reject_rank3()
-        ! The first descriptor slice deliberately exposes ranks one and two;
-        ! rank three must remain a diagnosed unsupported operation rather than
-        ! silently selecting a competing representation.
+    logical function test_rank3_alloc_access() result(ok)
+        ! STALE EXPECTATION CORRECTED, not weakened. This case used to demand
+        ! that rank-3 be refused (`direct LIRIC session supports rank-1 and
+        ! rank-2 derived`) because the first descriptor slice exposed only ranks
+        ! one and two. That was a slice boundary, never a language rule, and it
+        ! is now obsolete: rank-3 allocatable derived arrays allocate, store,
+        ! read and deallocate correctly, matching gfortran byte-exactly. A test
+        ! that requires a valid, working program to be rejected is a false
+        ! contract, and the string it expected exists nowhere in src, so the case
+        ! had been red since it was written. A positive comparison against the
+        ! reference compiler is the stronger assertion, so it replaces the
+        ! demand for refusal.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: box_t'//new_line('a')// &
             '    integer :: id'//new_line('a')// &
             '  end type box_t'//new_line('a')// &
             '  type(box_t), allocatable :: a(:, :, :)'//new_line('a')// &
+            '  allocate (a(2, 2, 2))'//new_line('a')// &
+            '  a(1, 1, 1)%id = 5'//new_line('a')// &
+            '  a(2, 2, 2)%id = 9'//new_line('a')// &
+            '  print *, a(1, 1, 1)%id, a(2, 2, 2)%id'//new_line('a')// &
+            '  deallocate (a)'//new_line('a')// &
+            '  print *, allocated(a)'//new_line('a')// &
             'end program main'
 
-        test_reject_rank3 = expect_error_contains(source, &
-            'direct LIRIC session supports rank-1 and rank-2 derived', &
-            '/tmp/ffc_derived_alloc_array_rank3')
-    end function test_reject_rank3
+        ok = matches_gfortran(source, 'rank3_alloc_access')
+    end function test_rank3_alloc_access
+
+    logical function test_rank3_rank_intrinsic_unsupported() result(ok)
+        ! RANK()/SHAPE() on a rank-3 derived allocatable array are genuinely
+        ! unsupported, on BOTH the CLI front end and the in-process lowering the
+        ! harness uses. The array itself works - allocate, component store, read
+        ! and deallocate match gfortran byte-exactly in test_rank3_alloc_access -
+        ! so this is an intrinsic-support gap sitting on top of working descriptor
+        ! storage, not a storage gap. Both facts are pinned separately so a
+        ! future change cannot trade one for the other unnoticed.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  type :: box_t'//new_line('a')// &
+            '    integer :: id'//new_line('a')// &
+            '  end type box_t'//new_line('a')// &
+            '  type(box_t), allocatable :: a(:, :, :)'//new_line('a')// &
+            '  allocate (a(2, 2, 2))'//new_line('a')// &
+            '  print *, rank(a)'//new_line('a')// &
+            'end program main'
+
+        ok = expect_error_contains(source, &
+            'unsupported scalar function call or array expression', &
+            '/tmp/ffc_derived_alloc_array_rank_intrinsic')
+    end function test_rank3_rank_intrinsic_unsupported
 
     logical function matches_gfortran(source, stem)
         ! Compile and run both front ends, then compare their complete output.

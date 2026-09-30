@@ -161,6 +161,36 @@ copy all read the descriptor's dimension records. Rank-four owners and
 derived allocatable components remain outside that path; their separate
 inline component descriptor is documented by the support contract.
 
+### Rank-3 derived allocatable owners, and the `RANK`/`SHAPE` gap (#643)
+
+A rank-3 derived-type allocatable **owner** is supported on this descriptor:
+
+```fortran
+type :: box_t
+  integer :: id
+end type box_t
+type(box_t), allocatable :: a(:, :, :)
+allocate (a(2, 2, 2))
+a(1, 1, 1)%id = 5
+print *, a(1, 1, 1)%id
+deallocate (a)
+```
+
+allocates, stores through, reads back and deallocates, matching gfortran
+byte-exactly (`test_session_derived_alloc_array_compiler`). An earlier version
+of that test demanded this declaration be **refused**, because the first
+descriptor slice exposed only ranks one and two; that was a slice boundary and
+not a language rule, and the diagnostic string it expected was never present in
+`src`, so the case had been red since it was written. It is replaced by the
+positive comparison above, which is the stronger assertion.
+
+`RANK(a)` and `SHAPE(a)` on such an array remain **unsupported**, on the CLI
+front end and on the in-process lowering alike:
+`unsupported scalar function call or array expression`. This is an intrinsic
+inquiry gap sitting on top of working descriptor storage, not a storage gap, and
+the two are pinned as separate cases in that test so a future change cannot
+quietly trade one for the other.
+
 ### Assumed-rank `RANK (1)` / `RANK (2)` / `RANK (3)` / `RANK (4)` boundary
 
 The supported genuine assumed-rank slice uses this same descriptor without a
