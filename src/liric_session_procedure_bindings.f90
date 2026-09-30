@@ -194,7 +194,11 @@ contains
         emit_liric_f32_store = .false.
         if (.not. require_open_session(session, error_msg)) return
 
-        unused_vreg = emit_store_typed(session%handle, value, address, error)
+        ! Declare the f32 slot explicitly, matching the typed-store rule in
+        ! RUNTIME_ABI.md; an omitted slot type today infers the same width
+        ! from an f32 value, but the contract is declaration, not inference.
+        unused_vreg = emit_store_typed(session%handle, value, address, error, &
+                                        slot_type=lr_type_f32_s(session%handle))
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
@@ -320,7 +324,9 @@ contains
         emit_liric_f64_store = .false.
         if (.not. require_open_session(session, error_msg)) return
 
-        unused_vreg = emit_store_typed(session%handle, value, address, error)
+        ! Declare the f64 slot explicitly; see emit_liric_f32_store.
+        unused_vreg = emit_store_typed(session%handle, value, address, error, &
+                                        slot_type=lr_type_f64_s(session%handle))
         if (.not. status_ok(error%code, error, error_msg)) return
 
         call set_empty(error_msg)
