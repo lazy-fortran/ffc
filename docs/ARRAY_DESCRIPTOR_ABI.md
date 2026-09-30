@@ -191,6 +191,19 @@ inquiry gap sitting on top of working descriptor storage, not a storage gap, and
 the two are pinned as separate cases in that test so a future change cannot
 quietly trade one for the other.
 
+### Logical elements and store width
+
+A `LOGICAL` element occupies a **four-byte slot**, written and read as four
+bytes. Writing it from a comparison, which arrives as `i1`, must still write the
+full slot: inferring store width from the value produced a one-byte store at a
+four-byte stride, left the upper three bytes uninitialised, and made a `.false.`
+element read back stack garbage and print `.true.`, nondeterministically from a
+byte-identical binary. Section printing had a matching gap - the section print
+dispatch had no logical case, so `print *, l(1:6:1)` emitted `0 1 0 1` while
+`print *, l` and `print *, l(2)` printed `F T F T` correctly. Both are pinned by
+`test/test_logical_array_parity.sh`, twenty runs per shape against gfortran, and
+the width pairing with `liric` is stated in `docs/RUNTIME_ABI.md`.
+
 ### Assumed-rank `RANK (1)` / `RANK (2)` / `RANK (3)` / `RANK (4)` boundary
 
 The supported genuine assumed-rank slice uses this same descriptor without a

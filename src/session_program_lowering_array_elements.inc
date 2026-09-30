@@ -1461,6 +1461,15 @@
             else if (vk == VALUE_F64) then
                 if (.not. emit_liric_print_f64_value(context%session, &
                                                      value, error_msg)) return
+            else if (vk == VALUE_LOGICAL) then
+                ! This dispatcher had no logical case, so every LOGICAL array
+                ! section fell through to the i32 printer and printed `0 1 0 1`
+                ! where list-directed output requires `F T F T`. The scalar and
+                ! whole-array paths already routed through the same helper, so
+                ! `print *, l(2)` and `print *, l` were correct while only the
+                ! section form was wrong. Same helper, same three spellings.
+                call lower_print_logical_value(context, value, error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 if (.not. emit_liric_print_i32_value(context%session, &
                                                      context%i32_print_format_id, &

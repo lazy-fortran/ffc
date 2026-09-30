@@ -176,7 +176,8 @@ jobs:
             test/test_use_only_operator_spelling.sh \
             test/test_elemental_explicit_interface_parity.sh \
             test/test_data_zero_fill_seen_growth.sh \
-            test/test_procedure_pointer_dummies.sh
+            test/test_procedure_pointer_dummies.sh \
+            test/test_logical_array_parity.sh
           do
             printf '::group::%s\n' "$gate"
             if bash "$gate"; then

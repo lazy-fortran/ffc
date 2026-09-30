@@ -984,7 +984,36 @@ compiler-emitted function still calls `malloc` or `free`.
 | 6004 | release of a pointer that is not live |
 | 6005 | release of storage the descriptor does not own |
 
+## Store width and the declared store type
+
+A store writes the number of bytes its **instruction declares**, and only falls
+back to the width of the **value** when the instruction declares nothing.
+This pairing spans two repositories and must not be broken from either side:
+
+- `ffc` `emit_store_i32` emits `LR_OP_STORE` with an explicit `i32` type. It no
+  longer delegates to the untyped `emit_store_typed`, which sets `typ = c_null_ptr`
+  and accepts no type argument.
+- `liric` `LR_OP_STORE` takes its width from the value operand, and if the
+  instruction declares a type, that declared width wins when it is **wider**. A null
+  declared type keeps the previous inference exactly, and a declared width no wider
+  than the value changes nothing.
+
+The case that forced this is a `LOGICAL` element, which occupies a four-byte slot:
+a comparison arrives as `i1`, so inference alone produced a **one-byte store into a
+four-byte slot**, leaving the upper three bytes uninitialised against a four-byte
+load. A `.false.` element then read back whatever stack bytes were there, was
+nonzero, and printed `.true.` - nondeterministically, from a byte-identical binary.
+Storing the declared width writes a defined zero.
+
+Stores of other widths keep their own entry points and are unaffected. Because the
+fallback remains, no caller is required to declare a type; but any caller that
+writes a value narrower than its destination **must** declare the destination width.
+`test/test_logical_array_parity.sh` pins this behaviour and is CI-blocking; it runs
+each shape twenty times against gfortran, because a single run of the broken compiler
+matched roughly two times in three.
+
 ## Building the runtime
+
 
 `runtime/ffc_runtime.c` is compiled by whichever C driver links an emitted
 executable, and by clang in `runtime/CMakeLists.txt`. It states its own
