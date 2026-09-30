@@ -57,7 +57,8 @@
                             ! both. A fixed 64 was added only to bound a fixed
                             ! array, so bounding it at another constant would
                             ! reproduce the same defect one level up.
-                            call grow_seen_list(seen, seen_cap, error_msg)
+                            call grow_seen_list(arena, body_indices(i), seen, &
+                                                seen_cap, error_msg)
                             if (len_trim(error_msg) > 0) return
                         end if
                         call zero_fill_data_array_once(context, s, error_msg)
@@ -72,9 +73,13 @@
         end do
     end subroutine flush_data_statements
 
-    subroutine grow_seen_list(seen, cap, error_msg)
+    subroutine grow_seen_list(arena, node_idx, seen, cap, error_msg)
         ! Double the seen list, preserving what is already recorded. Used when
         ! a unit has more distinct DATA arrays than the current capacity.
+        ! Carries the DATA statement position so a failure names where, rather
+        ! than surfacing at file:1:1 as a bare string does.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_idx
         integer, allocatable, intent(inout) :: seen(:)
         integer, intent(inout) :: cap
         character(len=:), allocatable, intent(out) :: error_msg
@@ -82,14 +87,17 @@
         integer, allocatable :: bigger(:)
         integer :: new_cap, status
         character(len=32) :: count_text
+        character(len=64) :: location
 
         call set_empty(error_msg)
+        write (location, '(" at line ",I0,", column ",I0)') &
+            get_node_line(arena, node_idx), get_node_column(arena, node_idx)
         new_cap = cap * 2
         allocate (bigger(new_cap), stat=status)
         if (status /= 0) then
             write (count_text, '(I0)') new_cap
             error_msg = 'DATA zero-fill seen list could not grow to '// &
-                trim(count_text)//' entries'
+                trim(count_text)//' entries'//trim(location)
             return
         end if
         bigger(1:cap) = seen(1:cap)
