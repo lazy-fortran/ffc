@@ -918,6 +918,7 @@ fixed by the standard and by what programs test for:
 | `_ffc_iostat` | `int _ffc_iostat(void)` | Fortran status of the most recent I/O operation. |
 | `_ffc_iostat_set_end` | `void _ffc_iostat_set_end(void)` | Record an end-of-file condition. |
 | `_ffc_iostat_clear` | `void _ffc_iostat_clear(void)` | Record success. |
+| `_ffc_stdin_require_data` | `void _ffc_stdin_require_data(void)` | Fatal on exhausted stdin: writes `Fortran runtime error: End of file` to stderr and `exit(2)`, matching gfortran. `read(*, *)` lowers to `scanf`, which signals exhaustion by **returning** EOF rather than through a `FILE*` the lowering can inspect, and that return value was discarded, so an exhausted stdin printed an uninitialized value and exited 0. The lowering emits this only when the READ carries no `end=`, no `err=` **and** no `iostat=`, because this path emits no branch to an `end=` label and must not hijack a handler that exists. Delivery of `end=`/`iostat=` on stdin remains open and needs a real branch, not this helper. Reports no line number rather than inventing one. |
 | `_ffc_iomsg` | `void _ffc_iomsg(char *dest, int len)` | Message for the recorded status. |
 
 `_ffc_iomsg` writes with Fortran character assignment semantics: the text is

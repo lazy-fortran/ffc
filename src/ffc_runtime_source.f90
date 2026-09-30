@@ -1201,6 +1201,37 @@ contains
             '}'//NL
         text = text//NL
         text = text// &
+            '/* Fatal unhandled end-of-file on stdin: report and exit 2, as'//NL
+        text = text// &
+            ' * gfortran does. read(*, *) lowers to scanf, which reports'//NL
+        text = text// &
+            ' * exhaustion by returning EOF, and the lowering never keeps the'//NL
+        text = text// &
+            ' * value today, so an exhausted stdin prints an undefined number'//NL
+        text = text// &
+            ' * and exits 0. The caller only emits this when the READ has no'//NL
+        text = text// &
+            ' * end=, err= or iostat=, so a handler is never hijacked. */'//NL
+        text = text// &
+            'void _ffc_stdin_require_data(void) {'//NL
+        text = text// &
+            '    if (!feof(stdin)) {'//NL
+        text = text// &
+            '        return;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    fputs("Fortran runtime error: ", stderr);'//NL
+        text = text// &
+            '    fputs(ffc_iostat_text(FFC_IOSTAT_END), stderr);'//NL
+        text = text// &
+            '    fputc(''\n'', stderr);'//NL
+        text = text// &
+            '    exit(2);'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
             '/* IOMSG= for the most recent operation, written with Fortran'//NL
         text = text// &
             ' * character assignment semantics: the text is truncated to len'//NL

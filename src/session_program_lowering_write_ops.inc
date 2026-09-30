@@ -98,6 +98,35 @@
             if (.not. emit_void_call(context%session, '_ffc_iostat_clear', &
                                      noargs, error_msg)) return
         end block
+        ! A plain unhandled end-of-file is fatal, as in gfortran. Fires only
+        ! when the READ carries no end=, err= AND no iostat=, because this
+        ! stdin path lowers to scanf and emits no branch to an end= label: if
+        ! any of those handlers are present, staying silent is the only choice
+        ! that cannot hijack control flow away from them. So the garbage-and-
+        ! exit-0 case is closed; graceful end= delivery on stdin is still open
+        ! and needs a real end= branch here, not this helper. #1351-adjacent.
+        block
+            character(len=:), allocatable :: end_label, err_label, iostat_name
+            type(lr_operand_desc_t), allocatable :: noargs(:)
+            logical :: handled
+            end_label = ''
+            err_label = ''
+            iostat_name = ''
+            if (allocated(node%io_control_list)) then
+                call io_control_value(node%io_control_list, 'end', end_label)
+                call io_control_value(node%io_control_list, 'err', err_label)
+                call io_control_value(node%io_control_list, 'iostat', &
+                                     iostat_name)
+            end if
+            handled = len_trim(end_label) /= 0
+            handled = handled .or. len_trim(err_label) /= 0
+            handled = handled .or. len_trim(iostat_name) /= 0
+            if (.not. handled) then
+                allocate (noargs(0))
+                if (.not. emit_void_call(context%session, &
+                        '_ffc_stdin_require_data', noargs, error_msg)) return
+            end if
+        end block
         call store_read_iostat_success(node, context, error_msg)
     end subroutine lower_read_stdin
 

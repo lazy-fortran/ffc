@@ -615,6 +615,22 @@ static const char *ffc_iostat_text(int status) {
     }
 }
 
+/* Fatal unhandled end-of-file on stdin: report and exit 2, as
+ * gfortran does. read(*, *) lowers to scanf, which reports
+ * exhaustion by returning EOF, and the lowering never keeps the
+ * value today, so an exhausted stdin prints an undefined number
+ * and exits 0. The caller only emits this when the READ has no
+ * end=, err= or iostat=, so a handler is never hijacked. */
+void _ffc_stdin_require_data(void) {
+    if (!feof(stdin)) {
+        return;
+    }
+    fputs("Fortran runtime error: ", stderr);
+    fputs(ffc_iostat_text(FFC_IOSTAT_END), stderr);
+    fputc('\n', stderr);
+    exit(2);
+}
+
 /* IOMSG= for the most recent operation, written with Fortran
  * character assignment semantics: the text is truncated to len
  * and the remainder is blank filled, never NUL terminated.
