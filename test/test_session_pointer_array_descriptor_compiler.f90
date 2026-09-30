@@ -1,5 +1,6 @@
 program test_session_pointer_array_descriptor
     use ffc_test_support, only: expect_error_contains, expect_output, &
+        expect_output_matches_gfortran, &
         expect_exit_status
     implicit none
 
@@ -64,14 +65,38 @@ program test_session_pointer_array_descriptor
 
     ! Unsupported element layouts must be rejected instead of using the
     ! four-byte integer address helper and corrupting the section base.
+    ! The capability list in the expected diagnostic now includes
+    ! LOGICAL because that claim became TRUE and is pinned positively at
+    ! the positive case below (byte-exact vs gfortran, strided and
+    ! reverse-strided logical pointer sections); the refusal assertion
+    ! itself is unchanged - complex is still refused - so this tracks the
+    ! contract forward, it does not weaken the guard.
     if (.not. expect_error_contains( &
         'program main'//new_line('a')// &
         'complex, target :: a(3)'//new_line('a')// &
         'complex, pointer :: p(:)'//new_line('a')// &
         'p => a(:)'//new_line('a')// &
         'end program main', &
-        'array sections support integer, real(4), and real(8) arrays', &
+        'array sections support integer, logical, real(4), and real(8) arrays', &
         '/tmp/ffc_session_pointer_array_descriptor_unsupported_kind')) stop 6
+
+    ! Positive guard for the LOGICAL entry the refusal message above
+    ! claims: strided and reverse-strided logical pointer sections must
+    ! run and match gfortran byte-exactly (independent-oracle helper),
+    ! so the capability list cannot drift back into a false claim without
+    ! a red test.
+    if (.not. expect_output_matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  implicit none'//new_line('a')// &
+        '  logical, target :: a(6)'//new_line('a')// &
+        '  logical, pointer :: p(:)'//new_line('a')// &
+        '  a = (/.true., .false., .true., .false., .true., .false./)'//new_line('a')// &
+        '  p => a(2:6:2)'//new_line('a')// &
+        '  print *, p(1), p(2), p(3)'//new_line('a')// &
+        '  p => a(6:2:-2)'//new_line('a')// &
+        '  print *, p(1), p(2), p(3)'//new_line('a')// &
+        'end program main', &
+        'logical_pointer_sections')) stop 7
 
     print *, 'PASS: pointer array descriptor, whole array and strided section'
 end program test_session_pointer_array_descriptor
