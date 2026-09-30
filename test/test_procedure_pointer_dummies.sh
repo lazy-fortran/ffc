@@ -102,6 +102,10 @@ if gfortran -std=f2018 -o "$WORK/c2g" "$WORK/c2.f90" >/dev/null 2>&1 \
         echo "FAIL: NOPASS binding differs"
         echo "  gfortran=[$(norm "$WORK/c2.g")] ffc=[$(norm "$WORK/c2.f")]"
         fail=1
+    elif ! grep -q "ran" "$WORK/c2.f"; then
+        # Without this, two empty outputs would compare equal and pass.
+        echo "FAIL: NOPASS binding produced no output (vacuous match)"
+        fail=1
     else
         echo "ok: NOPASS type-bound call matches gfortran"
     fi
