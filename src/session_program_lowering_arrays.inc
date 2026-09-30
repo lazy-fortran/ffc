@@ -3492,6 +3492,7 @@
         character(len=:), allocatable :: source_name
         integer :: source_index
         integer :: source_rank
+        type(lr_operand_desc_t) :: extent64
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
             error_msg = 'shape requires exactly one array argument'
@@ -3521,6 +3522,25 @@
         end if
         if (linear_index < 0 .or. linear_index >= source_rank) then
             error_msg = 'shape result index is out of range'
+            return
+        end if
+
+        ! Same defect class as lower_shape_intrinsic_assignment: an
+        ! ALLOCATABLE source keeps its extents in the descriptor, and
+        ! array_dim_sizes is never written for it. Read the descriptor
+        ! extent so this element path cannot store a silent zero. No
+        ! currently accepted syntax reaches this branch with an allocatable
+        ! source (s(:) = shape(a) refuses with a diagnostic before this
+        ! point); the branch is correctness-for-the-interface, stated as
+        ! unreachable-today rather than silently assumed correct.
+        if (context%symbols(source_index)%is_allocatable) then
+            call emit_alloc_desc_load_extent(context, &
+                context%symbols(source_index)%allocatable_descriptor_address, &
+                int(linear_index + 1), extent64, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i64_to_i32(context%session, extent64, &
+                value, error_msg)) return
+            call set_empty(error_msg)
             return
         end if
 
