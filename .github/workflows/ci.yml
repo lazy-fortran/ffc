@@ -153,6 +153,37 @@ jobs:
         working-directory: ffc
         run: test/test_no_textrel_link.sh
 
+      - name: Behaviour parity gates
+        if: ${{ always() && steps.build_ffc.outcome == 'success' }}
+        working-directory: ffc
+        env:
+          LIBRARY_PATH: ${{ github.workspace }}/liric/build
+        run: |
+          # Each script compares ffc against gfortran on a specific defect or
+          # pinned behaviour cluster. They were previously committed without CI
+          # registration, which meant any of them could go red unnoticed.
+          set -u
+          status=0
+          for gate in \
+            test/test_default_unit_io_parity.sh \
+            test/test_stdin_eof_parity.sh \
+            test/test_pause_stdin_eof_parity.sh \
+            test/test_use_only_operator_spelling.sh \
+            test/test_elemental_explicit_interface_parity.sh \
+            test/test_data_zero_fill_seen_growth.sh \
+            test/test_procedure_pointer_dummies.sh
+          do
+            printf '::group::%s\n' "$gate"
+            if bash "$gate"; then
+              printf '::endgroup::\n'
+            else
+              printf '::endgroup::\n' >&2
+              echo "GATE FAILED: $gate" >&2
+              status=1
+            fi
+          done
+          exit "$status"
+
       - name: Run pinned corpus buckets
         if: ${{ always() && steps.build_ffc.outcome == 'success' }}
         working-directory: ffc
