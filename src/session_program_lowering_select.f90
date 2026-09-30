@@ -855,6 +855,23 @@ contains
             return
         end if
         if (context%symbols(sel_index)%value_kind /= VALUE_CLASS_STAR) then
+            ! A class(t) POINTER selector whose declared type has no
+            ! extension registered anywhere in this compilation - arena or
+            ! imported .fmod, both fully collected before this point - has
+            ! exactly one possible dynamic type: t itself. The guards then
+            ! resolve statically, and F2018's demand for a runtime type
+            ! check is satisfied vacuously. An extension anywhere keeps the
+            ! refusal, because there the identity truly matters (#581
+            ! family, #417 owns the polymorphic descriptor ABI).
+            if (context%symbols(sel_index)%derived_type_index > 0) then
+                if (.not. derived_type_has_extension(context, &
+                    context%symbols(sel_index)%derived_type_index)) then
+                    call lower_select_type_derived(arena, node_index, &
+                        sel_index, sel_name, assoc_name, context, &
+                        error_msg)
+                    return
+                end if
+            end if
             call unsupported_feature_error('select type statement', 0, 0, &
                 'direct LIRIC session supports select type on a class(*) '// &
                 'selector, a monomorphic declared-type class(t) object, or '// &

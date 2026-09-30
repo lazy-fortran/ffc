@@ -1167,6 +1167,30 @@
         end if
     end subroutine bind_runtime_guard_symbol
 
+    logical function derived_type_has_extension(context, base_index) result(ext)
+        ! True when any registered derived type - in-unit arena layout or
+        ! imported .fmod registration - names base as its parent: base's
+        ! dynamic-type set is then larger than {base} and guards on a
+        ! class(base) selector need a runtime identity.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: base_index
+        integer :: i
+        character(len=:), allocatable :: parent_name
+
+        ext = .false.
+        if (base_index <= 0 .or. base_index > context%derived_type_count) return
+        do i = 1, context%derived_type_count
+            if (i == base_index) cycle
+            parent_name = context%derived_types(i)%parent_name
+            if (len_trim(parent_name) == 0) cycle
+            if (lowercase_text(trim(parent_name)) == &
+                lowercase_text(trim(context%derived_types(base_index)%name))) then
+                ext = .true.
+                return
+            end if
+        end do
+    end function derived_type_has_extension
+
     logical function select_type_selector_is_monomorphic(context, sel_index)
         ! True when the selector names a plain declared-type derived object (a
         ! class(t) dummy or local lowered as type(t)): non-allocatable,

@@ -378,3 +378,14 @@ rejected as ambiguous. A cross-unit free-subprogram `class(T)` dummy is
 not yet supported and is refused with an explicit diagnostic rather than
 lowered to a call that loses the actual; `type(T)` dummies and
 vtable-dispatched type-bound calls across units work.
+
+## `select type` on a class-pointer selector (#581 family)
+
+`select type` over a `class(t)` POINTER selector resolves statically when
+no extension of `t` is registered anywhere in the compilation - in-unit
+arena or imported `.fmod`, both fully collected before lowering reaches
+the selector. The dynamic-type set is then exactly {t} and the runtime
+check is satisfied vacuously. An extension registered anywhere, or a
+`class(*)` selector, keeps the runtime-descriptor path or the explicit
+refusal; the child-instance dispatch (`show(k)` with `class(t)` dummy)
+is byte-exact through the descriptor path either way.
