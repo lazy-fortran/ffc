@@ -16,8 +16,8 @@
         !! whole-array zero-fill it owes to F2018 8.5.16 (#2349) is emitted
         !! here; subprogram DATA replays through lower_statement per invocation
         !! and must not re-zero (static subprogram locals are #466 territory).
-        !! zero_fill=.false. at the textual-position tail flush, where earlier
-        !! executable assignments already ran and a memset would erase them.
+        !! zero_fill gates the memset; every current caller passes .true.
+        !! because every flush runs ahead of the unit's executable statements.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: body_indices(:)
         type(lowering_context_t), intent(inout) :: context
@@ -52,6 +52,10 @@
                         if (seen_n < 64) then
                             seen_n = seen_n + 1
                             seen(seen_n) = s
+                        else
+                            error_msg = 'DATA zero-fill seen list overflow: '// &
+                                'too many distinct arrays in one unit'
+                            return
                         end if
                     end do
                 end if

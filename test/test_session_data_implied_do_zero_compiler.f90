@@ -39,5 +39,23 @@ program test_session_data_implied_do_zero_compiler
         'end program p', &
         'data_partial_zero_i8')) stop 1
 
+    ! A statement-label body lowers through the GOTO-aware path, which
+    ! bypasses the structured body walk's DATA flush; the labeled path must
+    ! flush DATA (with whole-array zero-fill) once before its executables.
+    if (.not. expect_output_matches_gfortran( &
+        'program p'//new_line('a')// &
+        '    implicit none'//new_line('a')// &
+        '    integer :: a(4), i'//new_line('a')// &
+        '    data a(1) / 9 /'//new_line('a')// &
+        '    i = 1'//new_line('a')// &
+        '20  continue'//new_line('a')// &
+        '    print *, a'//new_line('a')// &
+        '    if (i < 2) then'//new_line('a')// &
+        '        i = i + 1'//new_line('a')// &
+        '        goto 20'//new_line('a')// &
+        '    end if'//new_line('a')// &
+        'end program p', &
+        'data_partial_zero_labeled')) stop 1
+
     print *, 'PASS: DATA partial init zero-fills omitted elements'
 end program test_session_data_implied_do_zero_compiler
