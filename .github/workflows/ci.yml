@@ -153,6 +153,11 @@ jobs:
         working-directory: ffc
         run: test/test_no_textrel_link.sh
 
+      - name: lowering_context_t field freeze
+        if: ${{ always() && steps.build_ffc.outcome == 'success' }}
+        working-directory: ffc
+        run: scripts/check_lowering_context_freeze.sh
+
       - name: Behaviour parity gates
         if: ${{ always() && steps.build_ffc.outcome == 'success' }}
         working-directory: ffc

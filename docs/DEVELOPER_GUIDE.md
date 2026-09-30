@@ -51,6 +51,40 @@ LIBRARY_PATH=/path/to/liric/build fo test
   update `docs/RUNTIME_ABI.md` in the same change.
 - Never `git add .` or `git add -A`. Stage paths explicitly.
 
+## `lowering_context_t` field freeze
+
+`lowering_context_t` (`src/session_program_lowering_types.f90`) is the state
+shared by every lowering pass. It currently carries **90 fields**. Each added
+field is state that every pass must reason about whether or not it uses it, so
+the surface is frozen: new fields are refused by
+`scripts/check_lowering_context_freeze.sh`, run in CI.
+
+```bash
+scripts/check_lowering_context_freeze.sh            # compares against the allowlist
+```
+
+The frozen surface is `test/fixtures/lowering_context_fields.allow`, one field
+name per line, sorted. The rule works in both directions:
+
+- a field on the context that is **not** in the allowlist fails the gate; the
+  change either carries that state somewhere narrower (a pass-local record, a
+  scoped frame, or an existing field) or retires a field in the same commit and
+  records the swap;
+- a field in the allowlist that **no longer exists** also fails, until the
+  allowlist is shrunk in that same commit. A stale allowlist would let the next
+  addition through for free, so shrinking is the visible reward of the Phase 3
+  descriptor and lifetime work.
+
+The gate carries a vacuous-pass guard: it fails if the extractor cannot see a
+known anchor (`arena`, `session`, `symbols`, `symbol_count`, `binding_table`) or
+finds fewer than 50 fields, because comparing an empty extraction against itself
+would otherwise report success. Any gate in this repo that compares current state
+against a recorded baseline needs the same guard.
+
+This is a ceiling, not a floor. It does not approve the 90 fields it records;
+`#337`/`#338`/`#339`/`#348` and the descriptor work in Phase 3 exist to reduce
+them, and each reduction should land with a smaller allowlist.
+
 ## Feature order
 
 The supported surface is in `docs/SUPPORT_CONTRACT.md`. Broadly the order
