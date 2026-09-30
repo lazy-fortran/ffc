@@ -59,12 +59,16 @@ contains
     end procedure emit_i8_load
 
     module procedure emit_i8_store
+        use liric_session_bindings, only: lr_type_i8_s
         type(lr_error_t) :: error
         integer(c_int32_t) :: unused_vreg
 
         emit_i8_store = .false.
         if (.not. require_open_session(session, error_msg)) return
-        unused_vreg = emit_store_typed(session%handle, value, address, error)
+        ! Explicit i8 slot width: pins the destination against a narrower
+        ! incoming value instead of relying on value-inferred width.
+        unused_vreg = emit_store_typed(session%handle, value, address, error, &
+                                        slot_type=lr_type_i8_s(session%handle))
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         emit_i8_store = .true.
@@ -156,12 +160,15 @@ contains
     end procedure emit_i16_load
 
     module procedure emit_i16_store
+        use liric_session_bindings, only: lr_type_i16_s
         type(lr_error_t) :: error
         integer(c_int32_t) :: unused_vreg
 
         emit_i16_store = .false.
         if (.not. require_open_session(session, error_msg)) return
-        unused_vreg = emit_store_typed(session%handle, value, address, error)
+        ! Explicit i16 slot width, same rule as emit_i8_store.
+        unused_vreg = emit_store_typed(session%handle, value, address, error, &
+                                        slot_type=lr_type_i16_s(session%handle))
         if (.not. status_ok(error%code, error, error_msg)) return
         call set_empty(error_msg)
         emit_i16_store = .true.

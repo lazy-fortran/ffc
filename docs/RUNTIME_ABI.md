@@ -986,31 +986,42 @@ compiler-emitted function still calls `malloc` or `free`.
 
 ## Store width and the declared store type
 
-A store writes the number of bytes its **instruction declares**, and only falls
-back to the width of the **value** when the instruction declares nothing.
-This pairing spans two repositories and must not be broken from either side:
+A store takes its width from the **value** operand, with exactly one narrowing
+exception: when the value is `i1` and the **instruction declares** a wider
+type, the declared slot width wins. This pairing spans two repositories and
+must not be broken from either side:
 
-- `ffc` `emit_store_i32` emits `LR_OP_STORE` with an explicit `i32` type. It no
-  longer delegates to the untyped `emit_store_typed`, which sets `typ = c_null_ptr`
-  and accepts no type argument.
-- `liric` `LR_OP_STORE` takes its width from the value operand, and if the
-  instruction declares a type, that declared width wins when it is **wider**. A null
-  declared type keeps the previous inference exactly, and a declared width no wider
-  than the value changes nothing.
+- `ffc` store entry points declare their slot explicitly by passing
+  `slot_type` to `emit_store_typed`: `emit_store_i32` (`i32`),
+  `emit_store_i64` (`i64`), `emit_store_ptr` (pointer), `emit_i8_store`
+  (`i8`), and `emit_i16_store` (`i16`). A caller that omits `slot_type` gets
+  the historical untyped behaviour (`typ = c_null_ptr`, width inferred from
+  the value) byte-for-byte.
+- `liric` `LR_OP_STORE` widens **only an `i1` value** into a wider declared
+  slot. The restriction is deliberate: every `i1` value is canonicalised
+  0/1 across the full register before it reaches a store (`LR_OP_ICMP` ends
+  in `movzx`; narrow loads are `movzx`; narrow stores are byte-granular), so
+  widening writes defined bits, never register garbage. Widening some other
+  narrow value (for example an `i8` into an `i32` slot) could overwrite bytes
+  a caller deliberately left alone - the same silent-corruption class this
+  rule fixes - so it keeps the inferred width exactly.
 
-The case that forced this is a `LOGICAL` element, which occupies a four-byte slot:
-a comparison arrives as `i1`, so inference alone produced a **one-byte store into a
-four-byte slot**, leaving the upper three bytes uninitialised against a four-byte
-load. A `.false.` element then read back whatever stack bytes were there, was
-nonzero, and printed `.true.` - nondeterministically, from a byte-identical binary.
-Storing the declared width writes a defined zero.
+The case that forced this is a `LOGICAL` element, which occupies a four-byte
+slot: a comparison arrives as `i1`, so inference alone produced a
+**one-byte store into a four-byte slot**, leaving the upper three bytes
+uninitialised against a four-byte load. A `.false.` element then read back
+whatever stack bytes were there, was nonzero, and printed `.true.` -
+nondeterministically, from a byte-identical binary. Storing the declared slot
+width writes a defined zero.
 
-Stores of other widths keep their own entry points and are unaffected. Because the
-fallback remains, no caller is required to declare a type; but any caller that
-writes a value narrower than its destination **must** declare the destination width.
-`test/test_logical_array_parity.sh` pins this behaviour and is CI-blocking; it runs
-each shape twenty times against gfortran, because a single run of the broken compiler
-matched roughly two times in three.
+Any caller that writes a value into a slot wider than the value **should**
+declare the destination width; for `i1` values it is required for
+correctness. `test/test_logical_array_parity.sh` pins this behaviour and is
+CI-blocking; it runs each shape at least twenty times (a `RUNS` floor of 20
+is enforced inside the script) against gfortran, records each binary's md5,
+and treats a nonzero binary exit as a failure so a correct-then-crash run
+cannot pass. A single run of the broken compiler matched roughly two times
+in three.
 
 ## Building the runtime
 

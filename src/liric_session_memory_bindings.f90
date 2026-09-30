@@ -302,10 +302,12 @@ module liric_session_memory_bindings
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
         end function emit_extract_value_typed
-        module function emit_store_typed(handle, value, address, error) result(vreg)
+        module function emit_store_typed(handle, value, address, error, &
+                                          slot_type) result(vreg)
             type(c_ptr), intent(in) :: handle
             type(lr_operand_desc_t), intent(in) :: value, address
             type(lr_error_t), intent(inout) :: error
+            type(c_ptr), intent(in), optional :: slot_type
             integer(c_int32_t) :: vreg
         end function emit_store_typed
         module function i8_vreg_op(session, vreg) result(operand)

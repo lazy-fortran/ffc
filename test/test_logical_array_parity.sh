@@ -28,7 +28,14 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 FFC="${FFC:-$ROOT/build/fo/bin/ffc}"
+# RUNS floor: this oracle exists because the defect passed roughly 2 runs in
+# 3, so a low run count is not a weaker test - it is a different, worthless
+# test. Anything below 20 (or not a number) is raised to 20, loudly.
 RUNS="${RUNS:-20}"
+if ! [ "$RUNS" -eq "$RUNS" ] 2>/dev/null || [ "$RUNS" -lt 20 ]; then
+    echo "note: RUNS=$RUNS is below the parity floor; using 20"
+    RUNS=20
+fi
 WORK="$(mktemp -d /tmp/ffc-logical-parity.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 fail=0
@@ -51,8 +58,14 @@ check_shape() {
         fail=1
         return
     fi
-    local expected
+    local expected gfort_status
     expected="$("$WORK/$tag.g" | tr -d '[:space:]')"
+    gfort_status=$?
+    if [ "$gfort_status" -ne 0 ]; then
+        echo "FAIL: gfortran binary for $tag exited $gfort_status"
+        fail=1
+        return
+    fi
     if [ -z "$expected" ]; then
         echo "FAIL: gfortran produced no output for $tag.f90"
         fail=1
@@ -65,18 +78,38 @@ check_shape() {
         fail=1
         return
     fi
-    local i actual bad=0
+    # Pin that all RUNS execute the SAME binary, and record its md5 so a
+    # passing run is attributable to a specific artifact.
+    local binary_md5
+    binary_md5="$(md5sum "$WORK/$tag.f" | cut -d' ' -f1)"
+    local i actual bad=0 crashed=0 run_status
     for i in $(seq 1 "$RUNS"); do
-        actual="$("$WORK/$tag.f" | tr -d '[:space:]')"
+        actual="$("$WORK/$tag.f" 2>"$WORK/$tag.run.$i.err" | tr -d '[:space:]')"
+        run_status=$?
+        if [ "$run_status" -ne 0 ]; then
+            # A correct-then-crash run must NOT count as a match: the crash
+            # is itself the undefined-behaviour signature this test exists to
+            # catch, and truncated output could otherwise equal expected.
+            crashed=$((crashed + 1))
+            continue
+        fi
         [ "$actual" = "$expected" ] || bad=$((bad + 1))
     done
+    if [ "$crashed" -ne 0 ]; then
+        echo "FAIL: $tag binary exited nonzero on $crashed of $RUNS runs"
+        sed -n '1,2p' "$WORK/$tag.run.1.err" 2>/dev/null
+        echo "      binary md5: $binary_md5"
+        fail=1
+    fi
     if [ "$bad" -ne 0 ]; then
         echo "FAIL: $tag differed on $bad of $RUNS runs"
         echo "      expected: [$expected]"
         echo "      got:      [$actual]"
+        echo "      binary md5: $binary_md5"
         fail=1
-    else
+    elif [ "$crashed" -eq 0 ]; then
         echo "ok: $tag matches gfortran on $RUNS/$RUNS runs [$expected]"
+        echo "    binary md5: $binary_md5"
     fi
 }
 

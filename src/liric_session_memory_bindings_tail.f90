@@ -68,36 +68,16 @@ contains
     end procedure emit_load_i32
 
     module procedure emit_store_i32
-        type(lr_operand_desc_t), target :: operands(2)
-        type(lr_inst_desc_t) :: inst
 
-        ! Declare the store width rather than delegating to the untyped store,
+        ! Declare the store width rather than relying on the untyped default,
         ! which infers width from the VALUE operand. A comparison result is i1
         ! while the LOGICAL element it initialises occupies an i32 slot, so an
         ! inferred width wrote one byte into a four-byte slot and left the upper
         ! three bytes uninitialised against a four-byte load - a .false. element
         ! then read back as stack garbage and printed .true., nondeterministically.
-        ! Paired with the declared-type override in liric target_x86_64.c
-        ! LR_OP_STORE. Other widths keep their own entry points untouched.
-        operands(1) = value
-        operands(2) = address
-
-        inst%op = LR_OP_STORE
-        inst%typ = lr_type_i32_s(handle)
-        inst%dest = 0_c_int32_t
-        inst%operands = c_loc(operands)
-        inst%num_operands = 2_c_int32_t
-        inst%indices = c_null_ptr
-        inst%num_indices = 0_c_int32_t
-        inst%align = 0_c_int32_t
-        inst%icmp_pred = 0_c_int
-        inst%fcmp_pred = 0_c_int
-        inst%call_external_abi = c_false
-        inst%call_vararg = c_false
-        inst%call_fixed_args = 0_c_int32_t
-
-        call clear_liric_error(error)
-        vreg = lr_session_emit(handle, inst, error)
+        ! Paired with the i1 widening rule in liric target_x86_64.c LR_OP_STORE.
+        vreg = emit_store_typed(handle, value, address, error, &
+                                 slot_type=lr_type_i32_s(handle))
     end procedure emit_store_i32
 
     module procedure emit_load_i64
@@ -112,7 +92,10 @@ contains
 
     module procedure emit_store_i64
 
-        vreg = emit_store_typed(handle, value, address, error)
+        ! Explicit i64 slot width, same rule as emit_store_i32: the declared
+        ! type pins the slot so a narrow value cannot under-write it.
+        vreg = emit_store_typed(handle, value, address, error, &
+                                 slot_type=lr_type_i64_s(handle))
     end procedure emit_store_i64
 
     module procedure emit_binary_i64
@@ -168,7 +151,10 @@ contains
 
     module procedure emit_store_ptr
 
-        vreg = emit_store_typed(handle, value, address, error)
+        ! Explicit pointer slot width (8 bytes); pins the slot against a
+        ! narrower incoming value exactly as emit_store_i32 does for LOGICAL.
+        vreg = emit_store_typed(handle, value, address, error, &
+                                 slot_type=lr_type_ptr_s(handle))
     end procedure emit_store_ptr
 
     module function global_operand(session, id, typ) result(operand)
@@ -495,12 +481,23 @@ contains
     module procedure emit_store_typed
         type(lr_operand_desc_t), target :: operands(2)
         type(lr_inst_desc_t) :: inst
+        type(c_ptr) :: slot
 
         operands(1) = value
         operands(2) = address
 
+        ! A missing slot_type keeps the historical untyped behaviour (width
+        ! inferred from the VALUE) byte-for-byte. Callers whose destination
+        ! slot is known declare it so a value that arrives narrower than the
+        ! slot cannot under-write it; see RUNTIME_ABI.md store-width pairing.
+        if (present(slot_type)) then
+            slot = slot_type
+        else
+            slot = c_null_ptr
+        end if
+
         inst%op = LR_OP_STORE
-        inst%typ = c_null_ptr
+        inst%typ = slot
         inst%dest = 0_c_int32_t
         inst%operands = c_loc(operands)
         inst%num_operands = 2_c_int32_t
