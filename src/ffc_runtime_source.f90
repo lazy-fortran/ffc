@@ -341,6 +341,24 @@ contains
         text = text// &
             '    }'//NL
         text = text// &
+            '    /* STATUS=''UNKNOWN'' on an existing file must not be replaced'//NL
+        text = text// &
+            '     * just because the update probe failed: a file that exists'//NL
+        text = text// &
+            '     * but rejects "r+" (permissions, ACL) would be truncated by'//NL
+        text = text// &
+            '     * an unconditional "w+". Create only when the probe says the'//NL
+        text = text// &
+            '     * file is genuinely absent, which is the same invariant'//NL
+        text = text// &
+            '     * _ffc_unit_file_mode holds for fort.<N>. */'//NL
+        text = text// &
+            '    if (errno != ENOENT) {'//NL
+        text = text// &
+            '        return NULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
             '    return fopen(path, "w+");'//NL
         text = text// &
             '}'//NL
@@ -629,11 +647,23 @@ contains
             '}'//NL
         text = text//NL
         text = text// &
-            '/* Repositions the unit to its first record. */'//NL
+            '/* Repositions the unit to its first record. Connects through the'//NL
+        text = text// &
+            ' * read-intent path: REWIND carries no write of its own, so making'//NL
+        text = text// &
+            ' * the default connection here must never truncate. Routing it'//NL
+        text = text// &
+            ' * through the write-intent _ffc_unit_file destroyed fort.<N> for'//NL
+        text = text// &
+            ' * a program that only ever read it (verified: rewind(10) then'//NL
+        text = text// &
+            ' * read(unit=10,fmt=''(a)'') left a 0-byte file where the source'//NL
+        text = text// &
+            ' * held "PRESERVE"). */'//NL
         text = text// &
             'int _ffc_unit_rewind(int unit) {'//NL
         text = text// &
-            '    FILE *fp = _ffc_unit_file(unit);'//NL
+            '    FILE *fp = _ffc_unit_file_read(unit);'//NL
         text = text// &
             '    if (fp == NULL) {'//NL
         text = text// &

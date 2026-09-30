@@ -226,10 +226,15 @@
         if (len_trim(error_msg) > 0) return
         call branch_on_eof_to_end_label(node, fp, context, error_msg)
         if (len_trim(error_msg) > 0) return
-        ! '(A)' and '(A<n>)' land here, not in the fscanf path, so the
-        ! unhandled end-of-file check has to be made here too. err_value is
-        ! this statement's own conversion status, so the fatal stays quiet when
-        ! the value was in fact read.
+        ! NOTE: '(A)' and '(A<n>)' land here rather than in the fscanf path.
+        ! An unhandled end-of-file is NOT made fatal on this path, nor on any
+        ! other read path at HEAD: gfortran exits 2 there and ffc exits 0.
+        ! Neither feof alone (it also becomes true after a correct read of a
+        ! final record with no trailing newline, so it aborts good reads) nor
+        ! err_value alone (it is clear for a genuinely empty file, so it
+        ! tolerates the absent case) decides it correctly; the condition needs a
+        ! per-statement consumed-byte signal this lowering does not carry.
+        ! Tracked in the workspace plan; do not re-add a feof-only abort.
     end subroutine lower_read_file_al
 
     subroutine emit_al_error_slot(context, err_slot, error_msg)

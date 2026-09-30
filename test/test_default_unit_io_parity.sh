@@ -144,14 +144,52 @@ run_case read_existing "$WORK/read_existing.f90" "printf 'world\n' > fort.10"
 # must never leave a bogus record behind. Full parity on exit status is NOT
 # asserted: gfortran treats an unhandled end-of-file as fatal (exit 2) and ffc
 # does not yet, which is tracked as backlog rather than pinned as a red gate.
+cat > "$WORK/read_absent.f90" <<'EOF'
+program read_absent
+    implicit none
+    character(20) :: s
+    read (unit=10, fmt='(a)') s
+    print *, 's=[', trim(s), ']'
+end program read_absent
+EOF
 mkdir -p "$WORK/absent.fdir"
-if "$FFC" "$WORK/read_absent.f90" -o "$WORK/absent.f" >/dev/null 2>&1; then
-    ( cd "$WORK/absent.fdir" && timeout 20 "$WORK/absent.f" ) >"$WORK/absent.f.out" 2>&1
+if ! "$FFC" "$WORK/read_absent.f90" -o "$WORK/absent.f" >"$WORK/absent.build" 2>&1; then
+    echo "FAIL: read_absent could not be built (a silently skipped case asserts nothing)"
+    tail -5 "$WORK/absent.build"
+    fail=1
+else
+    ( cd "$WORK/absent.fdir" && rm -f fort.10 && timeout 20 "$WORK/absent.f" ) >"$WORK/absent.f.out" 2>&1
     if [ -s "$WORK/absent.fdir/fort.10" ]; then
         echo "FAIL: read_absent wrote invented content into fort.10"
         fail=1
     else
         echo "ok: read_absent created no bogus content"
+    fi
+fi
+
+# Case 2b: REWIND on an unconnected unit must not destroy the default file.
+# REWIND carries no write of its own, so connecting the unit for the rewind
+# used to go through the write-intent path and truncate fort.<N> for a program
+# that only ever read it.
+cat > "$WORK/rewind_preserves.f90" <<'EOF'
+program rewind_preserves
+    implicit none
+    rewind(10)
+    print *, 'rewound'
+end program rewind_preserves
+EOF
+mkdir -p "$WORK/rw.fdir"
+if ! "$FFC" "$WORK/rewind_preserves.f90" -o "$WORK/rw.f" >"$WORK/rw.build" 2>&1; then
+    echo "FAIL: rewind_preserves could not be built"
+    tail -5 "$WORK/rw.build"
+    fail=1
+else
+    ( cd "$WORK/rw.fdir" && printf 'PRESERVE\n' > fort.10 && timeout 20 "$WORK/rw.f" ) >/dev/null 2>&1
+    if [ "$(cat "$WORK/rw.fdir/fort.10" 2>/dev/null | tr -d '\n')" = "PRESERVE" ]; then
+        echo "ok: rewind left fort.10 intact"
+    else
+        echo "FAIL: rewind destroyed fort.10 (size $(stat -c%s "$WORK/rw.fdir/fort.10" 2>/dev/null))"
+        fail=1
     fi
 fi
 

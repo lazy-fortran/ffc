@@ -165,6 +165,15 @@ static FILE *ffc_unit_fopen(const char *path,
     if (fp != NULL) {
         return fp;
     }
+    /* STATUS='UNKNOWN' on an existing file must not be replaced
+     * just because the update probe failed: a file that exists
+     * but rejects "r+" (permissions, ACL) would be truncated by
+     * an unconditional "w+". Create only when the probe says the
+     * file is genuinely absent, which is the same invariant
+     * _ffc_unit_file_mode holds for fort.<N>. */
+    if (errno != ENOENT) {
+        return NULL;
+    }
     return fopen(path, "w+");
 }
 
@@ -312,9 +321,15 @@ FILE *_ffc_unit_file_read(int unit) {
     return ffc_unit_file_mode(unit, "r+");
 }
 
-/* Repositions the unit to its first record. */
+/* Repositions the unit to its first record. Connects through the
+ * read-intent path: REWIND carries no write of its own, so making
+ * the default connection here must never truncate. Routing it
+ * through the write-intent _ffc_unit_file destroyed fort.<N> for
+ * a program that only ever read it (verified: rewind(10) then
+ * read(unit=10,fmt='(a)') left a 0-byte file where the source
+ * held "PRESERVE"). */
 int _ffc_unit_rewind(int unit) {
-    FILE *fp = _ffc_unit_file(unit);
+    FILE *fp = _ffc_unit_file_read(unit);
     if (fp == NULL) {
         return ffc_unit_last_status;
     }
