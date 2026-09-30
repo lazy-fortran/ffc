@@ -565,6 +565,7 @@ module session_program_lowering_impl
     public :: lower_i32_len_intrinsic, lower_i32_len_trim_intrinsic
     public :: lower_i32_proc_ptr_call, lower_iachar_intrinsic
     public :: lower_index_intrinsic, lower_lbound_intrinsic
+    public :: lower_rank_intrinsic
     public :: lower_comparison_mask_element, lower_repeat_deferred
     public :: lower_f32_real_conversion, lower_f64_real_conversion
     public :: lower_logical_array_all_intrinsic
@@ -3975,6 +3976,14 @@ module session_program_lowering_impl
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_lbound_intrinsic
+        module subroutine lower_rank_intrinsic(arena, node, context, value, &
+                                               error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_rank_intrinsic
         module subroutine lower_ubound_intrinsic(arena, node, context, value, &
                                                  error_msg)
             type(ast_arena_t), intent(in) :: arena

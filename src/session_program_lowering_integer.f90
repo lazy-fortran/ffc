@@ -419,6 +419,11 @@ contains
             error_msg)
         return
     end if
+    if (same_name(node%name, 'rank') .and. .not. &
+        is_contained_i32_function(context, node%name)) then
+        call lower_rank_intrinsic(arena, node, context, value, error_msg)
+        return
+    end if
     if (same_name(node%name, 'lbound') .and. .not. &
         is_contained_i32_function(context, node%name)) then
         call lower_lbound_intrinsic(arena, node, context, value, error_msg)

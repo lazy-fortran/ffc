@@ -3413,6 +3413,7 @@
         integer :: source_index
         integer :: source_rank
         integer :: i
+        type(lr_operand_desc_t) :: extent64
 
         select type (rhs => arena%entries(node%value_index)%node)
         type is (call_or_subscript_node)
@@ -3453,9 +3454,25 @@
                     context%symbols(symbol_index)%element_address, &
                     i32_immediate(context%session, int(i - 1, c_int64_t)), addr, &
                     error_msg)) return
-            value = i32_immediate(context%session, &
-                                  int(context%symbols(source_index)%array_dim_sizes(i), &
-                                      c_int64_t))
+            ! An ALLOCATABLE source carries its extents in its descriptor,
+            ! not in the static array_dim_sizes slots. Reading the static
+            ! slots for an allocatable shipped zeros: `s = shape(a)` silently
+            ! stored 0 where gfortran stores the runtime extent (verified
+            ! ffc [0 0] vs gfortran [2 3] at this commit's parent). Load the
+            ! descriptor extent per dimension, the same source lbound and
+            ! ubound already use.
+            if (context%symbols(source_index)%is_allocatable) then
+                call emit_alloc_desc_load_extent(context, &
+                    context%symbols(source_index)%allocatable_descriptor_address, &
+                    int(i), extent64, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i64_to_i32(context%session, extent64, &
+                    value, error_msg)) return
+            else
+                value = i32_immediate(context%session, &
+                                      int(context%symbols(source_index)% &
+                                          array_dim_sizes(i), c_int64_t))
+            end if
             if (.not. emit_i32_store(context%session, value, addr, error_msg)) &
                 return
         end do

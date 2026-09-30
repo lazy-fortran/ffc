@@ -184,12 +184,32 @@ not a language rule, and the diagnostic string it expected was never present in
 `src`, so the case had been red since it was written. It is replaced by the
 positive comparison above, which is the stronger assertion.
 
-`RANK(a)` and `SHAPE(a)` on such an array remain **unsupported**, on the CLI
-front end and on the in-process lowering alike:
-`unsupported scalar function call or array expression`. This is an intrinsic
-inquiry gap sitting on top of working descriptor storage, not a storage gap, and
-the two are pinned as separate cases in that test so a future change cannot
-quietly trade one for the other.
+`RANK(a)` and `SHAPE(a)` are **supported** as of this commit:
+
+- `RANK(a)` lowers to the declared rank as an `i32` immediate — F2018
+  16.9.122 makes RANK a compile-time value for every non-assumed-rank
+  array, so it is correct whether or not the array is currently allocated.
+  Pinned on integer rank-1/2/3, static rank-4, and rank-3 derived
+  allocatables (`test_session_derived_alloc_array_compiler`,
+  `test_rank3_rank_intrinsic`, converted from refusal to byte-exact).
+- `s = shape(a)` where `s` is a rank-1 integer array of length
+  `RANK(a)` reads each extent **from the descriptor**
+  (`emit_alloc_desc_load_extent`) and stores it into `s(i)`. Until now it
+  read the static `array_dim_sizes` slots, which an allocatable never
+  writes: `s = shape(a)` **silently stored zeros** where gfortran stored
+  the extents (verified `ffc [0 0]` vs `gfortran [2 3]` at the parent
+  commit — a wrong-output defect, not a refusal). Fixed and falsified:
+  reverting the descriptor read brings the zeros back and the oracle
+  fails; `7 5 7 2 4 6 2 3` matches gfortran 20/20 including a
+  reallocated `(5,7)` array and a derived rank-3 `(2,4,6)` owner.
+
+STILL OPEN within #643, stated rather than smoothed: `print *, shape(a)`
+directly as a print item is refused (`unsupported scalar intrinsic`) —
+array-valued inquiry results have no print materialization path yet; and
+whole-array **broadcast into an allocatable component**, `h%items = 5`, is
+refused (`unsupported allocatable array component assignment`) while
+element access on the same component works. Both are pinned by the live
+CLI refusals at this commit.
 
 ### Logical elements and store width
 

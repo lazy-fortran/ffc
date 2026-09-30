@@ -1,6 +1,42 @@
 submodule (session_program_lowering_impl) session_program_lowering_intrinsics_extra
     implicit none
 contains
+    ! rank(a): number of dimensions of an array. F2018 makes RANK a
+    ! compile-time value for every non-assumed-rank array, so the lowering
+    ! is the declared rank as an i32 immediate - allocatable, pointer, and
+    ! static arrays all carry their rank in the symbol table, and an
+    ! unallocated allocatable still has a rank (F2018 16.9.122).
+    subroutine lower_rank_intrinsic(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: array_name
+        integer :: sym
+
+        if (.not. allocated(node%arg_indices) .or. &
+            size(node%arg_indices) /= 1) then
+            error_msg = 'rank requires exactly one argument'
+            return
+        end if
+        call get_identifier_name(arena, node%arg_indices(1), array_name, &
+            error_msg)
+        if (len_trim(error_msg) > 0) return
+        sym = find_symbol_compat(context, array_name)
+        if (sym <= 0) then
+            error_msg = 'rank: array not declared: '//trim(array_name)
+            return
+        end if
+        if (.not. context%symbols(sym)%is_array) then
+            error_msg = 'rank argument must be an array: '//trim(array_name)
+            return
+        end if
+        value = i32_immediate(context%session, &
+            int(context%symbols(sym)%array_rank, c_int64_t))
+        call set_empty(error_msg)
+    end subroutine lower_rank_intrinsic
+
     ! lbound(a, dim): lower bound of array dimension dim (1-based).
     subroutine lower_lbound_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena

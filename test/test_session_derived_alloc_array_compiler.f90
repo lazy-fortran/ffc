@@ -15,7 +15,7 @@ program test_session_derived_alloc_array_compiler
     print *, '=== direct session derived allocatable array test ==='
     all_passed = test_rank1() .and. test_rank2_bounds() .and. test_reallocate() &
                  .and. test_deep_copy() .and. test_rank3_alloc_access() &
-                 .and. test_rank3_rank_intrinsic_unsupported()
+                 .and. test_rank3_rank_intrinsic()
     if (.not. all_passed) stop 1
     print *, 'PASS: derived allocatable arrays lower through session'
 
@@ -158,28 +158,35 @@ contains
         ok = matches_gfortran(source, 'rank3_alloc_access')
     end function test_rank3_alloc_access
 
-    logical function test_rank3_rank_intrinsic_unsupported() result(ok)
-        ! RANK()/SHAPE() on a rank-3 derived allocatable array are genuinely
-        ! unsupported, on BOTH the CLI front end and the in-process lowering the
-        ! harness uses. The array itself works - allocate, component store, read
-        ! and deallocate match gfortran byte-exactly in test_rank3_alloc_access -
-        ! so this is an intrinsic-support gap sitting on top of working descriptor
-        ! storage, not a storage gap. Both facts are pinned separately so a
-        ! future change cannot trade one for the other unnoticed.
+    logical function test_rank3_rank_intrinsic() result(ok)
+        ! CONVERTED refusal → PASS, not deleted. This case used to pin the
+        ! RANK()/SHAPE() gap on a rank-3 derived allocatable array
+        ! ('unsupported scalar function call or array expression'). The gap
+        ! is closed: RANK lowers to the declared rank (frozen F2018
+        ! 16.9.122 value) and SHAPE reads the descriptor extents per
+        ! dimension instead of the static array_dim_sizes slots that were
+        ! never written for an allocatable (before the fix this silently
+        ! stored 0 where gfortran stored the extent). Falsified before
+        ! landing: reverting the descriptor read brings the zeros back and
+        ! this oracle fails. The comment's original warning - do not trade
+        ! storage for inquiry - is now honored by pinning BOTH positively.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  type :: box_t'//new_line('a')// &
             '    integer :: id'//new_line('a')// &
             '  end type box_t'//new_line('a')// &
             '  type(box_t), allocatable :: a(:, :, :)'//new_line('a')// &
+            '  integer :: sq(3)'//new_line('a')// &
             '  allocate (a(2, 2, 2))'//new_line('a')// &
+            '  print *, rank(a)'//new_line('a')// &
+            '  sq = shape(a)'//new_line('a')// &
+            '  print *, sq(1), sq(2), sq(3)'//new_line('a')// &
+            '  deallocate (a)'//new_line('a')// &
             '  print *, rank(a)'//new_line('a')// &
             'end program main'
 
-        ok = expect_error_contains(source, &
-            'unsupported scalar function call or array expression', &
-            '/tmp/ffc_derived_alloc_array_rank_intrinsic')
-    end function test_rank3_rank_intrinsic_unsupported
+        ok = matches_gfortran(source, 'rank3_rank_intrinsic')
+    end function test_rank3_rank_intrinsic
 
     logical function matches_gfortran(source, stem)
         ! Compile and run both front ends, then compare their complete output.
