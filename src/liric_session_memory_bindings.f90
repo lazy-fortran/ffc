@@ -956,7 +956,12 @@ contains
         operands(2) = addr
 
         store_inst%op = LR_OP_STORE
-        store_inst%typ = c_null_ptr
+        ! The function's name is its contract: this stores an i64
+        ! descriptor word. Declaring i64 pins the slot width so a value
+        ! that ever arrives narrower (an i1 comparison, say) cannot
+        ! under-write the descriptor word; today every caller already
+        ! passes i64-width values, so the emitted code is unchanged.
+        store_inst%typ = lr_type_i64_s(session%handle)
         store_inst%dest = 0_c_int32_t
         store_inst%operands = c_loc(operands)
         store_inst%num_operands = 2_c_int32_t
