@@ -28,9 +28,16 @@ TYPE_NAME="lowering_context_t"
 fail=0
 
 extract_fields() {
+    # Capture EVERY name on a declaration line: Fortran allows
+    # `integer :: a, b`, and an extractor that took only the first name would
+    # let a new field ride in on an existing multi-name line unnoticed.
     awk "/type, public :: ${TYPE_NAME}/,/end type ${TYPE_NAME}/" "$SRC" |
-        grep -oE "^[[:space:]]+(integer|logical|character|real|class|type|procedure)[^:]*::[[:space:]]*[a-z_0-9]+" |
-        sed 's/.*::[[:space:]]*//' | tr 'A-Z' 'a-z' |
+        grep -E "^[[:space:]]+(integer|logical|character|real|class|type|procedure)[^:]*::" |
+        sed 's/.*::[[:space:]]*//' |
+        tr ',' '\n' |
+        sed 's/=.*//' | tr -d ' \t' | tr 'A-Z' 'a-z' |
+        sed 's/[^a-z_0-9].*//' |
+        grep -E '^[a-z_][a-z_0-9]*$' |
         grep -v "^${TYPE_NAME}\$" | sort -u
 }
 
