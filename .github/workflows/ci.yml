@@ -148,6 +148,11 @@ jobs:
 
           exit "$status"
 
+      - name: No DT_TEXTREL gate
+        if: ${{ always() && steps.build_ffc.outcome == 'success' }}
+        working-directory: ffc
+        run: test/test_no_textrel_link.sh
+
       - name: Run pinned corpus buckets
         if: ${{ always() && steps.build_ffc.outcome == 'success' }}
         working-directory: ffc
