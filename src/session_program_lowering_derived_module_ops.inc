@@ -372,7 +372,46 @@
         call import_use_renames(arena, export_idx, use_node, context, error_msg)
     end subroutine import_module_derived_types
 
-    recursive subroutine import_module_from_fmod(use_node, context, error_msg)
+    logical function fmod_module_was_imported(context, module_name) result(seen)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: module_name
+        integer :: k
+
+        seen = .false.
+        if (.not. allocated(context%fmod_imported_names)) return
+        do k = 1, context%fmod_imported_count
+            if (same_name(context%fmod_imported_names(k), module_name)) then
+                seen = .true.
+                return
+            end if
+        end do
+    end function fmod_module_was_imported
+
+    subroutine record_fmod_module_imported(context, module_name)
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: module_name
+        character(len=64), allocatable :: bigger(:)
+        integer :: n
+
+        if (.not. allocated(context%fmod_imported_names)) then
+            allocate(context%fmod_imported_names(16))
+            context%fmod_imported_names = ''
+            context%fmod_imported_count = 0
+        end if
+        n = context%fmod_imported_count + 1
+        if (n > size(context%fmod_imported_names)) then
+            allocate(bigger(2 * size(context%fmod_imported_names)))
+            bigger = ''
+            bigger(1:context%fmod_imported_count) = &
+                context%fmod_imported_names(1:context%fmod_imported_count)
+            call move_alloc(bigger, context%fmod_imported_names)
+        end if
+        context%fmod_imported_names(n) = trim(module_name)
+        context%fmod_imported_count = n
+    end subroutine record_fmod_module_imported
+
+    recursive subroutine import_module_from_fmod(use_node, context, error_msg, &
+                                                 tolerate_missing)
         ! Resolve `use <module>` against a .fmod on the include path. Intrinsic
         ! modules are a no-op; an unresolved non-intrinsic module is an error.
         type(use_statement_node), intent(in) :: use_node
@@ -382,14 +421,31 @@
         character(len=:), allocatable :: name, path, targets, target
         integer :: i, j, b, sep
         type(use_statement_node) :: dependency_use
+        logical, intent(in), optional :: tolerate_missing
 
         call set_empty(error_msg)
         if (.not. allocated(use_node%module_name)) return
         name = trim(use_node%module_name)
         if (is_intrinsic_module(name)) return
+        ! A renames-free repeat of an already-imported module writes
+        ! nothing new, so it may skip. A USE that carries renames must
+        ! run to its collision check even when the module itself was
+        ! imported before: `use m, only: a => alpha` twice is legal and
+        ! `use m, only: a => alpha` + `use m, only: a => beta` is
+        ! ambiguous, and only the rename registration can tell them
+        ! apart (#337/#338).
+        if (fmod_module_was_imported(context, name)) then
+            if (.not. allocated(use_node%rename_list)) return
+        end if
 
         path = find_fmod_on_path(context, name)
         if (len_trim(path) == 0) then
+            ! The declaration-collection pass runs before the unit is fully
+            ! known: a missing .fmod there is not yet an error, the body
+            ! walk will report it with full context (#337/#338).
+            if (present(tolerate_missing)) then
+                if (tolerate_missing) return
+            end if
             call unsupported_feature_error('use statement', use_node%line, &
                 use_node%column, 'module "'//name//'" was not compiled in '// &
                 'this unit and no '//name//'.fmod was found on the include '// &
@@ -401,6 +457,7 @@
         if (len_trim(error_msg) > 0) return
         call validate_fmod_use_names(use_node, info, error_msg)
         if (len_trim(error_msg) > 0) return
+        call record_fmod_module_imported(context, name)
 
         ! A public derived type may contain a type imported from another
         ! module. Reconstruct those transitive layouts before the public

@@ -363,3 +363,18 @@ A feature becomes supported only after all of these are true:
 4. Behavioural tests cover success behaviour and relevant diagnostics.
 5. The support contract, README, and development plan are updated in the same
    change.
+
+## Cross-unit derived-type resolution (#337/#338)
+
+A program that `use`s a separately compiled module may declare locals of
+the imported derived type: `use M` (or `use M, only: T`) plus
+`type(T) :: x` resolves `T` from `M.fmod` during declaration collection,
+which imports the artefact before any declaration is resolved. A missing
+`.fmod` at that stage stays tolerated and is reported by the executable
+body walk as before. Module-wide imports are idempotent per module name;
+renamed imports always run their collision validation, so repeating the
+same rename is valid and two distinct renames under one local name are
+rejected as ambiguous. A cross-unit free-subprogram `class(T)` dummy is
+not yet supported and is refused with an explicit diagnostic rather than
+lowered to a call that loses the actual; `type(T)` dummies and
+vtable-dispatched type-bound calls across units work.

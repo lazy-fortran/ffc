@@ -723,6 +723,12 @@ module session_program_lowering_types
         type(declaration_record_t), allocatable :: declaration_records(:)
         integer :: declaration_record_count = 0
         logical :: declaration_collection_complete = .false.
+        ! Module names whose .fmod was already imported in this unit. The
+        ! declaration-collection USE-first pass and the executable-body walk
+        ! both reach the same USE node; import_module_from_fmod consults
+        ! this set so a repeated import writes nothing (#337/#338).
+        character(len=64), allocatable :: fmod_imported_names(:)
+        integer :: fmod_imported_count = 0
         ! Symbols at index <= block_scope_floor belong to an enclosing scope. A
         ! declaration inside a BLOCK whose name matches such a symbol creates a
         ! fresh shadowing slot instead of reusing the outer storage (#280).

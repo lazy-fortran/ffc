@@ -311,3 +311,21 @@ use it for allocation, `allocated`, `size`, element access, and deallocation;
 whole-component assignment, rank-two aliases/actual arguments, unsupported
 kinds, and higher ranks remain outside this contract. Coarray codimensions are
 outside this descriptor.
+
+### Cross-unit USE of derived types (#337/#338)
+
+A program-unit spec `use M` + `type(T) :: x`, with `T` defined in a
+separately compiled module, resolves at declaration-collection time: the
+collection pass imports `M.fmod` (tolerating a missing artefact, which the
+body walk reports with full context) before collecting declarations, so
+`T` is registered when the declaration is resolved. The import is
+idempotent per module name; a renames-free repeat writes nothing, while a
+USE carrying renames always runs to its collision check, so the legal
+repeat stays valid and the ambiguous rename stays ambiguous. Cross-unit
+`type(T)` dummies keep the working bare by-reference address ABI. A
+cross-unit `class(T)` dummy is refused with
+`unsupported call argument: cross-unit CLASS dummy argument ... awaits
+the unified class descriptor ABI`: the caller's scalar class descriptor
+box is not consumed by the separately compiled callee, and passing the
+bare address silently loses the actual. Type-bound dispatch through
+recorded vtables is unaffected.

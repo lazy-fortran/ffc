@@ -256,6 +256,20 @@
                      .not. actual_is_whole_array(arena, arg_indices(i), context) .and. &
                      callee_dummy_assumed_shape_dims(arena, callee_name, &
                                          call_arg_param_pos(i, sp)) < 1) then
+                if (external_dummy_is_class(context, callee_name, &
+                                            call_arg_param_pos(i, sp))) then
+                    ! Cross-unit CLASS dummy: the caller's scalar class
+                    ! descriptor box is not consumed by the separately
+                    ! compiled callee's access path, so the call runs with
+                    ! the actual silently lost. Refuse until the cross-unit
+                    ! class descriptor ABI is unified (#417); type(T)
+                    ! cross-unit dummies keep the working bare-address ABI.
+                    call unsupported_feature_error('call argument', 0, 0, &
+                        'cross-unit CLASS dummy argument of '// &
+                        trim(callee_name)//' awaits the unified class '// &
+                        'descriptor ABI', error_msg)
+                    return
+                end if
                 ! A derived actual reaching a class(t) dummy is passed as the
                 ! scalar class descriptor so the dummy carries the actual's
                 ! dynamic type; a type(t) dummy takes the bare base address of
@@ -454,6 +468,21 @@
 
         call set_empty(error_msg)
     end subroutine prepare_reference_args
+
+    logical function external_dummy_is_class(context, callee_name, param_pos)
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: callee_name
+        integer, intent(in) :: param_pos
+        integer :: idx
+
+        external_dummy_is_class = .false.
+        if (param_pos < 1) return
+        idx = external_procedure_index(context, callee_name)
+        if (idx <= 0) return
+        if (param_pos > context%external_procedures(idx)%arg_count) return
+        external_dummy_is_class = &
+            context%external_procedures(idx)%arg_is_class(param_pos)
+    end function external_dummy_is_class
 
     logical function external_dummy_is_opaque(context, callee_name, param_pos)
         type(lowering_context_t), intent(in) :: context

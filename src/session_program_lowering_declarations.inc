@@ -23,6 +23,24 @@
             return
         end if
 
+        ! Import cross-unit .fmod modules BEFORE collecting declarations: a
+        ! program-unit spec `use M` + `type(T) :: x` with T living in
+        ! another unit's .fmod must have T registered, else the declaration
+        ! falls to 'unsupported scalar type' (#337/#338). In-unit modules
+        ! need nothing here (their arena scan follows); missing .fmod files
+        ! are tolerated at this stage and reported later by the body walk.
+        do i = 1, arena%size
+            if (.not. node_exists(arena, i)) cycle
+            select type (node => arena%entries(i)%node)
+            type is (use_statement_node)
+                if (module_defined_in_unit(arena, &
+                    lowercase_text(trim(node%module_name)))) cycle
+                call import_module_from_fmod(node, context, error_msg, &
+                                             tolerate_missing=.true.)
+                if (len_trim(error_msg) > 0) return
+            end select
+        end do
+
         do i = 1, arena%size
             if (.not. node_exists(arena, i)) cycle
             select type (node => arena%entries(i)%node)
