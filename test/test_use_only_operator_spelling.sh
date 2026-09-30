@@ -18,10 +18,25 @@ FFC="${FFC:-$ROOT/build/fo/bin/ffc}"
 WORK="$(mktemp -d /tmp/ffc-use-only-op.XXXXXX)"
 trap 'rm -rf "$WORK"' EXIT
 fail=0
+cases_run=0
 
-# emit <dir> <name> <decl> <want>
+# emit <dir> <name> <decl> <want> [unary]
 emit() {
-    local dir="$1" mod="$2" decl="$3" want="$4"
+    local dir="$1" mod="$2" decl="$3" want="$4" arity="${5:-binary}"
+    local specifics
+    if [ "$arity" = unary ]; then
+        # A unary specific so an operator like .not. is a well-formed interface
+        # and the rejection below is about the export, not about arity.
+        specifics="    logical function ${mod}_fn(a)
+        type(wt), intent(in) :: a
+        ${mod}_fn = a%i > 0
+    end function ${mod}_fn"
+    else
+        specifics="    logical function ${mod}_fn(a, b)
+        type(wt), intent(in) :: a, b
+        ${mod}_fn = a%i > b%i
+    end function ${mod}_fn"
+    fi
     cat > "$dir/$mod.f90" <<EOF
 module $mod
     implicit none
@@ -32,10 +47,7 @@ module $mod
         module procedure ${mod}_fn
     end interface
 contains
-    logical function ${mod}_fn(a, b)
-        type(wt), intent(in) :: a, b
-        ${mod}_fn = a%i > b%i
-    end function ${mod}_fn
+$specifics
 end module $mod
 
 program user
@@ -50,9 +62,9 @@ EOF
 accept_case() {
     local decl="$1" want="$2" tag="acc_$3" dir rc_g rc_f
     dir="$WORK/$tag"; mkdir -p "$dir"
-    emit "$dir" "$tag" "$decl" "$want"
+    emit "$dir" "$tag" "$decl" "$want" "${4:-binary}"
     [ -s "$dir/$tag.f90" ] || { echo "FAIL: $tag fixture missing"; fail=1; return; }
-    gfortran -std=f2018 -fsyntax-only "$dir/$tag.f90" >"$dir/g.out" 2>&1; rc_g=$?
+    ( cd "$dir" && gfortran -std=f2018 -fsyntax-only "$tag.f90" ) >"$dir/g.out" 2>&1; rc_g=$?
     ( cd "$dir" && timeout 60 "$FFC" "$tag.f90" -o "$dir/x.bin" ) >"$dir/f.out" 2>&1; rc_f=$?
     if [ "$rc_g" -ne 0 ]; then
         echo "FAIL: gfortran calls valid pair $decl / $want invalid"
@@ -64,6 +76,7 @@ accept_case() {
         grep -m2 -E "error|Error" "$dir/f.out"
         fail=1; return
     fi
+    cases_run=$((cases_run + 1))
     echo "ok: $decl exports $want"
 }
 
@@ -71,9 +84,9 @@ accept_case() {
 reject_case() {
     local decl="$1" want="$2" tag="rej_$3" dir rc_g rc_f
     dir="$WORK/$tag"; mkdir -p "$dir"
-    emit "$dir" "$tag" "$decl" "$want"
+    emit "$dir" "$tag" "$decl" "$want" "${4:-binary}"
     [ -s "$dir/$tag.f90" ] || { echo "FAIL: $tag fixture missing"; fail=1; return; }
-    gfortran -std=f2018 -fsyntax-only "$dir/$tag.f90" >"$dir/g.out" 2>&1; rc_g=$?
+    ( cd "$dir" && gfortran -std=f2018 -fsyntax-only "$tag.f90" ) >"$dir/g.out" 2>&1; rc_g=$?
     ( cd "$dir" && timeout 60 "$FFC" "$tag.f90" -o "$dir/x.bin" ) >"$dir/f.out" 2>&1; rc_f=$?
     if [ "$rc_g" -eq 0 ]; then
         echo "FAIL: gfortran accepts a pair this test claims is invalid: $decl / $want"
@@ -83,6 +96,7 @@ reject_case() {
         echo "FAIL: distinct operator $want imported from $decl was accepted"
         fail=1; return
     fi
+    cases_run=$((cases_run + 1))
     echo "ok: $decl does not export $want (both reject)"
 }
 
@@ -108,14 +122,29 @@ accept_case '=='   '=='    same_eq
 reject_case '.lt.' '<='   lt_le
 reject_case '.gt.' '>='   gt_ge
 
-# An operator the module never declares must still be rejected.
+# An operator the module never declares must still be rejected. `.not.` is
+# emitted unary so its interface is well-formed and the rejection is about the
+# export, not about arity.
 reject_case '.and.' '.or.' and_or
-reject_case '.not.' '.and.' not_and
+reject_case '.not.' '.and.' not_and unary
 
-# Real corpus fixture that motivated the fix.
+# Real corpus fixtures are required, not optional: if they go missing the suite
+# would otherwise shrink silently and still print PASS.
+for FIX in \
+    "$ROOT/../fortfront/examples/f90/interface_operator_3_corrected.f90" \
+    "$ROOT/../fortfront/examples/f90/pr89943_3.f90" \
+    "$ROOT/../fortfront/examples/f90/submodule_bind_c_name_valid.f90"; do
+    if [ ! -f "$FIX" ]; then
+        echo "FAIL: required corpus fixture missing: $FIX"
+        fail=1
+    else
+        cases_run=$((cases_run + 1))
+    fi
+done
+
 FIX="$ROOT/../fortfront/examples/f90/interface_operator_3_corrected.f90"
 if [ -f "$FIX" ]; then
-    if timeout 60 "$FFC" "$FIX" -o "$WORK/corpus.bin" >"$WORK/corpus.out" 2>&1; then
+    if ( cd "$WORK" && timeout 60 "$FFC" "$FIX" -o "$WORK/corpus.bin" ) >"$WORK/corpus.out" 2>&1; then
         echo "ok: interface_operator_3_corrected.f90 compiles"
     else
         echo "FAIL: corpus fixture still rejected"
@@ -129,8 +158,8 @@ fi
 # relaxation of BIND(C) name checking cannot pass silently.
 BINDNEG="$ROOT/../fortfront/examples/f90/pr89943_3.f90"
 if [ -f "$BINDNEG" ]; then
-    gfortran -std=f2018 -fsyntax-only "$BINDNEG" >"$WORK/bindneg.g" 2>&1; g_rc=$?
-    timeout 60 "$FFC" "$BINDNEG" -o "$WORK/bindneg.bin" >"$WORK/bindneg.f" 2>&1; f_rc=$?
+    ( cd "$WORK" && gfortran -std=f2018 -fsyntax-only "$BINDNEG" ) >"$WORK/bindneg.g" 2>&1; g_rc=$?
+    ( cd "$WORK" && timeout 60 "$FFC" "$BINDNEG" -o "$WORK/bindneg.bin" ) >"$WORK/bindneg.f" 2>&1; f_rc=$?
     if [ "$g_rc" -eq 0 ]; then
         echo "FAIL: gfortran now accepts the BIND(C) mismatch fixture"
         fail=1
@@ -149,13 +178,18 @@ fi
 # Positive BIND(C) fixture: the matching-label neighbour must compile.
 BINDPOS="$ROOT/../fortfront/examples/f90/submodule_bind_c_name_valid.f90"
 if [ -f "$BINDPOS" ]; then
-    if timeout 60 "$FFC" "$BINDPOS" -o "$WORK/bindpos.bin" >"$WORK/bindpos.out" 2>&1; then
+    if ( cd "$WORK" && timeout 60 "$FFC" "$BINDPOS" -o "$WORK/bindpos.bin" ) >"$WORK/bindpos.out" 2>&1; then
         echo "ok: matching BIND(C) labels compile"
     else
         echo "FAIL: valid BIND(C) name fixture rejected"
         head -3 "$WORK/bindpos.out"
         fail=1
     fi
+fi
+
+if [ "$cases_run" -eq 0 ]; then
+    echo "FAIL: no cases executed"
+    fail=1
 fi
 
 [ "$fail" -eq 0 ] && echo "use-only operator spelling: PASS" || echo "use-only operator spelling: FAILED"

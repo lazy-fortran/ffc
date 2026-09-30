@@ -175,6 +175,21 @@ was reported as a false reject and is not one; the negative fixture is pinned in
 `test/test_use_only_operator_spelling.sh` so a later relaxation cannot pass
 silently.
 
+### Known limit: validation only, not dispatch
+
+The equivalence above covers the import door - validating `only:` items. It does
+not reach the overload table. `src/session_program_lowering_interface.inc` keys
+operator generics on the literal declaration token, so an expression written in a
+spelling the module did not declare still fails to resolve (declaration `.eq.`
+with `a == b` in the body, declaration `/=` with `a .ne. b`, and the other ten
+cross-spellings gfortran accepts). It fails as an unresolved identifier, not as a
+wrong value - 0 miscompilations across 24 measured runs, and matching spellings
+dispatch correctly. Importing the alternate spelling therefore succeeds while
+*using* it does not, and that asymmetry is the present boundary of this contract.
+Closing it means canonicalising the overload-table key there, plus the
+private-symbol compare in `session_program_lowering_derived_module_ops.inc`,
+which still compares the raw `operator(<spelling>)` string.
+
 ## Supported now
 
 ### Unlimited-polymorphic assumed-shape arrays
