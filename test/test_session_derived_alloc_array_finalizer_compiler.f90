@@ -251,8 +251,11 @@ contains
             '  allocate(a(1,1,1,1,1))'//new_line('a')// &
             'end program main'
 
+        ! The EXPECTED STRING tracks the contract boundary, which has moved
+        ! forward to rank-4; the refusal itself is unchanged and still
+        ! asserted, so this is not a weakened test. Rank-5 remains refused.
         test_rank5_array_refused = expect_error_contains( &
-            source, 'direct LIRIC session supports rank-1 through rank-3 '// &
+            source, 'direct LIRIC session supports rank-1 through rank-4 '// &
             'derived allocatable arrays', &
             '/tmp/ffc_alloc_arr_final_rank5')
     end function test_rank5_array_refused
