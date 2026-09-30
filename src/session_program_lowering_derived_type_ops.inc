@@ -4308,6 +4308,17 @@
                 'array component assignment is not supported', error_msg)
             return
         end if
+        ! A scalar rhs does NOT reallocate: F2018 7.2.3.3 broadcasts the
+        ! scalar over the CURRENT shape, whose extent is a runtime property
+        ! living in the component descriptor. Route it to the counted-loop
+        ! broadcast before the realloc-on-extent classifier, which accepts
+        ! only constructors and compile-time-sized array rhs forms.
+        if (component_assign_rhs_is_scalar(arena, node%value_index, context)) then
+            call lower_alloc_rank1_component_scalar_broadcast(arena, node, &
+                                                               target, comp_kind, &
+                                                               context, error_msg)
+            return
+        end if
         call alloc_component_assign_shape(arena, node%value_index, context, &
                                           from_ctor, flat, src_sym, n, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -5229,6 +5240,122 @@
         context%current_block_terminated = .false.
         call set_empty(error_msg)
     end subroutine lower_alloc_array_component_section_assignment
+
+    logical function component_assign_rhs_is_scalar(arena, value_index, context)
+        ! Classify the rhs of a whole-component assignment: an array
+        ! constructor or an array-valued identifier is NOT scalar; a
+        ! literal, a scalar identifier, or a scalar expression IS.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable :: name
+        character(len=:), allocatable :: id_err
+        integer :: sym
+
+        component_assign_rhs_is_scalar = .false.
+        if (.not. node_exists(arena, value_index)) return
+        select type (rhs => arena%entries(value_index)%node)
+        type is (array_literal_node)
+            return
+        type is (call_or_subscript_node)
+            if (.not. allocated(rhs%name)) then
+                component_assign_rhs_is_scalar = .true.
+                return
+            end if
+            if (allocated(rhs%arg_indices) .and. size(rhs%arg_indices) > 0) then
+                component_assign_rhs_is_scalar = .true.
+                return
+            end if
+            sym = find_symbol_compat(context, rhs%name)
+            if (sym > 0) then
+                if (context%symbols(sym)%is_array) return
+            end if
+            component_assign_rhs_is_scalar = .true.
+            return
+        class default
+            if (is_identifier(arena, value_index)) then
+                call get_identifier_name(arena, value_index, name, id_err)
+                if (len_trim(id_err) > 0) return
+                sym = find_symbol_compat(context, name)
+                if (sym > 0 .and. context%symbols(sym)%is_array) return
+            end if
+            component_assign_rhs_is_scalar = .true.
+        end select
+    end function component_assign_rhs_is_scalar
+
+    subroutine lower_alloc_rank1_component_scalar_broadcast(arena, node, target, &
+                                                             comp_kind, context, &
+                                                             error_msg)
+        ! obj%v = scalar for a rank-1 allocatable array component: broadcast
+        ! the scalar into the CURRENT shape, no reallocation. Extent comes
+        ! from the component descriptor at runtime; the counted loop is the
+        ! same header/phi/condbr idiom used by the component section
+        ! assignment and the plain-allocatable scalar broadcast.
+        type(ast_arena_t), intent(in) :: arena
+        type(assignment_node), intent(in) :: node
+        type(component_access_node), intent(in) :: target
+        integer, intent(in) :: comp_kind
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: desc_addr, value, extent, entry_idx
+        type(lr_operand_desc_t) :: header_idx, backedge_idx, condition, next_idx
+        integer :: idx_vreg
+        integer :: entry_block, header_block, body_block, latch_block, exit_block
+
+        call alloc_array_component_descriptor(arena, node%target_index, context, &
+                                              desc_addr, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call lower_component_rhs_value(arena, node%value_index, comp_kind, &
+                                        context, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call alloc_component_extent_i32(context, desc_addr, extent, error_msg)
+        if (len_trim(error_msg) > 0) return
+        idx_vreg = reserve_i32_vreg(context%session)
+        if (idx_vreg == 0_c_int32_t) idx_vreg = reserve_i32_vreg(context%session)
+        if (idx_vreg <= 0_c_int32_t) then
+            error_msg = 'LIRIC could not reserve a positive broadcast index vreg'
+            return
+        end if
+        entry_idx = i32_immediate(context%session, 0_c_int64_t)
+        entry_block = context%current_block_id
+        header_block = create_liric_block(context%session)
+        body_block = create_liric_block(context%session)
+        latch_block = create_liric_block(context%session)
+        exit_block = create_liric_block(context%session)
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, header_block, error_msg)) return
+        context%current_block_id = header_block
+        context%current_block_terminated = .false.
+        backedge_idx = i32_vreg(context%session, idx_vreg)
+        if (.not. emit_liric_i32_phi(context%session, entry_idx, entry_block, &
+                backedge_idx, latch_block, header_idx, error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_idx, &
+                extent, condition, error_msg)) return
+        if (.not. emit_liric_condbr(context%session, condition, body_block, &
+                exit_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, body_block, error_msg)) return
+        context%current_block_id = body_block
+        context%current_block_terminated = .false.
+        call store_alloc_component_element_runtime(context, desc_addr, comp_kind, &
+                                                   header_idx, value, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, latch_block, error_msg)) return
+        context%current_block_id = latch_block
+        context%current_block_terminated = .false.
+        if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_idx, &
+                i32_immediate(context%session, 1_c_int64_t), idx_vreg, next_idx, &
+                error_msg)) return
+        if (.not. emit_liric_br(context%session, header_block, error_msg)) return
+
+        if (.not. set_liric_block(context%session, exit_block, error_msg)) return
+        context%current_block_id = exit_block
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine lower_alloc_rank1_component_scalar_broadcast
 
     subroutine store_alloc_component_element_runtime(context, desc_addr, comp_kind, &
                                                       index_i32, value, error_msg)

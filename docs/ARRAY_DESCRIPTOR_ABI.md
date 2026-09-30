@@ -205,11 +205,19 @@ positive comparison above, which is the stronger assertion.
 
 STILL OPEN within #643, stated rather than smoothed: `print *, shape(a)`
 directly as a print item is refused (`unsupported scalar intrinsic`) —
-array-valued inquiry results have no print materialization path yet; and
-whole-array **broadcast into an allocatable component**, `h%items = 5`, is
-refused (`unsupported allocatable array component assignment`) while
-element access on the same component works. Both are pinned by the live
-CLI refusals at this commit.
+array-valued inquiry results have no print materialization path yet.
+
+Whole-array **broadcast into an allocatable component**, `h%items = 5`, is
+**supported** as of the follow-up commit: a scalar rhs does not reallocate
+(F2018 7.2.3.3) — it broadcasts over the CURRENT shape, so the extent is
+read from the component descriptor at runtime and a counted loop stores the
+value at the component element stride (`
+lower_alloc_rank1_component_scalar_broadcast`, reusing the section path's
+`store_alloc_component_element_runtime` idiom). Byte-exact vs gfortran over
+20 runs (integer, real, scalar-identifier rhs, allocated or not); the
+previous refusal reappears when the dispatch is disabled (falsification).
+Constructor and compile-time-sized whole-array rhs forms keep their
+reallocating path unchanged.
 
 ### Logical elements and store width
 
