@@ -47,16 +47,15 @@
                         if (seen_n > 0) then
                             if (any(seen(1:seen_n) == s)) cycle
                         end if
-                        call zero_fill_data_array_once(context, s, error_msg)
-                        if (len_trim(error_msg) > 0) return
-                        if (seen_n < 64) then
-                            seen_n = seen_n + 1
-                            seen(seen_n) = s
-                        else
+                        if (seen_n >= 64) then
                             error_msg = 'DATA zero-fill seen list overflow: '// &
                                 'too many distinct arrays in one unit'
                             return
                         end if
+                        call zero_fill_data_array_once(context, s, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        seen_n = seen_n + 1
+                        seen(seen_n) = s
                     end do
                 end if
                 call lower_data_statement(arena, node, context, error_msg)
