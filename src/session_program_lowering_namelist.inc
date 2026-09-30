@@ -448,7 +448,7 @@
                 'unit (#436)', error_msg)
             return
         end if
-        call load_unit_file_ptr(node%unit_spec, context, fp, error_msg)
+        call load_read_unit_file_ptr(node%unit_spec, context, fp, error_msg)
         if (len_trim(error_msg) > 0) then
             error_msg = ''
             call unsupported_feature_error('namelist read', node%line, &
@@ -490,6 +490,8 @@
             if (len_trim(error_msg) > 0) return
         end do
         call namelist_read_store_iostat(node, context, status_slot, error_msg)
+        if (len_trim(error_msg) > 0) return
+        call terminate_on_unhandled_eof(node, fp, context, error_msg)
     end subroutine lower_namelist_read
 
     function namelist_read_group_name(node) result(name)

@@ -225,6 +225,10 @@
         call store_read_iostat_from_eof(node, fp, context, error_msg, err_value)
         if (len_trim(error_msg) > 0) return
         call branch_on_eof_to_end_label(node, fp, context, error_msg)
+        if (len_trim(error_msg) > 0) return
+        ! '(A)' and '(A<n>)' land here, not in the fscanf path, so the
+        ! unhandled end-of-file check has to be made here too.
+        call terminate_on_unhandled_eof(node, fp, context, error_msg)
     end subroutine lower_read_file_al
 
     subroutine emit_al_error_slot(context, err_slot, error_msg)

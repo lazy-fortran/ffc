@@ -237,10 +237,16 @@ int _ffc_unit_is_open(int unit) {
     return ffc_units[unit].connected ? 1 : 0;
 }
 
-/* The FILE* behind a unit, connecting a numeric unit to fort.<N>
- * on first use the way an unopened preconnected unit behaves.
- * Returns NULL only when the unit is unusable, recording why. */
-FILE *_ffc_unit_file(int unit) {
+/* Connect an unconnected numeric unit to its default file
+ * fort.<N>. The mode is the caller's I/O intent, because the
+ * default connection is made by the first statement that uses
+ * the unit, and that statement decides whether existing bytes
+ * survive: gfortran truncates fort.<N> when a WRITE creates it
+ * (a 40-byte fort.10 is 3 bytes afterwards) and keeps them
+ * when a READ creates it ("world" reads back "world"). Opening
+ * every default file "w+" destroyed what a READ came for and
+ * then reported an empty file. */
+static FILE *ffc_unit_file_mode(int unit, const char *mode) {
     char name[32];
     FILE *fp;
     if (!ffc_unit_valid(unit)) {
@@ -268,7 +274,15 @@ FILE *_ffc_unit_file(int unit) {
         return stderr;
     }
     snprintf(name, sizeof name, "fort.%d", unit);
-    fp = fopen(name, "w+");
+    fp = fopen(name, mode);
+    if (fp == NULL && mode[0] == 'r') {
+        /* An absent default file behind a READ is created
+         * empty, so the read that forced the connection
+         * reaches end of file instead of an open failure.
+         * gfortran reports "End of file" here, not "Cannot
+         * open". */
+        fp = fopen(name, "w+");
+    }
     if (fp == NULL) {
         ffc_unit_fail(FFC_IOSTAT_OPEN);
         return NULL;
@@ -278,6 +292,18 @@ FILE *_ffc_unit_file(int unit) {
     memcpy(ffc_units[unit].path, name, strlen(name) + 1);
     ffc_unit_last_status = 0;
     return fp;
+}
+
+/* Write-intent connection: truncates fort.<N>, as gfortran
+ * does when a WRITE makes the default connection. */
+FILE *_ffc_unit_file(int unit) {
+    return ffc_unit_file_mode(unit, "w+");
+}
+
+/* Read-intent connection: never truncates, and creates an
+ * absent default file empty so the read sees end of file. */
+FILE *_ffc_unit_file_read(int unit) {
+    return ffc_unit_file_mode(unit, "r+");
 }
 
 /* Repositions the unit to its first record. */

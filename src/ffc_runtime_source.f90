@@ -482,13 +482,25 @@ contains
             '}'//NL
         text = text//NL
         text = text// &
-            '/* The FILE* behind a unit, connecting a numeric unit to fort.<N>'//NL
+            '/* Connect an unconnected numeric unit to its default file'//NL
         text = text// &
-            ' * on first use the way an unopened preconnected unit behaves.'//NL
+            ' * fort.<N>. The mode is the caller''s I/O intent, because the'//NL
         text = text// &
-            ' * Returns NULL only when the unit is unusable, recording why. */'//NL
+            ' * default connection is made by the first statement that uses'//NL
         text = text// &
-            'FILE *_ffc_unit_file(int unit) {'//NL
+            ' * the unit, and that statement decides whether existing bytes'//NL
+        text = text// &
+            ' * survive: gfortran truncates fort.<N> when a WRITE creates it'//NL
+        text = text// &
+            ' * (a 40-byte fort.10 is 3 bytes afterwards) and keeps them'//NL
+        text = text// &
+            ' * when a READ creates it ("world" reads back "world"). Opening'//NL
+        text = text// &
+            ' * every default file "w+" destroyed what a READ came for and'//NL
+        text = text// &
+            ' * then reported an empty file. */'//NL
+        text = text// &
+            'static FILE *ffc_unit_file_mode(int unit, const char *mode) {'//NL
         text = text// &
             '    char name[32];'//NL
         text = text// &
@@ -544,7 +556,23 @@ contains
         text = text// &
             '    snprintf(name, sizeof name, "fort.%d", unit);'//NL
         text = text// &
-            '    fp = fopen(name, "w+");'//NL
+            '    fp = fopen(name, mode);'//NL
+        text = text// &
+            '    if (fp == NULL && mode[0] == ''r'') {'//NL
+        text = text// &
+            '        /* An absent default file behind a READ is created'//NL
+        text = text// &
+            '         * empty, so the read that forced the connection'//NL
+        text = text// &
+            '         * reaches end of file instead of an open failure.'//NL
+        text = text// &
+            '         * gfortran reports "End of file" here, not "Cannot'//NL
+        text = text// &
+            '         * open". */'//NL
+        text = text// &
+            '        fp = fopen(name, "w+");'//NL
+        text = text// &
+            '    }'//NL
         text = text// &
             '    if (fp == NULL) {'//NL
         text = text// &
@@ -563,6 +591,28 @@ contains
             '    ffc_unit_last_status = 0;'//NL
         text = text// &
             '    return fp;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* Write-intent connection: truncates fort.<N>, as gfortran'//NL
+        text = text// &
+            ' * does when a WRITE makes the default connection. */'//NL
+        text = text// &
+            'FILE *_ffc_unit_file(int unit) {'//NL
+        text = text// &
+            '    return ffc_unit_file_mode(unit, "w+");'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* Read-intent connection: never truncates, and creates an'//NL
+        text = text// &
+            ' * absent default file empty so the read sees end of file. */'//NL
+        text = text// &
+            'FILE *_ffc_unit_file_read(int unit) {'//NL
+        text = text// &
+            '    return ffc_unit_file_mode(unit, "r+");'//NL
         text = text// &
             '}'//NL
         text = text//NL

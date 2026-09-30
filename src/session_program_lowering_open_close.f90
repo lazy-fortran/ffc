@@ -565,6 +565,20 @@ contains
                                 error_msg)) return
         call set_empty(error_msg)
     end procedure load_unit_file_ptr
+    module procedure load_read_unit_file_ptr
+        ! Read-intent twin of load_unit_file_ptr. A READ that first touches an
+        ! unconnected numeric unit must not destroy the default file it is
+        ! about to read, so this binds _ffc_unit_file_read (open for update,
+        ! never truncate) while the write paths keep _ffc_unit_file ("w+",
+        ! which matches gfortran truncating fort.<N> on a write-first use).
+        type(lr_operand_desc_t) :: args(1)
+
+        call unit_number_operand(unit_spec, context, args(1), error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_ptr_call(context%session, '_ffc_unit_file_read', args, &
+                                fp, error_msg)) return
+        call set_empty(error_msg)
+    end procedure load_read_unit_file_ptr
     module procedure is_file_unit_write
         integer :: sym, ios, unit_number
 
