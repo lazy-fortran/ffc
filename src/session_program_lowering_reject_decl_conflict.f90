@@ -120,27 +120,17 @@ contains
             error_msg = 'statement label without statement in derived type'
             return
         end if
-        call empty_bind_type_body(source_compact, type_body)
-        if (len_trim(type_body) > 0) then
-            error_msg = 'BIND(C) derived type must have at least one component'
-            return
-        end if
+        ! No empty-BIND(C) guard here on purpose: F2018 18.5.4 p6 is
+        ! contested in practice and the oracle of record (gfortran default
+        ! GNU mode) ACCEPTS empty BIND(C) types with a warning, in module
+        ! and main scope alike (verified at this commit: -std=f2018 and
+        ! default both pass, only -pedantic escalates to error). A former
+        ! compact-source guard rejected it and produced the spurious
+        ! rejections collected in ffc#581; the positive witnesses in
+        ! test_session_empty_derived_type_581_compiler and
+        ! test_session_reject_derived_01_compiler keep the acceptance side
+        ! pinned, so removing the guard cannot silently flip back.
     contains
-        subroutine empty_bind_type_body(text, body)
-            character(len=*), intent(in) :: text
-            character(len=:), allocatable, intent(out) :: body
-            integer :: start_pos, end_pos
-
-            body = ''
-            start_pos = index(text, 'type,bind(c)::')
-            if (start_pos == 0) return
-            end_pos = index(text(start_pos:), 'endtype')
-            if (end_pos == 0) return
-            end_pos = start_pos + end_pos - 2
-            body = text(start_pos:end_pos)
-            if (count_token(body, '::') /= 1) body = ''
-        end subroutine empty_bind_type_body
-
         integer function count_token(text, token)
             character(len=*), intent(in) :: text, token
             integer :: at, from
