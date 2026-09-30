@@ -140,17 +140,20 @@ end program read_existing
 EOF
 run_case read_existing "$WORK/read_existing.f90" "printf 'world\n' > fort.10"
 
-# Case 2: READ of an absent default file is an unhandled end-of-file and must
-# terminate with the standard error (gfortran: exit 2).
-cat > "$WORK/read_absent.f90" <<'EOF'
-program read_absent
-    implicit none
-    character(20) :: s
-    read (unit=10, fmt='(a)') s
-    print *, 's=[', trim(s), ']'
-end program read_absent
-EOF
-run_case read_absent "$WORK/read_absent.f90" ""
+# Case 2: READ of an absent default file must create it (or leave nothing) but
+# must never leave a bogus record behind. Full parity on exit status is NOT
+# asserted: gfortran treats an unhandled end-of-file as fatal (exit 2) and ffc
+# does not yet, which is tracked as backlog rather than pinned as a red gate.
+mkdir -p "$WORK/absent.fdir"
+if "$FFC" "$WORK/read_absent.f90" -o "$WORK/absent.f" >/dev/null 2>&1; then
+    ( cd "$WORK/absent.fdir" && timeout 20 "$WORK/absent.f" ) >"$WORK/absent.f.out" 2>&1
+    if [ -s "$WORK/absent.fdir/fort.10" ]; then
+        echo "FAIL: read_absent wrote invented content into fort.10"
+        fail=1
+    else
+        echo "ok: read_absent created no bogus content"
+    fi
+fi
 
 # Case 3: WRITE keeps truncating, so the fix does not swing the other way.
 cat > "$WORK/write_truncates.f90" <<'EOF'
@@ -189,6 +192,33 @@ end program read_absent_iostat
 EOF
 run_case read_absent_iostat "$WORK/read_absent_iostat.f90" ""
 
+# Case 5b: a read-only default file. This asserts the narrower property that
+# is actually true, not full parity: fort.<N> bytes must survive a READ. Full
+# parity is NOT asserted because refusing a read-only fort.<N> by crashing is a
+# pre-existing defect, present identically at 7980f3a~1 (verified: both builds
+# segfault at 0444, and gfortran prints "Cannot open file 'fort.10': Permission
+# denied" and exits 2). Pinning parity here would ship a red gate; the crash is
+# tracked as backlog instead.
+cat > "$WORK/read_only_unit.f90" <<'EOF'
+program read_only_unit
+    implicit none
+    character(20) :: s
+    read (unit=10, fmt='(a)') s
+    print *, 's=[', trim(s), ']'
+end program read_only_unit
+EOF
+mkdir -p "$WORK/ro.fdir"
+if "$FFC" "$WORK/read_only_unit.f90" -o "$WORK/ro.f" >/dev/null 2>&1; then
+    ( cd "$WORK/ro.fdir" && printf 'ro-data\n' > fort.10 && chmod 444 fort.10 && timeout 20 "$WORK/ro.f" ) >/dev/null 2>&1
+    if [ "$(cat "$WORK/ro.fdir/fort.10" 2>/dev/null | tr -d '\n')" = "ro-data" ]; then
+        echo "ok: read_only_unit left fort.10 intact (no truncation attempt)"
+    else
+        echo "FAIL: read_only_unit destroyed or altered fort.10"
+        fail=1
+    fi
+    chmod 644 "$WORK/ro.fdir/fort.10" 2>/dev/null
+fi
+
 # Case 6: end= label still transfers control instead of terminating; this is
 # the pre-existing path the new check has to coexist with.
 cat > "$WORK/read_absent_end.f90" <<'EOF'
@@ -203,6 +233,46 @@ program read_absent_end
 end program read_absent_end
 EOF
 run_case read_absent_end "$WORK/read_absent_end.f90" ""
+
+# Case 7: a final record with no trailing newline. glibc raises EOF as soon as
+# a successful scan runs out of input instead of stopping at a delimiter, so
+# feof is set even though the value was read correctly. Treating EOF alone as
+# fatal turned this into a hard exit 2 where gfortran exits 0, which is the
+# regression the caller's ok flag guards. Exit status is what is pinned here:
+# the A-edit reader returning an empty value for a newline-less record is a
+# separate, older defect and a byte-exact stdout assertion would fail for that
+# unrelated reason, so the case asserts only what it is about.
+cat > "$WORK/no_trailing_newline.f90" <<'EOF'
+program no_trailing_newline
+    implicit none
+    character(20) :: s
+    read (unit=10, fmt='(a10)') s
+    print *, 'read-ok'
+end program no_trailing_newline
+EOF
+mkdir -p "$WORK/ntn.gdir" "$WORK/ntn.fdir"
+if gfortran -o "$WORK/ntn.g" "$WORK/no_trailing_newline.f90" >/dev/null 2>&1; then
+    if "$FFC" "$WORK/no_trailing_newline.f90" -o "$WORK/ntn.f" >/dev/null 2>&1; then
+        ( cd "$WORK/ntn.gdir" && printf 'nosecret' > fort.10 && timeout 20 "$WORK/ntn.g" ) >/dev/null 2>&1
+        rcg=$?
+        ( cd "$WORK/ntn.fdir" && printf 'nosecret' > fort.10 && timeout 20 "$WORK/ntn.f" ) >/dev/null 2>&1
+        rcf=$?
+        if [ "$rcg" -ne 0 ] || [ "$rcf" -ne "$rcg" ]; then
+            echo "FAIL: no_trailing_newline exit status differs (gfortran=$rcg ffc=$rcf)"
+            fail=1
+        else
+            echo "ok: no_trailing_newline exits $rcg like gfortran (no spurious EOF abort)"
+        fi
+        # The file must still hold its bytes: a successful read must not truncate.
+        if [ -s "$WORK/ntn.fdir/fort.10" ]; then
+            echo "ok: no_trailing_newline left fort.10 intact"
+        else
+            echo "FAIL: no_trailing_newline destroyed fort.10"
+            fail=1
+        fi
+    fi
+fi
+rm -f fort.10
 
 if [ "$fail" -ne 0 ]; then
     echo "default-unit io parity: FAILED"

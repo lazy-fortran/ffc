@@ -150,6 +150,8 @@ contains
         text = text// &
             '#include <ctype.h>'//NL
         text = text// &
+            '#include <errno.h>'//NL
+        text = text// &
             '#include <sys/stat.h>'//NL
         text = text//NL
         text = text// &
@@ -558,17 +560,27 @@ contains
         text = text// &
             '    fp = fopen(name, mode);'//NL
         text = text// &
-            '    if (fp == NULL && mode[0] == ''r'') {'//NL
+            '    if (fp == NULL && mode[0] == ''r'' && errno == ENOENT) {'//NL
         text = text// &
-            '        /* An absent default file behind a READ is created'//NL
+            '        /* Only a genuine ENOENT may create the file. An'//NL
         text = text// &
-            '         * empty, so the read that forced the connection'//NL
+            '         * unconditional "w+" fallback succeeds on a file that'//NL
         text = text// &
-            '         * reaches end of file instead of an open failure.'//NL
+            '         * exists but is not readable and truncates it, the'//NL
         text = text// &
-            '         * gfortran reports "End of file" here, not "Cannot'//NL
+            '         * destruction this function exists to prevent. And'//NL
         text = text// &
-            '         * open". */'//NL
+            '         * gfortran itself refuses a read-only fort.<N> with'//NL
+        text = text// &
+            '         * "Cannot open file ''fort.10'': Permission denied" and'//NL
+        text = text// &
+            '         * exit 2, so EACCES stays an error here rather than'//NL
+        text = text// &
+            '         * being routed around via plain "r". Creating the file'//NL
+        text = text// &
+            '         * empty when it truly is absent lets the read reach'//NL
+        text = text// &
+            '         * end of file, which is what gfortran reports. */'//NL
         text = text// &
             '        fp = fopen(name, "w+");'//NL
         text = text// &

@@ -490,8 +490,6 @@
             if (len_trim(error_msg) > 0) return
         end do
         call namelist_read_store_iostat(node, context, status_slot, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call terminate_on_unhandled_eof(node, fp, context, error_msg)
     end subroutine lower_namelist_read
 
     function namelist_read_group_name(node) result(name)

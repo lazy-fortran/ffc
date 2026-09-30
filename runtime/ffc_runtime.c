@@ -64,6 +64,7 @@ int _ffc_runtime_probe(void) {
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 #include <sys/stat.h>
 
 #define FFC_PATH_MAX 4096
@@ -275,12 +276,17 @@ static FILE *ffc_unit_file_mode(int unit, const char *mode) {
     }
     snprintf(name, sizeof name, "fort.%d", unit);
     fp = fopen(name, mode);
-    if (fp == NULL && mode[0] == 'r') {
-        /* An absent default file behind a READ is created
-         * empty, so the read that forced the connection
-         * reaches end of file instead of an open failure.
-         * gfortran reports "End of file" here, not "Cannot
-         * open". */
+    if (fp == NULL && mode[0] == 'r' && errno == ENOENT) {
+        /* Only a genuine ENOENT may create the file. An
+         * unconditional "w+" fallback succeeds on a file that
+         * exists but is not readable and truncates it, the
+         * destruction this function exists to prevent. And
+         * gfortran itself refuses a read-only fort.<N> with
+         * "Cannot open file 'fort.10': Permission denied" and
+         * exit 2, so EACCES stays an error here rather than
+         * being routed around via plain "r". Creating the file
+         * empty when it truly is absent lets the read reach
+         * end of file, which is what gfortran reports. */
         fp = fopen(name, "w+");
     }
     if (fp == NULL) {

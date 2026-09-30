@@ -94,8 +94,6 @@
                                         ok_value=status)
         if (len_trim(error_msg) > 0) return
         call branch_on_eof_to_end_label(node, fp, context, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call terminate_on_unhandled_eof(node, fp, context, error_msg)
     end subroutine lower_read_file
 
     logical function is_unformatted_file_read(node, context)
@@ -135,8 +133,6 @@
             if (len_trim(error_msg) > 0) return
         end do
         call store_read_iostat_success(node, context, error_msg)
-        if (len_trim(error_msg) > 0) return
-        call terminate_on_unhandled_eof(node, fp, context, error_msg)
     end subroutine lower_read_file_unformatted
 
     subroutine lower_read_file_unformatted_item(arena, node_index, fp, context, &
@@ -247,71 +243,6 @@
         context%current_block_terminated = .false.
     end subroutine branch_on_eof_to_end_label
 
-    module procedure terminate_on_unhandled_eof
-        ! An unhandled end-of-file is an error condition, not a silent fall
-        ! through. When a READ carries none of END=, ERR= or IOSTAT=, reaching
-        ! end of file terminates the program: gfortran prints
-        !   Fortran runtime error: End of file
-        ! and exits 2. Before this, the read returned with its variables
-        ! untouched, the program went on printing stale values, and the run
-        ! exited 0 -- a wrong answer that looked like a right one.
-        ! Any of the three controls present hands the condition back to the
-        ! program, so this must stay out of the way then.
-        use liric_session_complex_print_bindings, only: emit_extern_i32_call
-        character(len=:), allocatable :: ctrl, end_label, err_label, ios_label
-        character(len=64) :: eof_global_name
-        type(lr_operand_desc_t) :: eof_flag, at_eof, fp_arg(1), dargs(2)
-        type(lr_operand_desc_t) :: eof_format
-        integer(c_int32_t) :: eof_block, after_block, eof_format_id
-
-        call set_empty(error_msg)
-        if (allocated(node%io_control_list)) then
-            ctrl = node%io_control_list
-        else
-            ctrl = ''
-        end if
-        call io_control_value(ctrl, 'end', end_label)
-        if (len_trim(end_label) > 0) return
-        call io_control_value(ctrl, 'err', err_label)
-        if (len_trim(err_label) > 0) return
-        call io_control_value(ctrl, 'iostat', ios_label)
-        if (len_trim(ios_label) > 0) return
-
-        fp_arg(1) = fp
-        if (.not. emit_extern_i32_call(context%session, 'feof', fp_arg, eof_flag, &
-                                       error_msg)) return
-        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, eof_flag, &
-                i32_immediate(context%session, 0_c_int64_t), at_eof, error_msg)) &
-            return
-        eof_block = create_liric_block(context%session)
-        after_block = create_liric_block(context%session)
-        if (.not. emit_liric_condbr(context%session, at_eof, eof_block, &
-                                     after_block, error_msg)) return
-
-        if (.not. set_liric_block(context%session, eof_block, error_msg)) return
-        context%current_block_id = eof_block
-        context%current_block_terminated = .false.
-        context%string_literal_count = context%string_literal_count + 1
-        eof_global_name = ffc_unit_global_name(context, 'read.eof.error.', &
-                                               context%string_literal_count)
-        call create_printf_format_global(context%session, &
-            trim(eof_global_name), &
-            'Fortran runtime error: End of file'//achar(10), eof_format_id, &
-            error_msg)
-        if (len_trim(error_msg) > 0) return
-        eof_format = printf_format_ptr(context%session, eof_format_id)
-        dargs(1) = i32_immediate(context%session, 2_c_int64_t)
-        dargs(2) = eof_format
-        if (.not. emit_dprintf(context%session, dargs, error_msg)) return
-        if (.not. emit_exit(context%session, &
-                i32_immediate(context%session, 2_c_int64_t), error_msg)) return
-
-        if (.not. emit_liric_br(context%session, after_block, error_msg)) return
-        if (.not. set_liric_block(context%session, after_block, error_msg)) &
-            return
-        context%current_block_id = after_block
-        context%current_block_terminated = .false.
-    end procedure terminate_on_unhandled_eof
 
     subroutine store_read_iostat_success(node, context, error_msg)
         ! No item list: a READ with no targets always succeeds; iostat = 0.

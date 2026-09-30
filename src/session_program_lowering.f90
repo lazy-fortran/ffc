@@ -3555,13 +3555,6 @@ module session_program_lowering_impl
             type(lr_operand_desc_t), intent(out) :: fp
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine load_read_unit_file_ptr
-        module subroutine terminate_on_unhandled_eof(node, fp, context, &
-                                                     error_msg)
-            type(read_statement_node), intent(in) :: node
-            type(lr_operand_desc_t), intent(in) :: fp
-            type(lowering_context_t), intent(inout) :: context
-            character(len=:), allocatable, intent(out) :: error_msg
-        end subroutine terminate_on_unhandled_eof
         module function is_file_unit_write(node, context) result(result_value)
             type(write_statement_node), intent(in) :: node
             type(lowering_context_t), intent(inout) :: context
