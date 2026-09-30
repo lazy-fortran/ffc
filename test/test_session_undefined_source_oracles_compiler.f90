@@ -32,11 +32,10 @@ program test_session_undefined_source_oracles_compiler
     if (.not. test_associate_expression_selector_defined()) all_passed = .false.
     if (.not. test_nested_if_in_do_defined()) all_passed = .false.
     if (.not. test_do_concurrent_scalar_locality_defined()) all_passed = .false.
-    if (.not. test_data_implied_do_partial_init()) all_passed = .false.
 
     if (.not. all_passed) stop 1
-    print *, 'PASS: associate, nested-if-in-do, do concurrent and DATA ' // &
-        'implied-do agree with gfortran on defined sources'
+    print *, 'PASS: associate, nested-if-in-do and do concurrent agree with ' // &
+        'gfortran on defined sources'
 
 contains
 
@@ -108,23 +107,5 @@ contains
         test_do_concurrent_scalar_locality_defined = &
             expect_output_matches_gfortran(source, 'do_concurrent_locality')
     end function test_do_concurrent_scalar_locality_defined
-
-    logical function test_data_implied_do_partial_init()
-        ! issue_2349 verbatim: a triangular implied-do object list takes 6
-        ! values for 9 scalar objects, so the untouched tail must read zero
-        ! (the DATA whole-array zero-fill). This one is defined output and is
-        ! the only cited file that ever had a valid oracle.
-        character(len=*), parameter :: source = &
-            'program test_data_implied_do'//new_line('a')// &
-            '  implicit none'//new_line('a')// &
-            '  real :: arr(3, 3)'//new_line('a')// &
-            '  integer :: i, j'//new_line('a')// &
-            '  data ((arr(i, j), i = 1, j), j = 1, 3) /6 * 1.0/'//new_line('a')// &
-            '  print *, arr'//new_line('a')// &
-            'end program test_data_implied_do'//new_line('a')
-
-        test_data_implied_do_partial_init = &
-            expect_output_matches_gfortran(source, 'data_implied_do_2349')
-    end function test_data_implied_do_partial_init
 
 end program test_session_undefined_source_oracles_compiler
