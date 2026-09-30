@@ -154,6 +154,27 @@ FortFront #2974). FortFront's nested `ASSOCIATE` owner binding is corrected at
 `d1c6a894`, with the direct-session regression covered by
 `test_session_associate_selectors_compiler`.
 
+## DATA zero-fill and object-count scaling
+
+A `DATA` statement gives initial values; every element it does not reach stays
+initialized to zero (F2018 8.5.16). Lowering records the symbol index of each
+distinct DATA array so the whole-array zero-fill is emitted once per array and a
+second `DATA` on the same array never erases the first.
+
+That record grows on demand and imposes **no limit on the number of DATA
+objects**, because the standard states none. A fixed 64-entry list previously
+refused valid programs at the 65th distinct array (`DATA zero-fill seen list
+overflow`) while gfortran accepted them; reintroducing any fixed ceiling,
+at any size, reproduces that defect. Acceptance therefore scales without a
+boundary, and the genuine DATA refusals stay: a named constant, a `POINTER`
+object, or a symbol already initialized in its declaration are still rejected,
+each with a line and column rather than a bare `file:1:1`.
+
+`test/test_data_zero_fill_seen_growth.sh` pins 64 (last size the old fixed list
+handled), 65 (the false reject), 130 and 300 against gfortran byte-exactly, and
+asserts a zero-filled element is actually observed in the output, so acceptance
+with the memset skipped cannot pass.
+
 ## USE ONLY operator generic specs (#2887)
 
 A `USE m, only: operator(X)` item names a generic spec, and the six relational

@@ -24,12 +24,14 @@
         character(len=:), allocatable, intent(out) :: error_msg
         logical, intent(in) :: zero_fill
         integer :: i, oi
-        integer :: seen(64)
-        integer :: seen_n, s
+        integer, allocatable :: seen(:)
+        integer :: seen_n, seen_cap, s
         logical :: do_fill
 
         call set_empty(error_msg)
         seen_n = 0
+        seen_cap = 64
+        allocate (seen(seen_cap))
         do_fill = zero_fill
         do i = 1, size(body_indices)
             if (.not. is_data_statement_at(arena, body_indices(i))) cycle
@@ -47,10 +49,16 @@
                         if (seen_n > 0) then
                             if (any(seen(1:seen_n) == s)) cycle
                         end if
-                        if (seen_n >= 64) then
-                            error_msg = 'DATA zero-fill seen list overflow: '// &
-                                'too many distinct arrays in one unit'
-                            return
+                        if (seen_n >= seen_cap) then
+                            ! Grow rather than refuse. F2018 8.5.16 sets no
+                            ! limit on the number of DATA objects, so a fixed
+                            ! cap rejected valid programs: 64 distinct arrays
+                            ! compiled and 65 did not, while gfortran accepted
+                            ! both. A fixed 64 was added only to bound a fixed
+                            ! array, so bounding it at another constant would
+                            ! reproduce the same defect one level up.
+                            call grow_seen_list(seen, seen_cap, error_msg)
+                            if (len_trim(error_msg) > 0) return
                         end if
                         call zero_fill_data_array_once(context, s, error_msg)
                         if (len_trim(error_msg) > 0) return
@@ -63,6 +71,31 @@
             end select
         end do
     end subroutine flush_data_statements
+
+    subroutine grow_seen_list(seen, cap, error_msg)
+        ! Double the seen list, preserving what is already recorded. Used when
+        ! a unit has more distinct DATA arrays than the current capacity.
+        integer, allocatable, intent(inout) :: seen(:)
+        integer, intent(inout) :: cap
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        integer, allocatable :: bigger(:)
+        integer :: new_cap, status
+        character(len=32) :: count_text
+
+        call set_empty(error_msg)
+        new_cap = cap * 2
+        allocate (bigger(new_cap), stat=status)
+        if (status /= 0) then
+            write (count_text, '(I0)') new_cap
+            error_msg = 'DATA zero-fill seen list could not grow to '// &
+                trim(count_text)//' entries'
+            return
+        end if
+        bigger(1:cap) = seen(1:cap)
+        call move_alloc(bigger, seen)
+        cap = new_cap
+    end subroutine grow_seen_list
 
     logical function is_data_statement_at(arena, idx)
         type(ast_arena_t), intent(in) :: arena
