@@ -786,7 +786,10 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: src_name
         integer :: src_index
+        integer :: fixed_len
         type(lr_operand_desc_t) :: data_ptr, len_i32, len_i64, buf
+        type(lr_operand_desc_t) :: width_i32, width_i64, bytes, null_pos
+        type(lr_operand_desc_t) :: source_fits, copy_length, copy_length64
 
         call get_identifier_name(arena, value_index, src_name, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -809,6 +812,60 @@
         call char_length_operands(context, src_index, data_ptr, len_i32, &
                                   error_msg)
         if (len_trim(error_msg) > 0) return
+        fixed_len = context%symbols(symbol_index)%character_length
+        if (fixed_len > 0) then
+            ! A fixed-width destination pads or truncates ON ASSIGNMENT
+            ! (F2018 7.2.1.52): what is adopted is the declared width W, not
+            ! the source length. Copy min(len, W) bytes into a fresh
+            ! W+1-byte buffer that starts blank-filled, so shorter sources
+            ! pad and longer sources truncate exactly at W.
+            width_i32 = i32_immediate(context%session, &
+                int(fixed_len, c_int64_t))
+            width_i64 = i64_immediate(context%session, &
+                int(fixed_len, c_int64_t))
+            if (.not. emit_i64_binary(context%session, LR_OP_ADD, width_i64, &
+                    i64_immediate(context%session, 1_c_int64_t), bytes, &
+                    error_msg)) return
+            if (.not. emit_malloc(context%session, bytes, buf, error_msg)) &
+                return
+            call fill_spaces(context, buf, width_i32, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, &
+                    len_i32, width_i32, source_fits, error_msg)) return
+            call select_value(context, source_fits, len_i32, width_i32, &
+                              copy_length, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_i64(context%session, copy_length, &
+                    copy_length64, error_msg)) return
+            if (.not. emit_memcpy(context%session, buf, data_ptr, &
+                    copy_length64, error_msg)) then
+                error_msg = 'fixed_char_assign_copy: '//error_msg
+                return
+            end if
+            if (.not. emit_i64_binary(context%session, LR_OP_ADD, buf, &
+                    width_i64, null_pos, error_msg)) return
+            if (.not. emit_liric_store_char_byte(context%session, null_pos, &
+                    i32_immediate(context%session, 0_c_int64_t), &
+                    i32_immediate(context%session, 0_c_int64_t), error_msg)) &
+                return
+            call release_owned_character_storage(context, symbol_index, &
+                                                error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_ptr_store(context%session, buf, &
+                    context%symbols(symbol_index)%deferred_data, error_msg)) &
+                return
+            if (.not. emit_i64_store(context%session, width_i64, &
+                    context%symbols(symbol_index)%deferred_length, error_msg)) &
+                return
+            call set_character_storage(context, symbol_index, width_i64, &
+                                       LOWERING_CHARACTER_STORAGE_OWNED, &
+                                       error_msg)
+            if (len_trim(error_msg) > 0) return
+            context%symbols(symbol_index)%value = buf
+            context%symbols(symbol_index)%has_character_value = .true.
+            call set_empty(error_msg)
+            return
+        end if
         if (.not. emit_liric_i32_to_i64(context%session, len_i32, len_i64, &
                 error_msg)) return
 
