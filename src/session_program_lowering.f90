@@ -5121,6 +5121,84 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_read_stdin_item
     end interface
+    interface
+        module subroutine lower_scalar_allocatable_declaration(node, &
+                                                               context, &
+                                                               value_kind, &
+                                                               error_msg)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_scalar_allocatable_declaration
+        module subroutine declare_scalar_allocatable(context, name, value_kind, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine declare_scalar_allocatable
+        module subroutine lower_allocate_scalar(symbol_index, context, error_msg)
+            integer, intent(in) :: symbol_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_allocate_scalar
+        module subroutine declare_scalar_allocatable_derived(context, &
+                                                             node, &
+                                                             derived_type_index, &
+                                                             error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: derived_type_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine declare_scalar_allocatable_derived
+        module subroutine declare_one_scalar_allocatable_derived(context, &
+                                                                 name, &
+                                                                 derived_type_index, &
+                                                                 is_class, &
+                                                                 error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: derived_type_index
+            logical, intent(in) :: is_class
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine declare_one_scalar_allocatable_derived
+        module subroutine lower_allocate_scalar_derived(symbol_index, &
+                                                        context, &
+                                                        error_msg, &
+                                                        dynamic_type_index)
+            integer, intent(in) :: symbol_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+            integer, intent(in), optional :: dynamic_type_index
+        end subroutine lower_allocate_scalar_derived
+        module subroutine lower_deallocate_scalar(symbol_index, context, error_msg)
+            integer, intent(in) :: symbol_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_deallocate_scalar
+        module subroutine lower_scalar_allocate_mold_source(arena, &
+                                                            node, &
+                                                            target_sym, &
+                                                            context, &
+                                                            error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(allocate_statement_node), intent(in) :: node
+            integer, intent(in) :: target_sym
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_scalar_allocate_mold_source
+        module subroutine lower_class_star_allocate_source(arena, &
+                                                           node, &
+                                                           target_sym, &
+                                                           context, &
+                                                           error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(allocate_statement_node), intent(in) :: node
+            integer, intent(in) :: target_sym
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_class_star_allocate_source
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -5916,7 +5994,6 @@ contains
     include 'session_program_lowering_char_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
     include 'session_program_lowering_runtime_alloc.inc'
-    include 'session_program_lowering_scalar_allocatable.inc'
     subroutine define_symbol(context, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name

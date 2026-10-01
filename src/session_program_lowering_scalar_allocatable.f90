@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) scalar_allocatable
+    !! `scalar_allocatable` procedures, moved out of `session_program_lowering_scalar_allocatable.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine lower_scalar_allocatable_declaration(node, context, value_kind, &
                                                     error_msg)
         ! integer/real/logical, allocatable :: x (no array spec, W11). The
@@ -362,3 +370,6 @@
             context%symbols(target_sym)%deferred_length, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_class_star_allocate_source
+
+
+end submodule scalar_allocatable
