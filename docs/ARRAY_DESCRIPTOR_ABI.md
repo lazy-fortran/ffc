@@ -362,3 +362,26 @@ N bytes into the caller's buffer and is visible to the caller. Allocatable
 character actuals (per-element pointer storage today), character sections,
 deferred or assumed lengths, and rank >= 2 character dummies are refused
 before any descriptor is emitted.
+
+## Extent reads (#339)
+
+`read_runtime_dim_extent` is the single canonical entry point for a
+runtime dimension extent in lowering. A descriptor-backed symbol
+(`has_runtime_descriptor`) answers with a **fresh load** of that
+dimension's extent field from its live canonical descriptor
+(`runtime_descriptor_address + ARRAY_DESCRIPTOR_DIM_OFFSET +
+ARRAY_DIMENSION_BYTES * (dim - 1) + ARRAY_DIMENSION_EXTENT_OFFSET`,
+i64 → i32), so reductions, `ubound`, and stride computations always
+observe the caller's actual shape. Symbols without a descriptor keep
+their shape operand in the widened 7-slot metadata
+(`has_runtime_dim_size` / `runtime_dim_size`, formerly 4 slots): the
+optional-assumed-shape zero sentinel (#334) and automatic runtime
+arrays `a(m)` fixed their extent where the shape was created, and that
+operand remains authoritative for them. The metadata cache is no longer
+consulted on the descriptor-backed path; removing the cache writes for
+such symbols is the final retirement step once every consumer routes
+through this helper. Reduction hubs
+(`lower_runtime_reduction`, `lower_runtime_comparison_reduction`) and
+`ubound` now loop dimensions to rank 7 through the helper; assumed-
+shape binding still admits rank <= 4, so rank >= 5 dummies remain
+refused upstream until bind widens.

@@ -102,6 +102,7 @@ contains
         integer(c_int64_t) :: dim_val
         integer :: lower, size_d
         type(lr_operand_desc_t) :: lower64, extent64, sum64, upper64
+        type(lr_operand_desc_t) :: ext_op
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 1) then
             error_msg = 'ubound requires at least one argument'
@@ -147,20 +148,24 @@ contains
             call set_empty(error_msg)
             return
         end if
-        ! dim_val is guarded to 1..2 in a separate test because a rank-N fixed
-        ! array (rank up to 7) would index the two-slot has_runtime_dim_size out
-        ! of bounds; .and. does not short-circuit in Fortran.
-        if (dim_val >= 1_c_int64_t .and. dim_val <= 2_c_int64_t) then
-            if (context%symbols(sym)%has_runtime_dim_size(int(dim_val))) then
+        ! Runtime extents live in the canonical descriptor for bound dummies
+        ! and in the widened 7-slot metadata for runtime automatic arrays;
+        ! dim_val indexes both tables safely for ranks 1..7 (#339).
+        if (dim_val >= 1_c_int64_t .and. dim_val <= 7_c_int64_t) then
+            if (context%symbols(sym)%has_runtime_descriptor .or. &
+                context%symbols(sym)%has_runtime_dim_size(int(dim_val))) then
                 ! Runtime extent: ubound = lower + extent - 1. An assumed-shape
                 ! dummy has lower bound 1 (extent); a runtime-sized local array
                 ! a(L:n) carries a constant lower bound L in array_dim_lowers.
                 lower = context%symbols(sym)%array_dim_lowers(int(dim_val))
+                call read_runtime_dim_extent(context, sym, int(dim_val), &
+                                             ext_op, error_msg)
+                if (len_trim(error_msg) > 0) return
                 if (lower == 1) then
-                    value = context%symbols(sym)%runtime_dim_size(int(dim_val))
+                    value = ext_op
                 else
                     if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
-                        context%symbols(sym)%runtime_dim_size(int(dim_val)), &
+                        ext_op, &
                         i32_immediate(context%session, &
                         int(lower - 1, c_int64_t)), value, error_msg)) return
                 end if
@@ -323,48 +328,34 @@ contains
             backedge_index, next_index
         integer(c_int32_t) :: entry_block, header_block, body_block, &
             latch_block, exit_block, index_vreg
+        integer :: dim
+        character(len=8) :: dim_buf
+        type(lr_operand_desc_t) :: mul_result
 
         call set_empty(error_msg)
         if (context%symbols(mask_sym)%array_rank < 1 .or. &
-            context%symbols(mask_sym)%array_rank > 4) then
+            context%symbols(mask_sym)%array_rank > 7) then
             error_msg = trim(reduction_name)// &
-                ' over runtime comparison masks supports ranks 1 through 4 only'
+                ' over runtime comparison masks supports ranks 1 through 7 only'
             return
         end if
-        extent = context%symbols(mask_sym)%runtime_dim_size(1)
-        if (context%symbols(mask_sym)%array_rank >= 2) then
-            if (.not. context%symbols(mask_sym)%has_runtime_dim_size(2)) then
-                error_msg = trim(reduction_name)// &
-                    ' over runtime comparison masks is missing rank-2 extent'
+        call read_runtime_dim_extent(context, mask_sym, 1, extent, error_msg)
+        if (len_trim(error_msg) > 0) return
+        do dim = 2, context%symbols(mask_sym)%array_rank
+            if (.not. (context%symbols(mask_sym)%has_runtime_descriptor .or. &
+                      context%symbols(mask_sym)%has_runtime_dim_size(dim))) then
+                write(dim_buf, '(I0)') dim
+                error_msg = trim(reduction_name)//' over runtime comparison '// &
+                    'masks is missing rank-'//trim(dim_buf)//' extent'
                 return
             end if
+            call read_runtime_dim_extent(context, mask_sym, dim, total_extent, &
+                                         error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
-                context%symbols(mask_sym)%runtime_dim_size(2), total_extent, &
-                error_msg)) return
-            extent = total_extent
-        end if
-        if (context%symbols(mask_sym)%array_rank >= 3) then
-            if (.not. context%symbols(mask_sym)%has_runtime_dim_size(3)) then
-                error_msg = trim(reduction_name)// &
-                    ' over runtime comparison masks is missing rank-3 extent'
-                return
-            end if
-            if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
-                context%symbols(mask_sym)%runtime_dim_size(3), total_extent, &
-                error_msg)) return
-            extent = total_extent
-        end if
-        if (context%symbols(mask_sym)%array_rank >= 4) then
-            if (.not. context%symbols(mask_sym)%has_runtime_dim_size(4)) then
-                error_msg = trim(reduction_name)// &
-                    ' over runtime comparison masks is missing rank-4 extent'
-                return
-            end if
-            if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
-                context%symbols(mask_sym)%runtime_dim_size(4), total_extent, &
-                error_msg)) return
-            extent = total_extent
-        end if
+                total_extent, mul_result, error_msg)) return
+            extent = mul_result
+        end do
         call runtime_reduction_accumulator_slot(context, VALUE_I32, &
             reduction_name, accumulator, identity, error_msg)
         if (len_trim(error_msg) > 0) return

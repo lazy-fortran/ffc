@@ -1237,3 +1237,40 @@
         end do
         call set_empty(error_msg)
     end subroutine bind_optional_assumed_shape_descriptor
+
+    subroutine read_runtime_dim_extent(context, sym_index, dim, extent_i32, &
+                                        error_msg)
+        ! Canonical single read of a runtime dimension extent (#339). A
+        ! descriptor-backed symbol answers from its canonical array
+        ! descriptor: a fresh load of the dimension's extent field, so the
+        ! value always comes from the caller's live descriptor. Symbols
+        ! without a descriptor keep their shape operand in the metadata
+        ! slot (optional-assumed-shape sentinel #334, automatic runtime
+        ! arrays); those operands were fixed where the shape was created
+        ! and remain the authoritative source for such symbols.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: sym_index
+        integer, intent(in) :: dim
+        type(lr_operand_desc_t), intent(out) :: extent_i32
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: extent64
+
+        if (context%symbols(sym_index)%has_runtime_descriptor) then
+            if (.not. emit_i64_load_at(context%session, &
+                    context%symbols(sym_index)%runtime_descriptor_address, &
+                    assumed_shape_dim_field_offset(dim, &
+                        int(ARRAY_DIMENSION_EXTENT_OFFSET, c_int64_t)), &
+                    extent64, error_msg)) return
+            if (.not. emit_liric_i64_to_i32(context%session, extent64, &
+                                             extent_i32, error_msg)) return
+            call set_empty(error_msg)
+            return
+        end if
+        if (.not. context%symbols(sym_index)%has_runtime_dim_size(dim)) then
+            error_msg = 'read_runtime_dim_extent: no runtime extent for '// &
+                        'dimension'
+            return
+        end if
+        extent_i32 = context%symbols(sym_index)%runtime_dim_size(dim)
+        call set_empty(error_msg)
+    end subroutine read_runtime_dim_extent

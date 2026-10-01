@@ -724,6 +724,7 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: extent, next_extent, accumulator, zero
+        type(lr_operand_desc_t) :: dim_extent
         type(lr_operand_desc_t) :: entry_idx, header_idx, backedge_idx
         type(lr_operand_desc_t) :: condition, element, next_idx
         integer(c_int32_t) :: entry_block, header_block, body_block, &
@@ -739,14 +740,17 @@
             return
         end if
         if (context%symbols(source_index)%array_rank < 1 .or. &
-            context%symbols(source_index)%array_rank > 4) then
+            context%symbols(source_index)%array_rank > 7) then
             error_msg = trim(reduction_name)// &
-                ' over runtime-extent arrays supports rank-1 through rank-4 only'
+                ' over runtime-extent arrays supports rank-1 through rank-7 only'
             return
         end if
-        extent = context%symbols(source_index)%runtime_dim_size(1)
+        call read_runtime_dim_extent(context, source_index, 1, extent, &
+                                     error_msg)
+        if (len_trim(error_msg) > 0) return
         do dim = 2, context%symbols(source_index)%array_rank
-            if (.not. context%symbols(source_index)%has_runtime_dim_size(dim)) then
+            if (.not. (context%symbols(source_index)%has_runtime_descriptor &
+                      .or. context%symbols(source_index)%has_runtime_dim_size(dim))) then
                 if (dim == 2) then
                     error_msg = trim(reduction_name)// &
                         ' is missing the second array extent'
@@ -755,9 +759,11 @@
                 end if
                 return
             end if
+            call read_runtime_dim_extent(context, source_index, dim, &
+                                         dim_extent, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
-                    context%symbols(source_index)%runtime_dim_size(dim), &
-                    next_extent, error_msg)) return
+                    dim_extent, next_extent, error_msg)) return
             extent = next_extent
         end do
 
