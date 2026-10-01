@@ -54,6 +54,18 @@ contains
         call get_binary_op_info(arena, node_index, bin_op, bin_left, &
             bin_right, bin_line, bin_col, error_msg)
         if (len_trim(error_msg) > 0) return
+        ! A relational or logical infix yields a LOGICAL, not an integer, so the
+        ! whole node belongs to the logical lowerer - which already lowers it
+        ! correctly, proven by `print "(L1)", 1<2` and by `if (1<2)`. Taking this
+        ! route before the integer operand lowerer is what stops `print *, 1<2`
+        ! and `print *, a=="ab"` from being refused as arithmetic they never were
+        ! (the old refusal blamed "integer expressions" and, for a character
+        ! operand, named the identifier as non-integer - both wrong constructs).
+        if (is_logical_valued_op(bin_op)) then
+            call lower_logical_expression(arena, node_index, context, value, &
+                error_msg)
+            return
+        end if
         call lower_i32_expression(arena, bin_left, context, lhs, error_msg)
         if (len_trim(error_msg) > 0) return
         if (trim(bin_op) == '**') then
@@ -619,4 +631,27 @@ contains
     end if
     call set_empty(error_msg)
     end procedure lower_i32_array_element
+
+    logical function is_logical_valued_op(source_op) result(is_logical)
+        ! True for an infix operator whose result is a LOGICAL rather than a
+        ! number: the six relational spellings (both symbolic and dotted) and the
+        ! logical infix operators. `lower_integer_expression` uses this to hand the
+        ! whole node to `lower_logical_expression` instead of trying to fold a
+        ! comparison as arithmetic, which is what made `print *, 1<2` and
+        ! `print *, a=="ab"` fail with messages naming the wrong construct (#761).
+        ! Deliberately local to this submodule: `is_comparison_operator` lives in
+        ! `session_program_lowering_array_elements.inc` and its visibility across
+        ! submodules is not established, so the predicate is stated here in full.
+        character(len=*), intent(in) :: source_op
+
+        select case (trim(source_op))
+        case ('>', '.gt.', '>=', '.ge.', '<', '.lt.', '<=', '.le.', &
+              '==', '=', '.eq.', '/=', '!=', '.ne.')
+            is_logical = .true.
+        case ('.and.', '.or.', '.eqv.', '.neqv.', 'and', 'or', 'eqv', 'neqv')
+            is_logical = .true.
+        case default
+            is_logical = .false.
+        end select
+    end function is_logical_valued_op
 end submodule session_program_lowering_integer

@@ -410,3 +410,34 @@ Parity is machine-checked by `tools/test_format_edit_descriptor_parity.py`
 to the printf mapping must keep that oracle green; a width-only mapping that
 forgets the precision field reproduces both defects silently, because the output
 is still plausible.
+
+## List-directed output of logical values
+
+A comparison or logical infix written as a bare `print *`/`write(*,*)` item prints
+`T` or `F` and is a supported item kind: `print *, 1<2` is `T`, `print *, 3>4` is
+`F`, and logical operators mix freely with arithmetic and strings in the same
+statement (`print *, 1<2, 3+4, "x"` is ` T       5 x`).
+
+The item carries three independently-required behaviours, and a route that supplies
+only some of them is a defect rather than a fix:
+
+- the **node** must reach `lower_logical_expression` (it is not arithmetic);
+- the **value** must be printed through `lower_print_logical_value`, not the
+  integer descriptor - routing the value without the printer prints `1` and `0`
+  where `T`/`F` is required, which is worse than the refusal it replaced;
+- **intrinsic and user-overloaded** operators are separate routes. The overloaded
+  branch already printed logical results; the intrinsic branch was the missing one
+  (#761), and a fix at the binary-operator site does not cover unary `.not.`,
+  which stays open on #761 with the same proof shape (`print "(L1)", .not.(1>2)`
+  prints `T`).
+
+Symbolic operators are covered. Dotted relational operators (`.lt.`, `.ge.`) are
+**not** - they print the left operand as a real (`print *, 1.lt.2` gives
+`   1.00000000`, not ` T`) because a real literal may end in a decimal point; that
+is a tokenisation defect upstream of this contract, recorded as #763, and it is a
+wrong answer rather than a refusal.
+
+`tools/test_logical_print_parity.py` machine-checks this: `runs=36 match=34
+refused=0 mismatch=0` with four `KNOWN_GAP` rows named in the report
+(`/var/tmp/ffc-goal/perf/logprint/report.tsv`), falsification demonstrated. A
+change to any of the three behaviours above must keep that oracle green.

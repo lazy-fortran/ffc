@@ -456,6 +456,19 @@ contains
                 call lower_print_char_expr(arena, node_index, context, error_msg)
                 return
             end if
+            ! An intrinsic relational or logical infix yields a LOGICAL. The
+            ! overloaded-operator branch below already prints a user-defined
+            ! logical result through lower_print_logical_value; intrinsic operators
+            ! had no equivalent route, so `print *, 1<2` fell to the integer
+            ! lowerer, which knows only + - * / and refused it (#761). Mirror the
+            ! overloaded branch: lower as logical, print as logical, return.
+            if (intrinsic_logical_valued_op(arena, node_index)) then
+                call lower_logical_expression(arena, node_index, context, value, &
+                                              error_msg)
+                if (len_trim(error_msg) > 0) return
+                call lower_print_logical_value(context, value, error_msg)
+                return
+            end if
             block
                 integer :: op_slot
                 if (overloaded_operator_slot(arena, node_index, context, &
@@ -1092,4 +1105,30 @@ contains
     end subroutine lower_print_logical_value
 
 
+    logical function intrinsic_logical_valued_op(arena, node_index) result(is_logical)
+        ! True when node_index is a binary op whose result type is LOGICAL:
+        ! the six relational spellings plus the logical infix operators.
+        ! `//` is absent on purpose - character concatenation is a character
+        ! result and is handled by its own branch before this test runs.
+        ! User-defined operators are excluded here because the caller reaches
+        ! them through overloaded_operator_slot and already prints their logical
+        ! results correctly; this predicate covers only the intrinsic gap (#761).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        character(len=:), allocatable :: op
+        character(len=:), allocatable :: qerr
+        integer :: l, r, ln, cn
+
+        is_logical = .false.
+        call get_binary_op_info(arena, node_index, op, l, r, ln, cn, qerr)
+        if (.not. allocated(op)) return
+        select case (trim(op))
+        case ('>', '.gt.', '>=', '.ge.', '<', '.lt.', '<=', '.le.', &
+              '==', '=', '.eq.', '/=', '!=', '.ne.', &
+              '.and.', '.or.', '.eqv.', '.neqv.', 'and', 'or', 'eqv', 'neqv')
+            is_logical = .true.
+        case default
+            is_logical = .false.
+        end select
+    end function intrinsic_logical_valued_op
 end submodule print_expr
