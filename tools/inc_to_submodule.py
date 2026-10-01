@@ -159,19 +159,38 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
             "end": end_next,
         })
 
+    # The `include` directive does not necessarily live in the root module:
+    # the hub `top.inc` includes `submodules.inc`, and `functions.inc`
+    # includes `functions_tail.inc`. Find where it actually is; the interface
+    # still goes into the root module's declaration section, because that is
+    # the scope the text lands in either way.
+    includer = None
+    for cand in [ROOT] + sorted(pathlib.Path("src").glob("*.inc")):
+        if cand.exists() and f"include '{path.name}'" in cand.read_text():
+            includer = cand
+            break
+    if includer is None:
+        print(f"{path}: no `include` directive found in src - dead text, "
+              "delete it instead of migrating it", file=sys.stderr)
+        return 10
+
     # Two failure modes a text include makes invisible until the build fails
     # deep inside a 7k-line includer. Refuse both here, at the file that has
     # the problem, with the reason.
     for i, l in enumerate(lines):
         m = re.search(r"include\s+'([^']+)'", l, re.I)
-        if m:
+        if m and m.group(1) != path.name:
             print(f"{path}: includes {m.group(1)} - migrate that child first, "
                   "or the captured region duplicates its procedures",
                   file=sys.stderr)
             return 6
+    out = pathlib.Path("src") / f"session_program_lowering_{stem}.f90"
     for p_ in procedures:
         for other in sorted(pathlib.Path("src").glob("*.f90")):
-            if other == path or other.name == ROOT.name:
+            # Never collide with this tool's own destination: a stray left by
+            # an aborted run would otherwise look like a duplicate definition
+            # in a sibling include.
+            if other == path or other.name == ROOT.name or other == out:
                 continue
             if re.search(rf"^    (?:recursive |pure |elemental |)*"
                          rf"(?:[A-Za-z_][A-Za-z0-9_]* )?"
@@ -295,15 +314,21 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
         print("\n".join(iface))
         return 0
 
-    out = pathlib.Path("src") / f"session_program_lowering_{stem}.f90"
     out.write_text("\n".join(sub) + "\n")
-    root_text = ROOT.read_text()
-    inc_line = f"    include '{path.name}'\n"
-    if root_text.count(inc_line) != 1:
-        print(f"{ROOT}: expected exactly one include of {path.name}",
-              file=sys.stderr)
+    inc_text = includer.read_text()
+    n = len(re.findall(rf"^\s*include\s+'{re.escape(path.name)}'\s*$",
+                       inc_text, re.M))
+    if n != 1:
+        print(f"{includer}: expected exactly one include of {path.name}, "
+              f"found {n}", file=sys.stderr)
         return 4
-    root_text = root_text.replace(inc_line, "")
+    if includer != ROOT:
+        includer.write_text(re.sub(
+            rf"^\s*include\s+'{re.escape(path.name)}'\s*\n", "",
+            inc_text, count=1))
+        root_text = ROOT.read_text()
+    else:
+        root_text = inc_text
     nl = "\n" + "contains" + "\n"
     if root_text.count(nl) != 1:
         print(f"{ROOT}: cannot locate `contains`", file=sys.stderr)
