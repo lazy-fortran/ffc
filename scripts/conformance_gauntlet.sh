@@ -70,6 +70,10 @@ TIMEOUT=5
 # child always runs --jobs 1, so the width never multiplies recursively.
 JOBS=${FFC_CONFORMANCE_JOBS-6}
 KEEP_FULL_RUN=0
+# Internal flag for shard children: they walk only part of the suite, so they
+# must not publish an observation or be classified. The parent merges their
+# records and publishes one observation for the whole selection.
+NO_PUBLISH=0
 REPEAT=1
 SAMPLE_SIZE=""
 SAMPLE_SEED=0
@@ -120,6 +124,8 @@ while [ $# -gt 0 ]; do
             JOBS="$2"; shift 2 ;;
         --keep-full-run)
             KEEP_FULL_RUN=1; shift ;;
+        --no-publish)
+            NO_PUBLISH=1; shift ;;
         --timeout)
             TIMEOUT="$2"; shift 2 ;;
         --repeat)
@@ -951,6 +957,13 @@ write_summary() {
 }
 
 publish_observation() {
+    if [ "$NO_PUBLISH" -eq 1 ]; then
+        # A shard child holds a partial selection: publishing it would either
+        # be refused (a partial selection cannot carry a full-run identity) or
+        # pretend to be something it is not. The records stay on disk for the
+        # parent to merge; only the parent publishes and classifies.
+        return 0
+    fi
     if ! conformance_observation_publish "$OBSERVATIONS" \
             "$OBSERVATION_DESTINATION" "$SUITE"; then
         printf 'ERROR: refusing to publish incomplete observation: %s\n' \
@@ -1899,12 +1912,17 @@ run_sharded() {
     else
         full_flag=()
     fi
+    # Children never publish or classify: they hold a partial selection. The
+    # parent's merged records carry the run's identity, so a child publishing
+    # its shard would be refused as a false full run (or, worse, accepted as
+    # one) and its non-zero exit would fail a suite that actually passed.
+    publish_flag=(--no-publish)
 
     for k in $(seq 0 $((width - 1))); do
         shard="$TMPDIR_WORK/shard_${k}.txt"
         [ -s "$shard" ] || continue
         (
-            bash "$0" "${child_args[@]}" "${full_flag[@]}" --jobs 1 \
+            bash "$0" "${child_args[@]}" --jobs 1 --no-publish \
                 --files-from "$shard" \
                 --report "$TMPDIR_WORK/report_shard_${k}.json" \
                 --observations "$TMPDIR_WORK/obs_shard_${k}.jsonl" \
@@ -1931,8 +1949,22 @@ run_sharded() {
         merged_rel="${merged_abs#"$SUITE_ROOT/"}"
         hits=$(grep -h -c "\"file\":\"$merged_rel\"" \
             "$TMPDIR_WORK"/obs_shard_*.jsonl 2>/dev/null | awk '{s+=$1} END{print s+0}')
+        if [ "$hits" -eq 0 ]; then
+            # A file that is not a standalone executable is skipped and, as in
+            # the serial path, writes no case record. The shard logs carry the
+            # skip, so the file is still accounted for. What stays fatal is a
+            # file with neither a record nor a skip: that is a lost case.
+            skips=$(grep -h -c "SKIP: $merged_rel " \
+                "$TMPDIR_WORK"/shard_*.log 2>/dev/null | awk '{s+=$1} END{print s+0}')
+            if [ "$skips" -ne 1 ]; then
+                printf 'ERROR: %s produced %s records and %s skips, expected one\n' \
+                    "$merged_rel" "$hits" "$skips" >&2
+                return 1
+            fi
+            continue
+        fi
         if [ "$hits" -ne 1 ]; then
-            printf 'ERROR: %s produced %s records, expected 1\\n' \
+            printf 'ERROR: %s produced %s records, expected 1\n' \
                 "$merged_rel" "$hits" >&2
             return 1
         fi
@@ -1962,16 +1994,28 @@ run_sharded() {
 
     sed -i -E "s#\"epoch_sha256\":\"[0-9a-f]+\"#\"epoch_sha256\":\"$EPOCH_SHA256\"#g" \
         "$records"
+    # The parent did no case work, so its own cache-hit counter is zero while
+    # the merged records carry the children's hits. The observation validator
+    # recomputes the total from the records and rejects a SUMMARY that
+    # disagrees, so the parent adopts the children's summed total.
+    REF_CACHE_HITS=$(grep -h '"status":"SUMMARY"' \
+        "$TMPDIR_WORK"/obs_shard_*.jsonl 2>/dev/null | \
+        grep -oE '"reference_cache_hits":[0-9]+' | \
+        cut -d: -f2 | awk '{s+=$1} END{print s+0}')
     cp "$records" "$OBSERVATIONS"
     count_records "$records"
 
     # Completeness guard: the shards must account for every file the serial
-    # path would have walked. A child that died, produced no records, or lost
-    # its scratch turns the run red; it never shrinks the suite.
+    # path would have walked, either as a case record or as the skip the
+    # serial path also makes for non-executable sources. A child that died,
+    # produced no records, or lost its scratch turns the run red; it never
+    # shrinks the suite.
     expected=$(wc -l < "$FILE_LIST")
-    if [ "$TOTAL_COUNT" -ne "$expected" ]; then
-        printf 'ERROR: sharded run covered %d of %d files\n' \
-            "$TOTAL_COUNT" "$expected" >&2
+    accounted=$((TOTAL_COUNT + $(grep -h -c "^  SKIP: " \
+        "$TMPDIR_WORK"/shard_*.log 2>/dev/null | awk '{s+=$1} END{print s+0}')))
+    if [ "$accounted" -ne "$expected" ]; then
+        printf 'ERROR: sharded run accounted for %d of %d files\n' \
+            "$accounted" "$expected" >&2
         return 1
     fi
 
@@ -1994,6 +2038,11 @@ fi
 # Summary
 write_summary
 publish_observation || exit 1
+if [ "$NO_PUBLISH" -eq 1 ]; then
+    # Nothing was published, so there is nothing to classify: a shard child's
+    # verdicts are inputs to the parent's run, not a report in their own right.
+    exit "$SHARD_RC"
+fi
 classification_status=0
 classify_observation_report || classification_status=$?
 [ "$classification_status" -le 1 ] || exit "$classification_status"
