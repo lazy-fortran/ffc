@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) write_ops
+    !! `write_ops` procedures, moved out of `session_program_lowering_write_ops.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     logical function is_stdout_write(node)
         ! True when write's unit is stdout: '*', '6', or the iso_fortran_env
         ! named constant output_unit (which is the standard-output unit).
@@ -236,3 +244,6 @@
                                           error_msg)) return
         end select
     end subroutine lower_read_stdin_item
+
+
+end submodule write_ops

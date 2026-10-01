@@ -5086,6 +5086,41 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_print_logical_value
     end interface
+    interface
+        logical module function is_stdout_write(node)
+            type(write_statement_node), intent(in) :: node
+        end function is_stdout_write
+        logical module function unit_spec_is_output_unit(unit_spec)
+            character(len=*), intent(in) :: unit_spec
+        end function unit_spec_is_output_unit
+        logical module function is_stdin_read(node)
+            type(read_statement_node), intent(in) :: node
+        end function is_stdin_read
+        module subroutine lower_write_stdout(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(write_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_write_stdout
+        module subroutine lower_read_stdin(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(read_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_read_stdin
+        module subroutine lower_read_stdin_item(arena, &
+                                                node_index, &
+                                                stmt_line, &
+                                                stmt_col, &
+                                                context, &
+                                                error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(in) :: stmt_line, stmt_col
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_read_stdin_item
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -6751,7 +6786,6 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine emit_error_stop_banner
-    include 'session_program_lowering_write_ops.inc'
     include 'session_program_lowering_inquire.inc'
     include 'session_program_lowering_read_ops.inc'
     include 'session_program_lowering_read_al.inc'
