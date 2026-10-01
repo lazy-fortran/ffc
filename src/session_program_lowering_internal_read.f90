@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) internal_read
+    !! `internal_read` procedures, moved out of `session_program_lowering_internal_read.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     logical function is_internal_read(node, context)
         ! True when read's unit is a character variable rather than a unit
         ! number or '*'.
@@ -332,3 +340,6 @@
 
         call assign_logical_from_token(context, token, target_index, error_msg)
     end subroutine lower_list_directed_internal_read_logical
+
+
+end submodule internal_read

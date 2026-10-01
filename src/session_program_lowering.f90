@@ -4782,6 +4782,52 @@ module session_program_lowering_impl
             type(symbol_t), intent(in) :: saved_sym
         end subroutine release_io_implied_do_var
     end interface
+    interface
+        logical module function is_internal_read(node, context)
+            type(read_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+        end function is_internal_read
+        module subroutine lower_internal_read(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(read_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_internal_read
+        module subroutine lower_list_directed_internal_read(context, &
+                                                            buf_index, &
+                                                            target_index, &
+                                                            line, &
+                                                            col, &
+                                                            buffer_value, &
+                                                            error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: buf_index, target_index, line, col
+            type(lr_operand_desc_t), intent(in) :: buffer_value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_list_directed_internal_read
+        module subroutine lower_list_directed_internal_read_char(context, &
+                                                                 buf_index, &
+                                                                 target_index, &
+                                                                 line, &
+                                                                 col, &
+                                                                 buffer_value, &
+                                                                 error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: buf_index, target_index, line, col
+            type(lr_operand_desc_t), intent(in) :: buffer_value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_list_directed_internal_read_char
+        module subroutine lower_list_directed_internal_read_logical(context, &
+                                                                    buf_index, &
+                                                                    target_index, &
+                                                                    buffer_value, &
+                                                                    error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: buf_index, target_index
+            type(lr_operand_desc_t), intent(in) :: buffer_value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_list_directed_internal_read_logical
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -5578,7 +5624,6 @@ contains
     include 'session_program_lowering_allocatable.inc'
     include 'session_program_lowering_runtime_alloc.inc'
     include 'session_program_lowering_scalar_allocatable.inc'
-    include 'session_program_lowering_internal_read.inc'
     subroutine define_symbol(context, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
