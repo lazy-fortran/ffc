@@ -334,6 +334,8 @@ contains
         integer :: i
         character(len=32) :: width_text
         character(len=32) :: precision_text
+        character(len=:), allocatable :: min_digits
+        character(len=32) :: min_digits_text
 
         call set_empty(error_msg)
         exhausted = .false.
@@ -384,8 +386,19 @@ contains
                 error_msg = 'I edit descriptor requires width'
                 return
             end if
-            ! Iw.m: ignore the minimum-digit count m for printf width mapping.
-            call skip_dot_modifier(format_body, pos)
+            ! Iw.m: m is the minimum number of digits, zero-padded. printf gets
+            ! the same shape from a precision field: `%w.md` prints at least m
+            ! digits right-justified in a field of w, which is Fortran's Iw.m.
+            ! Verified against gfortran: I6.3/42 -> "   042", I6.3/0 -> "   000",
+            ! I4.4/7 -> "0007", I5.3/-42 -> " -042". Discarding m (the previous
+            ! behaviour) silently printed "    42" and "     0".
+            if (allocated(min_digits)) deallocate (min_digits)
+            if (pos <= len_trim(format_body)) then
+                if (format_body(pos:pos) == '.') then
+                    pos = pos + 1
+                    call parse_decimal_digits(format_body, pos, min_digits)
+                end if
+            end if
             call read_decimal_value(width, width_value, error_msg)
             if (len_trim(error_msg) > 0) return
             if (width_value == 0) then
@@ -393,6 +406,16 @@ contains
             else
                 write (width_text, '(I0)') width_value
                 printf_fmt = '%'//trim(width_text)//'d'
+                if (allocated(min_digits)) then
+                    if (len_trim(min_digits) > 0 .and. min_digits /= '0') then
+                        call read_decimal_value(min_digits, precision_value, &
+                                               error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        write (min_digits_text, '(I0)') precision_value
+                        printf_fmt = '%'//trim(width_text)//'.'// &
+                                    trim(min_digits_text)//'d'
+                    end if
+                end if
             end if
             call repeat_data_descriptor(arena, node, context, kind_char, &
                                         printf_fmt, 0, repeat_count, item_index, &
@@ -498,7 +521,9 @@ contains
                 call read_decimal_value(width, width_value, error_msg)
                 if (len_trim(error_msg) > 0) return
                 write (width_text, '(I0)') width_value
-                printf_fmt = '%'//trim(width_text)//'s'
+                ! Aw truncates to w characters and right-justifies; printf's
+                ! precision does the truncation, the width the padding.
+                printf_fmt = '%'//trim(width_text)//'.'//trim(width_text)//'s'
             end if
             call repeat_data_descriptor(arena, node, context, kind_char, &
                                         printf_fmt, 0, repeat_count, item_index, &

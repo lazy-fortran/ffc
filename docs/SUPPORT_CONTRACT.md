@@ -389,3 +389,24 @@ check is satisfied vacuously. An extension registered anywhere, or a
 `class(*)` selector, keeps the runtime-descriptor path or the explicit
 refusal; the child-instance dispatch (`show(k)` with `class(t)` dummy)
 is byte-exact through the descriptor path either way.
+
+## Formatted output: field width and zero-padding
+
+`write`/`print` with a FORMAT string lower to printf-shaped directives, and the
+field-editing half of the Fortran contract is carried by the printf precision
+field, not by the width alone:
+
+- `Iw.m` -> `%w.md`. `m` is the minimum digit count, zero-padded; `w` right-
+  justifies the result. `m` is **not** cosmetic: `I5.3` of `42` is `"  042"`, and
+  dropping `m` printed `"   42"`. `Iw.m` of `0` prints zeros, not blanks, while
+  `m > 0`. `I0` and `Iw` without `m` keep plain `%d`/`%wd`.
+- `Aw` -> `%w.Ns`. The precision truncates to `w`, the width pads. `(A3)` of
+  `"ABCDEF"` is `"ABC"`; `(A5)` of `"AB"` is right-justified, matching gfortran,
+  which is the padding direction this path already had and did not change.
+
+Parity is machine-checked by `tools/test_format_edit_descriptor_parity.py`
+(`runs=24 match=24 mismatch=0`, per-row reference and ffc digests at
+`/var/tmp/ffc-goal/perf/fmted/report.tsv`, falsification demonstrated). A change
+to the printf mapping must keep that oracle green; a width-only mapping that
+forgets the precision field reproduces both defects silently, because the output
+is still plausible.
