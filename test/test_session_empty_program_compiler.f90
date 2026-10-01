@@ -1,4 +1,3 @@
-! fo: dispatcher
 program test_session_empty_program_compiler
     use ffc_test_support, only: expect_exit_status
     implicit none

@@ -31,6 +31,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import pathlib
 import re
 import sys
@@ -42,6 +43,22 @@ INTERNAL = re.compile(
     r"^\s*(?:recursive\s+|pure\s+|elemental\s+)*"
     r"(?:integer|logical|real|complex|character|type|class)?\s*"
     r"(?:subroutine|function)\s+[A-Za-z_]", re.I)
+
+
+def sym(name: str) -> str:
+    """The Fortran symbol for a case, within the compiler's identifier limit.
+
+    gfortran caps identifiers at 63 characters, and `case_` plus a long test
+    stem passes that - and it does not fail as a tidy diagnostic: the parse
+    derails, so the neighbouring `public` and `use` lines report unrelated
+    errors (this is what broke the 96-case batch). The dispatch key stays the
+    full test name, so `ffc_suite <test_name>` is unaffected; only the
+    Fortran symbol is bounded.
+    """
+    cand = f"case_{name}"
+    if len(cand) <= 63:
+        return cand
+    return "case_c" + hashlib.md5(name.encode()).hexdigest()[:16]
 
 
 def convert(path: pathlib.Path) -> tuple[str, str] | None:
@@ -96,11 +113,11 @@ def convert(path: pathlib.Path) -> tuple[str, str] | None:
         print(f"{path}: no wrapper program body found", file=sys.stderr)
         return None
 
-    case = [f"    subroutine case_{name}()"]
+    case = [f"    subroutine {sym(name)}()"]
     case += [f"        {u}" for u in use]
     case.append("        implicit none")
     case += body
-    case.append(f"    end subroutine case_{name}")
+    case.append(f"    end subroutine {sym(name)}")
     case.append("")
     return name, "\n".join(case)
 
@@ -134,6 +151,13 @@ def main() -> int:
         return 0
 
     CASES_DIR.mkdir(parents=True, exist_ok=True)
+    # Case modules are numbered by chunk index, so a run that covers fewer
+    # cases than the last leaves higher-numbered modules behind. They are
+    # still compiled, and they still define case symbols the dispatcher no
+    # longer names - duplicate definitions, and a suite that fails for a
+    # reason no longer connected to the change. Clear the directory first.
+    for stale in CASES_DIR.glob("ffc_suite_cases_*.f90"):
+        stale.unlink()
     for chunk in range(0, len(cases), 8):
         group = cases[chunk:chunk + 8]
         mod = CASES_DIR / f"ffc_suite_cases_{chunk // 8:02d}.f90"
@@ -142,7 +166,7 @@ def main() -> int:
                "    !! programs of the same names. One link of libffc instead of",
                "    !! one per test; the case name is the old test name.",
                "    implicit none",
-               "    public :: " + ", ".join(f"case_{n}" for n, _ in group),
+               "    public :: " + ", ".join(sym(n) for n, _ in group),
                "contains", ""]
         for _, c in group:
             out.append(c)
@@ -154,12 +178,12 @@ def main() -> int:
     # that reports success for a case it never ran is worse than one that
     # fails, because it hides the missing check.
     mods = [f"    use ffc_suite_cases_{i // 8:02d}, only: " +
-            ", ".join(f"case_{n}" for n, _ in cases[i:i + 8])
+            ", ".join(sym(n) for n, _ in cases[i:i + 8])
             for i in range(0, len(cases), 8)]
     sel = []
     for n, _ in cases:
         sel.append(f'        if (argv(1) == "{n}") then')
-        sel.append(f"            call case_{n}()")
+        sel.append(f"            call {sym(n)}()")
         sel.append("            return")
         sel.append("        end if")
     main = ["program test_ffc_suite",
