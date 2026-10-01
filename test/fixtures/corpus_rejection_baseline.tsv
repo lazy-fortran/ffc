@@ -149,7 +149,7 @@ ACCEPTED	fortfront/examples/f90/issue_1349_select_case.f90
 ACCEPTED	fortfront/examples/f90/issue_1349_select_case_bodies.f90
 ACCEPTED	fortfront/examples/f90/issue_1350_recursive.f90
 ACCEPTED	fortfront/examples/f90/issue_1350_recursive_if_else.f90
-ACCEPTED	fortfront/examples/f90/issue_1351_elemental_pure.f90
+REJECTED	fortfront/examples/f90/issue_1351_elemental_pure.f90
 REJECTED	fortfront/examples/f90/issue_1352_optional.f90
 ACCEPTED	fortfront/examples/f90/issue_1352_optional_module_if_control.f90
 REJECTED	fortfront/examples/f90/issue_1352_optional_subroutine_program.f90
