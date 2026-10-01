@@ -960,8 +960,14 @@ publish_observation() {
     if [ "$NO_PUBLISH" -eq 1 ]; then
         # A shard child holds a partial selection: publishing it would either
         # be refused (a partial selection cannot carry a full-run identity) or
-        # pretend to be something it is not. The records stay on disk for the
-        # parent to merge; only the parent publishes and classifies.
+        # pretend to be something it is not. It still has to hand its records
+        # over, so the staging file is written to the destination the parent
+        # named, minus validation - the parent merges the shards and is the
+        # only process that validates and publishes the whole selection.
+        if [ -n "$OBSERVATION_STAGING" ] && [ -f "$OBSERVATION_STAGING" ]; then
+            mkdir -p -- "$(dirname "$OBSERVATION_DESTINATION")" 2>/dev/null || true
+            cat "$OBSERVATION_STAGING" > "$OBSERVATION_DESTINATION" || return 1
+        fi
         return 0
     fi
     if ! conformance_observation_publish "$OBSERVATIONS" \
@@ -1940,6 +1946,7 @@ run_sharded() {
 
     records="$TMPDIR_WORK/merged_records.jsonl"
     : > "$records"
+    no_record_skips=0
     # Merge in the parent's file order, not shard order: the observation's
     # selection digest is taken over the case list as written, so a shard
     # interleave would change the run's epoch and break comparison against a
@@ -1961,6 +1968,7 @@ run_sharded() {
                     "$merged_rel" "$hits" "$skips" >&2
                 return 1
             fi
+            no_record_skips=$((no_record_skips + 1))
             continue
         fi
         if [ "$hits" -ne 1 ]; then
@@ -2005,14 +2013,12 @@ run_sharded() {
     cp "$records" "$OBSERVATIONS"
     count_records "$records"
 
-    # Completeness guard: the shards must account for every file the serial
-    # path would have walked, either as a case record or as the skip the
-    # serial path also makes for non-executable sources. A child that died,
-    # produced no records, or lost its scratch turns the run red; it never
-    # shrinks the suite.
+    # Completeness guard: every file the serial path would have walked is
+    # either a merged record or a skip that, exactly as in the serial path,
+    # carries no record. A child that died, produced no records, or lost its
+    # scratch turns the run red; it never shrinks the suite.
     expected=$(wc -l < "$FILE_LIST")
-    accounted=$((TOTAL_COUNT + $(grep -h -c "^  SKIP: " \
-        "$TMPDIR_WORK"/shard_*.log 2>/dev/null | awk '{s+=$1} END{print s+0}')))
+    accounted=$((TOTAL_COUNT + no_record_skips))
     if [ "$accounted" -ne "$expected" ]; then
         printf 'ERROR: sharded run accounted for %d of %d files\n' \
             "$accounted" "$expected" >&2
