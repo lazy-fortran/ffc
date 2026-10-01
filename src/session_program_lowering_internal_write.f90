@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) internal_write
+    !! `internal_write` procedures, moved out of `session_program_lowering_internal_write.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     logical function is_internal_write(node, context)
         ! True when write's unit is a fixed-length character variable rather
         ! than a unit number or '*'.
@@ -265,3 +273,6 @@
     end subroutine lower_internal_write
 
     include 'session_program_lowering_internal_write_compound.inc'
+
+
+end submodule internal_write

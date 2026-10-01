@@ -4664,6 +4664,37 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine reject_monomorphized_call
     end interface
+    interface
+        logical module function is_internal_write(node, context)
+            type(write_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+        end function is_internal_write
+        module subroutine emit_blank_pad_string(context, &
+                                                buflen, &
+                                                src_ptr, &
+                                                dest_ptr, &
+                                                error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: buflen
+            type(lr_operand_desc_t), intent(in) :: src_ptr, dest_ptr
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_blank_pad_string
+        logical module function is_compound_only_descriptor(format_body)
+            character(len=*), intent(in) :: format_body
+        end function is_compound_only_descriptor
+        module subroutine lower_internal_write_expression(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(write_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_internal_write_expression
+        module subroutine lower_internal_write(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(write_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_internal_write
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -5461,7 +5492,6 @@ contains
     include 'session_program_lowering_runtime_alloc.inc'
     include 'session_program_lowering_io_implied_do.inc'
     include 'session_program_lowering_scalar_allocatable.inc'
-    include 'session_program_lowering_internal_write.inc'
     include 'session_program_lowering_internal_read.inc'
     subroutine define_symbol(context, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
