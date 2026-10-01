@@ -329,3 +329,16 @@ the unified class descriptor ABI`: the caller's scalar class descriptor
 box is not consumed by the separately compiled callee, and passing the
 bare address silently loses the actual. Type-bound dispatch through
 recorded vtables is unaffected.
+
+### Rank-1 assumed-shape derived dummies with runtime extents (#337)
+
+The extent of a rank-1 assumed-shape derived dummy `type(t) :: a(:)` no
+longer has to fold to a compile-time constant from a whole-array actual.
+The dummy is bound through the caller's descriptor (#334): the base and
+the extent come from it at entry, and rank-1 element addressing is
+`(sub-lower)*slot_width` off that base, so allocatable, pointer, and
+differently-sized second-call actuals each see their own extent. The
+compile-time fold stays as a specialization only: it unrolls whole-array
+operations when every call site agrees, and its failure no longer rejects
+the program. Rank>=2 dummies keep the compile-time leading-extent guard
+until column-major linearisation reads extents at runtime.

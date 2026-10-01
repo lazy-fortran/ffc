@@ -1067,6 +1067,7 @@
         integer, intent(out) :: extents(2)
         character(len=:), allocatable, intent(out) :: error_msg
         logical :: ok
+        integer :: sym_index
 
         extents = 0
         dim_count = 0
@@ -1087,6 +1088,27 @@
         call resolve_assumed_shape_extents(context, context%current_proc_name, &
                                            name, dim_count, extents, ok)
         if (.not. ok) then
+            ! No whole-array actual of compile-time size folded a constant
+            ! shape. Since #334 a MONOMORPHIC rank-1 derived dummy is still
+            ! bound through the caller's array descriptor:
+            ! bind_assumed_shape_descriptor_params already loaded the base
+            ! address and the runtime extent from it, and its element offset
+            ! is (sub-lower)*slot_width off that base, so no compile-time
+            ! extent is needed. Fall through with extents=0 and let the
+            ! descriptor drive the shape (#337 runtime-extent retirement of
+            ! the compile-time fold requirement). A polymorphic class(t)
+            ! dummy and every rank>=2 dummy keep the guard: the polymorphic
+            ! path strides by the dynamic element size and has its own
+            ! descriptor/rank contract (#422), and rank>=2 needs the leading
+            ! extent for column-major linearisation.
+            sym_index = find_symbol_compat(context, name)
+            if (dim_count == 1 .and. sym_index > 0 .and. &
+                .not. context%symbols(sym_index)%is_polymorphic .and. &
+                context%symbols(sym_index)%has_runtime_descriptor) then
+                extents = 0
+                call set_empty(error_msg)
+                return
+            end if
             call unsupported_feature_error('assumed-shape derived array', &
                 node%line, node%column, 'assumed-shape derived dummy extent '// &
                 'must come from a whole-array actual of compile-time size', &
