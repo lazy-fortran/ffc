@@ -62,6 +62,12 @@ REPORT=""
 OBSERVATIONS=""
 MAX_FILES=""
 TIMEOUT=5
+# Parallel width for the per-case loop. 1 keeps the historical serial path byte-for-byte;
+# >1 splits the suite's file list into shards, runs each shard as its own
+# worker process with its own scratch tree, and merges the records in file
+# order so the report and the epoch stay independent of the shard width.
+JOBS=1
+KEEP_FULL_RUN=0
 REPEAT=1
 SAMPLE_SIZE=""
 SAMPLE_SEED=0
@@ -107,6 +113,11 @@ while [ $# -gt 0 ]; do
             shift 2 ;;
         --max-files)
             MAX_FILES="$2"; shift 2 ;;
+        --jobs)
+            if [ $# -lt 2 ]; then fail "--jobs requires a count"; fi
+            JOBS="$2"; shift 2 ;;
+        --keep-full-run)
+            KEEP_FULL_RUN=1; shift ;;
         --timeout)
             TIMEOUT="$2"; shift 2 ;;
         --repeat)
@@ -349,8 +360,8 @@ fi
 # the file is a stable valid executable and the category does not apply.
 classify_nonrunnable_noref() {
     local rel="$1" source="$2" category="$3"
-    local obj="$TMPDIR_WORK/noref_${TOTAL_COUNT}.o"
-    local exe="$TMPDIR_WORK/noref_ref_${TOTAL_COUNT}"
+    local obj="$TMPDIR_WORK/noref_${CASE_KEY}.o"
+    local exe="$TMPDIR_WORK/noref_ref_${CASE_KEY}"
     local ffc_status=1 ref_status=1 record_note
     CASE_ACTION="compile-only"
     CASE_FFC_FLAGS="-c"
@@ -524,13 +535,19 @@ semantic_tags_for_source() {
 }
 
 initialize_case_provenance() {
+    # A per-case scratch key derived from the source name, not the run-local
+    # counter: the counter differs between a serial walk and a sharded walk of
+    # the same suite, and the compiled path appears verbatim in the compiler's
+    # diagnostic, so naming by counter would change the diagnostic signature
+    # depending on how wide the run was.
+    CASE_KEY=$(basename "$source" | tr -c 'A-Za-z0-9_.-' '_')
     local source="$1"
-    CASE_DEPENDENCY_FILE="$TMPDIR_WORK/dependencies_${TOTAL_COUNT}.tsv"
-    CASE_SNAPSHOT_DIR="$TMPDIR_WORK/source_snapshot_${TOTAL_COUNT}"
-    CASE_SNAPSHOT_STATUS="$TMPDIR_WORK/source_snapshot_${TOTAL_COUNT}.status"
-    CONFORMANCE_METRICS_FILE="$TMPDIR_WORK/metrics_${TOTAL_COUNT}.tsv"
-    FFC_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ffc_diagnostic_${TOTAL_COUNT}.txt"
-    REF_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ref_diagnostic_${TOTAL_COUNT}.txt"
+    CASE_DEPENDENCY_FILE="$TMPDIR_WORK/dependencies_${CASE_KEY}.tsv"
+    CASE_SNAPSHOT_DIR="$TMPDIR_WORK/source_snapshot_${CASE_KEY}"
+    CASE_SNAPSHOT_STATUS="$TMPDIR_WORK/source_snapshot_${CASE_KEY}.status"
+    CONFORMANCE_METRICS_FILE="$TMPDIR_WORK/metrics_${CASE_KEY}.tsv"
+    FFC_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ffc_diagnostic_${CASE_KEY}.txt"
+    REF_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ref_diagnostic_${CASE_KEY}.txt"
     export CONFORMANCE_METRICS_FILE FFC_COMPILER_DIAGNOSTIC_FILE
     export REF_COMPILER_DIAGNOSTIC_FILE
     : > "$CASE_DEPENDENCY_FILE"
@@ -866,6 +883,12 @@ EPOCH_SHA256=$(compute_epoch_sha256 "$EMPTY_SHA256")
 if [ "${#SELECTOR_KINDS[@]}" -gt 0 ] || [ "${MAX_FILES:-0}" -gt 0 ] 2>/dev/null; then
     FULL_RUN=false
 fi
+if [ "$KEEP_FULL_RUN" -eq 1 ]; then
+    # Shard child: the parent only shards a list it derived from the complete
+    # suite, so the run still covers the corpus and the epoch must match the
+    # serial run's epoch exactly.
+    FULL_RUN=true
+fi
 if [ -n "$SAMPLE_SIZE" ]; then
     SAMPLED=true
     FULL_RUN=false
@@ -1182,7 +1205,11 @@ echo "Running $SUITE: $FILE_COUNT files, timeout=${TIMEOUT}s, ffc=$FFC_BIN"
 # Process each file. The file list is read on FD 3, not stdin, so a compiled
 # test program that reads stdin cannot consume the list and desynchronise the
 # loop.
-while IFS= read -r full_path <&3; do
+run_case_loop() {
+    # One shard's walk over its file list. Counters and REPORT/OBSERVATIONS are
+    # ordinary globals with bash's dynamic scoping, so a caller that wants its
+    # own view (a shard) just declares them local.
+    while IFS= read -r full_path <&3; do
     [ -z "$full_path" ] && continue
     TOTAL_COUNT=$((TOTAL_COUNT + 1))
     IS_NOREF_RECORD=0
@@ -1248,11 +1275,11 @@ while IFS= read -r full_path <&3; do
         fi
     fi
 
-    ffc_exe="$TMPDIR_WORK/ffc_${TOTAL_COUNT}"
-    ffc_obj="$TMPDIR_WORK/ffc_${TOTAL_COUNT}.o"
-    ref_exe="$TMPDIR_WORK/ref_${TOTAL_COUNT}"
-    ffc_out="$TMPDIR_WORK/ffc_out_${TOTAL_COUNT}"
-    ref_out="$TMPDIR_WORK/ref_out_${TOTAL_COUNT}"
+    ffc_exe="$TMPDIR_WORK/ffc_${CASE_KEY}"
+    ffc_obj="$TMPDIR_WORK/ffc_${CASE_KEY}.o"
+    ref_exe="$TMPDIR_WORK/ref_${CASE_KEY}"
+    ffc_out="$TMPDIR_WORK/ffc_out_${CASE_KEY}"
+    ref_out="$TMPDIR_WORK/ref_out_${CASE_KEY}"
 
     rm -f "$ffc_exe" "$ffc_obj" "$ref_exe" "$ffc_out" "$ref_out"
 
@@ -1372,10 +1399,10 @@ while IFS= read -r full_path <&3; do
         ref_extra=(-I "$stem_include_dir")
     fi
     if [ -s "$MODULE_INDEX" ]; then
-        prereq_list="$TMPDIR_WORK/prereq_${TOTAL_COUNT}.txt"
+        prereq_list="$TMPDIR_WORK/prereq_${CASE_KEY}.txt"
         resolve_prerequisites "$full_path" "$SUITE_ROOT" "$MODULE_INDEX" "$prereq_list"
         if [ -s "$prereq_list" ]; then
-            inc_dir="$TMPDIR_WORK/inc_${TOTAL_COUNT}"
+            inc_dir="$TMPDIR_WORK/inc_${CASE_KEY}"
             mkdir -p "$inc_dir"
             ffc_extra+=(-I "$inc_dir")
             while IFS= read -r prereq_src <&4; do
@@ -1392,12 +1419,12 @@ while IFS= read -r full_path <&3; do
     # CMake EXTRAFILES. Keep that harness contract explicit and bounded rather
     # than silently treating a link failure as an implementation failure.
     extra_manifest="$PROJECT_DIR/test/conformance/extra_${SUITE}.txt"
-    extra_list="$TMPDIR_WORK/extra_${TOTAL_COUNT}.txt"
+    extra_list="$TMPDIR_WORK/extra_${CASE_KEY}.txt"
     missing_extra_source=""
     resolve_extra_sources "$rel_path" "$extra_manifest" > "$extra_list"
     if [ -s "$extra_list" ]; then
         if [ -z "${inc_dir:-}" ]; then
-            inc_dir="$TMPDIR_WORK/inc_${TOTAL_COUNT}"
+            inc_dir="$TMPDIR_WORK/inc_${CASE_KEY}"
             mkdir -p "$inc_dir"
             ffc_extra+=(-I "$inc_dir")
         fi
@@ -1808,7 +1835,162 @@ while IFS= read -r full_path <&3; do
         "$note" "$warning_expectation"
     echo "  FAIL: $rel_path (output mismatch)"
 
-done 3< "$FILE_LIST"
+    done 3< "${SHARD_LIST:-$FILE_LIST}"
+}
+
+count_records() {
+    # Recompute the counters from merged records so a sharded run reports the
+    # same numbers a serial run of the same corpus produced.
+    local records="$1"
+    PASS_COUNT=$(grep -c '"status":"PASS"' "$records" || true)
+    XFAIL_COUNT=$(grep -c '"status":"XFAIL"' "$records" || true)
+    XPASS_COUNT=$(grep -c '"status":"XPASS"' "$records" || true)
+    FAIL_COUNT=$(grep -c '"status":"FAIL"' "$records" || true)
+    SKIP_COUNT=$(grep -c '"status":"SKIP"' "$records" || true)
+    NOREF_COUNT=$(grep -c '"noref":true' "$records" || true)
+    WARNING_UNCHECKED_COUNT=$(grep -c '"warning_expectation":"unchecked"' "$records" || true)
+    TOTAL_COUNT=$((PASS_COUNT + XFAIL_COUNT + XPASS_COUNT + FAIL_COUNT + SKIP_COUNT))
+}
+
+run_sharded() {
+    # Shard the suite across JOBS worker processes of this same script. Each
+    # child gets its own scratch tree (it mktemps its own TMPDIR_WORK) and its
+    # own report/observations paths, so nothing is shared and nothing races; the
+    # children's records are concatenated in shard order, which is the file
+    # order, so the merged report is byte-comparable with a serial run.
+    local width="$JOBS" k shard records rc=0
+    local pids=() codes=() child_args=() full_flag=()
+
+    if [ ! -s "$FILE_LIST" ]; then
+        run_case_loop
+        return
+    fi
+    if [ "$width" -gt "$(wc -l < "$FILE_LIST")" ]; then
+        width=$(wc -l < "$FILE_LIST")
+    fi
+
+    # --files-from wants suite-relative paths, while FILE_LIST holds absolute
+    # ones; strip the root so a shard list is a legal selector file.
+    for k in $(seq 0 $((width - 1))); do
+        shard="$TMPDIR_WORK/shard_${k}.txt"
+        awk -v n="$width" -v k="$k" -v root="$SUITE_ROOT/" \
+            '(NR - 1) % n == k { sub(root, "", $0); print }' \
+            "$FILE_LIST" > "$shard"
+    done
+
+    # The shard list already carries the parent's selection, its limits and its
+    # sample. A child that re-applied --max-files or --sample would cut its own
+    # shard again and silently drop cases, so strip them and pass only the
+    # shard. --keep-full-run propagates only if the parent run was full, so the
+    # child's epoch matches what a serial run of that suite would record.
+    child_args=()
+    k=0
+    while [ $k -lt ${#ORIGINAL_ARGS[@]} ]; do
+        case "${ORIGINAL_ARGS[$k]}" in
+            --file|--files-from|--max-files|--sample|--seed|--jobs|--keep-full-run)
+                k=$((k + 2)); continue ;;
+            --jobs=*)
+                k=$((k + 1)); continue ;;
+        esac
+        child_args+=("${ORIGINAL_ARGS[$k]}")
+        k=$((k + 1))
+    done
+    if [ "$FULL_RUN" = true ]; then
+        full_flag=(--keep-full-run)
+    else
+        full_flag=()
+    fi
+
+    for k in $(seq 0 $((width - 1))); do
+        shard="$TMPDIR_WORK/shard_${k}.txt"
+        [ -s "$shard" ] || continue
+        (
+            bash "$0" "${child_args[@]}" "${full_flag[@]}" --jobs 1 \
+                --files-from "$shard" \
+                --report "$TMPDIR_WORK/report_shard_${k}.json" \
+                --observations "$TMPDIR_WORK/obs_shard_${k}.jsonl" \
+                > "$TMPDIR_WORK/shard_${k}.log" 2>&1
+        ) &
+        pids+=("$!")
+    done
+
+    for pid in "${pids[@]}"; do
+        wait "$pid"; codes+=("$?")
+    done
+    for k in $(seq 0 $((width - 1))); do
+        [ -f "$TMPDIR_WORK/shard_${k}.log" ] && cat "$TMPDIR_WORK/shard_${k}.log"
+    done
+
+    records="$TMPDIR_WORK/merged_records.jsonl"
+    : > "$records"
+    # Merge in the parent's file order, not shard order: the observation's
+    # selection digest is taken over the case list as written, so a shard
+    # interleave would change the run's epoch and break comparison against a
+    # serial run's snapshot. Emitting per file also proves each file produced
+    # exactly one record.
+    while IFS= read -r merged_abs; do
+        merged_rel="${merged_abs#"$SUITE_ROOT/"}"
+        hits=$(grep -h -c "\"file\":\"$merged_rel\"" \
+            "$TMPDIR_WORK"/obs_shard_*.jsonl 2>/dev/null | awk '{s+=$1} END{print s+0}')
+        if [ "$hits" -ne 1 ]; then
+            printf 'ERROR: %s produced %s records, expected 1\\n' \
+                "$merged_rel" "$hits" >&2
+            return 1
+        fi
+        grep -h "\"file\":\"$merged_rel\"" \
+            "$TMPDIR_WORK"/obs_shard_*.jsonl >> "$records"
+    done < "$FILE_LIST"
+    # Each child stamps its cases with an epoch computed over its own shard
+    # selection, so child epochs differ from each other by construction. What
+    # must agree is everything the epoch is built from apart from the selection:
+    # binary, sources, corpus, flags, harness, toolchain, target, ABI, manifests.
+    # Those are compared across children; then the case records are restamped
+    # with the parent epoch, which is the identity of this run.
+    child_fp=""
+    for k in $(seq 0 $((width - 1))); do
+        obs="$TMPDIR_WORK/obs_shard_${k}.jsonl"
+        [ -f "$obs" ] || continue
+        fp=$(grep '"status":"SUMMARY"' "$obs" | \
+            grep -oE '"(suite|ffc_binary_sha256|ffc_source_sha256|ffc_revision|corpus_files_sha256|corpus_tree|harness_sha256|toolchain_sha256|environment_sha256|runtime_abi_sha256|target_triple|skip_manifest_sha256|noref_manifest_sha256|timeout_seconds)":"?[^",}]*"?' | \
+            sort | tr '\n' '|')
+        if [ -z "$child_fp" ]; then
+            child_fp="$fp"
+        elif [ "$fp" != "$child_fp" ]; then
+            printf 'ERROR: shard %s ran under a different provenance fingerprint\n' "$k" >&2
+            return 1
+        fi
+    done
+
+    sed -i -E "s#\"epoch_sha256\":\"[0-9a-f]+\"#\"epoch_sha256\":\"$EPOCH_SHA256\"#g" \
+        "$records"
+    cp "$records" "$OBSERVATIONS"
+    count_records "$records"
+
+    # Completeness guard: the shards must account for every file the serial
+    # path would have walked. A child that died, produced no records, or lost
+    # its scratch turns the run red; it never shrinks the suite.
+    expected=$(wc -l < "$FILE_LIST")
+    if [ "$TOTAL_COUNT" -ne "$expected" ]; then
+        printf 'ERROR: sharded run covered %d of %d files\n' \
+            "$TOTAL_COUNT" "$expected" >&2
+        return 1
+    fi
+
+    for code in "${codes[@]}"; do
+        [ "$code" -eq 0 ] || rc="$code"
+    done
+    return "$rc"
+}
+
+SHARD_RC=0
+# Any FILE_LIST is a valid shard partition, whether it came from the whole
+# suite, a --max-files cut, or a sample: the shards divide exactly what the
+# serial path would have walked.
+if [ "$JOBS" -gt 1 ]; then
+    run_sharded || SHARD_RC=$?
+else
+    run_case_loop
+fi
 
 # Summary
 write_summary

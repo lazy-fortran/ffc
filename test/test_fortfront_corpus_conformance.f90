@@ -3,6 +3,10 @@ program test_fortfront_corpus_conformance
     implicit none
 
     integer, parameter :: RUN_TIMEOUT_SECONDS = 180
+    ! Shard width for the corpus walker: the per-file ffc/gfortran spawns are
+    ! independent and the suite spent 250s walking them one at a time.
+    ! FFC_CORPUS_JOBS overrides it; the default keeps 16 concurrent compiles.
+    character(len=8) :: jobs_text = '16'
     character(len=*), parameter :: SCRIPT = &
         'scripts/conformance_gauntlet.sh'
     ! Per-run scratch directory: concurrent runs must not share report paths.
@@ -17,6 +21,7 @@ program test_fortfront_corpus_conformance
 
     print *, '=== fortfront corpus conformance test ==='
 
+    call corpus_jobs(jobs_text)
     ROOT = make_temp_root('fortfront_corpus')
     F90_REPORT = ROOT//'/fortfront_f90_corpus.jsonl'
     LF_REPORT = ROOT//'/fortfront_lf_corpus.jsonl'
@@ -53,7 +58,7 @@ contains
         ! load is not a false failure (idle compiles are well under a second).
         cmd = 'TMPDIR='//ROOT//' timeout '//trim(timeout_text)//' bash '//SCRIPT// &
             ' --suite '//suite//' --report '//report// &
-            ' --timeout 30 > '//log_path//' 2>&1'
+            ' --jobs '//trim(jobs_text)//' --timeout 30 > '//log_path//' 2>&1'
         call execute_command_line(cmd, exitstat=exit_stat)
 
         if (exit_stat /= 0) then
@@ -185,5 +190,20 @@ contains
         end do
         close (unit)
     end subroutine read_summary
+
+
+    subroutine corpus_jobs(text)
+        !! Concurrency for the corpus walker: FFC_CORPUS_JOBS, clamped 1..32.
+        character(len=*), intent(inout) :: text
+
+        character(len=64) :: value
+        integer :: length, n, ios
+
+        call get_environment_variable('FFC_CORPUS_JOBS', value, length)
+        if (length <= 0) return
+        read (value, *, iostat=ios) n
+        if (ios /= 0 .or. n < 1) return
+        write (text, '(I0)') min(n, 32)
+    end subroutine corpus_jobs
 
 end program test_fortfront_corpus_conformance
