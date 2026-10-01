@@ -1,3 +1,12 @@
+submodule (session_program_lowering_impl) alloc_array_result
+    !! Allocation of an array-valued function result and the static size that
+    !! fixes it. Moved out of `session_program_lowering_alloc_array_result.inc`
+    !! so the unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own.
+    implicit none
+
+contains
+
     logical function is_alloc_array_result_call(arena, value_index, context)
         ! A bare call to a contained function whose result is an allocatable
         ! array (the descriptor-sret ABI).
@@ -170,3 +179,5 @@
             end select
         end do
     end function alloc_array_result_static_size
+
+end submodule alloc_array_result

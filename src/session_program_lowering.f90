@@ -4617,6 +4617,27 @@ module session_program_lowering_impl
         end subroutine lower_section_norm2
     end interface
     interface
+        logical module function is_alloc_array_result_call(arena, value_index, &
+                                                            context)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: value_index
+            type(lowering_context_t), intent(in) :: context
+        end function is_alloc_array_result_call
+        module subroutine lower_alloc_array_result_assignment(arena, &
+                                                               value_index, &
+                                                               dest_symbol_index, &
+                                                               context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: value_index, dest_symbol_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_alloc_array_result_assignment
+        integer module function alloc_array_result_static_size(arena, context, &
+                                                                name) result(static_size)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: name
+        end function alloc_array_result_static_size
         module subroutine collect_lazy_specializations(arena, root_index, &
                                                        context, error_msg)
             type(ast_arena_t), intent(in) :: arena
@@ -5438,7 +5459,6 @@ contains
     include 'session_program_lowering_char_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
     include 'session_program_lowering_runtime_alloc.inc'
-    include 'session_program_lowering_alloc_array_result.inc'
     include 'session_program_lowering_io_implied_do.inc'
     include 'session_program_lowering_scalar_allocatable.inc'
     include 'session_program_lowering_internal_write.inc'
