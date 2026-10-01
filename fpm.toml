@@ -22,3 +22,4 @@ source-form = "free"
 # and `fo test --asan` still get full `-g -fcheck=all -fbacktrace`.
 debug-info = "g0"
 pic = "true"
+link = "shared"
