@@ -75,13 +75,30 @@ CASES = [
     ("array_elem_read", "int", "ia=[10,20,30,40]\n  print *, ia(3)"),
 ]
 
-# Valid Fortran refused today by the print-item route: #761.
-KNOWN_GAP = ["print_cmp_eq", "print_cmp_ne", "print_cmp_var"]
+# Valid Fortran refused today: #761. NOT character-specific - any comparison or
+# logical in list-directed print position. Kept here by name so the count of known
+# refusals is visible and can only fall when the route is added.
+KNOWN_GAP = [
+    "print_cmp_eq", "print_cmp_ne", "print_cmp_var",
+    "print_int_lt", "print_int_eq", "print_int_ne",
+    "print_real_gt", "print_logical_and",
+]
 
 GAP = [
     ("print_cmp_eq", "char", 'print *, a=="ab"'),
     ("print_cmp_ne", "char", 'print *, a/="xy"'),
     ("print_cmp_var", "char", "print *, a==b"),
+    ("print_int_lt", "int", "print *, 1<2"),
+    ("print_int_eq", "int", "print *, 2==2"),
+    ("print_int_ne", "int", "print *, 1/=2"),
+    ("print_real_gt", "real", "print *, 1.5>1.0"),
+    ("print_logical_and", "int", "print *, (.true.).and.(.false.)"),
+    # Conditional forms of the same expressions - these MUST keep working, and are
+    # the executable proof that the comparison lowering is fine (#761 is routing).
+    ("if_int_lt", "int", 'if (1<2) print *, "ok"'),
+    ("if_real_gt", "real", 'if (1.5>1.0) print *, "big"'),
+    ("if_logical_and", "int", 'if (.true..and..false.) print *, "no"'),
+    ("if_logical_or", "int", 'if (.true..or..false.) print *, "yes"'),
 ]
 
 
