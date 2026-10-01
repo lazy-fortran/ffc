@@ -2247,6 +2247,19 @@
             is_char = .true.
             return
         end if
+        ! A substring `a(2:4)` is a character value, and `char_expr_operands`
+        ! already materialises it via `substring_operands`. Without this branch
+        ! a // chain of substrings was not recognised as character at all, so
+        ! the print item fell through to the integer/array fallback and was
+        ! refused with "unsupported array subscript ... not non-integer
+        ! identifiers" even though the identical expression assigned to a
+        ! character target printed correctly. `is_character_substring` matches
+        ! an array_slice_node and calls back into neither this function nor
+        ! `is_character_concat`, so there is no recursion.
+        if (is_character_substring(arena, node_index, context)) then
+            is_char = .true.
+            return
+        end if
         if (is_character_array_element(arena, node_index, context)) then
             is_char = .true.
             return
