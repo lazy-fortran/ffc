@@ -4828,6 +4828,185 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_list_directed_internal_read_logical
     end interface
+    interface
+        module subroutine check_io_spec_types(spec, context, error_msg)
+            character(len=*), intent(in) :: spec
+            type(lowering_context_t), intent(in) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_io_spec_types
+        module subroutine next_io_spec_arg(spec, n, p, arg_start, arg_end)
+            character(len=*), intent(in) :: spec
+            integer, intent(in) :: n
+            integer, intent(inout) :: p
+            integer, intent(out) :: arg_start, arg_end
+        end subroutine next_io_spec_arg
+        module subroutine check_io_spec_arg(arg, context, error_msg)
+            character(len=*), intent(in) :: arg
+            type(lowering_context_t), intent(in) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_io_spec_arg
+        logical module function is_character_io_spec(kw) result(is_char)
+            character(len=*), intent(in) :: kw
+        end function is_character_io_spec
+        logical module function noncharacter_io_value(val) result(bad)
+            character(len=*), intent(in) :: val
+        end function noncharacter_io_value
+        logical module function noncharacter_io_identifier(val, context) result(bad)
+            character(len=*), intent(in) :: val
+            type(lowering_context_t), intent(in) :: context
+        end function noncharacter_io_identifier
+        module function io_spec_upper(s) result(t)
+            character(len=*), intent(in) :: s
+            character(len=len(s)) :: t
+        end function io_spec_upper
+        module subroutine check_io_control_source(arena, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_io_control_source
+        module subroutine next_io_source_statement(source, pos, line_no, stmt, stmt_line)
+            character(len=*), intent(in) :: source
+            integer, intent(inout) :: pos, line_no
+            character(len=:), allocatable, intent(out) :: stmt
+            integer, intent(out) :: stmt_line
+        end subroutine next_io_source_statement
+        module subroutine check_io_statement_text(stmt, line_no, error_msg)
+            character(len=*), intent(in) :: stmt
+            integer, intent(in) :: line_no
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_io_statement_text
+        module subroutine check_io_control_list(list, kw, location, error_msg)
+            character(len=*), intent(in) :: list, kw, location
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_io_control_list
+        module subroutine check_io_advance_value(val, location, error_msg)
+            character(len=*), intent(in) :: val, location
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_io_advance_value
+        module subroutine check_io_unit_value(val, kw, location, error_msg)
+            character(len=*), intent(in) :: val, kw, location
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_io_unit_value
+        module subroutine check_io_output_items(items, location, error_msg)
+            character(len=*), intent(in) :: items, location
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_io_output_items
+        logical module function is_boz_digits(text, radix) result(ok)
+            character(len=*), intent(in) :: text
+            character, intent(in) :: radix
+        end function is_boz_digits
+        module subroutine split_io_spec_arg(arg, name, val)
+            character(len=*), intent(in) :: arg
+            character(len=:), allocatable, intent(out) :: name, val
+        end subroutine split_io_spec_arg
+        integer module function io_top_level_equals(text) result(eqp)
+            character(len=*), intent(in) :: text
+        end function io_top_level_equals
+        logical module function io_value_is_array(val) result(is_array)
+            character(len=*), intent(in) :: val
+        end function io_value_is_array
+        logical module function io_value_nondefault_kind(val) result(bad)
+            character(len=*), intent(in) :: val
+        end function io_value_nondefault_kind
+        logical module function io_text_is_integer(text) result(is_int)
+            character(len=*), intent(in) :: text
+        end function io_text_is_integer
+        integer module function io_paren_balance(text) result(balance)
+            character(len=*), intent(in) :: text
+        end function io_paren_balance
+        module function strip_statement_label(code) result(rest)
+            character(len=*), intent(in) :: code
+            character(len=:), allocatable :: rest
+        end function strip_statement_label
+        module function leading_io_keyword(low) result(kw)
+            character(len=*), intent(in) :: low
+            character(len=:), allocatable :: kw
+        end function leading_io_keyword
+        module subroutine io_statement_paren_span(code, open_p, close_p)
+            character(len=*), intent(in) :: code
+            integer, intent(out) :: open_p, close_p
+        end subroutine io_statement_paren_span
+        logical module function is_dec_io_spec(name) result(is_dec)
+            character(len=*), intent(in) :: name
+        end function is_dec_io_spec
+        module subroutine check_namelist_transfers(arena, source, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: source
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_namelist_transfers
+        module subroutine namelist_transfer_group(nml_spec, &
+                                                  format_spec, &
+                                                  source, &
+                                                  line, &
+                                                  group)
+            character(len=:), allocatable, intent(in) :: nml_spec
+            character(len=:), allocatable, intent(in) :: format_spec
+            character(len=*), intent(in) :: source
+            integer, intent(in) :: line
+            character(len=:), allocatable, intent(out) :: group
+        end subroutine namelist_transfer_group
+        module subroutine namelist_source_control_item(source, line, item)
+            character(len=*), intent(in) :: source
+            integer, intent(in) :: line
+            character(len=:), allocatable, intent(out) :: item
+        end subroutine namelist_source_control_item
+        module subroutine namelist_source_line(source, line, text)
+            character(len=*), intent(in) :: source
+            integer, intent(in) :: line
+            character(len=:), allocatable, intent(out) :: text
+        end subroutine namelist_source_line
+        logical module function namelist_source_has_group(source, name) result(has_group)
+            character(len=*), intent(in) :: source
+            character(len=*), intent(in) :: name
+        end function namelist_source_has_group
+        module subroutine check_namelist_transfer_group(arena, &
+                                                        source, &
+                                                        group, &
+                                                        is_read, &
+                                                        line, &
+                                                        error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: source
+            character(len=*), intent(in) :: group
+            logical, intent(in) :: is_read
+            integer, intent(in) :: line
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_namelist_transfer_group
+        module subroutine check_namelist_transfer_member(arena, &
+                                                         source, &
+                                                         name, &
+                                                         group, &
+                                                         is_read, &
+                                                         line, &
+                                                         error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: source
+            character(len=*), intent(in) :: name
+            character(len=*), intent(in) :: group
+            logical, intent(in) :: is_read
+            integer, intent(in) :: line
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_namelist_transfer_member
+        recursive logical module function namelist_type_needs_dtio(arena, &
+                                                                   source, &
+                                                                   name, &
+                                                                   depth)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: source
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: depth
+        end function namelist_type_needs_dtio
+        recursive logical module function namelist_source_type_needs_dtio(source, &
+                                                                          name, &
+                                                                          depth)
+            character(len=*), intent(in) :: source
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: depth
+        end function namelist_source_type_needs_dtio
+        logical module function namelist_type_header_names(low, name) result(is_header)
+            character(len=*), intent(in) :: low
+            character(len=*), intent(in) :: name
+        end function namelist_type_header_names
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -6494,7 +6673,6 @@ contains
         call set_empty(error_msg)
     end subroutine emit_error_stop_banner
     include 'session_program_lowering_write_ops.inc'
-    include 'session_program_lowering_io_typecheck.inc'
     include 'session_program_lowering_inquire.inc'
     include 'session_program_lowering_read_ops.inc'
     include 'session_program_lowering_read_al.inc'

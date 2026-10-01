@@ -1,8 +1,11 @@
-    ! I/O character-specifier type checks. A character-valued I/O specifier
-    ! (STATUS=, ACCESS=, ADVANCE=, ...) must be given a CHARACTER value; a
-    ! numeric or logical literal is invalid Fortran. Only values whose leading
-    ! token is a numeric or logical literal are rejected, so identifiers and
-    ! quoted strings (which can never be a numeric literal) are never flagged.
+submodule (session_program_lowering_impl) io_typecheck
+    !! `io_typecheck` procedures, moved out of `session_program_lowering_io_typecheck.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine check_io_spec_types(spec, context, error_msg)
         character(len=*), intent(in) :: spec
         type(lowering_context_t), intent(in) :: context
@@ -1088,3 +1091,6 @@
         if (index(rest, '(') > 0) rest = rest(1:index(rest, '(') - 1)
         is_header = same_name(trim(rest), name)
     end function namelist_type_header_names
+
+
+end submodule io_typecheck

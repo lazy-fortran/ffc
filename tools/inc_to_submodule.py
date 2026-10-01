@@ -35,15 +35,18 @@ HEADER = re.compile(
     r"(?P<rettype>[A-Za-z_][A-Za-z0-9_]* )?"
     r"(?P<kind>subroutine|function)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
     r"\s*(?P<args>\([^)]*\)?)?"
+    r"(?P<result>\s+result\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\))?"
 )
 # `end subroutine foo` is not a header; without this the parser invents a
 # procedure per terminator and emits a duplicate interface for it.
 END_HEADER = re.compile(r"^\s*end\s+(subroutine|function|procedure)\b", re.I)
+PAREN = r"(?:[^()]|\([^()]*\))*"
 DECL = re.compile(
-    r"^        (?P<spec>(?:type|class)\([^)]*\)|"
-    r"(?:integer|logical|real|complex|character)(?:\([^)]*\))?"
-    r")(?P<attrs>[^:]*)"
-    r"::\s*(?P<names>[A-Za-z0-9_, ]+)$"
+    r"^        (?P<spec>(?:type|class)\(" + PAREN + r"\)|"
+    r"(?:integer|logical|real|complex|character)(?:\(" + PAREN + r"\))?)"
+    r"(?P<attrs>[^:]*)"
+    r"::\s*(?P<names>[A-Za-z_][A-Za-z0-9_]*(?:\s*\(" + PAREN + r"\))?"
+    r"(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*(?:\s*\(" + PAREN + r"\))?)*)\s*$"
 )
 
 
@@ -69,7 +72,22 @@ def parse_args(raw: str) -> list[str]:
         raw = raw[1:]
     if raw.endswith(")"):
         raw = raw[:-1]
-    return [a.strip() for a in raw.split(",") if a.strip()]
+    out: list[str] = []
+    depth = 0
+    cur = ""
+    for ch in raw:  # split on top-level commas only
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            out.append(cur.strip())
+            cur = ""
+        else:
+            cur += ch
+    if cur.strip():
+        out.append(cur.strip())
+    return [re.sub(r"\s*\(.*\)$", "", a) for a in out]
 
 
 def declarations(body: list[str]) -> dict[str, str]:
@@ -79,8 +97,9 @@ def declarations(body: list[str]) -> dict[str, str]:
         m = DECL.match(line.rstrip())
         if not m:
             continue
-        for name in m.group("names").split(","):
-            name = name.strip()
+        for name in re.findall(r"[A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?",
+                               m.group("names")):
+            name = re.sub(r"\s*\(.*\)$", "", name.strip())
             if name:
                 found[name] = line.rstrip()
     return found
@@ -135,6 +154,7 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
             "rettype": (hm.group("rettype") or "").strip(),
             "args": args,
             "decls": decls,
+            "result": hm.group("result"),
             "start": start,
             "end": end_next,
         })
@@ -144,7 +164,15 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
         pre = f"{p['prefix']} " if p["prefix"] else ""
         ret = f"{p['rettype']} " if p["rettype"] else ""
         args_txt = ", ".join(p["args"])
-        head = f"        {pre}{ret}module {p['kind']} {p['name']}({args_txt})"
+        res = ""
+        if p.get("result"):
+            # A function that names its result must keep that name in the
+            # interface too: `function f(x) result(r)` and `function f(x)`
+            # are different bindings, and dropping the clause is a mismatch
+            # gfortran reports against the body.
+            res = " result(" + re.search(r"\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)",
+                                          p["result"]).group(1) + ")"
+        head = f"        {pre}{ret}module {p['kind']} {p['name']}({args_txt}){res}"
         if len(head) > 90:
             prefix_part = f"        {pre}{ret}module {p['kind']} {p['name']}("
             cont = " " * len(prefix_part)
@@ -163,6 +191,24 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
                 continue
             seen_decl.add(d)
             iface.append(d)
+        if p.get("result"):
+            # A function that names its result takes its return type from a
+            # declaration of that name in the body, and that declaration must
+            # come after the dummies: `character(len=len(s)) :: t` references
+            # `s`, so hoisting it above `s`'s own declaration is an error.
+            rname = re.search(r"\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)",
+                              p["result"]).group(1)
+            if rname in p["decls"]:
+                d = indent_decl(p["decls"][rname], " " * 12)
+                if d not in seen_decl:
+                    iface.append(d)
+        elif p["kind"] == "function" and p["rettype"] == "":
+            # No `result(...)` clause: the function's type comes from a
+            # declaration of its own name.
+            if p["name"] in p["decls"]:
+                d = indent_decl(p["decls"][p["name"]], " " * 12)
+                if d not in seen_decl:
+                    iface.append(d)
         iface.append(f"        end {p['kind']} {p['name']}")
     iface.append("    end interface")
 
