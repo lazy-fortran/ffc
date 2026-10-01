@@ -3628,6 +3628,8 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: array_name
         integer :: source_index, array_index, dim_index, kind_index
+        integer :: dim_s
+        type(lr_operand_desc_t) :: ext_r
         integer :: nargs
         integer(c_int64_t) :: dim_val
         type(lr_operand_desc_t) :: total_size, extent1, extent2, extent3, extent4
@@ -3753,19 +3755,24 @@
             ! extents, so a dummy that ALSO carries a compile-time array_size
             ! (the shape specialization) must still take the unrolled path,
             ! which is the only one that handles rank 2 and every reduction.
-            if (context%symbols(source_index)%has_runtime_dim_size(1) .and. &
+            if ((context%symbols(source_index)%has_runtime_descriptor .or. &
+                 context%symbols(source_index)%has_runtime_dim_size(1)) .and. &
                 context%symbols(source_index)%array_size <= 0) then
                 ! A runtime-extent assumed-shape dummy: total = product of the
-                ! per-dimension runtime extents (rank 1 or 2).
-                value = context%symbols(source_index)%runtime_dim_size(1)
-                if (context%symbols(source_index)%array_rank == 2 .and. &
-                    context%symbols(source_index)%has_runtime_dim_size(2)) then
+                ! per-dimension extents read through the canonical helper.
+                call read_runtime_dim_extent(context, source_index, 1, value, &
+                                             error_msg)
+                if (len_trim(error_msg) > 0) return
+                do dim_s = 2, context%symbols(source_index)%array_rank
+                    if (.not. (context%symbols(source_index)%has_runtime_descriptor &
+                              .or. context%symbols(source_index)%has_runtime_dim_size(dim_s))) cycle
+                    call read_runtime_dim_extent(context, source_index, dim_s, &
+                                                 ext_r, error_msg)
+                    if (len_trim(error_msg) > 0) return
                     if (.not. emit_i32_binary(context%session, LR_OP_MUL, &
-                            context%symbols(source_index)%runtime_dim_size(1), &
-                            context%symbols(source_index)%runtime_dim_size(2), &
-                            total_size, error_msg)) return
+                            value, ext_r, total_size, error_msg)) return
                     value = total_size
-                end if
+                end do
                 call set_empty(error_msg)
                 return
             end if
@@ -3795,10 +3802,13 @@
             error_msg = 'size dim out of range for: '//trim(array_name)
             return
         end if
-        if (dim_val >= 1_c_int64_t .and. dim_val <= 2_c_int64_t) then
-            if (context%symbols(source_index)%has_runtime_dim_size(int(dim_val))) &
+        if (dim_val >= 1_c_int64_t .and. dim_val <= 7_c_int64_t) then
+            if (context%symbols(source_index)%has_runtime_descriptor .or. &
+                    context%symbols(source_index)%has_runtime_dim_size(int(dim_val))) &
                     then
-                value = context%symbols(source_index)%runtime_dim_size(int(dim_val))
+                call read_runtime_dim_extent(context, source_index, &
+                    int(dim_val), value, error_msg)
+                if (len_trim(error_msg) > 0) return
                 call set_empty(error_msg)
                 return
             end if

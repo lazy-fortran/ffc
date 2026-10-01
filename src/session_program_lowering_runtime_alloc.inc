@@ -687,6 +687,7 @@
         type(lr_operand_desc_t) :: extent, total_extent, entry_idx, header_idx, &
                                     backedge_idx
         type(lr_operand_desc_t) :: condition, element, next_idx
+        type(lr_operand_desc_t) :: ext_r
         integer :: d
         integer(c_int32_t) :: entry_block, header_block, body_block, &
                               latch_block, exit_block, idx_vreg
@@ -696,15 +697,18 @@
             error_msg = 'runtime array print supports ranks 1 through 4 only'
             return
         end if
-        extent = context%symbols(sym)%runtime_dim_size(1)
+        call read_runtime_dim_extent(context, sym, 1, extent, error_msg)
+        if (len_trim(error_msg) > 0) return
         do d = 2, context%symbols(sym)%array_rank
-            if (.not. context%symbols(sym)%has_runtime_dim_size(d)) then
+            if (.not. (context%symbols(sym)%has_runtime_descriptor .or. &
+                      context%symbols(sym)%has_runtime_dim_size(d))) then
                 error_msg = 'runtime array is missing a runtime extent'
                 return
             end if
+            call read_runtime_dim_extent(context, sym, d, ext_r, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
-                    context%symbols(sym)%runtime_dim_size(d), total_extent, &
-                    error_msg)) return
+                    ext_r, total_extent, error_msg)) return
             extent = total_extent
         end do
         entry_idx = i32_immediate(context%session, 0_c_int64_t)
@@ -771,24 +775,28 @@
         type(lr_operand_desc_t) :: extent, total_extent, entry_idx, header_idx, &
                                     backedge_idx
         type(lr_operand_desc_t) :: condition, element, next_idx
+        type(lr_operand_desc_t) :: ext_r
         integer :: d
         integer(c_int32_t) :: entry_block, header_block, body_block, &
                               latch_block, exit_block, idx_vreg
 
-        extent = context%symbols(dst_sym)%runtime_dim_size(1)
         if (context%symbols(dst_sym)%array_rank < 1 .or. &
             context%symbols(dst_sym)%array_rank > 4) then
             error_msg = 'runtime array assignment supports ranks 1 through 4 only'
             return
         end if
+        call read_runtime_dim_extent(context, dst_sym, 1, extent, error_msg)
+        if (len_trim(error_msg) > 0) return
         do d = 2, context%symbols(dst_sym)%array_rank
-            if (.not. context%symbols(dst_sym)%has_runtime_dim_size(d)) then
+            if (.not. (context%symbols(dst_sym)%has_runtime_descriptor .or. &
+                      context%symbols(dst_sym)%has_runtime_dim_size(d))) then
                 error_msg = 'runtime array is missing a runtime extent'
                 return
             end if
+            call read_runtime_dim_extent(context, dst_sym, d, ext_r, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
-                    context%symbols(dst_sym)%runtime_dim_size(d), total_extent, &
-                    error_msg)) return
+                    ext_r, total_extent, error_msg)) return
             extent = total_extent
         end do
         entry_idx = i32_immediate(context%session, 0_c_int64_t)

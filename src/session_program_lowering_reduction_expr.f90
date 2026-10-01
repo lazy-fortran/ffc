@@ -188,6 +188,8 @@ contains
         character(len=:), allocatable :: name, err, op
         integer :: sym, left, right, line, column
         type(lr_operand_desc_t) :: left_extent, right_extent, product
+        type(lr_operand_desc_t) :: ext_r
+        integer :: dim_r
 
         has_array = .false.
         call set_empty(error_msg)
@@ -209,15 +211,20 @@ contains
                             right_extent, product, error_msg)) return
                     extent = product
                 end if
-            else if (context%symbols(sym)%has_runtime_dim_size(1)) then
-                extent = context%symbols(sym)%runtime_dim_size(1)
-                if (context%symbols(sym)%array_rank == 2 .and. &
-                    context%symbols(sym)%has_runtime_dim_size(2)) then
+            else if (context%symbols(sym)%has_runtime_descriptor .or. &
+                     context%symbols(sym)%has_runtime_dim_size(1)) then
+                call read_runtime_dim_extent(context, sym, 1, extent, error_msg)
+                if (len_trim(error_msg) > 0) return
+                do dim_r = 2, context%symbols(sym)%array_rank
+                    if (.not. (context%symbols(sym)%has_runtime_descriptor .or. &
+                              context%symbols(sym)%has_runtime_dim_size(dim_r))) cycle
+                    call read_runtime_dim_extent(context, sym, dim_r, ext_r, &
+                                                error_msg)
+                    if (len_trim(error_msg) > 0) return
                     if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
-                            context%symbols(sym)%runtime_dim_size(2), product, &
-                            error_msg)) return
+                            ext_r, product, error_msg)) return
                     extent = product
-                end if
+                end do
             else
                 extent = i32_immediate(context%session, int( &
                     context%symbols(sym)%array_size, c_int64_t))

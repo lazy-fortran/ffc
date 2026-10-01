@@ -828,9 +828,11 @@
         do dim = 1, source_rank
             source_lower = int(context%symbols(source_index)%array_dim_lowers(dim), &
                                c_int64_t)
-            if (context%symbols(source_index)%has_runtime_dim_size(dim)) then
-                source_extent_op(dim) = &
-                    context%symbols(source_index)%runtime_dim_size(dim)
+            if (context%symbols(source_index)%has_runtime_descriptor .or. &
+                context%symbols(source_index)%has_runtime_dim_size(dim)) then
+                call read_runtime_dim_extent(context, source_index, dim, &
+                    source_extent_op(dim), error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 source_extent = int(context%symbols(source_index)%array_dim_sizes(dim), &
                                      c_int64_t)
@@ -1052,9 +1054,11 @@
         do dim = 1, source_rank
             source_lower = int(context%symbols(source_index)%array_dim_lowers(dim), &
                                c_int64_t)
-            if (context%symbols(source_index)%has_runtime_dim_size(dim)) then
-                source_extent_op(dim) = &
-                    context%symbols(source_index)%runtime_dim_size(dim)
+            if (context%symbols(source_index)%has_runtime_descriptor .or. &
+                context%symbols(source_index)%has_runtime_dim_size(dim)) then
+                call read_runtime_dim_extent(context, source_index, dim, &
+                    source_extent_op(dim), error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 source_extent = int(context%symbols(source_index)%array_dim_sizes(dim), &
                                     c_int64_t)
@@ -3739,6 +3743,7 @@
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: bounds_index
         type(lr_operand_desc_t) :: lower_op, upper_op, stride_op, upper_with_extent
+        type(lr_operand_desc_t) :: ext_r
         type(lr_operand_desc_t) :: source_lower_op, source_upper_op
         type(lr_operand_desc_t) :: zero_stride
         type(lr_operand_desc_t) :: failure_args(2), failure_format
@@ -3749,8 +3754,11 @@
         bounds_index = 0
         if (dim <= target%num_dimensions) bounds_index = target%bounds_indices(dim)
         if (bounds_index <= 0) then
-            if (context%symbols(tinfo%source_index)%has_runtime_dim_size(dim)) then
-                extent = context%symbols(tinfo%source_index)%runtime_dim_size(dim)
+            if (context%symbols(tinfo%source_index)%has_runtime_descriptor .or. &
+                context%symbols(tinfo%source_index)%has_runtime_dim_size(dim)) then
+                call read_runtime_dim_extent(context, tinfo%source_index, dim, &
+                    extent, error_msg)
+                if (len_trim(error_msg) > 0) return
             else
                 extent = i32_immediate(context%session, int( &
                     context%symbols(tinfo%source_index)%array_dim_sizes(dim), c_int64_t))
@@ -3765,10 +3773,13 @@
         end if
         source_lower_op = i32_immediate(context%session, int( &
             context%symbols(tinfo%source_index)%array_dim_lowers(dim), c_int64_t))
-        if (context%symbols(tinfo%source_index)%has_runtime_dim_size(dim)) then
+        if (context%symbols(tinfo%source_index)%has_runtime_descriptor .or. &
+            context%symbols(tinfo%source_index)%has_runtime_dim_size(dim)) then
+            call read_runtime_dim_extent(context, tinfo%source_index, dim, &
+                ext_r, error_msg)
+            if (len_trim(error_msg) > 0) return
             if (.not. emit_i32_binary(context%session, LR_OP_ADD, source_lower_op, &
-                    context%symbols(tinfo%source_index)%runtime_dim_size(dim), &
-                    upper_with_extent, error_msg)) return
+                    ext_r, upper_with_extent, error_msg)) return
             if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_with_extent, &
                     i32_immediate(context%session, 1_c_int64_t), source_upper_op, &
                     error_msg)) return
@@ -4855,8 +4866,11 @@
                 acc_op = next_acc
             end if
             if (k < rank) then
-                if (context%symbols(symbol_index)%has_runtime_dim_size(k)) then
-                    extent_k = context%symbols(symbol_index)%runtime_dim_size(k)
+                if (context%symbols(symbol_index)%has_runtime_descriptor .or. &
+                    context%symbols(symbol_index)%has_runtime_dim_size(k)) then
+                    call read_runtime_dim_extent(context, symbol_index, k, &
+                        extent_k, error_msg)
+                    if (len_trim(error_msg) > 0) return
                 else
                     extent_k = i32_immediate(context%session, &
                         int(context%symbols(symbol_index)%array_dim_sizes(k), &

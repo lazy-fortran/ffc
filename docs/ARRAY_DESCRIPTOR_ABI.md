@@ -385,3 +385,13 @@ through this helper. Reduction hubs
 `ubound` now loop dimensions to rank 7 through the helper; assumed-
 shape binding still admits rank <= 4, so rank >= 5 dummies remain
 refused upstream until bind widens.
+
+Slice B migrated every remaining cached-extent consumer: section
+element loaders and section bound arithmetic (array_elements), the
+`size` intrinsic (whole-array product and per-dimension), derived-type
+stride loops, reduction-expression extents (unrolled rank-2 became a
+rank loop), and the runtime automatic-array print/assignment hubs
+(guard stays rank <= 4, reads canonicalized). After slice B the only
+read of the metadata cache is `read_runtime_dim_extent`'s own
+fallback for symbols without a descriptor; slice D deletes the cache
+writes for descriptor-backed symbols once that state is asserted.

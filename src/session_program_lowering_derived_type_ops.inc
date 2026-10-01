@@ -1189,6 +1189,7 @@
         integer, intent(in) :: symbol_index
         integer, intent(in) :: slots
         type(lr_operand_desc_t), intent(out) :: offset
+        type(lr_operand_desc_t) :: ext_r
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: sub_val, zero_based, term, acc, summed
         type(lr_operand_desc_t) :: lower64, lower32, extent64, extent32
@@ -1286,10 +1287,14 @@
                 ! (#337): multiply the running stride by the extent read from
                 ! the caller's descriptor. A compile-time dimension folds the
                 ! same multiplication to an immediate, so one loop serves both.
-                if (context%symbols(symbol_index)%has_runtime_dim_size(i)) then
+                if (context%symbols(symbol_index)%has_runtime_descriptor .or. &
+                    context%symbols(symbol_index)%has_runtime_dim_size(i)) then
+                    call read_runtime_dim_extent(context, symbol_index, i, &
+                                                ext_r, error_msg)
+                    if (len_trim(error_msg) > 0) return
                     if (.not. emit_i32_binary(context%session, LR_OP_MUL, &
                             stride32, &
-                            context%symbols(symbol_index)%runtime_dim_size(i), &
+                            ext_r, &
                             next_stride32, error_msg)) return
                     stride32 = next_stride32
                     cycle

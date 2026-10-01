@@ -303,6 +303,7 @@
         integer :: symbol_index, type_index, component_index
         type(array_section_info_t) :: section_info
         type(lr_operand_desc_t) :: extent_i32
+        type(lr_operand_desc_t) :: ext_c
 
         if (assumed_shape_empty_constructor(arena, node_index)) then
             if (dim /= 1) then
@@ -369,10 +370,13 @@
             symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%array_rank >= dim) then
-                    if (context%symbols(symbol_index)%has_runtime_dim_size(dim)) then
+                    if (context%symbols(symbol_index)%has_runtime_descriptor .or. &
+                        context%symbols(symbol_index)%has_runtime_dim_size(dim)) then
+                        call read_runtime_dim_extent(context, symbol_index, dim, &
+                                                    ext_c, error_msg)
+                        if (len_trim(error_msg) > 0) return
                         if (.not. emit_liric_i32_to_i64(context%session, &
-                                context%symbols(symbol_index)%runtime_dim_size(dim), &
-                                extent, error_msg)) return
+                                ext_c, extent, error_msg)) return
                         return
                     end if
                     if (context%symbols(symbol_index)%array_dim_sizes(dim) > 0) then

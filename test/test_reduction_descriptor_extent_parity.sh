@@ -62,7 +62,24 @@ contains
 end program p
 F90
 
-for name in rre_rank1 rre_rank2 rre_rank2c; do
+cat > "$TMP/rre_size.f90" <<'F90'
+program p
+    implicit none
+    integer :: a(4), b(6)
+    a = [1,2,3,4]
+    b = [5,6,7,8,9,10]
+    call check(a)
+    call check(b)
+contains
+    subroutine check(x)
+        integer :: x(:)
+        print *, size(x), size(x,1), ubound(x,1)
+        print *, maxval(x), minval(x), count(x > 4)
+    end subroutine check
+end program p
+F90
+
+for name in rre_rank1 rre_rank2 rre_rank2c rre_size; do
     gfortran -std=f2018 -o "$TMP/$name.gfortran" "$TMP/$name.f90" || { echo "FAIL: gfortran build $name"; fail=1; continue; }
     "$FFC" "$TMP/$name.f90" -o "$TMP/$name.ffc" || { echo "FAIL: ffc refused $name"; fail=1; continue; }
     want=$("$TMP/$name.gfortran" | tr '\n' '|')
