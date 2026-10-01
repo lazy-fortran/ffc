@@ -360,8 +360,8 @@ fi
 # the file is a stable valid executable and the category does not apply.
 classify_nonrunnable_noref() {
     local rel="$1" source="$2" category="$3"
-    local obj="$TMPDIR_WORK/noref_${CASE_KEY}.o"
-    local exe="$TMPDIR_WORK/noref_ref_${CASE_KEY}"
+    local obj="$TMPDIR_WORK/noref_${TOTAL_COUNT}.o"
+    local exe="$TMPDIR_WORK/noref_ref_${TOTAL_COUNT}"
     local ffc_status=1 ref_status=1 record_note
     CASE_ACTION="compile-only"
     CASE_FFC_FLAGS="-c"
@@ -535,19 +535,13 @@ semantic_tags_for_source() {
 }
 
 initialize_case_provenance() {
-    # A per-case scratch key derived from the source name, not the run-local
-    # counter: the counter differs between a serial walk and a sharded walk of
-    # the same suite, and the compiled path appears verbatim in the compiler's
-    # diagnostic, so naming by counter would change the diagnostic signature
-    # depending on how wide the run was.
-    CASE_KEY=$(basename "$source" | tr -c 'A-Za-z0-9_.-' '_')
-    local source="$1"
-    CASE_DEPENDENCY_FILE="$TMPDIR_WORK/dependencies_${CASE_KEY}.tsv"
-    CASE_SNAPSHOT_DIR="$TMPDIR_WORK/source_snapshot_${CASE_KEY}"
-    CASE_SNAPSHOT_STATUS="$TMPDIR_WORK/source_snapshot_${CASE_KEY}.status"
-    CONFORMANCE_METRICS_FILE="$TMPDIR_WORK/metrics_${CASE_KEY}.tsv"
-    FFC_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ffc_diagnostic_${CASE_KEY}.txt"
-    REF_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ref_diagnostic_${CASE_KEY}.txt"
+        local source="$1"
+    CASE_DEPENDENCY_FILE="$TMPDIR_WORK/dependencies_${TOTAL_COUNT}.tsv"
+    CASE_SNAPSHOT_DIR="$TMPDIR_WORK/source_snapshot_${TOTAL_COUNT}"
+    CASE_SNAPSHOT_STATUS="$TMPDIR_WORK/source_snapshot_${TOTAL_COUNT}.status"
+    CONFORMANCE_METRICS_FILE="$TMPDIR_WORK/metrics_${TOTAL_COUNT}.tsv"
+    FFC_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ffc_diagnostic_${TOTAL_COUNT}.txt"
+    REF_COMPILER_DIAGNOSTIC_FILE="$TMPDIR_WORK/ref_diagnostic_${TOTAL_COUNT}.txt"
     export CONFORMANCE_METRICS_FILE FFC_COMPILER_DIAGNOSTIC_FILE
     export REF_COMPILER_DIAGNOSTIC_FILE
     : > "$CASE_DEPENDENCY_FILE"
@@ -653,6 +647,9 @@ case_diagnostic_signature() {
         sed -E -e "s#${TMPDIR_WORK}#@case#g" \
             -e 's#(/[^ /:]*)?/ffc_gfmod_[[:alnum:]]+#@ref-module#g' \
             -e 's#/tmp/liric_exe_obj_[[:alnum:]]+#@link-object#g' \
+            -e 's#source_snapshot_[0-9]+#@snapshot#g' \
+            -e 's#/(ffc|ref)(_out)?_[0-9]+#/@\1\2#g' \
+            -e 's#/(noref|noref_ref|prereq|extra|inc|metrics)_[0-9]+#/@\1#g' \
             -e 's/0x[0-9A-Fa-f]+/<addr>/g; s/\r$//' |
         sha256sum | cut -d ' ' -f 1
 }
@@ -1275,11 +1272,11 @@ run_case_loop() {
         fi
     fi
 
-    ffc_exe="$TMPDIR_WORK/ffc_${CASE_KEY}"
-    ffc_obj="$TMPDIR_WORK/ffc_${CASE_KEY}.o"
-    ref_exe="$TMPDIR_WORK/ref_${CASE_KEY}"
-    ffc_out="$TMPDIR_WORK/ffc_out_${CASE_KEY}"
-    ref_out="$TMPDIR_WORK/ref_out_${CASE_KEY}"
+    ffc_exe="$TMPDIR_WORK/ffc_${TOTAL_COUNT}"
+    ffc_obj="$TMPDIR_WORK/ffc_${TOTAL_COUNT}.o"
+    ref_exe="$TMPDIR_WORK/ref_${TOTAL_COUNT}"
+    ffc_out="$TMPDIR_WORK/ffc_out_${TOTAL_COUNT}"
+    ref_out="$TMPDIR_WORK/ref_out_${TOTAL_COUNT}"
 
     rm -f "$ffc_exe" "$ffc_obj" "$ref_exe" "$ffc_out" "$ref_out"
 
@@ -1399,10 +1396,10 @@ run_case_loop() {
         ref_extra=(-I "$stem_include_dir")
     fi
     if [ -s "$MODULE_INDEX" ]; then
-        prereq_list="$TMPDIR_WORK/prereq_${CASE_KEY}.txt"
+        prereq_list="$TMPDIR_WORK/prereq_${TOTAL_COUNT}.txt"
         resolve_prerequisites "$full_path" "$SUITE_ROOT" "$MODULE_INDEX" "$prereq_list"
         if [ -s "$prereq_list" ]; then
-            inc_dir="$TMPDIR_WORK/inc_${CASE_KEY}"
+            inc_dir="$TMPDIR_WORK/inc_${TOTAL_COUNT}"
             mkdir -p "$inc_dir"
             ffc_extra+=(-I "$inc_dir")
             while IFS= read -r prereq_src <&4; do
@@ -1419,12 +1416,12 @@ run_case_loop() {
     # CMake EXTRAFILES. Keep that harness contract explicit and bounded rather
     # than silently treating a link failure as an implementation failure.
     extra_manifest="$PROJECT_DIR/test/conformance/extra_${SUITE}.txt"
-    extra_list="$TMPDIR_WORK/extra_${CASE_KEY}.txt"
+    extra_list="$TMPDIR_WORK/extra_${TOTAL_COUNT}.txt"
     missing_extra_source=""
     resolve_extra_sources "$rel_path" "$extra_manifest" > "$extra_list"
     if [ -s "$extra_list" ]; then
         if [ -z "${inc_dir:-}" ]; then
-            inc_dir="$TMPDIR_WORK/inc_${CASE_KEY}"
+            inc_dir="$TMPDIR_WORK/inc_${TOTAL_COUNT}"
             mkdir -p "$inc_dir"
             ffc_extra+=(-I "$inc_dir")
         fi
