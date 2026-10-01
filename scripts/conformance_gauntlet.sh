@@ -62,11 +62,13 @@ REPORT=""
 OBSERVATIONS=""
 MAX_FILES=""
 TIMEOUT=5
-# Parallel width for the per-case loop. 1 keeps the historical serial path byte-for-byte;
-# >1 splits the suite's file list into shards, runs each shard as its own
-# worker process with its own scratch tree, and merges the records in file
-# order so the report and the epoch stay independent of the shard width.
-JOBS=1
+# Parallel width for the per-case loop. 1 keeps the historical serial path
+# byte-for-byte; >1 splits the suite's file list into shards, runs each shard
+# as its own worker process with its own scratch tree, and merges the records
+# in file order so the report and the epoch stay independent of the shard
+# width. FFC_CONFORMANCE_JOBS sets the default for the whole suite; a shard
+# child always runs --jobs 1, so the width never multiplies recursively.
+JOBS=${FFC_CONFORMANCE_JOBS-8}
 KEEP_FULL_RUN=0
 REPEAT=1
 SAMPLE_SIZE=""
