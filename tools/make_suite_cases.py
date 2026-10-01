@@ -51,6 +51,25 @@ def convert(path: pathlib.Path) -> tuple[str, str] | None:
     body: list[str] = []
     use: list[str] = []
     started = False
+    # Fold continuations first. A `use m, only: a, &` list that stops at the
+    # first physical line is a syntax error, and half the wrappers here wrap
+    # their `use` lists, so the fold is not a formatting nicety.
+    folded: list[str] = []
+    i = 0
+    while i < len(lines):
+        cur = lines[i]
+        while cur.rstrip().endswith("&") and i + 1 < len(lines):
+            i += 1
+            nxt = lines[i].strip()
+            cut = cur.rstrip()[:-1].rstrip()
+            if not cut.lstrip().startswith("!"):
+                cur = cut + " " + nxt
+            else:
+                cur = cut + nxt
+        folded.append(cur)
+        i += 1
+    lines = folded
+
     for l in lines:
         if not started:
             # The program statement's own name is NOT necessarily the file
@@ -97,11 +116,18 @@ def main() -> int:
         if len(p.read_text().split("\n")) <= 25)
 
     cases: list[tuple[str, str]] = []
+    skipped: list[str] = []
     for t in targets:
         r = convert(t)
         if r is None:
-            return 2
+            # A refusal is a fact about that file, not a reason to abandon the
+            # rest of the family; the operator sees the count and the names.
+            skipped.append(t.name)
+            continue
         cases.append(r)
+    if skipped:
+        print(f"skipped {len(skipped)} (internal helpers need real edits): "
+              + ", ".join(skipped)[:300])
 
     print(f"{len(cases)} cases: " + ", ".join(n for n, _ in cases)[:400])
     if not a.apply:

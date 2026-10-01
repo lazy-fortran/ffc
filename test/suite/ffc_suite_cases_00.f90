@@ -12,10 +12,7 @@ contains
 
     print *, '=== direct session empty program compiler test ==='
 
-    if (.not. expect_exit_status( &
-        'program main'//new_line('a')// &
-        'end program main', 0, &
-        '/tmp/ffc_session_empty_program_test')) stop 1
+    if (.not. expect_exit_status( 'program main'//new_line('a')// 'end program main', 0, '/tmp/ffc_session_empty_program_test')) stop 1
 
     print *, 'PASS: empty program compiles and runs through direct LIRIC session'
     end subroutine case_test_session_empty_program_compiler
