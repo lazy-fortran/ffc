@@ -129,19 +129,45 @@ fi
 # Determine suites to run
 ALL_SUITES="fortfront-f90 fortfront-lf lfortran gfortran-dg"
 
+# Corpus root of one suite. Single definition so the explicit `--suite` path
+# and the auto-discovery path below cannot disagree about where a corpus lives.
+suite_root() {
+    case "$1" in
+        fortfront-f90) echo "${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}/examples/f90" ;;
+        fortfront-lf)  echo "${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}/examples/lf" ;;
+        lfortran)      echo "${FFC_LFORTRAN_DIR:-$CORPUS_PARENT/lfortran}/integration_tests" ;;
+        gfortran-dg)   echo "${FFC_GFORTRAN_DG_DIR:-$CORPUS_PARENT/gcc/gcc/testsuite/gfortran.dg}" ;;
+        *)             echo "" ;;
+    esac
+}
+
 if [ -n "$SINGLE_SUITE" ]; then
+    # A named suite was asked for explicitly, so the auto-discovery SKIP below
+    # never runs - and without this check the suite walks zero files, prints
+    # `TOTAL=0`, and the run exits 0. An exit code that means "green" must not
+    # be reachable without examining one test: a CI job or agent gating on rc
+    # reads that as a passing conformance run when nothing was tested. Exit 2
+    # is this script's existing "usage/environment" status, which is exactly
+    # what a missing corpus is. See lazy-fortran/ffc#759.
+    root="$(suite_root "$SINGLE_SUITE")"
+    if [ -z "$root" ]; then
+        echo "ERROR: unknown suite '$SINGLE_SUITE' (known: $ALL_SUITES)" >&2
+        exit 2
+    fi
+    if [ ! -d "$root" ]; then
+        echo "ERROR: corpus for suite '$SINGLE_SUITE' not found at $root" >&2
+        echo "       run scripts/fetch_corpora.sh or set FFC_LFORTRAN_DIR /" \
+             "FFC_GFORTRAN_DG_DIR / FFC_FORTFRONT_DIR" >&2
+        echo "NO_CORPUS: $SINGLE_SUITE $root" >&2
+        exit 2
+    fi
     SUITES="$SINGLE_SUITE"
 else
     # Only include a suite if its root directory exists.
     SUITES=""
     for s in $ALL_SUITES; do
-        case "$s" in
-            fortfront-f90) root="${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}/examples/f90" ;;
-            fortfront-lf)  root="${FFC_FORTFRONT_DIR:-$CORPUS_PARENT/fortfront}/examples/lf" ;;
-            lfortran)      root="${FFC_LFORTRAN_DIR:-$CORPUS_PARENT/lfortran}/integration_tests" ;;
-            gfortran-dg)   root="${FFC_GFORTRAN_DG_DIR:-$CORPUS_PARENT/gcc/gcc/testsuite/gfortran.dg}" ;;
-        esac
-        if [ -d "$root" ]; then
+        root="$(suite_root "$s")"
+        if [ -n "$root" ] && [ -d "$root" ]; then
             SUITES="$SUITES $s"
         else
             echo "SKIP: suite $s not found at $root (run scripts/fetch_corpora.sh or set env var)"
