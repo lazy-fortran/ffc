@@ -158,7 +158,7 @@ def main() -> int:
             for i in range(0, len(cases), 8)]
     sel = []
     for n, _ in cases:
-        sel.append(f'        if (argv(2) == "{n}") then')
+        sel.append(f'        if (argv(1) == "{n}") then')
         sel.append(f"            call case_{n}()")
         sel.append("            return")
         sel.append("        end if")
@@ -176,18 +176,18 @@ def main() -> int:
              "    character(len=256), allocatable :: argv(:)",
              "    integer :: i",
              "",
-             "    allocate(character(len=256) :: argv(command_argument_count() + 1))",
-             "    do i = 1, command_argument_count() + 1",
+             "    allocate(character(len=256) :: argv(max(1, command_argument_count())))",
+             "    do i = 1, command_argument_count()",
              "        call get_command_argument(i, argv(i))",
              "    end do",
              "    if (command_argument_count() < 1) then",
              '        print *, "usage: ffc_suite <test_name>"',
              "        stop 2",
              "    end if",
-             "    argv(2) = adjustl(argv(2))", ""]
+             "    argv(1) = adjustl(argv(1))", ""]
     main += sel
     main += ["    ! Unknown name: fail loudly, do not report a pass.",
-             '    print *, "ffc_suite: no such case: "//trim(argv(2))',
+             '    print *, "ffc_suite: no such case: "//trim(argv(1))',
              "    stop 3",
              "end program test_ffc_suite"]
     MAIN.write_text("\n".join(main) + "\n")
