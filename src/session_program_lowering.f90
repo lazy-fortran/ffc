@@ -5007,6 +5007,85 @@ module session_program_lowering_impl
             character(len=*), intent(in) :: name
         end function namelist_type_header_names
     end interface
+    interface
+        module subroutine lower_print_expression(arena, node_index, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_print_expression
+        module subroutine lower_print_expression_value(arena, &
+                                                       node_index, &
+                                                       context, &
+                                                       error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_print_expression_value
+        module subroutine lower_emulated_real16_print(context, value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_emulated_real16_print
+        integer module function array_access_value_kind(node, context) result(value_kind)
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+        end function array_access_value_kind
+        module subroutine lower_print_component_access_value(arena, &
+                                                             node, &
+                                                             node_index, &
+                                                             context, &
+                                                             error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(component_access_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_print_component_access_value
+        module subroutine lower_print_component_element_value(arena, &
+                                                              node, &
+                                                              node_index, &
+                                                              context, &
+                                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_print_component_element_value
+        integer module function component_element_access_kind(arena, &
+                                                              node, &
+                                                              context)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+        end function component_element_access_kind
+        module subroutine lower_print_char_expr(arena, node_index, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_print_char_expr
+        module subroutine emit_formatted_character_array_expression(arena, &
+                                                                    node_index, &
+                                                                    context, &
+                                                                    fmt_id, &
+                                                                    handled, &
+                                                                    error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            integer(c_int32_t), intent(in) :: fmt_id
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_formatted_character_array_expression
+        module subroutine lower_print_logical_value(context, value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_print_logical_value
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -6676,7 +6755,6 @@ contains
     include 'session_program_lowering_inquire.inc'
     include 'session_program_lowering_read_ops.inc'
     include 'session_program_lowering_read_al.inc'
-    include 'session_program_lowering_print_expr.inc'
     include 'session_program_lowering_expr_lowering.inc'
     include 'session_program_lowering_complex_arrays.inc'
     include 'session_program_lowering_intrinsics.inc'

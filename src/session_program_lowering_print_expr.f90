@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) print_expr
+    !! `print_expr` procedures, moved out of `session_program_lowering_print_expr.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine lower_print_expression(arena, node_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -1082,3 +1090,6 @@
         context%current_block_terminated = .false.
         call set_empty(error_msg)
     end subroutine lower_print_logical_value
+
+
+end submodule print_expr

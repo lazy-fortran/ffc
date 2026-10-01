@@ -159,6 +159,66 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
             "end": end_next,
         })
 
+    # Two failure modes a text include makes invisible until the build fails
+    # deep inside a 7k-line includer. Refuse both here, at the file that has
+    # the problem, with the reason.
+    for i, l in enumerate(lines):
+        m = re.search(r"include\s+'([^']+)'", l, re.I)
+        if m:
+            print(f"{path}: includes {m.group(1)} - migrate that child first, "
+                  "or the captured region duplicates its procedures",
+                  file=sys.stderr)
+            return 6
+    for p_ in procedures:
+        for other in sorted(pathlib.Path("src").glob("*.f90")):
+            if other == path or other.name == ROOT.name:
+                continue
+            if re.search(rf"^    (?:recursive |pure |elemental |)*"
+                         rf"(?:[A-Za-z_][A-Za-z0-9_]* )?"
+                         rf"(?:subroutine|function)\s+{p_['name']}\b",
+                         other.read_text(), re.M):
+                print(f"{path}: {p_['name']} is also defined in {other.name} "
+                      f"(duplicate sibling include) - split them apart first",
+                    file=sys.stderr)
+                return 7
+
+    # Some includes do not contain whole procedures: they carry a *fragment*
+    # of a procedure whose header lives in the includer or in an earlier
+    # include, so the body uses locals (a `logical(c_bool) :: c_false_local`)
+    # that no captured region can declare. Procedure headers and terminators
+    # are balanced inside a real unit; if they are not, this file is a
+    # fragment and the mechanical move cannot be correct.
+    # A file whose captured region starts with executable code is the tail of
+    # a procedure whose header sits in an earlier include - `save.inc` uses
+    # `c_false_local`, a local declared inside a procedure of `common.inc`.
+    # Comments and blanks before the first header are fine; statements are not.
+    lead = lines[:procedures[0]["start"]]
+    frag = [l for l in lead
+            if l.strip() and not l.strip().startswith("!")
+            and not re.match(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*=|call\s+"
+                             r"|if\s*\(|do\b|allocate\s*\(|print\s*[*,(])",
+                             l, re.I)]
+    if len(frag) != len(lead):
+        print(f"{path}: {len(lead) - len(frag)} executable statement(s) before "
+              "the first procedure header - this include continues a procedure "
+              "that started in another file, so it cannot move as a unit",
+              file=sys.stderr)
+        return 9
+
+    region = "\n".join(lines[procedures[0]["start"]:procedures[-1]["end"]])
+    # `end subroutine foo` must not count as a header: `end` fits the
+    # optional return-type slot, which would report a false imbalance.
+    n_head = len(re.findall(r"^    (?!end\s)(?:recursive |pure |elemental |)*"
+                            r"(?:[A-Za-z_][A-Za-z0-9_]* )?"
+                            r"(?:subroutine|function)\s+[A-Za-z_]", region, re.M))
+    n_end = len(re.findall(r"^    end (?:subroutine|function)\b", region, re.M))
+    if n_head != n_end:
+        print(f"{path}: {n_head} procedure headers but {n_end} terminators in "
+              "the captured region - this include holds a fragment of a "
+              "procedure that starts outside it, so it cannot move as a unit",
+              file=sys.stderr)
+        return 8
+
     iface: list[str] = ["    interface"]
     for p in procedures:
         pre = f"{p['prefix']} " if p["prefix"] else ""
