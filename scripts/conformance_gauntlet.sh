@@ -70,6 +70,7 @@ TIMEOUT=5
 # --jobs 1, so the width never multiplies recursively: 16 parents times 1 child
 # is 16 concurrent compiles, which is the number this box was sized for.
 JOBS=${FFC_CONFORMANCE_JOBS-16}
+GAUNTLET_T0=$SECONDS   # wall attribution baseline for the PHASE: stamps
 KEEP_FULL_RUN=0
 # Internal flag for shard children: they walk only part of the suite, so they
 # must not publish an observation or be classified. The parent merges their
@@ -2037,13 +2038,27 @@ SHARD_RC=0
 # suite, a --max-files cut, or a sample: the shards divide exactly what the
 # serial path would have walked.
 if [ "$JOBS" -gt 1 ]; then
+    GAUNTLET_PHASE_T0=$SECONDS
     run_sharded || SHARD_RC=$?
+    printf 'PHASE: sharded_walk %ss\n' "$((SECONDS - GAUNTLET_PHASE_T0))" >&2
 else
+    GAUNTLET_PHASE_T0=$SECONDS
     run_case_loop
+    printf 'PHASE: serial_walk %ss\n' "$((SECONDS - GAUNTLET_PHASE_T0))" >&2
 fi
 
 # Summary
+GAUNTLET_PHASE_T0=$SECONDS
 write_summary
+# Wall attribution for the suite-wall target. The gauntlet already shards at
+# FFC_CONFORMANCE_JOBS (default 16) and widening it measured *worse*
+# (JOBS=4 123.76s vs JOBS=16 129.35s), so these stamps exist to name what
+# actually costs: if serial_walk is small and the gap to the total is large,
+# the cost is outside the case walk - setup, reference builds, or reporting -
+# and sharding it further cannot help. Stderr only; no artifact or exit code
+# changes.
+printf 'PHASE: summary %ss total %ss jobs=%s\n' \
+    "$((SECONDS - GAUNTLET_PHASE_T0))" "$((SECONDS - GAUNTLET_T0))" "$JOBS" >&2
 publish_observation || exit 1
 if [ "$NO_PUBLISH" -eq 1 ]; then
     # Nothing was published, so there is nothing to classify: a shard child's
