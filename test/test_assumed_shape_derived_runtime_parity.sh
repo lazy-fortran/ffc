@@ -272,6 +272,38 @@ program p
 end program p
 EOF
 
+# Nested component write through a rank-2 assumed-shape derived dummy:
+# items(i,j)%payload%value must land on the addressed element, with the
+# leading extent read from the descriptor (allocatable actual) and from a
+# compile-time shape (fixed actual).
+check_shape rank2_nested_component_write <<'EOF'
+module m
+    type :: payload_t
+        integer :: value
+    end type payload_t
+    type :: item_t
+        type(payload_t) :: payload
+    end type item_t
+contains
+    subroutine ex(items, i, j)
+        type(item_t), intent(inout) :: items(:,:)
+        items(i,j)%payload%value = i*10 + j
+    end subroutine ex
+end module m
+program p
+    use m
+    implicit none
+    type(item_t), allocatable :: g(:,:)
+    type(item_t) :: h(2,2)
+    allocate(g(2,3))
+    call ex(g, 2, 3)
+    call ex(h, 1, 2)
+    print *, g(2,3)%payload%value
+    h(1,1)%payload%value = -1
+    print *, h(1,2)%payload%value, h(1,1)%payload%value
+end program p
+EOF
+
 if [ "$fail" -ne 0 ]; then
     echo "FAIL: assumed-shape derived runtime-extent parity"; exit 1
 fi
