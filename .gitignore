@@ -82,3 +82,5 @@ test.dat
 coverage.xml
 coverage_html/
 .sloptools/
+__pycache__/
+*.pyc
