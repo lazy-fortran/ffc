@@ -1055,3 +1055,41 @@ LIRIC checkout.
 - Broader external-procedure signatures and descriptor-bearing `.fmod`
   procedure entries.
 - #55: runtime I/O beyond the current scalar `printf` shim.
+
+## Shared library boundary (`[extra.fo] link = "shared"`)
+
+When `pic = "true"` and `link = "shared"`, `fo` folds the library objects once
+into `build/fo/lib/lib_<hash>.so` and links every test executable against it,
+instead of relinking a ~30 MB static archive into each of ~500 binaries.
+Measured on this tree: per-test binary 15.6 MB -> 2.1 MB, `build/`
+8.67 GB -> 1.27 GB, single-test link 0.109 s, cold `fo build` unchanged at
+~33 s (`/var/tmp/ffc-goal/perf/w0_shared_lib.env`). Executables locate the
+library through `DT_RUNPATH` written at link time, so no exported
+`LD_LIBRARY_PATH` is required.
+
+What the ABI guarantees does **not** change, and what now needs stating:
+
+- The scalar class descriptor, its 32-byte layout, the slot order rule, and
+  `__ffc_vtable_table`'s shape (entry `i` for `ffc_type_info_t.id == i`,
+  entry `0` null) are unchanged. The table is still *one table per link unit*;
+  the change is that a test executable and the library are now two link units
+  rather than one merged unit.
+- Type identity therefore splits along the boundary the same way it always
+  has across a shared object: ids and vtables defined inside `libffc.so`
+  resolve there, and ids emitted by the executable's own compilation units
+  resolve in the executable. A type must not be defined on both sides and
+  expected to compare equal by `id` — dense monotonic ids are unique only
+  within one linked unit, which is what the existing "dense and monotonic
+  within one linked program" wording already constrains.
+- Non-PIC objects cannot enter the shared object at all; the linker refuses
+  them with `relocation R_X86_64_PC32 against symbol ... can not be used when
+  making a shared object`. That is why `pic` is a precondition of `link`
+  rather than an independent style option, and why the refusal is the correct
+  diagnostic to surface.
+
+Oracle: the full suite under the shared link reports the identical fail-name
+set as the static baseline — `total=500 pass=489 fail=11`, zero new names
+against `/var/tmp/ffc-goal/e339_base_failnames.txt`
+(`/var/tmp/ffc-goal/perf/suite-w33.txt`) — and the rejection gate is
+unchanged at 705 accepted / 213 rejected with `rc=0`
+(`/var/tmp/ffc-goal/perf/gate-shared2.counts`).
