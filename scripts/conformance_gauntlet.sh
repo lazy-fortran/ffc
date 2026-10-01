@@ -68,7 +68,7 @@ TIMEOUT=5
 # in file order so the report and the epoch stay independent of the shard
 # width. FFC_CONFORMANCE_JOBS sets the default for the whole suite; a shard
 # child always runs --jobs 1, so the width never multiplies recursively.
-JOBS=${FFC_CONFORMANCE_JOBS-8}
+JOBS=${FFC_CONFORMANCE_JOBS-6}
 KEEP_FULL_RUN=0
 REPEAT=1
 SAMPLE_SIZE=""
