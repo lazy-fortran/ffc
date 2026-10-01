@@ -212,24 +212,72 @@ contains
     end function actual_is_character
 
     module subroutine capture_runtime_fixed_character_length(context, &
-                                                  symbol_index, source_index, error_msg)
+                                                  symbol_index, source_index, error_msg, &
+                                                  length_offset)
         ! Capture a runtime character width once at declaration.
         ! The storage layout stays the ordinary {data, length} descriptor, but
         ! the runtime-fixed flag makes later assignments retain this length.
+        ! A literal additive offset (character(len=len(x)+5)) adjusts the
+        ! captured width by length_offset before the buffer is allocated.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
         integer, intent(in) :: source_index
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: length_offset
         type(lr_operand_desc_t) :: source_len_i32, source_len_i64
         type(lr_operand_desc_t) :: buffer_size, buffer, null_pos
+        type(lr_operand_desc_t) :: adjusted_len, clamped_len, zero_i64
+        type(lr_operand_desc_t) :: is_negative, is_too_long, width_i32
+        integer(c_int32_t) :: error_block, valid_block
         integer(c_int64_t) :: storage_class
+        integer :: offset
 
+        offset = 0
+        if (present(length_offset)) offset = length_offset
         context%symbols(symbol_index)%is_runtime_fixed_character = .true.
         call runtime_character_source_length(context, source_index, &
                                              source_len_i32, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_i32_to_i64(context%session, source_len_i32, &
                                         source_len_i64, error_msg)) return
+        if (offset /= 0) then
+            ! len(x) + k (or - k); Fortran reads a negative length as zero,
+            ! and lengths beyond the addressable i32 span are refused.
+            if (.not. emit_i64_binary(context%session, LR_OP_ADD, &
+                          source_len_i64, &
+                          i64_immediate(context%session, &
+                              int(offset, c_int64_t)), &
+                          adjusted_len, error_msg)) return
+            zero_i64 = i64_immediate(context%session, 0_c_int64_t)
+            if (.not. emit_liric_i64_icmp(context%session, LR_CMP_SGT, &
+                          zero_i64, adjusted_len, is_negative, error_msg)) return
+            call select_value(context, is_negative, zero_i64, adjusted_len, &
+                              clamped_len, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i64_icmp(context%session, LR_CMP_SGT, &
+                          clamped_len, &
+                          i64_immediate(context%session, &
+                              2147483647_c_int64_t), &
+                          is_too_long, error_msg)) return
+            error_block = create_liric_block(context%session)
+            valid_block = create_liric_block(context%session)
+            if (.not. emit_liric_condbr(context%session, is_too_long, &
+                          error_block, valid_block, error_msg)) return
+            if (.not. set_liric_block(context%session, error_block, &
+                                       error_msg)) return
+            context%current_block_id = error_block
+            call emit_character_length_limit_error(context, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_br(context%session, valid_block, error_msg)) return
+            if (.not. set_liric_block(context%session, valid_block, error_msg)) return
+            context%current_block_terminated = .false.
+            if (.not. emit_liric_i64_to_i32(context%session, clamped_len, &
+                          width_i32, error_msg)) return
+            if (.not. emit_liric_i32_to_i64(context%session, width_i32, &
+                          adjusted_len, error_msg)) return
+            source_len_i64 = adjusted_len
+            source_len_i32 = width_i32
+        end if
         if (.not. emit_i64_store(context%session, source_len_i64, &
                             context%symbols(symbol_index)%deferred_length, error_msg)) &
             return
@@ -270,18 +318,25 @@ contains
     end subroutine capture_runtime_fixed_character_length
 
     module subroutine resolve_runtime_character_length_source(context, &
-            node, source_index, allow_integer)
-        ! Recognize LEN(character) or a scalar integer specification variable.
-        ! source_index is left at 0 when the expression does not match.
+            node, source_index, allow_integer, length_offset)
+        ! Recognize LEN(character), LEN(character)+k / LEN(character)-k with
+        ! an integer literal offset k, or a scalar integer specification
+        ! variable. source_index is left at 0 when the expression does not
+        ! match; length_offset carries the additive literal (0 otherwise).
         type(lowering_context_t), intent(in) :: context
         type(declaration_node), intent(in) :: node
         integer, intent(out) :: source_index
         logical, intent(in) :: allow_integer
+        integer, intent(out), optional :: length_offset
         character(len=:), allocatable :: expr
         character(len=:), allocatable :: lowered
         character(len=:), allocatable :: inner
+        character(len=:), allocatable :: tail
+        integer :: close_pos, io_stat
+        integer :: offset
 
         source_index = 0
+        if (present(length_offset)) length_offset = 0
         if (.not. node%has_character_length) return
         if (.not. allocated(node%character_length_expr)) return
         expr = trim(adjustl(node%character_length_expr))
@@ -307,8 +362,32 @@ contains
         if (len(expr) < 6) return
         lowered = lowercase_text(expr)
         if (lowered(1:4) /= 'len(') return
-        if (lowered(len(lowered):len(lowered)) /= ')') return
-        inner = trim(adjustl(expr(5:len(expr) - 1)))
+        if (lowered(len(lowered):len(lowered)) == ')') then
+            inner = trim(adjustl(expr(5:len(expr) - 1)))
+            tail = ''
+        else
+            ! len(name) + k: the close paren of len( is the first ')'; the
+            ! tail must be exactly an additive integer literal term.
+            close_pos = index(lowered, ')')
+            if (close_pos <= 0) return
+            inner = trim(adjustl(expr(5:close_pos - 1)))
+            tail = adjustl(expr(close_pos + 1:))
+            tail = trim(tail)
+            if (len(tail) >= 2 .and. (tail(2:2) == ' ' .or. tail(1:1) == ' ')) then
+                ! tolerate 'len(x) + 5' / 'len(x)+ 5' spellings
+                if (tail(1:1) == ' ') tail = adjustl(tail(1:))
+                if (len(tail) >= 2 .and. tail(2:2) == ' ') then
+                    tail = tail(1:1)//adjustl(tail(2:))
+                end if
+            end if
+            if (len(tail) < 2) return
+            if (tail(1:1) /= '+' .and. tail(1:1) /= '-') return
+            if (verify(tail(2:), '0123456789') /= 0) return
+            read (tail(2:), *, iostat=io_stat) offset
+            if (io_stat /= 0) return
+            if (tail(1:1) == '-') offset = -offset
+            if (present(length_offset)) length_offset = offset
+        end if
         if (len(inner) == 0) return
         if (verify(inner, &
                    'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_') &

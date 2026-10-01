@@ -6,6 +6,7 @@
         integer :: character_length
         integer :: existing_index
         integer :: source_index
+        integer :: length_offset
 
         existing_index = find_symbol_compat(context, name)
         if (existing_index > 0) then
@@ -37,11 +38,12 @@
                             if (len_trim(error_msg) > 0) return
                         else
                             call resolve_runtime_character_length_source( &
-                                context, node, source_index, .true.)
+                                context, node, source_index, .true., &
+                                length_offset)
                             if (source_index > 0) then
                                 call capture_runtime_fixed_character_length( &
                                     context, existing_index, source_index, &
-                                    error_msg)
+                                    error_msg, length_offset)
                                 if (len_trim(error_msg) > 0) return
                             end if
                         end if
@@ -126,10 +128,11 @@
                                           error_msg)
         if (len_trim(error_msg) > 0) then
             call resolve_runtime_character_length_source(context, node, &
-                                                         source_index, .false.)
+                                                         source_index, .false., &
+                                                         length_offset)
             if (source_index > 0) then
                 call define_runtime_length_character_local(context, name, &
-                    source_index, error_msg)
+                    source_index, error_msg, length_offset)
             end if
             return
         end if
@@ -193,18 +196,21 @@
     end subroutine capture_runtime_len_trim_length
 
     subroutine define_runtime_length_character_local(context, name, &
-                                                      source_index, error_msg)
+                                                      source_index, error_msg, &
+                                                      length_offset)
         ! character(len=len(other)) :: name, where other is a declared
         ! character variable whose own length is only known at runtime (an
         ! assumed-length dummy, for instance). The local reuses the deferred
         ! {data, length} descriptor ABI, seeding its length from other's
         ! current runtime length; content stays unset until an assignment
         ! fills it in, matching an ordinary automatic-length local that is
-        ! declared before use.
+        ! declared before use. A literal additive offset (len(other)+5) is
+        ! carried through to the captured width.
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         integer, intent(in) :: source_index
         character(len=:), allocatable, intent(out) :: error_msg
+        integer, intent(in), optional :: length_offset
         integer :: symbol_index
 
         call define_deferred_character_symbol(context, name, error_msg)
@@ -217,8 +223,14 @@
             return
         end if
 
-        call capture_runtime_fixed_character_length(context, symbol_index, &
-                                                    source_index, error_msg)
+        if (present(length_offset)) then
+            call capture_runtime_fixed_character_length(context, symbol_index, &
+                                                        source_index, error_msg, &
+                                                        length_offset)
+        else
+            call capture_runtime_fixed_character_length(context, symbol_index, &
+                                                        source_index, error_msg)
+        end if
         if (len_trim(error_msg) > 0) return
         call set_empty(error_msg)
     end subroutine define_runtime_length_character_local
