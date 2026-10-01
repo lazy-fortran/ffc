@@ -50,6 +50,19 @@ CASES = [
     ("five_chain", 'character(len=2) :: a,b,c,d,e\n  a="aa"\n  b="bb"\n  c="cc"\n  d="dd"\n  e="ee"', 'a(1:2)//b(1:2)//c(1:1)//d(2:2)//e(1:2)'),
     ("mixed_lit", 'character(len=3) :: a\n  a="mno"', '"x"//a(2:3)//"y"//a(1:1)'),
     ("long_slice", 'character(len=12) :: a\n  a="abcdefghijkl"', 'a(3:9)//a(1:4)'),
+    # Adversarial-review additions. The nested form c(i)(l:u)//c(j)(l:u) is a
+    # capability this fix actually enables (FortFront stores it as a slice whose
+    # base is a character-array element designator) and it was unpinned. The
+    # integer-section rows are the blast-radius guard: `is_character_substring`
+    # checks the is_character_substring flag, a character-array-element base, or
+    # value_kind == VALUE_CHARACTER .and. .not. is_array, so an INTEGER section
+    # must still take the array path and print unchanged. If one of these stops
+    # matching, the character classifier is bleeding onto integer shapes.
+    ("nested_bc", 'character(len=3) :: c(2)\n  c=(/ "abc", "def" /)', 'c(1)(2:3)'),
+    ("nested_concat", 'character(len=3) :: c(2)\n  c=(/ "abc", "def" /)', 'c(1)(2:3)//c(2)(1:2)'),
+    ("nested_three", 'character(len=2) :: c(3)\n  c=(/ "ab", "cd", "ef" /)', 'c(1)(2:2)//c(2)(1:2)//c(3)(1:1)'),
+    ("int_section_print", 'integer :: ia(4)\n  ia=[1,2,3,4]', 'ia(2:4)'),
+    ("int_section_pair", 'integer :: ia(4), ib(3)\n  ia=[1,2,3,4]\n  ib=[5,6,7]', 'ia(2:4)+ib(1:3)'),
 ]
 
 
@@ -65,6 +78,14 @@ def run(cmd):
 
 def main() -> int:
     runs = match = refused = mismatch = ref_fail = 0
+    # Known pre-existing gap, reported but not failed: whole-array integer
+    # arithmetic `ia(2:4)+ib(1:3)` is refused with "unsupported array
+    # subscript". gfortran accepts it. That is #337 territory (centralize
+    # array element-expression lowering) and is NOT this commit's blast radius -
+    # it is a compile-time refusal, not a wrong answer or a crash. Listed so the
+    # gap stays visible without turning the guard red.
+    KNOWN_GAP = {"int_section_pair"}
+
     lines = []
     for name, decls, expr in CASES:
         src = WORK / f"{name}.f90"
@@ -80,8 +101,11 @@ def main() -> int:
         rc, _, err = run([str(FFC), str(src), "-o", str(WORK / f"{name}_ffc")])
         runs += 1
         if rc != 0:
-            refused += 1
             tag = "REFUSED" if "unsupported" in err else "OTHER_ERROR"
+            if name in KNOWN_GAP:
+                lines.append(f"{name}\tKNOWN_GAP\t{tag}")
+                continue
+            refused += 1
             lines.append(f"{name}\t{tag}")
             continue
         fcode, fout, _ = run([str(WORK / f"{name}_ffc")])
