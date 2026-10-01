@@ -330,7 +330,7 @@ box is not consumed by the separately compiled callee, and passing the
 bare address silently loses the actual. Type-bound dispatch through
 recorded vtables is unaffected.
 
-### Rank-1 assumed-shape derived dummies with runtime extents (#337)
+### Assumed-shape derived dummies with runtime extents (#337)
 
 The extent of a rank-1 assumed-shape derived dummy `type(t) :: a(:)` no
 longer has to fold to a compile-time constant from a whole-array actual.
@@ -340,5 +340,9 @@ the extent come from it at entry, and rank-1 element addressing is
 differently-sized second-call actuals each see their own extent. The
 compile-time fold stays as a specialization only: it unrolls whole-array
 operations when every call site agrees, and its failure no longer rejects
-the program. Rank>=2 dummies keep the compile-time leading-extent guard
-until column-major linearisation reads extents at runtime.
+the program. A rank>=2 monomorphic dummy linearises in column-major order
+multiplying the running stride by each leading extent READ FROM THE
+DESCRIPTOR at run time, so allocatable and fixed actuals of different
+shapes each address their own elements. A polymorphic class(t) dummy
+keeps the compile-time guard: it strides by the dynamic element size and
+owns the separate descriptor/rank contract of #422.

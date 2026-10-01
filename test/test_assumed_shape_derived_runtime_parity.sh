@@ -20,8 +20,9 @@
 # or miss elements and the sum would be wrong - nondeterministically, since it
 # reads live descriptor memory. RUNS>=20 pins it against a lucky run.
 #
-# Rank>=2 assumed-shape derived dummies still need the leading extent for
-# column-major linearisation, so they keep the guard; they are NOT in this file.
+# Rank>=2 monomorphic dummies now linearise with descriptor extents. The
+# polymorphic class(t) dummy and the strided-section actuals keep their own
+# contracts (#422) and are NOT in this file.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -203,6 +204,71 @@ program p
     type(pt) :: h(3)
     h(1)%x = 1; h(2)%x = 2; h(3)%x = 3
     call total(h)
+end program p
+EOF
+
+# Rank>=2 assumed-shape derived dummies are covered: rank-2 columns scale
+# the running stride by the leading extent READ FROM THE DESCRIPTOR at run
+# time, so allocatable and fixed actuals of different shapes each work.
+check_shape rank2_allocatable_actual <<'EOF'
+module m
+    type :: pt
+        integer :: x
+    end type pt
+contains
+    subroutine totals(a)
+        type(pt), intent(in) :: a(:,:)
+        integer :: i, j, s
+        s = 0
+        do j = 1, size(a, 2)
+            do i = 1, size(a, 1)
+                s = s + a(i,j)%x
+            end do
+        end do
+        print *, s, size(a,1), size(a,2)
+    end subroutine totals
+end module m
+program p
+    use m
+    implicit none
+    integer :: i, j
+    type(pt), allocatable :: g(:,:)
+    type(pt) :: h(2,2)
+    allocate(g(2,3))
+    do j = 1, 3
+        do i = 1, 2
+            g(i,j)%x = i + 10*j
+        end do
+    end do
+    call totals(g)
+    h(1,1)%x = 1; h(2,1)%x = 2; h(1,2)%x = 3; h(2,2)%x = 4
+    call totals(h)
+end program p
+EOF
+
+# Rank-2 INTENT(INOUT) element write through a runtime leading extent: the
+# write must land on exactly the addressed element of the allocatable actual.
+check_shape rank2_inout_element_write <<'EOF'
+module m
+    type :: pt
+        integer :: x
+    end type pt
+contains
+    subroutine touch(a, i, j)
+        type(pt), intent(inout) :: a(:,:)
+        integer, intent(in) :: i, j
+        a(i,j)%x = i*10 + j
+    end subroutine touch
+end module m
+program p
+    use m
+    implicit none
+    integer :: n
+    type(pt), allocatable :: g(:,:)
+    n = 2
+    allocate(g(n,3))
+    call touch(g, 2, 3)
+    print *, g(2,3)%x, g(1,1)%x
 end program p
 EOF
 

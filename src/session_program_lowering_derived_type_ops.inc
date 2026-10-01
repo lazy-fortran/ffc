@@ -1061,13 +1061,17 @@
         ! so the dummy only needs its shape; recover it from the whole-array
         ! actual at the call site, exactly as intrinsic assumed-shape dummies do.
         type(declaration_node), intent(in) :: node
-        type(lowering_context_t), intent(in) :: context
+        type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: name
         integer, intent(out) :: dim_count
         integer, intent(out) :: extents(2)
         character(len=:), allocatable, intent(out) :: error_msg
         logical :: ok
         integer :: sym_index
+        integer :: ns, pp, ar
+        logical :: rank_ok
+        character(len=:), allocatable :: cn
+        integer, allocatable :: cargs(:)
 
         extents = 0
         dim_count = 0
@@ -1089,21 +1093,38 @@
                                            name, dim_count, extents, ok)
         if (.not. ok) then
             ! No whole-array actual of compile-time size folded a constant
-            ! shape. Since #334 a MONOMORPHIC rank-1 derived dummy is still
-            ! bound through the caller's array descriptor:
+            ! shape. Since #334 a MONOMORPHIC derived dummy is still bound
+            ! through the caller's array descriptor:
             ! bind_assumed_shape_descriptor_params already loaded the base
-            ! address and the runtime extent from it, and its element offset
-            ! is (sub-lower)*slot_width off that base, so no compile-time
-            ! extent is needed. Fall through with extents=0 and let the
-            ! descriptor drive the shape (#337 runtime-extent retirement of
-            ! the compile-time fold requirement). A polymorphic class(t)
-            ! dummy and every rank>=2 dummy keep the guard: the polymorphic
-            ! path strides by the dynamic element size and has its own
-            ! descriptor/rank contract (#422), and rank>=2 needs the leading
-            ! extent for column-major linearisation.
+            ! address and each runtime extent from it at entry, and the
+            ! column-major linearisation multiplies the running stride by
+            ! those descriptor extents (derived_array_slot_offset), so no
+            ! compile-time extent is needed at all (#337 runtime-extent
+            ! retirement of the compile-time fold requirement). A
+            ! polymorphic class(t) dummy keeps the guard: it strides by the
+            ! dynamic element size and owns a separate descriptor/rank
+            ! contract (#422).
             sym_index = find_symbol_compat(context, name)
-            if (dim_count == 1 .and. sym_index > 0 .and. &
+            ! A call site whose actual presents a DIFFERENT rank stays with
+            ! the declared-guard diagnostic: the rank guard at the caller is
+            ! generic text, and F2018 15.5.2.4 rejects the program here.
+            rank_ok = .true.
+            pp = proc_param_position(context%arena, &
+                                     context%current_proc_name, name)
+            do ns = 1, context%arena%size
+                if (.not. node_exists(context%arena, ns)) cycle
+                if (.not. call_targets_proc(context%arena, ns, &
+                        context%current_proc_name, cn, cargs)) cycle
+                if (.not. allocated(cargs)) cycle
+                if (pp <= 0 .or. pp > size(cargs)) cycle
+                ar = assumed_shape_actual_rank(context%arena, cargs(pp), &
+                                               context)
+                if (ar > 0 .and. ar /= dim_count) rank_ok = .false.
+            end do
+            if (sym_index > 0 .and. rank_ok .and. &
                 .not. context%symbols(sym_index)%is_polymorphic .and. &
+                all(context%symbols(sym_index)%has_runtime_dim_size(&
+                    1:dim_count)) .and. &
                 context%symbols(sym_index)%has_runtime_descriptor) then
                 extents = 0
                 call set_empty(error_msg)
@@ -1172,7 +1193,7 @@
         type(lr_operand_desc_t) :: sub_val, zero_based, term, acc, summed
         type(lr_operand_desc_t) :: lower64, lower32, extent64, extent32
         type(lr_operand_desc_t) :: stride32, next_stride32, scale32, elem_bytes
-        integer :: rank, i, lower, stride
+        integer :: rank, i, lower
 
         rank = size(arg_indices)
         if (rank < 1) then
@@ -1239,7 +1260,7 @@
             call set_empty(error_msg)
             return
         end if
-        stride = 1
+        stride32 = i32_immediate(context%session, 1_c_int64_t)
         do i = 1, rank
             lower = 1
             if (context%symbols(symbol_index)%array_rank >= i) then
@@ -1252,8 +1273,7 @@
                     i32_immediate(context%session, int(lower, c_int64_t)), &
                     zero_based, error_msg)) return
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
-                    i32_immediate(context%session, int(stride, c_int64_t)), &
-                    term, error_msg)) return
+                    stride32, term, error_msg)) return
             if (i == 1) then
                 acc = term
             else
@@ -1262,7 +1282,23 @@
                 acc = summed
             end if
             if (i < rank) then
-                stride = stride * context%symbols(symbol_index)%array_dim_sizes(i)
+                ! A descriptor-bound dimension carries its extent at run time
+                ! (#337): multiply the running stride by the extent read from
+                ! the caller's descriptor. A compile-time dimension folds the
+                ! same multiplication to an immediate, so one loop serves both.
+                if (context%symbols(symbol_index)%has_runtime_dim_size(i)) then
+                    if (.not. emit_i32_binary(context%session, LR_OP_MUL, &
+                            stride32, &
+                            context%symbols(symbol_index)%runtime_dim_size(i), &
+                            next_stride32, error_msg)) return
+                    stride32 = next_stride32
+                    cycle
+                end if
+                if (.not. emit_i32_binary(context%session, LR_OP_MUL, &
+                        stride32, i32_immediate(context%session, &
+                        int(context%symbols(symbol_index)%array_dim_sizes(i), &
+                            c_int64_t)), next_stride32, error_msg)) return
+                stride32 = next_stride32
             end if
         end do
         ! A polymorphic array dummy strides by the dynamic element type's size,

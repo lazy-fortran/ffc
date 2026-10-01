@@ -510,6 +510,21 @@
             error_msg = 'Rank mismatch in argument to '//trim(callee_name)// &
                         ': assumed-shape dummy of rank '//trim(rank_text)// &
                         ' received an actual of rank '//trim(actual_rank_text)
+            if (callee_dummy_value_kind(arena, callee_name, param_pos, &
+                    context) == VALUE_DERIVED) then
+                error_msg = 'Rank mismatch in argument to '//trim(callee_name)// &
+                    ': assumed-shape derived array dummy of rank '// &
+                    trim(rank_text)//' received an actual of rank '// &
+                    trim(actual_rank_text)
+            else
+                call callee_dummy_declared_derived_type(arena, callee_name, &
+                    param_pos, .false., dummy_type_name)
+                if (len_trim(dummy_type_name) > 0) &
+                    error_msg = 'Rank mismatch in argument to '// &
+                        trim(callee_name)//': assumed-shape derived array '// &
+                        'dummy of rank '//trim(rank_text)//' received an '// &
+                        'actual of rank '//trim(actual_rank_text)
+            end if
             return
         end if
 
