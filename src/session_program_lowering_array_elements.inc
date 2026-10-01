@@ -1747,6 +1747,31 @@
         call set_empty(error_msg)
     end subroutine emit_whole_array_expr_print_items
 
+    logical function array_valued_call_result(arena, context, name) result(is_array)
+        ! True when the same-unit/contained function's call result IS an
+        ! array: either a registered array-result kind (fixed sret or
+        ! allocatable descriptor), or an ELEMENTAL-prefix function (whose
+        ! registered kind is the ELEMENT kind, but a call over an array-shaped
+        ! actual produces one value per element, F2018 12.5.5).
+        ! A missing or plain scalar result is false: the call yields one
+        ! value, not one value per element of an array-shaped actual.
+        type(ast_arena_t), intent(in) :: arena
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: kind
+        logical :: found, is_elemental, all_intent_in
+        character(len=:), allocatable :: bad_dummy
+        integer :: param_count
+
+        kind = contained_function_kind(context, name)
+        is_array = kind == VALUE_ARRAY_RESULT .or. &
+                   kind == VALUE_ALLOC_ARRAY_RESULT
+        if (is_array) return
+        call contained_elemental_signature(arena, name, found, param_count, &
+                                           is_elemental, all_intent_in, bad_dummy)
+        is_array = found .and. is_elemental
+    end function array_valued_call_result
+
     recursive integer function whole_array_expr_shape_symbol(arena, expr_index, &
                                                              context) result(sym)
         !! Symbol whose shape and element kind govern a whole-array expression:
@@ -1800,6 +1825,16 @@
             is_elemental_user_call(arena, expr_index, context)) then
             select type (n => arena%entries(expr_index)%node)
             type is (call_or_subscript_node)
+                ! Elementwise expansion prints one value PER ELEMENT, so the
+                ! callee must actually produce an array. A non-elemental
+                ! scalar-result function (function f(a) result(s)) applied to
+                ! an array-shaped dummy is a SINGLE scalar call: expanding it
+                ! re-calls the function once per element with scratch
+                ! arguments and prints phantom values (ffc#753). Decline.
+                if (allocated(n%name)) then
+                    if (.not. array_valued_call_result(arena, context, &
+                        n%name)) return
+                end if
                 do i = 1, size(n%arg_indices)
                     sym = whole_array_expr_shape_symbol(arena, &
                         n%arg_indices(i), context)
