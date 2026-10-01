@@ -43,6 +43,12 @@ def source(n: int, idx: str, mode: str) -> str:
     # Whole-array forms, kept in a separate mode so the guard above stays
     # green and the gap stays visible: `print *, a(idx)` and a formatted
     # whole-array print are the two shapes this slice has to route.
+    if mode == "scatter":
+        tgt = ", ".join(f"a({i})" for i in range(1, n + 1))
+        return head + (
+            f"  integer :: b({k})\n"
+            f"  a = [{vals}]\n  idx = [{idx}]\n  b = [{','.join(str(100+i) for i in range(1,k+1))}]\n"
+            f"  a(idx) = b\n  print *, {tgt}\nend program p\n")
     elem = ", ".join(f"b({i})" for i in range(1, k + 1))
     pelem = ", ".join(f"a(idx({i}))" for i in range(1, k + 1))
     if mode == "print":
@@ -62,7 +68,11 @@ def run(cmd: list[str]) -> tuple[int, str]:
 def main() -> int:
     runs = match = refused = mismatch = other = 0
     report: list[str] = []
-    for mode in ("assign", "print"):
+    # scatter: `a(idx) = b` then print the whole target. This already worked
+    # before slice 1 landed (verified byte-exact on the first probe), so
+    # these rows exist to stop it regressing and to replace the plan's
+    # assumption that scatter still had to be built.
+    for mode in ("assign", "print", "scatter"):
         for n, idx in CASES:
             name = f"{mode}_{n}_{idx.replace(',', '_')}"
             src = WORK / f"{name}.f90"
