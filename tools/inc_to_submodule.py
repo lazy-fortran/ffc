@@ -238,8 +238,24 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
               file=sys.stderr)
         return 8
 
+    # Bodies are emitted as one contiguous slice of the original file, so the
+    # slice bounds are taken before any reordering. The interface block, in
+    # contrast, is order-sensitive: inside an `interface` body a callee's
+    # interface must precede its caller's, or gfortran reports the symbol as
+    # having no implicit type. That is not a hypothetical - `character_tail.inc`
+    # calls `emit_or_add1` 44 lines before defining it, legal today through
+    # host association and broken the moment it becomes a submodule.
+    body_first = min(p["start"] for p in procedures)
+    body_last = max(p["end"] for p in procedures)
+    iface_procs = order_by_dependency(procedures, lines)
+    if iface_procs is None:
+        print(f"{path}: mutually recursive procedures in this include - the "
+              "interface block cannot order callees before callers, so it needs "
+              "explicit interfaces written by hand", file=sys.stderr)
+        return 7
+
     iface: list[str] = ["    interface"]
-    for p in procedures:
+    for p in iface_procs:
         pre = f"{p['prefix']} " if p["prefix"] else ""
         ret = f"{p['rettype']} " if p["rettype"] else ""
         args_txt = ", ".join(p["args"])
@@ -301,8 +317,7 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
         "contains",
         "",
     ]
-    first = procedures[0]["start"]
-    sub.extend(lines[first:procedures[-1]["end"]])
+    sub.extend(lines[body_first:body_last])
     sub.append("")
     sub.append(f"end submodule {stem}")
 
@@ -337,6 +352,33 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
     ROOT.write_text(root_text)
     print(f"wrote src/session_program_lowering_{stem}.f90 and updated {ROOT}")
     return 0
+
+
+def order_by_dependency(procedures: list[dict], lines: list[str]):
+    """Sort procedure headers so a callee precedes its caller.
+
+    Returns None when the set is cyclic, which the caller turns into a refusal:
+    a cycle means the interface block cannot satisfy gfortran by ordering alone
+    and the fix is explicit interfaces, not a different permutation.
+    """
+    names = {p["name"] for p in procedures}
+    deps: dict[str, set[str]] = {}
+    for p in procedures:
+        body = "\n".join(lines[p["start"]:p["end"]])
+        deps[p["name"]] = {o for o in names if o != p["name"]
+                           and re.search(r"\b" + re.escape(o) + r"\b", body)}
+    ordered: list[dict] = []
+    done: set[str] = set()
+    rest = list(procedures)
+    while rest:
+        ready = [p for p in rest if deps[p["name"]] <= done]
+        if not ready:
+            return None
+        # Stable within a level so the emitted block still reads in file order.
+        ordered.extend(ready)
+        done.update(p["name"] for p in ready)
+        rest = [p for p in rest if p["name"] not in done]
+    return ordered
 
 
 def main() -> int:
