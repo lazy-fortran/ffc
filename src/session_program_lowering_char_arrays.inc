@@ -130,6 +130,54 @@
         length = combined_length
     end subroutine character_array_constructor_element_operands
 
+    subroutine accept_assumed_shape_character_dummy(node, context, error_msg)
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: refusal
+        integer :: character_length
+        integer :: sym_index
+
+        refusal = 'direct LIRIC session does not support '// &
+                 'assumed-shape or assumed-rank character array dummies'
+        if (node%is_multi_declaration .or. .not. allocated(node%var_name)) then
+            call unsupported_feature_error('character array declaration', &
+                node%line, node%column, refusal, error_msg)
+            return
+        end if
+        if (.not. allocated(node%dimension_indices) .or. &
+            size(node%dimension_indices) /= 1) then
+            call unsupported_feature_error('character array declaration', &
+                node%line, node%column, refusal, error_msg)
+            return
+        end if
+        call declaration_character_length(context, node, character_length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (character_length <= 0) then
+            call unsupported_feature_error('character array declaration', &
+                node%line, node%column, refusal, error_msg)
+            return
+        end if
+        sym_index = find_symbol_compat(context, trim(node%var_name))
+        if (sym_index <= 0 .or. &
+            .not. context%symbols(sym_index)%is_assumed_shape_dummy .or. &
+            .not. context%symbols(sym_index)%has_runtime_descriptor) then
+            call unsupported_feature_error('character array declaration', &
+                node%line, node%column, refusal, error_msg)
+            return
+        end if
+        ! The descriptor bind already owns address, runtime stride, and
+        ! extents; complete only the character-view metadata here.
+        context%symbols(sym_index)%value_kind = VALUE_CHARACTER
+        context%symbols(sym_index)%is_array = .true.
+        context%symbols(sym_index)%array_rank = 1
+        context%symbols(sym_index)%character_length = character_length
+        context%symbols(sym_index)%array_size = 0
+        context%symbols(sym_index)%array_lower_bound = 1
+        context%symbols(sym_index)%array_dim_lowers(1) = 1
+        call set_empty(error_msg)
+    end subroutine accept_assumed_shape_character_dummy
+
     subroutine lower_character_array_declaration(node, context, error_msg)
         type(declaration_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -162,6 +210,15 @@
         end if
         if (declaration_is_assumed_rank(node, context) .or. &
             declaration_is_assumed_shape(node, context)) then
+            if (.not. declaration_is_assumed_rank(node, context)) then
+                ! A contiguous rank-1 fixed-length assumed-shape dummy borrows
+                ! the caller's character buffer through the canonical descriptor
+                ! (#348): the parameter is already bound to the descriptor's
+                ! base and extents; this path only completes its character
+                ! metadata. Everything else keeps the refusal below.
+                call accept_assumed_shape_character_dummy(node, context, error_msg)
+                return
+            end if
             call unsupported_feature_error('character array declaration', &
                 node%line, node%column, 'direct LIRIC session does not support '// &
                 'assumed-shape or assumed-rank character array dummies', error_msg)

@@ -641,6 +641,25 @@
             ! by whole instances (#406).
             element_bytes = 4_c_int64_t*int(total_component_slots(context, &
                 context%symbols(symbol_index)%derived_type_index), c_int64_t)
+        else if (value_kind == VALUE_CHARACTER) then
+            ! A character array's elements are contiguous fixed-length bytes;
+            ! the descriptor steps by the declared element length (#348).
+            ! Allocatable character arrays still store per-element pointers,
+            ! not a contiguous block, so the borrowed descriptor would name
+            ! slot garbage; they keep a named refusal until that store
+            ! migrates. Sections fold their own base and stride below.
+            if (context%symbols(symbol_index)%character_length <= 0) then
+                error_msg = 'assumed-shape character actual needs a fixed '// &
+                            'element length'
+                return
+            end if
+            if (actual_is_allocatable_array(arena, node_index, context)) then
+                error_msg = 'assumed-shape character actual of allocatable '// &
+                            'array awaits contiguous character array storage'
+                return
+            end if
+            element_bytes = int(context%symbols(symbol_index)%&
+                                character_length, c_int64_t)
         else
             element_bytes = int(equivalence_kind_size(value_kind), c_int64_t)
         end if

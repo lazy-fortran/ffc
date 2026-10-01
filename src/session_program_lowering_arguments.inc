@@ -231,7 +231,9 @@
                 if (len_trim(error_msg) > 0) return
             else if (actual_is_character(arena, arg_indices(i), context) .and. &
                      callee_dummy_char_writable(arena, callee_name, &
-                                                call_arg_param_pos(i, sp))) then
+                                                call_arg_param_pos(i, sp)) .and. &
+                     callee_dummy_assumed_shape_dims(arena, callee_name, &
+                                                    call_arg_param_pos(i, sp)) < 1) then
                 ! intent(out)/(inout) allocatable character: pass the actual's
                 ! own descriptor so the callee's writes land in the caller.
                 call char_actual_inout_descriptor(arena, arg_indices(i), &
@@ -241,7 +243,12 @@
                      (callee_dummy_is_character(arena, callee_name, &
                                                 call_arg_param_pos(i, sp)) .or. &
                       external_dummy_value_kind(context, callee_name, &
-                          call_arg_param_pos(i, sp)) == VALUE_CHARACTER)) then
+                          call_arg_param_pos(i, sp)) == VALUE_CHARACTER) .and. &
+                     callee_dummy_assumed_shape_dims(arena, callee_name, &
+                                                    call_arg_param_pos(i, sp)) < 1) then
+                ! A scalar character actual travels as a {data,length} view; a
+                ! WHOLE character array actual of an assumed-shape dummy keeps
+                ! the canonical array descriptor path below (#348).
                 call char_actual_descriptor(arena, arg_indices(i), context, &
                                             args(i), error_msg)
                 if (len_trim(error_msg) > 0) return

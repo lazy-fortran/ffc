@@ -346,3 +346,19 @@ DESCRIPTOR at run time, so allocatable and fixed actuals of different
 shapes each address their own elements. A polymorphic class(t) dummy
 keeps the compile-time guard: it strides by the dynamic element size and
 owns the separate descriptor/rank contract of #422.
+
+## Character array dummies (#348)
+
+A rank-1 `character(len=N)` contiguous fixed-size array actual of an
+assumed-shape dummy fills the same `array_descriptor_t` with
+`element_size = N`, `element_type = ARRAY_ELEMENT_CHARACTER`,
+`stride_bytes(1) = N`, `lower_bound(1) = 1`, and the actual's extent.
+The callee binds `base` and the runtime extent from the descriptor and
+addresses element `i` at `base + (i - 1) * N`, so one callee body serves
+actuals of different extents without hidden extent arguments or
+compile-time specialization. The dummy is an `intent(in)` or
+`intent(inout)` borrowed view: an `intent(inout)` element write stores
+N bytes into the caller's buffer and is visible to the caller. Allocatable
+character actuals (per-element pointer storage today), character sections,
+deferred or assumed lengths, and rank >= 2 character dummies are refused
+before any descriptor is emitted.
