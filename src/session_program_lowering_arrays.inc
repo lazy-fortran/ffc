@@ -4311,6 +4311,13 @@
         if (len_trim(error_msg) > 0) return
         select case (trim(reduction_name))
         case ('sum', 'product', 'maxval', 'minval')
+        case ('count', 'any', 'all')
+            ! Mask reductions are defined for logical elements only (F2018
+            ! 13.7.11); the elements load as 0/1 and fold by ADD/OR/AND.
+            if (vk /= VALUE_LOGICAL) then
+                error_msg = trim(reduction_name)//' requires a logical array'
+                return
+            end if
         case default
             error_msg = 'unsupported array reduction intrinsic: '// &
                         trim(reduction_name)
@@ -4401,6 +4408,19 @@
             call select_value(context, condition, candidate, acc, selected, error_msg)
             if (len_trim(error_msg) > 0) return
             acc = selected
+        case ('count', 'any', 'all')
+            ! Logical mask elements are 0/1 integers at this width.
+            if (trim(reduction_name) == 'count') then
+                if (.not. emit_i32_binary(context%session, LR_OP_ADD, acc, &
+                                          candidate, next_value, error_msg)) return
+            else if (trim(reduction_name) == 'any') then
+                if (.not. emit_i32_binary(context%session, LR_OP_OR, acc, &
+                                          candidate, next_value, error_msg)) return
+            else
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, acc, &
+                                          candidate, next_value, error_msg)) return
+            end if
+            acc = next_value
         end select
     end subroutine fold_reduction_step
 

@@ -558,6 +558,16 @@ contains
             return
         end if
 
+        ! A section mask (count(a(lo:hi))) reduces over the section extent;
+        ! the identifier lookup below only names whole declared arrays.
+        if (node_exists(arena, node%arg_indices(1))) then
+            select type (sarg => arena%entries(node%arg_indices(1))%node)
+            type is (array_slice_node)
+                call lower_section_reduction(arena, sarg, context, value, &
+                    'count', error_msg)
+                return
+            end select
+        end if
         call get_identifier_name(arena, node%arg_indices(1), mask_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol_compat(context, mask_name)
@@ -652,6 +662,16 @@ contains
             return
         end if
 
+        ! A section mask (any(a(lo:hi))) reduces over the section extent;
+        ! the identifier lookup below only names whole declared arrays.
+        if (node_exists(arena, node%arg_indices(1))) then
+            select type (sarg => arena%entries(node%arg_indices(1))%node)
+            type is (array_slice_node)
+                call lower_section_reduction(arena, sarg, context, value, &
+                    'any', error_msg)
+                return
+            end select
+        end if
         call get_identifier_name(arena, node%arg_indices(1), mask_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol_compat(context, mask_name)
@@ -747,6 +767,16 @@ contains
             return
         end if
 
+        ! A section mask (all(a(lo:hi))) reduces over the section extent;
+        ! the identifier lookup below only names whole declared arrays.
+        if (node_exists(arena, node%arg_indices(1))) then
+            select type (sarg => arena%entries(node%arg_indices(1))%node)
+            type is (array_slice_node)
+                call lower_section_reduction(arena, sarg, context, value, &
+                    'all', error_msg)
+                return
+            end select
+        end if
         call get_identifier_name(arena, node%arg_indices(1), mask_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol_compat(context, mask_name)
