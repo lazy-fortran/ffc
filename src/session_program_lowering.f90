@@ -4616,6 +4616,33 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_section_norm2
     end interface
+    interface
+        module subroutine collect_lazy_specializations(arena, root_index, &
+                                                       context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: root_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine collect_lazy_specializations
+        module subroutine record_monomorphized_procedure(arena, node_index, &
+                                                         context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine record_monomorphized_procedure
+        module subroutine add_monomorphized_name(context, proc_name)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: proc_name
+        end subroutine add_monomorphized_name
+        module subroutine reject_monomorphized_call(context, call_name, &
+                                                    line, column, error_msg)
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: call_name
+            integer, intent(in) :: line, column
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine reject_monomorphized_call
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -5216,7 +5243,6 @@ contains
 
     include 'session_program_lowering_data.inc'
     include 'session_program_lowering_declarations.inc'
-    include 'session_program_lowering_lazy_monomorph.inc'
     subroutine define_declared_symbol(context, node, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node

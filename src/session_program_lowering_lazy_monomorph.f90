@@ -1,3 +1,13 @@
+submodule (session_program_lowering_impl) lazy_monomorph
+    !! Lazy Fortran monomorphization bookkeeping (#437, FortFront #2971).
+    !! Moved out of the `session_program_lowering_lazy_monomorph.inc` text
+    !! include: a submodule is the same compilation boundary with a name, so
+    !! the interface is checked and the file is compileable, editable and
+    !! testable on its own instead of only in the context of its includer.
+    implicit none
+
+contains
+
     subroutine collect_lazy_specializations(arena, root_index, context, error_msg)
         ! Lazy Fortran lets a procedure leave its dummies untyped and take their
         ! types from use. When every call site agrees on one concrete type,
@@ -151,3 +161,5 @@
             'arguments untyped and is used at more than one concrete '// &
             'signature', error_msg)
     end subroutine reject_monomorphized_call
+
+end submodule lazy_monomorph
