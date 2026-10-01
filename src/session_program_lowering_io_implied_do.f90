@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) io_implied_do
+    !! `io_implied_do` procedures, moved out of `session_program_lowering_io_implied_do.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     logical function is_io_implied_do_item(arena, item_index) result(is_implied)
         !! True when an I/O list item is an implied-do.
         type(ast_arena_t), intent(in) :: arena
@@ -324,3 +332,6 @@
             context%symbols(vsym) = saved_sym
         end if
     end subroutine release_io_implied_do_var
+
+
+end submodule io_implied_do

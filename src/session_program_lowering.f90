@@ -4695,6 +4695,93 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_internal_write
     end interface
+    interface
+        logical module function is_io_implied_do_item(arena, item_index)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: item_index
+        end function is_io_implied_do_item
+        recursive module subroutine emit_io_implied_do_print_items(arena, &
+                                                                   item_index, &
+                                                                   context, &
+                                                                   handled, &
+                                                                   error_msg, &
+                                                                   prev_is_char)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: item_index
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical, intent(inout), optional :: prev_is_char
+        end subroutine emit_io_implied_do_print_items
+        recursive module subroutine emit_array_constructor_implied_do_print_items(arena, &
+                                                                                  ctor, &
+                                                                                  context, &
+                                                                                  handled, &
+                                                                                  error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(array_literal_node), intent(in) :: ctor
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_array_constructor_implied_do_print_items
+        recursive module subroutine emit_array_constructor_implied_do_loop(arena, &
+                                                                           loop, &
+                                                                           context, &
+                                                                           prev_is_char, &
+                                                                           handled, &
+                                                                           error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(do_loop_node), intent(in) :: loop
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(inout) :: prev_is_char
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_array_constructor_implied_do_loop
+        recursive module subroutine emit_array_constructor_implied_do_object(arena, &
+                                                                             object_index, &
+                                                                             context, &
+                                                                             prev_is_char, &
+                                                                             handled, &
+                                                                             error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: object_index
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(inout) :: prev_is_char
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_array_constructor_implied_do_object
+        recursive module subroutine emit_io_implied_do_object(arena, &
+                                                              object_index, &
+                                                              context, &
+                                                              prev_is_char, &
+                                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: object_index
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(inout) :: prev_is_char
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_io_implied_do_object
+        module subroutine bind_io_implied_do_var(context, &
+                                                 var_name, &
+                                                 vsym, &
+                                                 created_temp, &
+                                                 saved_sym)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: var_name
+            integer, intent(out) :: vsym
+            logical, intent(out) :: created_temp
+            type(symbol_t), intent(out) :: saved_sym
+        end subroutine bind_io_implied_do_var
+        module subroutine release_io_implied_do_var(context, &
+                                                    vsym, &
+                                                    created_temp, &
+                                                    saved_sym)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: vsym
+            logical, intent(in) :: created_temp
+            type(symbol_t), intent(in) :: saved_sym
+        end subroutine release_io_implied_do_var
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -5490,7 +5577,6 @@ contains
     include 'session_program_lowering_char_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
     include 'session_program_lowering_runtime_alloc.inc'
-    include 'session_program_lowering_io_implied_do.inc'
     include 'session_program_lowering_scalar_allocatable.inc'
     include 'session_program_lowering_internal_read.inc'
     subroutine define_symbol(context, name, value_kind, error_msg)
