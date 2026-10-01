@@ -66,9 +66,10 @@ TIMEOUT=5
 # byte-for-byte; >1 splits the suite's file list into shards, runs each shard
 # as its own worker process with its own scratch tree, and merges the records
 # in file order so the report and the epoch stay independent of the shard
-# width. FFC_CONFORMANCE_JOBS sets the default for the whole suite; a shard
-# child always runs --jobs 1, so the width never multiplies recursively.
-JOBS=${FFC_CONFORMANCE_JOBS-6}
+# width. FFC_CONFORMANCE_JOBS overrides it. A shard child always runs
+# --jobs 1, so the width never multiplies recursively: 16 parents times 1 child
+# is 16 concurrent compiles, which is the number this box was sized for.
+JOBS=${FFC_CONFORMANCE_JOBS-16}
 KEEP_FULL_RUN=0
 # Internal flag for shard children: they walk only part of the suite, so they
 # must not publish an observation or be classified. The parent merges their
