@@ -1684,10 +1684,26 @@
         integer :: vk
         integer(c_int64_t) :: k, n
         logical :: logical_expr
+        logical :: gather_gated
 
         handled = .false.
         call set_empty(error_msg)
+        ! `print *, a(idx)` with a vector subscript reaches here as a
+        ! non-identifier whole-array expression. Materialise the gather into
+        ! its cached contiguous temp first; from that point the item is an
+        ! ordinary whole array in gather order and the elementwise printer
+        ! below already handles it. Without this the item falls through to
+        ! scalar-element lowering and is refused with
+        ! "unsupported array subscript ... not non-integer identifiers".
+        gather_gated = is_fixed_rank1_vector_gather_candidate(arena, expr_index, &
+                                                                context)
+        if (gather_gated) then
+            call materialize_fixed_rank1_vector_gather(arena, expr_index, &
+                                                       context, error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
         sym = whole_array_expr_shape_symbol(arena, expr_index, context)
+        if (gather_gated) sym = cached_array_expression_symbol(context, expr_index)
         constructor_extent = whole_array_expr_constructor_extent(arena, expr_index)
         logical_expr = whole_array_expr_is_logical(arena, expr_index)
         if (sym > 0) then
