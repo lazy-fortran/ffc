@@ -179,7 +179,8 @@ jobs:
             test/test_procedure_pointer_dummies.sh \
             test/test_logical_array_parity.sh \
             test/test_assumed_shape_derived_runtime_parity.sh \
-            test/test_print_scalar_result_call_parity.sh
+            test/test_print_scalar_result_call_parity.sh \
+            test/test_select_rank_dispatch_parity.sh
           do
             printf '::group::%s\n' "$gate"
             if bash "$gate"; then

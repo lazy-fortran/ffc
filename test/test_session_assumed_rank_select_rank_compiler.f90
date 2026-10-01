@@ -74,7 +74,9 @@ contains
             '    real :: x(..)'//new_line('a')// &
             '    select rank (x)'//new_line('a')// &
             '    rank (1)'//new_line('a')// &
+            '      print *, 1'//new_line('a')// &
             '    rank default'//new_line('a')// &
+            '      print *, -1'//new_line('a')// &
             '    end select'//new_line('a')// &
             '  end subroutine work'//new_line('a')// &
             'end program main'
@@ -116,12 +118,12 @@ contains
             'end program main'
 
         test_refusals = .true.
-        if (.not. expect_error_contains(rank_default, 'RANK DEFAULT is refused', &
-                '/tmp/ffc_assumed_rank_rank_default_reject')) test_refusals = .false.
+        if (.not. expect_output(rank_default, '           1'//new_line('a'), &
+                '/tmp/ffc_assumed_rank_rank_default_pass')) test_refusals = .false.
         if (.not. expect_error_contains(rank_star, 'RANK (*) is refused', &
                 '/tmp/ffc_assumed_rank_rank_star_reject')) test_refusals = .false.
-        if (.not. expect_error_contains(rank_three, 'RANK arm does not match', &
-                '/tmp/ffc_assumed_rank_rank_two_reject')) test_refusals = .false.
+        if (.not. expect_output(rank_three, '', &
+                '/tmp/ffc_assumed_rank_rank_two_noop')) test_refusals = .false.
         if (.not. expect_error_contains(scalar_actual, 'only a whole array', &
                 '/tmp/ffc_assumed_rank_scalar_reject')) test_refusals = .false.
     end function test_refusals

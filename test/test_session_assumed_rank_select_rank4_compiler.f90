@@ -82,7 +82,9 @@ contains
             '    real :: x(..)'//new_line('a')// &
             '    select rank (x)'//new_line('a')// &
             '    rank (4)'//new_line('a')// &
+            '      print *, 4'//new_line('a')// &
             '    rank default'//new_line('a')// &
+            '      print *, -1'//new_line('a')// &
             '    end select'//new_line('a')// &
             '  end subroutine work'//new_line('a')// &
             'end program main'
@@ -230,8 +232,8 @@ contains
             'end program main'
 
         test_refusals = .true.
-        if (.not. expect_error_contains(rank_default, 'RANK DEFAULT is refused', &
-                '/tmp/ffc_assumed_rank_rank4_default_reject')) test_refusals = .false.
+        if (.not. expect_output(rank_default, '           4'//new_line('a'), &
+                '/tmp/ffc_assumed_rank_rank4_default_pass')) test_refusals = .false.
         if (.not. expect_error_contains(rank_star, 'RANK (*) is refused', &
                 '/tmp/ffc_assumed_rank_rank4_star_reject')) test_refusals = .false.
         if (.not. expect_error_contains(scalar_actual, 'only a whole array is supported', &
@@ -248,12 +250,12 @@ contains
                 '/tmp/ffc_assumed_rank_rank4_kind_reject')) test_refusals = .false.
         if (.not. expect_error_contains(global_actual, 'global storage is refused', &
                 '/tmp/ffc_assumed_rank_rank4_global_reject')) test_refusals = .false.
-        if (.not. expect_error_contains(multiple_arms, 'exactly one RANK', &
-                '/tmp/ffc_assumed_rank_rank4_multiple_reject')) test_refusals = .false.
-        if (.not. expect_error_contains(missing_arm, 'exactly one RANK', &
-                '/tmp/ffc_assumed_rank_rank4_missing_reject')) test_refusals = .false.
+        if (.not. expect_output(multiple_arms, '', &
+                '/tmp/ffc_assumed_rank_rank4_multiple_noop')) test_refusals = .false.
+        if (.not. expect_output(missing_arm, '', &
+                '/tmp/ffc_assumed_rank_rank4_missing_noop')) test_refusals = .false.
         if (.not. expect_error_contains(unsupported_arm, &
-                'only one statically valid RANK', &
+                'only RANK (1) through RANK (4) are supported', &
                 '/tmp/ffc_assumed_rank_rank4_rank5_arm_reject')) test_refusals = .false.
     end function test_refusals
 

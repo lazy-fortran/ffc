@@ -1319,7 +1319,8 @@ contains
                     if (len_trim(error_msg) > 0) return
                     if (rank_value == -2) then
                         call unsupported_feature_error('select rank statement', node%line, &
-                            node%column, 'RANK (*) is not supported for the assumed-rank slice', &
+                            node%column, 'RANK (*) is refused for the '// &
+                            'assumed-rank select rank', &
                             error_msg)
                         return
                     end if
@@ -1343,9 +1344,11 @@ contains
                 end do
             end if
             if (rank_arm_count == 0 .and. node%default_index <= 0) then
-                call unsupported_feature_error('select rank statement', node%line, &
-                    node%column, 'assumed-rank lowering requires a RANK arm or RANK DEFAULT', &
-                    error_msg)
+                ! An empty SELECT RANK executes no construct (F2018 11.1.2.6);
+                ! gfortran accepts it and emits nothing. A RANK (*) arm was
+                ! already refused above (-2), so reaching here means the
+                ! construct really is empty: lower it as a no-op.
+                call set_empty(error_msg)
                 return
             end if
 

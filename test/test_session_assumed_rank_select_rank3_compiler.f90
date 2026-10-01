@@ -90,7 +90,9 @@ contains
             '    real :: x(..)'//new_line('a')// &
             '    select rank (x)'//new_line('a')// &
             '    rank (3)'//new_line('a')// &
+            '      print *, 3'//new_line('a')// &
             '    rank default'//new_line('a')// &
+            '      print *, -1'//new_line('a')// &
             '    end select'//new_line('a')// &
             '  end subroutine work'//new_line('a')// &
             'end program main'
@@ -238,8 +240,8 @@ contains
             'end program main'
 
         test_refusals = .true.
-        if (.not. expect_error_contains(rank_default, 'RANK DEFAULT is refused', &
-                '/tmp/ffc_assumed_rank_rank3_default_reject')) test_refusals = .false.
+        if (.not. expect_output(rank_default, '           3'//new_line('a'), &
+                '/tmp/ffc_assumed_rank_rank3_default_pass')) test_refusals = .false.
         if (.not. expect_error_contains(rank_star, 'RANK (*) is refused', &
                 '/tmp/ffc_assumed_rank_rank3_star_reject')) test_refusals = .false.
         if (.not. expect_error_contains(scalar_actual, 'only a whole array is supported', &
@@ -256,10 +258,10 @@ contains
                 '/tmp/ffc_assumed_rank_rank3_kind_reject')) test_refusals = .false.
         if (.not. expect_error_contains(global_actual, 'global storage is refused', &
                 '/tmp/ffc_assumed_rank_rank3_global_reject')) test_refusals = .false.
-        if (.not. expect_error_contains(multiple_arms, 'exactly one RANK', &
-                '/tmp/ffc_assumed_rank_rank3_multiple_reject')) test_refusals = .false.
-        if (.not. expect_error_contains(missing_arm, 'exactly one RANK', &
-                '/tmp/ffc_assumed_rank_rank3_missing_reject')) test_refusals = .false.
+        if (.not. expect_output(multiple_arms, '', &
+                '/tmp/ffc_assumed_rank_rank3_multiple_noop')) test_refusals = .false.
+        if (.not. expect_output(missing_arm, '', &
+                '/tmp/ffc_assumed_rank_rank3_missing_noop')) test_refusals = .false.
         if (.not. expect_error_contains(rank_five, &
                 'only a rank-1, rank-2, rank-3, or rank-4 whole REAL array', &
                 '/tmp/ffc_assumed_rank_rank3_rank5_reject')) test_refusals = .false.
