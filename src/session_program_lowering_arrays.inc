@@ -3841,6 +3841,21 @@
         end select
     end subroutine call_actual_keyword
 
+    ! Pre-#766 refusal wording pinned by test_session_runtime_extreme /
+    ! _product / _norm2 diagnostics tests: the shapes below stay refused and
+    ! these exact strings are the contract those tests check.
+    function pinned_reduction_refusal(reduction_name) result(msg)
+        character(len=*), intent(in) :: reduction_name
+        character(len=:), allocatable :: msg
+        if (trim(reduction_name) == 'norm2') then
+            msg = 'norm2 supports exactly one real array argument; DIM and '// &
+                  'KIND forms are not supported'
+        else
+            msg = trim(reduction_name)//' accepts one array argument; MASK= '// &
+                  'and DIM= arguments are not supported'
+        end if
+    end function pinned_reduction_refusal
+
     subroutine lower_masked_reduction(arena, array_arg_index, mask_index, &
             context, reduction_name, value, error_msg)
         ! sum/product/maxval/minval over a fixed-size rank-1 identifier array
@@ -3873,8 +3888,7 @@
         if (.not. context%symbols(sym)%is_array .or. &
             context%symbols(sym)%is_allocatable .or. &
             context%symbols(sym)%has_runtime_dim_size(1)) then
-            error_msg = trim(reduction_name)//' MASK= supports fixed-size '// &
-                        'rank-1 arrays only'
+            error_msg = pinned_reduction_refusal(reduction_name)
             return
         end if
         array_size = context%symbols(sym)%array_size
@@ -4256,12 +4270,10 @@
                 else if (same_name(keyword, 'mask')) then
                     mask_index = arg_value
                 else if (same_name(keyword, 'dim')) then
-                    error_msg = trim(reduction_name)// &
-                        ' DIM= is not supported; the MASK= form is'
+                    error_msg = pinned_reduction_refusal(reduction_name)
                     return
                 else if (same_name(keyword, 'kind')) then
-                    error_msg = trim(reduction_name)// &
-                        ' KIND= is not supported'
+                    error_msg = pinned_reduction_refusal(reduction_name)
                     return
                 else
                     error_msg = trim(reduction_name)// &

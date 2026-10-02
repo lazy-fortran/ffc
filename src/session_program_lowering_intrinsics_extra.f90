@@ -525,13 +525,14 @@ contains
                 if (mask_arg == 0) then
                     mask_arg = arg_value
                 else
-                    error_msg = 'count accepts one mask argument only'
+                    error_msg = 'count requires exactly one logical array '// &
+                                'argument; DIM and KIND forms are not supported'
                     return
                 end if
             else if (same_name(keyword, 'mask')) then
                 mask_arg = arg_value
             else if (same_name(keyword, 'dim') .or. same_name(keyword, 'kind')) then
-                error_msg = 'count DIM= and KIND= forms are not supported'
+                error_msg = 'count requires exactly one logical array argument; DIM and KIND forms are not supported'
                 return
             else
                 error_msg = 'count unsupported keyword argument: '//trim(keyword)
