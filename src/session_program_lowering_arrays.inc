@@ -2183,6 +2183,10 @@
         context%symbols(index)%is_array = .true.
         context%symbols(index)%array_rank = dim_count
         context%symbols(index)%array_size = array_size
+        ! A named-constant array must carry the flag on its symbol or an
+        ! assignment to it (`a(2) = 9`, `a = [...]`) passes the assignment
+        ! guards and mutates constant storage (#3021).
+        if (node%is_parameter) context%symbols(index)%is_parameter = .true.
         context%symbols(index)%array_lower_bound = array_lower_bound
 
         if (is_assumed) then

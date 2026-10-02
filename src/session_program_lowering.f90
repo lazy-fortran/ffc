@@ -7713,6 +7713,19 @@ contains
         call try_lower_overloaded_assignment(arena, node, context, handled, &
             error_msg)
         if (handled .or. len_trim(error_msg) > 0) return
+        ! A named constant is never an assignment target. ffc executed
+        ! `integer, parameter :: k = 3; k = 4` and printed 4 while gfortran
+        ! refuses (#3021); executing an illegal store is a wrong answer, not
+        ! a fast one.
+        if (is_identifier(arena, node%target_index)) then
+            call get_identifier_name(arena, node%target_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol_compat(context, name)
+            if (symbol_index > 0 .and. context%symbols(symbol_index)%is_parameter) then
+                error_msg = 'cannot assign to named constant: '//trim(name)
+                return
+            end if
+        end if
         ! A spec-section assignment that defines a statement function (the
         ! explicit-program path leaves it as an assignment) emits no code; the
         ! body is inlined at each call site instead.
@@ -7722,6 +7735,17 @@ contains
         end if
         select type (target => arena%entries(node%target_index)%node)
             type is (call_or_subscript_node)
+            ! a(i) = ... and whole-array a = ... on a named constant array are
+            ! illegal too; the identifier guard above does not see them (#3021).
+            if (target%base_expr_index == 0 .and. allocated(target%name)) then
+                symbol_index = find_symbol_compat(context, target%name)
+                if (symbol_index > 0 .and. &
+                    context%symbols(symbol_index)%is_parameter) then
+                    error_msg = 'cannot assign to named constant: '// &
+                                trim(target%name)
+                    return
+                end if
+            end if
             if (target%base_expr_index > 0) then
                 call lower_derived_component_element_assignment(arena, node, &
                     target, context, error_msg)
