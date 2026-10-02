@@ -8977,6 +8977,93 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine emit_saved_local_globals
     end interface
+    interface
+        module subroutine parse_internal_ia_descriptor(format_body, &
+                                                       pos, &
+                                                       kind_char, &
+                                                       printf_fmt, &
+                                                       error_msg)
+            character(len=*), intent(in) :: format_body
+            integer, intent(inout) :: pos
+            character, intent(in) :: kind_char
+            character(len=:), allocatable, intent(out) :: printf_fmt
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine parse_internal_ia_descriptor
+        module subroutine parse_internal_e_descriptor(format_body, &
+                                                      pos, &
+                                                      width_value, &
+                                                      precision_value, &
+                                                      exponent_digits, &
+                                                      error_msg)
+            character(len=*), intent(in) :: format_body
+            integer, intent(inout) :: pos
+            integer, intent(out) :: width_value, precision_value, exponent_digits
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine parse_internal_e_descriptor
+        module subroutine append_internal_blanks(context, count, dest_tmp, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: count
+            type(lr_operand_desc_t), intent(in) :: dest_tmp
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine append_internal_blanks
+        module subroutine append_internal_e_field(arena, &
+                                                  node_index, &
+                                                  context, &
+                                                  width, &
+                                                  precision, &
+                                                  exponent_digits, &
+                                                  dest_tmp, &
+                                                  error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index, width, precision, exponent_digits
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: dest_tmp
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine append_internal_e_field
+        module subroutine append_internal_ia_field(arena, &
+                                                   node_index, &
+                                                   context, &
+                                                   kind_char, &
+                                                   printf_fmt, &
+                                                   dest_tmp, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character, intent(in) :: kind_char
+            character(len=*), intent(in) :: printf_fmt
+            type(lr_operand_desc_t), intent(in) :: dest_tmp
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine append_internal_ia_field
+        module subroutine lower_compound_write_descriptor(arena, &
+                                                          node, &
+                                                          context, &
+                                                          format_body, &
+                                                          pos, &
+                                                          item_index, &
+                                                          dest_tmp, &
+                                                          error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(write_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: format_body
+            integer, intent(inout) :: pos
+            integer, intent(inout) :: item_index
+            type(lr_operand_desc_t), intent(in) :: dest_tmp
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_compound_write_descriptor
+        module subroutine lower_compound_internal_write(arena, &
+                                                        node, &
+                                                        context, &
+                                                        format_body, &
+                                                        error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(write_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: format_body
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_compound_internal_write
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)

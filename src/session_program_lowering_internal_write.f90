@@ -272,7 +272,6 @@ contains
         call set_empty(error_msg)
     end subroutine lower_internal_write
 
-    include 'session_program_lowering_internal_write_compound.inc'
 
 
 end submodule internal_write

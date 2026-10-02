@@ -183,7 +183,9 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
     # still goes into the root module's declaration section, because that is
     # the scope the text lands in either way.
     includer = None
-    for cand in [ROOT] + sorted(pathlib.Path("src").glob("*.inc")):
+    for cand in ([ROOT] + sorted(pathlib.Path("src").glob("*.inc"))
+                 + sorted(f for f in pathlib.Path("src").glob("*.f90")
+                         if f != ROOT)):
         if cand.exists() and f"include '{path.name}'" in cand.read_text():
             includer = cand
             break
