@@ -684,10 +684,13 @@ contains
                                                           error_msg)
             if (len_trim(error_msg) > 0) return
             if (pos > len_trim(text)) then
-                error_msg = 'dangling repeat count in format'
+                if (len(digits) > 0) then
+                    error_msg = 'dangling repeat count in format'
+                    return
+                end if
                 return
             end if
-            if (text(pos:pos) == '(') then
+            if (pos <= len_trim(text) .and. text(pos:pos) == '(') then
                 pos = pos + 1
                 local_out = ''
                 call expand_fmt_into(text, pos, local_out, quoted, error_msg)

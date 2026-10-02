@@ -432,6 +432,7 @@ contains
             raw = text(2:text_len - 1)
             q = "'"
         else
+            value = trim(text)
             return
         end if
         ! A doubled delimiter inside the literal is one literal delimiter
