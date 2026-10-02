@@ -6563,6 +6563,85 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_associated
     end interface
+    interface
+        module subroutine parse_inquire_spec(specifiers, &
+                                             unit_str, &
+                                             file_node, &
+                                             exist_var, &
+                                             opened_var, &
+                                             size_var, &
+                                             iostat_var, &
+                                             error_msg)
+            type(io_specifier_t), intent(in) :: specifiers(:)
+            character(len=:), allocatable, intent(out) :: unit_str, exist_var
+            integer, intent(out) :: file_node
+            character(len=:), allocatable, intent(out) :: opened_var, size_var
+            character(len=:), allocatable, intent(out) :: iostat_var, error_msg
+        end subroutine parse_inquire_spec
+        module subroutine store_inquire_logical(context, &
+                                                node, &
+                                                var_name, &
+                                                kind_label, &
+                                                value, &
+                                                error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(inquire_statement_node), intent(in) :: node
+            character(len=*), intent(in) :: var_name, kind_label
+            type(lr_operand_desc_t), intent(in) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine store_inquire_logical
+        module subroutine store_inquire_size(context, node, var_name, value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(inquire_statement_node), intent(in) :: node
+            character(len=*), intent(in) :: var_name
+            type(lr_operand_desc_t), intent(in) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine store_inquire_size
+        module subroutine lower_inquire_file_path(arena, &
+                                                  file_node, &
+                                                  context, &
+                                                  path_ptr, &
+                                                  error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: file_node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: path_ptr
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_inquire_file_path
+        module subroutine lower_inquire_by_file(node, &
+                                                context, &
+                                                path_ptr, &
+                                                exist_var, &
+                                                size_var, &
+                                                iostat_var, &
+                                                error_msg)
+            type(inquire_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: path_ptr
+            character(len=*), intent(in) :: exist_var, size_var, iostat_var
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_inquire_by_file
+        module subroutine lower_inquire_by_unit(node, &
+                                                context, &
+                                                unit_str, &
+                                                opened_var, &
+                                                exist_var, &
+                                                size_var, &
+                                                iostat_var, &
+                                                error_msg)
+            type(inquire_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: unit_str, opened_var, exist_var, size_var
+            character(len=*), intent(in) :: iostat_var
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_inquire_by_unit
+        module subroutine lower_inquire(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(inquire_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_inquire
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -8253,7 +8332,6 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine emit_error_stop_banner
-    include 'session_program_lowering_inquire.inc'
     include 'session_program_lowering_read_ops.inc'
     include 'session_program_lowering_read_al.inc'
     include 'session_program_lowering_expr_lowering.inc'

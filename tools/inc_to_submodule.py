@@ -114,8 +114,26 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
     text = path.read_text()
     lines = text.split("\n")
     stem = path.stem
+    # A submodule whose name is a bare Fortran statement keyword (inquire,
+    # open, read, ...) breaks the build: the submodule ordering/resolution
+    # misparses `submodule (M) inquire` and the parent's .smod is never
+    # generated before the submodule compiles (observed on inquire.inc -
+    # clean build failed with "session_program_lowering_impl.smod has not
+    # been generated"). Keep the qualified name for such stems.
+    KEYWORD_STEMS = {
+        "inquire", "open", "close", "read", "write", "print", "rewind",
+        "backspace", "endfile", "allocate", "deallocate", "associate",
+        "select", "block", "critical", "sync", "call", "do", "if", "then",
+        "else", "elseif", "endif", "where", "elsewhere", "endwhere",
+        "cycle", "exit", "return", "stop", "goto", "assign", "format",
+        "namelist", "equivalence", "data", "common", "parameter", "save",
+        "use", "include", "interface", "procedure", "module", "function",
+        "subroutine", "program", "contains", "public", "private",
+    }
     if stem.startswith("session_program_lowering_"):
-        stem = stem[len("session_program_lowering_"):]
+        short = stem[len("session_program_lowering_"):]
+        if short not in KEYWORD_STEMS:
+            stem = short
 
     procedures: list[dict] = []
     heads = [(i, HEADER.match(l)) for i, l in enumerate(lines)]
@@ -213,11 +231,8 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
     # Comments and blanks before the first header are fine; statements are not.
     lead = lines[:procedures[0]["start"]]
     frag = [l for l in lead
-            if l.strip() and not l.strip().startswith("!")
-            and not re.match(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*=|call\s+"
-                             r"|if\s*\(|do\b|allocate\s*\(|print\s*[*,(])",
-                             l, re.I)]
-    if len(frag) != len(lead):
+            if l.strip() and not l.strip().startswith("!")]
+    if frag:
         print(f"{path}: {len(lead) - len(frag)} executable statement(s) before "
               "the first procedure header - this include continues a procedure "
               "that started in another file, so it cannot move as a unit",

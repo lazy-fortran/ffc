@@ -1,8 +1,10 @@
-    ! INQUIRE lowering (I/O cluster W10): exist=, opened=, size=, and
-    ! iostat= by file= or unit=. opened= reads the compile-time is_file_unit
-    ! flag set by a preceding OPEN in the same control-flow path; size= is
-    ! delegated to the runtime so closed files and connected units share one
-    ! byte-size contract.
+submodule (session_program_lowering_impl) session_program_lowering_inquire
+    !! `inquire` procedures, moved out of `session_program_lowering_inquire.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     subroutine parse_inquire_spec(specifiers, unit_str, file_node, exist_var, &
                                   opened_var, size_var, iostat_var, error_msg)
@@ -319,3 +321,6 @@
         end if
         call set_empty(error_msg)
     end subroutine lower_inquire_by_unit
+
+
+end submodule session_program_lowering_inquire
