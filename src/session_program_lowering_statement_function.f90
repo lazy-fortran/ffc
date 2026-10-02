@@ -1,10 +1,10 @@
-    ! Statement functions (f(x) = x*x + 1): collection and call-site inlining.
-    !
-    ! FortFront converts a spec-section assignment whose target is a scalar call
-    ! into a statement_function_node carrying the name, dummy names, and the
-    ! arena index of the defining expression. ffc records these at setup time and
-    ! expands each call by binding the actual-argument operands to the dummy
-    ! names and lowering the stored body expression in place (scalar only).
+submodule (session_program_lowering_impl) statement_function
+    !! `statement_function` procedures, moved out of `session_program_lowering_statement_function.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     subroutine collect_statement_functions(arena, root_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -388,3 +388,6 @@
             call lower_i32_expression(arena, node_index, context, value, error_msg)
         end select
     end subroutine lower_scalar_expression_kind
+
+
+end submodule statement_function

@@ -1,13 +1,10 @@
-    ! Vector-subscript assignment: a(v) = rhs, where v is a rank-1 integer
-    ! array (a named array or an integer array constructor). Fortran requires
-    ! the index vector and the whole right-hand side to be evaluated before any
-    ! element of the target is redefined, so the lowering here is a two-phase
-    ! scatter: every right-hand-side value and every subscript is materialised
-    ! first, and only then are the stores emitted. That makes a self-referential
-    ! assignment such as a(v) = a(w) alias-safe without a heap temporary,
-    ! because the extents are compile-time constants and the whole scatter
-    ! unrolls. Repeated indices therefore scatter in array element order, so the
-    ! last write wins, matching gfortran.
+submodule (session_program_lowering_impl) vector_subscript
+    !! `vector_subscript` procedures, moved out of `session_program_lowering_vector_subscript.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     subroutine describe_vector_subscript(arena, target, context, base_index, &
                                          vector_index, literal_index, extent, &
@@ -347,3 +344,6 @@
             call lower_i32_expression(arena, expr_index, context, value, error_msg)
         end if
     end subroutine lower_vector_subscript_scalar
+
+
+end submodule vector_subscript

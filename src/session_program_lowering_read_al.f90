@@ -1,8 +1,10 @@
-    ! Fixed-width A and L edit descriptors on a formatted file-unit READ
-    ! (#434). The numeric path in read_ops lets fscanf skip whitespace, which
-    ! cannot honour column-oriented A/L fields. Here each field is taken from
-    ! the current record with fscanf("%<w>[^\n]"), so blanks inside the field
-    ! are preserved and the record cursor advances by exactly the field width.
+submodule (session_program_lowering_impl) read_al
+    !! `read_al` procedures, moved out of `session_program_lowering_read_al.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     logical function format_has_al_descriptor(format_spec)
         ! True when an explicit format contains an A or L edit descriptor.
@@ -507,3 +509,6 @@
         context%current_block_terminated = .false.
         call reload_i32_symbol(context, sym, error_msg)
     end subroutine lower_read_al_logical
+
+
+end submodule read_al

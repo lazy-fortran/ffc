@@ -1,9 +1,10 @@
-    ! Fixed-size complex(4)/complex(8) array support: element_address holds
-    ! the real-part [N x f32|f64] array base pointer, address holds the
-    ! matching imaginary-part array base pointer (define_declared_array_symbol
-    ! in session_program_lowering_arrays.inc allocates both). Element access
-    ! reuses the generic rank-1/2 linear-index GEP machinery, applied twice
-    ! (once per component array) with the same subscripts.
+submodule (session_program_lowering_impl) complex_arrays
+    !! `complex_arrays` procedures, moved out of `session_program_lowering_complex_arrays.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     subroutine complex_array_element_addresses(arena, node, context, vk, &
                                                 re_address, im_address, &
@@ -514,3 +515,6 @@
         end do
         call set_empty(error_msg)
     end subroutine broadcast_complex_scalar_initializer
+
+
+end submodule complex_arrays
