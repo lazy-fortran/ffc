@@ -312,13 +312,16 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
             res = " result(" + re.search(r"\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)",
                                           p["result"]).group(1) + ")"
         head = f"        {pre}{ret}module {p['kind']} {p['name']}({args_txt}){res}"
-        if len(head) > 90:
+        if len(head) > 90 and len(p["args"]) >= 2:
             prefix_part = f"        {pre}{ret}module {p['kind']} {p['name']}("
             cont = " " * len(prefix_part)
             iface.append(prefix_part + p["args"][0] + ", &")
             for a in p["args"][1:-1]:
                 iface.append(cont + a + ", &")
             iface.append(cont + p["args"][-1] + ")" + res)
+        elif len(head) > 90:
+            prefix_part = f"        {pre}{ret}module {p['kind']} {p['name']}("
+            iface.append(prefix_part + p["args"][0] + ")" + res)
         else:
             iface.append(head)
         seen_decl: set[str] = set()
