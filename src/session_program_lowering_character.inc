@@ -1635,7 +1635,13 @@
             error_msg = 'len requires one character argument'
             return
         end if
-        ! len of a character expression (variable or trim()): the descriptor
+        ! LEN takes STRING and at most one KIND actual; three actuals are not
+        ! a LEN shape and silently taking the first was over-acceptance
+        ! (#3021 cluster; gfortran refuses).
+        if (size(node%arg_indices) > 2) then
+            error_msg = 'len accepts a string and at most one KIND argument'
+            return
+        end if
         ! length. char_expr_operands materialises trim() as a trimmed buffer.
         call char_expr_operands(arena, node%arg_indices(1), context, data_ptr, &
                                 value, error_msg)
@@ -2383,6 +2389,8 @@
             error_msg = 'iachar requires one character argument'
             return
         end if
+        ! len of a character expression (variable or trim()): the descriptor
+        ! length. char_expr_operands materialises trim() as a trimmed buffer.
         call char_expr_operands(arena, node%arg_indices(1), context, data_ptr, &
                                 length, error_msg)
         if (len_trim(error_msg) > 0) return
