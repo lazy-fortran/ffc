@@ -156,8 +156,8 @@ contains
         if (allocated(node%type_name)) then
             block
                 integer :: declared_kind
-                call type_name_value_kind(node%type_name, node%line, node%column, &
-                    declared_kind, error_msg, context, node_index)
+                call declaration_value_kind(node, declared_kind, error_msg, &
+                                            context, node_index)
                 if (len_trim(error_msg) > 0) return
             end block
         end if
@@ -1306,9 +1306,9 @@ contains
         value_kind = VALUE_I32
         call set_empty(error_msg)
         if (.not. allocated(node%type_name)) return
-        ! A declared class(t) entity is a derived value with a polymorphic
-        ! descriptor, not an intrinsic scalar spelling. Resolve it through
-        ! the registered derived-type table before classifying the type text.
+        ! Resolve derived entities through their registered layouts before
+        ! classifying the type text. A PDT template name selects the concrete
+        ! layout instantiated for this declaration's actual parameters.
         if (present(context)) then
             if (declaration_derived_type_index(context, node) > 0) then
                 value_kind = VALUE_DERIVED

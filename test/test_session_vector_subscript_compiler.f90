@@ -11,9 +11,9 @@ end module ffc_case_test_session_vector_subscript_compiler
 
 subroutine case_test_session_vector_subscript_compiler()
     ! A bounded read-gather oracle for fixed-size rank-1 intrinsic arrays.
-    ! The positive behavior is compared byte-for-byte with the pinned
-    ! /usr/bin/gfortran executable; the negative case checks the ffc runtime
-    ! bounds diagnostic and that pinned gfortran also rejects the access with
+    ! The positive behavior is compared byte-for-byte with gfortran from
+    ! PATH; the negative case checks the ffc runtime bounds diagnostic and
+    ! that gfortran also rejects the access with
     ! bounds checking enabled.
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
@@ -120,10 +120,10 @@ contains
         open (newunit=unit, file=src, status='replace', action='write')
         write (unit, '(A)') source
         close (unit)
-        call execute_command_line('/usr/bin/gfortran -std=f2018 -w '//src// &
+        call execute_command_line('gfortran -std=f2018 -w '//src// &
             ' -o '//gfortran_exe, exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL[', trim(stem), ']: pinned gfortran rejected source'
+            print *, 'FAIL[', trim(stem), ']: gfortran rejected source'
             call cleanup(base)
             return
         end if
@@ -138,7 +138,7 @@ contains
         call execute_command_line(gfortran_exe//' > '//gfortran_out//' 2>&1', &
             exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL[', trim(stem), ']: pinned gfortran executable failed'
+            print *, 'FAIL[', trim(stem), ']: gfortran executable failed'
             call cleanup(base)
             return
         end if
@@ -168,16 +168,16 @@ contains
         open (newunit=unit, file=src, status='replace', action='write')
         write (unit, '(A)') source
         close (unit)
-        call execute_command_line('/usr/bin/gfortran -std=f2018 -w -fcheck=bounds '// &
+        call execute_command_line('gfortran -std=f2018 -w -fcheck=bounds '// &
             src//' -o '//exe, exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL: pinned gfortran rejected bounds oracle source'
+            print *, 'FAIL: gfortran rejected bounds oracle source'
             call cleanup(base)
             return
         end if
         call execute_command_line(exe//' > '//out//' 2>&1', exitstat=exit_stat)
         if (exit_stat == 0) then
-            print *, 'FAIL: pinned gfortran did not reject out-of-bounds gather'
+            print *, 'FAIL: gfortran did not reject out-of-bounds gather'
             call cleanup(base)
             return
         end if

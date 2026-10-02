@@ -13,7 +13,7 @@ subroutine case_test_session_array_section_descriptor_compiler()
     ! A rank-1 section actual is a borrowed descriptor view: its base is the
     ! first selected element, its extent is the runtime trip count, and its
     ! byte stride is the source element stride. The reference executable uses
-    ! the repository's pinned /usr/bin/gfortran lane and is compared bytewise.
+    ! gfortran from PATH and is compared bytewise.
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
@@ -286,10 +286,10 @@ contains
         open (newunit=unit, file=src, status='replace', action='write')
         write (unit, '(A)') gfortran_source
         close (unit)
-        call execute_command_line('/usr/bin/gfortran -std=f2018 -w '//src// &
+        call execute_command_line('gfortran -std=f2018 -w '//src// &
             ' -o '//gfortran_exe, exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL: pinned gfortran rejected descriptor-view source'
+            print *, 'FAIL: gfortran rejected descriptor-view source'
             call cleanup_artifact(base)
             return
         end if
@@ -367,7 +367,7 @@ contains
         open (newunit=unit, file=src, status='replace', action='write')
         write (unit, '(A)') source_text
         close (unit)
-        call execute_command_line('/usr/bin/gfortran -std=f2018 -w '//src// &
+        call execute_command_line('gfortran -std=f2018 -w '//src// &
             ' -o '//gfortran_exe, exitstat=exit_stat)
         if (exit_stat /= 0) then
             print *, 'FAIL: gfortran rejected '//trim(label)
@@ -436,7 +436,7 @@ contains
         open (newunit=unit, file=src, status='replace', action='write')
         write (unit, '(A)') runtime_explicit_forward_source
         close (unit)
-        call execute_command_line('/usr/bin/gfortran -std=f2018 -w '//src// &
+        call execute_command_line('gfortran -std=f2018 -w '//src// &
             ' -o '//gfortran_exe, exitstat=exit_stat)
         if (exit_stat /= 0) then
             print *, 'FAIL: gfortran rejected runtime explicit-shape forwarding source'
@@ -478,7 +478,7 @@ contains
         write (unit, '(A)') refused_source
         close (unit)
         call execute_command_line( &
-            '/usr/bin/gfortran -std=f2018 -fsyntax-only -w '//path, &
+            'gfortran -std=f2018 -fsyntax-only -w '//path, &
             exitstat=exit_stat)
         call cleanup_artifact(path)
         if (exit_stat == 0) then
@@ -500,7 +500,7 @@ contains
         open (newunit=unit, file=source_path, status='replace', action='write')
         write (unit, '(A)') zero_stride_source
         close (unit)
-        call execute_command_line('/usr/bin/gfortran -std=f2018 -fcheck=all -w '// &
+        call execute_command_line('gfortran -std=f2018 -fcheck=all -w '// &
             source_path//' -o '//exe_path, exitstat=compile_status)
         if (compile_status /= 0) then
             print *, 'FAIL: gfortran rejected runtime zero-stride oracle source'
@@ -536,7 +536,7 @@ contains
         open (newunit=unit, file=path, status='replace', action='write')
         write (unit, '(A)') source_text
         close (unit)
-        call execute_command_line('/usr/bin/gfortran -std=f2018 -w '//path// &
+        call execute_command_line('gfortran -std=f2018 -w '//path// &
             ' -o '//exe_path, exitstat=exit_stat)
         if (exit_stat /= 0) then
             print *, 'FAIL: gfortran rejected '//trim(label)//' source'
