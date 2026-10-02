@@ -241,9 +241,9 @@ contains
         ! r(...) groups and rX repeats are unrolled at compile time.
         character(len=*), intent(in) :: text
         integer, intent(inout) :: pos
-        character(len=1), intent(inout) :: kinds(:)
-        character(len=64), intent(inout) :: fmts(:)
-        integer, intent(inout) :: wv(:), pv(:), ed(:)
+        character(len=1), intent(inout) :: kinds(256)
+        character(len=64), intent(inout) :: fmts(256)
+        integer, intent(inout) :: wv(256), pv(256), ed(256)
         integer, intent(inout) :: ndesc
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: digits
@@ -342,9 +342,9 @@ contains
 
     subroutine push_descriptor(kinds, fmts, wv, pv, ed, ndesc, kind, f, w, p, &
                               e, error_msg)
-        character(len=1), intent(inout) :: kinds(:)
-        character(len=64), intent(inout) :: fmts(:)
-        integer, intent(inout) :: wv(:), pv(:), ed(:), ndesc
+        character(len=1), intent(inout) :: kinds(256)
+        character(len=64), intent(inout) :: fmts(256)
+        integer, intent(inout) :: wv(256), pv(256), ed(256), ndesc
         character(len=1), intent(in) :: kind
         character(len=*), intent(in) :: f
         integer, intent(in) :: w, p, e
@@ -374,9 +374,9 @@ contains
         integer, intent(in) :: item_idx
         type(lowering_context_t), intent(inout) :: context
         integer, intent(inout) :: di, expanded
-        character(len=1), intent(inout) :: kinds(:)
-        character(len=64), intent(inout) :: fmts(:)
-        integer, intent(inout) :: wv(:), pv(:), ed(:)
+        character(len=1), intent(inout) :: kinds(256)
+        character(len=64), intent(inout) :: fmts(256)
+        integer, intent(inout) :: wv(256), pv(256), ed(256)
         integer, intent(in) :: ndesc
         type(lr_operand_desc_t), intent(in) :: dest_tmp
         logical, intent(inout) :: any_written
