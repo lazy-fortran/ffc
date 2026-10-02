@@ -1,6 +1,18 @@
-program test_session_pointer_array_rank2
+! fo: dispatcher
+module ffc_case_test_session_pointer_array_rank2_compiler
+    implicit none
+    private
+    public :: case_test_session_pointer_array_rank2_compiler
+    interface
+        subroutine case_test_session_pointer_array_rank2_compiler()
+        end subroutine case_test_session_pointer_array_rank2_compiler
+    end interface
+end module ffc_case_test_session_pointer_array_rank2_compiler
+
+subroutine case_test_session_pointer_array_rank2_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status, expect_output
     implicit none
+    save
 
     print *, '=== direct session rank-2/complex pointer/target array compiler test ==='
 
@@ -119,4 +131,4 @@ program test_session_pointer_array_rank2
         '/tmp/ffc_session_pointer_array_complex')) stop 8
 
     print *, 'PASS: rank-2/rank-3 and complex pointer/target array, => , element access'
-end program test_session_pointer_array_rank2
+end subroutine case_test_session_pointer_array_rank2_compiler

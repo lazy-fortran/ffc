@@ -1,6 +1,18 @@
-program test_type_extends
+! fo: dispatcher
+module ffc_case_test_session_type_extends_compiler
+    implicit none
+    private
+    public :: case_test_session_type_extends_compiler
+    interface
+        subroutine case_test_session_type_extends_compiler()
+        end subroutine case_test_session_type_extends_compiler
+    end interface
+end module ffc_case_test_session_type_extends_compiler
+
+subroutine case_test_session_type_extends_compiler()
     use ffc_test_support, only: expect_exit_status, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -201,4 +213,4 @@ contains
             '/tmp/ffc_extends_missing_parent_test')
     end function test_missing_parent_diagnostic
 
-end program test_type_extends
+end subroutine case_test_session_type_extends_compiler

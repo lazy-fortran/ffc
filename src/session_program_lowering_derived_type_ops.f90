@@ -1186,6 +1186,33 @@ contains
         end do
     end subroutine record_derived_array_shape
 
+    subroutine derived_array_dimension_lower(context, symbol_index, dim, &
+            lower_i32, error_msg)
+        ! A dummy descriptor already carries the dummy's declared lower bound,
+        ! including when an earlier dummy view was rebound during forwarding.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index, dim
+        type(lr_operand_desc_t), intent(out) :: lower_i32
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: lower_i64
+        integer :: lower
+
+        if (context%symbols(symbol_index)%has_runtime_descriptor) then
+            call emit_alloc_desc_load_lower(context, &
+                context%symbols(symbol_index)%runtime_descriptor_address, &
+                dim, lower_i64, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i64_to_i32(context%session, lower_i64, &
+                lower_i32, error_msg)) return
+        else
+            lower = 1
+            if (context%symbols(symbol_index)%array_rank >= dim) &
+                lower = context%symbols(symbol_index)%array_dim_lowers(dim)
+            lower_i32 = i32_immediate(context%session, int(lower, c_int64_t))
+        end if
+        call set_empty(error_msg)
+    end subroutine derived_array_dimension_lower
+
     subroutine derived_array_slot_offset(arena, arg_indices, context, &
                                          symbol_index, slots, offset, error_msg)
         ! Column-major slot offset of a rank-n derived array element: the
@@ -1202,7 +1229,7 @@ contains
         type(lr_operand_desc_t) :: sub_val, zero_based, term, acc, summed
         type(lr_operand_desc_t) :: lower64, lower32, extent64, extent32
         type(lr_operand_desc_t) :: stride32, next_stride32, scale32, elem_bytes
-        integer :: rank, i, lower
+        integer :: rank, i
 
         rank = size(arg_indices)
         if (rank < 1) then
@@ -1271,16 +1298,14 @@ contains
         end if
         stride32 = i32_immediate(context%session, 1_c_int64_t)
         do i = 1, rank
-            lower = 1
-            if (context%symbols(symbol_index)%array_rank >= i) then
-                lower = context%symbols(symbol_index)%array_dim_lowers(i)
-            end if
+            call derived_array_dimension_lower(context, symbol_index, i, &
+                                               lower32, error_msg)
+            if (len_trim(error_msg) > 0) return
             call lower_i32_expression(arena, arg_indices(i), context, sub_val, &
                                       error_msg)
             if (len_trim(error_msg) > 0) return
             if (.not. emit_i32_binary(context%session, LR_OP_SUB, sub_val, &
-                    i32_immediate(context%session, int(lower, c_int64_t)), &
-                    zero_based, error_msg)) return
+                    lower32, zero_based, error_msg)) return
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
                     stride32, term, error_msg)) return
             if (i == 1) then
@@ -3366,13 +3391,14 @@ contains
         comp_index = 0
         if (type_index > 0) comp_index = find_derived_component(context, type_index, &
             target%component_name)
-        if (comp_index > 0 .and. component_is_polymorphic(context, type_index, &
-                comp_index)) then
-            value = i32_immediate(context%session, 0_c_int64_t)
-            call lower_polymorphic_component_assignment(arena, node, target, &
-                                                        context, type_index, &
-                                                        comp_index, error_msg)
-            return
+        if (comp_index > 0) then
+            if (component_is_polymorphic(context, type_index, comp_index)) then
+                value = i32_immediate(context%session, 0_c_int64_t)
+                call lower_polymorphic_component_assignment(arena, node, target, &
+                                                            context, type_index, &
+                                                            comp_index, error_msg)
+                return
+            end if
         end if
 
         comp_kind = derived_component_access_kind(arena, target, context)

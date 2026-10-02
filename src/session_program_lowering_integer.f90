@@ -304,6 +304,13 @@ contains
         end if
     end if
 
+    if (same_name(node%name, 'merge') .and. &
+        .not. is_contained_function_reference(node, context) .and. &
+        external_procedure_index(context, node%name) == 0) then
+        call lower_merge_call(arena, node, VALUE_I32, context, value, error_msg)
+        return
+    end if
+
     ! A use-associated generic resolves to one of its specifics first, so the
     ! external lookup uses the resolved name (#415).
     if (external_procedure_index(context, call_name) > 0) then

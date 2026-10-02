@@ -1,6 +1,18 @@
-program test_session_pointer_intent_in_target_arg
+! fo: dispatcher
+module ffc_case_test_session_pointer_intent_in_target_arg_compiler
+    implicit none
+    private
+    public :: case_test_session_pointer_intent_in_target_arg_compiler
+    interface
+        subroutine case_test_session_pointer_intent_in_target_arg_compiler()
+        end subroutine case_test_session_pointer_intent_in_target_arg_compiler
+    end interface
+end module ffc_case_test_session_pointer_intent_in_target_arg_compiler
+
+subroutine case_test_session_pointer_intent_in_target_arg_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session TARGET actual for INTENT(IN) POINTER dummy ==='
 
@@ -68,4 +80,4 @@ program test_session_pointer_intent_in_target_arg
         '/tmp/ffc_pointer_intent_inout_target')) stop 1
 
     print *, 'PASS: TARGET actual accepted for INTENT(IN) POINTER dummy'
-end program test_session_pointer_intent_in_target_arg
+end subroutine case_test_session_pointer_intent_in_target_arg_compiler

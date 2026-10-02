@@ -545,13 +545,16 @@ contains
         if (.not. allocated(node%name)) return
         call grow_function_names(context)
         existing = find_function_index(context, node%name)
-        if (existing /= 0 .and. present(node_index) .and. &
-            context%function_node_indices(existing) > 0) then
-            if ((procedure_is_internal_body(context%arena, node_index) .or. &
-                 procedure_is_internal_body(context%arena, &
-                    context%function_node_indices(existing))) .and. &
-                .not. procedure_same_host_unit(context%arena, node_index, &
-                    context%function_node_indices(existing))) existing = 0
+        if (existing /= 0) then
+            if (present(node_index)) then
+                if (context%function_node_indices(existing) > 0) then
+                    if ((procedure_is_internal_body(context%arena, node_index) .or. &
+                         procedure_is_internal_body(context%arena, &
+                            context%function_node_indices(existing))) .and. &
+                        .not. procedure_same_host_unit(context%arena, node_index, &
+                            context%function_node_indices(existing))) existing = 0
+                end if
+            end if
         end if
         if (existing /= 0) then
             if (present(node_index)) then
@@ -748,13 +751,16 @@ contains
         ! not two rival definitions. Reconcile so the entry keeps the
         ! body-bearing definition rather than hard-erroring.
         existing = find_function_index(context, node%name)
-        if (existing /= 0 .and. present(node_index) .and. &
-            context%function_node_indices(existing) > 0) then
-            if ((procedure_is_internal_body(context%arena, node_index) .or. &
-                 procedure_is_internal_body(context%arena, &
-                    context%function_node_indices(existing))) .and. &
-                .not. procedure_same_host_unit(context%arena, node_index, &
-                    context%function_node_indices(existing))) existing = 0
+        if (existing /= 0) then
+            if (present(node_index)) then
+                if (context%function_node_indices(existing) > 0) then
+                    if ((procedure_is_internal_body(context%arena, node_index) .or. &
+                         procedure_is_internal_body(context%arena, &
+                            context%function_node_indices(existing))) .and. &
+                        .not. procedure_same_host_unit(context%arena, node_index, &
+                            context%function_node_indices(existing))) existing = 0
+                end if
+            end if
         end if
         if (existing /= 0) then
             if (present(node_index)) then

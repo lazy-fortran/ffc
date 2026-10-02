@@ -1,6 +1,18 @@
-program test_session_derived_array_component_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_array_component_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_array_component_compiler
+    interface
+        subroutine case_test_session_derived_array_component_compiler()
+        end subroutine case_test_session_derived_array_component_compiler
+    end interface
+end module ffc_case_test_session_derived_array_component_compiler
+
+subroutine case_test_session_derived_array_component_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -203,4 +215,4 @@ contains
             '/tmp/ffc_session_derived_arrcomp_copy_test')
     end function test_array_component_component_copy
 
-end program test_session_derived_array_component_compiler
+end subroutine case_test_session_derived_array_component_compiler

@@ -1,6 +1,18 @@
-program test_session_literal_kind_parameter_compiler
+! fo: dispatcher
+module ffc_case_test_session_literal_kind_parameter_compiler
+    implicit none
+    private
+    public :: case_test_session_literal_kind_parameter_compiler
+    interface
+        subroutine case_test_session_literal_kind_parameter_compiler()
+        end subroutine case_test_session_literal_kind_parameter_compiler
+    end interface
+end module ffc_case_test_session_literal_kind_parameter_compiler
+
+subroutine case_test_session_literal_kind_parameter_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session literal kind parameter compiler test ==='
 
@@ -35,4 +47,4 @@ program test_session_literal_kind_parameter_compiler
 
     print *, 'PASS: literal kind suffix naming a declared parameter '// &
         'resolves through direct LIRIC session'
-end program test_session_literal_kind_parameter_compiler
+end subroutine case_test_session_literal_kind_parameter_compiler

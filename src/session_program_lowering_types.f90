@@ -695,6 +695,16 @@ module session_program_lowering_types
         type(lr_operand_desc_t), allocatable :: values(:,:)
     end type loop_cycle_state_t
 
+    ! Each active loop owns named branches arriving from nested loops. The
+    ! parent link refers to the enclosing lowerer's live stack frame.
+    type, public :: loop_branch_target_t
+        character(len=:), allocatable :: name
+        integer(c_int32_t) :: exit_block = 0_c_int32_t
+        integer(c_int32_t) :: latch_block = 0_c_int32_t
+        type(loop_cycle_state_t) :: exits, cycles
+        type(loop_branch_target_t), pointer :: parent => null()
+    end type loop_branch_target_t
+
     type, public :: lowering_context_t
         type(liric_session_t) :: session
         ! Non-owning, read-only-by-contract view of the translation unit AST.
@@ -850,9 +860,8 @@ module session_program_lowering_types
         type(lr_operand_desc_t) :: forall_snapshot_address
         integer :: forall_body_statement_index = 0
         logical :: current_block_terminated = .false.
-        integer(c_int32_t) :: current_loop_exit_block = 0_c_int32_t
-        integer(c_int32_t) :: current_loop_latch_block = 0_c_int32_t
         logical :: in_loop = .false.
+        type(loop_branch_target_t), pointer :: loop_target => null()
         logical :: current_block_exited_loop = .false.
         ! CYCLE and fallthrough values merge at the common loop latch.
         type(loop_cycle_state_t) :: loop_cycles

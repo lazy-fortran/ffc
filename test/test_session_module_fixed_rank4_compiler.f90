@@ -1,6 +1,18 @@
-program test_session_module_fixed_rank4_compiler
+! fo: dispatcher
+module ffc_case_test_session_module_fixed_rank4_compiler
+    implicit none
+    private
+    public :: case_test_session_module_fixed_rank4_compiler
+    interface
+        subroutine case_test_session_module_fixed_rank4_compiler()
+        end subroutine case_test_session_module_fixed_rank4_compiler
+    end interface
+end module ffc_case_test_session_module_fixed_rank4_compiler
+
+subroutine case_test_session_module_fixed_rank4_compiler()
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'module state'//new_line('a')// &
@@ -40,4 +52,4 @@ program test_session_module_fixed_rank4_compiler
     if (.not. expect_output_matches_gfortran(source, &
             'module_fixed_rank4')) stop 1
     print *, 'PASS: fixed rank-4 module arrays match independent checks and gfortran'
-end program test_session_module_fixed_rank4_compiler
+end subroutine case_test_session_module_fixed_rank4_compiler

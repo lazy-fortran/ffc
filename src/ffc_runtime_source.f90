@@ -976,6 +976,121 @@ contains
             '}'//NL
         text = text//NL
         text = text// &
+            'static int ffc_write_repeated(FILE *fp, int ch, int count) {'//NL
+        text = text// &
+            '    while (count-- > 0) {'//NL
+        text = text// &
+            '        if (fputc(ch, fp) == EOF) {'//NL
+        text = text// &
+            '            return -1;'//NL
+        text = text// &
+            '        }'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    return 0;'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
+            '/* BOZ descriptors render the integer''s storage bit pattern.'//NL
+        text = text// &
+            ' * Narrow negatives must be masked before unsigned conversion;'//NL
+        text = text// &
+            ' * overflow stars depend on the resulting digit count. */'//NL
+        text = text// &
+            'int _ffc_write_boz(int unit, int radix, int width,'//NL
+        text = text// &
+            '                   int minimum, int bits, long long value) {'//NL
+        text = text// &
+            '    static const char digits[] = "0123456789ABCDEF";'//NL
+        text = text// &
+            '    char reversed[64];'//NL
+        text = text// &
+            '    unsigned long long pattern = (unsigned long long) value;'//NL
+        text = text// &
+            '    FILE *fp = _ffc_unit_file(unit);'//NL
+        text = text// &
+            '    int count = 0;'//NL
+        text = text// &
+            '    int field;'//NL
+        text = text//NL
+        text = text// &
+            '    if (fp == NULL) {'//NL
+        text = text// &
+            '        return ffc_unit_last_status;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if ((radix != 2 && radix != 8 && radix != 16) ||'//NL
+        text = text// &
+            '        (bits != 8 && bits != 16 && bits != 32 && bits != 64) ||'//NL
+        text = text// &
+            '        width < 0 || minimum < 0 ||'//NL
+        text = text// &
+            '        (width > 0 && minimum > width)) {'//NL
+        text = text// &
+            '        return ffc_write_failed(-1);'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (bits < 64) {'//NL
+        text = text// &
+            '        pattern &= (1ULL << bits) - 1ULL;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (pattern != 0 || minimum != 0) {'//NL
+        text = text// &
+            '        do {'//NL
+        text = text// &
+            '            reversed[count++] = digits[pattern % radix];'//NL
+        text = text// &
+            '            pattern /= radix;'//NL
+        text = text// &
+            '        } while (pattern != 0);'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    field = count > minimum ? count : minimum;'//NL
+        text = text// &
+            '    if (width > 0 && field > width) {'//NL
+        text = text// &
+            '        int status = ffc_write_repeated(fp, ''*'', width);'//NL
+        text = text// &
+            '        return ffc_write_failed(status);'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (width == 0) {'//NL
+        text = text// &
+            '        width = field > 0 ? field : 1;'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    if (ffc_write_repeated(fp, '' '', width - field) < 0 ||'//NL
+        text = text// &
+            '        ffc_write_repeated(fp, ''0'', field - count) < 0) {'//NL
+        text = text// &
+            '        return ffc_write_failed(-1);'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    while (count > 0) {'//NL
+        text = text// &
+            '        if (fputc(reversed[--count], fp) == EOF) {'//NL
+        text = text// &
+            '            return ffc_write_failed(-1);'//NL
+        text = text// &
+            '        }'//NL
+        text = text// &
+            '    }'//NL
+        text = text// &
+            '    return ffc_write_failed(0);'//NL
+        text = text// &
+            '}'//NL
+        text = text//NL
+        text = text// &
             'int _ffc_write_f64(int unit, const char *fmt, double value) {'//NL
         text = text// &
             '    FILE *fp = _ffc_unit_file(unit);'//NL

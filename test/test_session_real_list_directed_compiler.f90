@@ -1,4 +1,15 @@
-program test_session_real_list_directed_compiler
+! fo: dispatcher
+module ffc_case_test_session_real_list_directed_compiler
+    implicit none
+    private
+    public :: case_test_session_real_list_directed_compiler
+    interface
+        subroutine case_test_session_real_list_directed_compiler()
+        end subroutine case_test_session_real_list_directed_compiler
+    end interface
+end module ffc_case_test_session_real_list_directed_compiler
+
+subroutine case_test_session_real_list_directed_compiler()
     ! gfortran-exact list-directed real(8) output: fixed form, exponential
     ! form, the F/E boundary, multi-item records, and non-finite values.
     ! Each program is compiled by ffc and by gfortran and the stdout is
@@ -8,6 +19,7 @@ program test_session_real_list_directed_compiler
         compile_frontend_from_string, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     logical :: all_passed
 
@@ -111,4 +123,4 @@ contains
             ffc_out//' '//ref_out)
     end function matches_gfortran
 
-end program test_session_real_list_directed_compiler
+end subroutine case_test_session_real_list_directed_compiler

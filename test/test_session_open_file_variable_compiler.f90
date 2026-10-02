@@ -1,9 +1,21 @@
-program test_session_open_file_variable_compiler
+! fo: dispatcher
+module ffc_case_test_session_open_file_variable_compiler
+    implicit none
+    private
+    public :: case_test_session_open_file_variable_compiler
+    interface
+        subroutine case_test_session_open_file_variable_compiler()
+        end subroutine case_test_session_open_file_variable_compiler
+    end interface
+end module ffc_case_test_session_open_file_variable_compiler
+
+subroutine case_test_session_open_file_variable_compiler()
     ! OPEN(file=<character variable>) must connect the unit to the value the
     ! variable holds, with trailing blanks trimmed, and must leave the
     ! variable itself untouched (ffc#644).
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -73,4 +85,4 @@ contains
         close (unit, status='delete')
     end subroutine delete_if_present
 
-end program test_session_open_file_variable_compiler
+end subroutine case_test_session_open_file_variable_compiler

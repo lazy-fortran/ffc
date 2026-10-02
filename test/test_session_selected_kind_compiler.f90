@@ -1,7 +1,19 @@
-program test_session_selected_kind
+! fo: dispatcher
+module ffc_case_test_session_selected_kind_compiler
+    implicit none
+    private
+    public :: case_test_session_selected_kind_compiler
+    interface
+        subroutine case_test_session_selected_kind_compiler()
+        end subroutine case_test_session_selected_kind_compiler
+    end interface
+end module ffc_case_test_session_selected_kind_compiler
+
+subroutine case_test_session_selected_kind_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output, &
         expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -152,4 +164,4 @@ contains
             '/tmp/ffc_session_selected_int_kind_nonconst')
     end function test_selected_int_kind_nonconstant_diagnostic
 
-end program test_session_selected_kind
+end subroutine case_test_session_selected_kind_compiler

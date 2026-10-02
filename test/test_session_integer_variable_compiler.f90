@@ -1,6 +1,18 @@
-program test_session_integer_variable_compiler
+! fo: dispatcher
+module ffc_case_test_session_integer_variable_compiler
+    implicit none
+    private
+    public :: case_test_session_integer_variable_compiler
+    interface
+        subroutine case_test_session_integer_variable_compiler()
+        end subroutine case_test_session_integer_variable_compiler
+    end interface
+end module ffc_case_test_session_integer_variable_compiler
+
+subroutine case_test_session_integer_variable_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session integer variable compiler test ==='
 
@@ -13,4 +25,4 @@ program test_session_integer_variable_compiler
         '/tmp/ffc_session_integer_var_test')) stop 1
 
     print *, 'PASS: integer variable lowers through direct LIRIC session'
-end program test_session_integer_variable_compiler
+end subroutine case_test_session_integer_variable_compiler

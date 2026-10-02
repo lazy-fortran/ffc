@@ -1,4 +1,15 @@
-program test_session_runtime_rank2_sum_compiler
+! fo: dispatcher
+module ffc_case_test_session_runtime_rank2_sum_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_rank2_sum_compiler
+    interface
+        subroutine case_test_session_runtime_rank2_sum_compiler()
+        end subroutine case_test_session_runtime_rank2_sum_compiler
+    end interface
+end module ffc_case_test_session_runtime_rank2_sum_compiler
+
+subroutine case_test_session_runtime_rank2_sum_compiler()
     ! Runtime reductions must walk the complete contiguous descriptor, not only
     ! the leading dimension. The positive rank-2 and rank-3 cases compare ffc
     ! with independently compiled gfortran executables.
@@ -7,6 +18,7 @@ program test_session_runtime_rank2_sum_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -138,4 +150,4 @@ contains
         ok = .true.
     end function matches_gfortran
 
-end program test_session_runtime_rank2_sum_compiler
+end subroutine case_test_session_runtime_rank2_sum_compiler

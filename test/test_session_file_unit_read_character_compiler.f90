@@ -1,9 +1,21 @@
-program test_session_file_unit_read_character_compiler
+! fo: dispatcher
+module ffc_case_test_session_file_unit_read_character_compiler
+    implicit none
+    private
+    public :: case_test_session_file_unit_read_character_compiler
+    interface
+        subroutine case_test_session_file_unit_read_character_compiler()
+        end subroutine case_test_session_file_unit_read_character_compiler
+    end interface
+end module ffc_case_test_session_file_unit_read_character_compiler
+
+subroutine case_test_session_file_unit_read_character_compiler()
     ! List-directed READ of a fixed-length character scalar from an opened
     ! file unit, and OPEN with no status= preserving an existing file's
     ! content (gfortran's default STATUS='UNKNOWN') instead of truncating it.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -65,4 +77,4 @@ contains
             '/tmp/ffc_session_furc_preserve')
     end function test_open_no_status_preserves_content
 
-end program test_session_file_unit_read_character_compiler
+end subroutine case_test_session_file_unit_read_character_compiler

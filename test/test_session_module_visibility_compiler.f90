@@ -1,6 +1,18 @@
-program test_session_module_visibility_compiler
+! fo: dispatcher
+module ffc_case_test_session_module_visibility_compiler
+    implicit none
+    private
+    public :: case_test_session_module_visibility_compiler
+    interface
+        subroutine case_test_session_module_visibility_compiler()
+        end subroutine case_test_session_module_visibility_compiler
+    end interface
+end module ffc_case_test_session_module_visibility_compiler
+
+subroutine case_test_session_module_visibility_compiler()
     use ffc_test_support, only: expect_exit_status, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -72,4 +84,4 @@ contains
             '/tmp/ffc_session_vis_attr_test')
     end function test_attribute_form_private_on_decl
 
-end program test_session_module_visibility_compiler
+end subroutine case_test_session_module_visibility_compiler

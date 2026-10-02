@@ -1,6 +1,18 @@
-program test_session_derived_typed_defaults_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_typed_defaults_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_typed_defaults_compiler
+    interface
+        subroutine case_test_session_derived_typed_defaults_compiler()
+        end subroutine case_test_session_derived_typed_defaults_compiler
+    end interface
+end module ffc_case_test_session_derived_typed_defaults_compiler
+
+subroutine case_test_session_derived_typed_defaults_compiler()
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -161,4 +173,4 @@ contains
             '/tmp/ffc_derived_typed_defaults_char_bad')
     end function test_incompatible_character_default_rejected
 
-end program test_session_derived_typed_defaults_compiler
+end subroutine case_test_session_derived_typed_defaults_compiler

@@ -1,6 +1,18 @@
-program test_session_module_exports_derived_type_compiler
+! fo: dispatcher
+module ffc_case_test_session_module_exports_derived_type_compiler
+    implicit none
+    private
+    public :: case_test_session_module_exports_derived_type_compiler
+    interface
+        subroutine case_test_session_module_exports_derived_type_compiler()
+        end subroutine case_test_session_module_exports_derived_type_compiler
+    end interface
+end module ffc_case_test_session_module_exports_derived_type_compiler
+
+subroutine case_test_session_module_exports_derived_type_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     print *, '=== direct session module exports derived type compiler test ==='
 
@@ -248,4 +260,4 @@ contains
             source, 0, '/tmp/ffc_module_proc_uses_sibling_module_variable_test')
     end function test_module_proc_uses_sibling_module_variable
 
-end program test_session_module_exports_derived_type_compiler
+end subroutine case_test_session_module_exports_derived_type_compiler

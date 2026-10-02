@@ -1,10 +1,22 @@
-program test_session_runtime_character_result_compiler
+! fo: dispatcher
+module ffc_case_test_session_runtime_character_result_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_character_result_compiler
+    interface
+        subroutine case_test_session_runtime_character_result_compiler()
+        end subroutine case_test_session_runtime_character_result_compiler
+    end interface
+end module ffc_case_test_session_runtime_character_result_compiler
+
+subroutine case_test_session_runtime_character_result_compiler()
     ! A runtime-length contained result must transfer its heap descriptor to a
     ! deferred caller, which then owns and can deallocate the returned value.
     ! The executable's own LEN/value assertions are the behavioral oracle;
     ! expect_no_leaks independently checks the transfer and deallocation.
     use ffc_test_support, only: expect_exit_status, expect_no_leaks
     implicit none
+    save
 
     logical :: all_passed
     character(len=:), allocatable :: source
@@ -33,4 +45,4 @@ program test_session_runtime_character_result_compiler
 
     if (.not. all_passed) stop 1
     print *, 'PASS: runtime-length character result transfers ownership'
-end program test_session_runtime_character_result_compiler
+end subroutine case_test_session_runtime_character_result_compiler

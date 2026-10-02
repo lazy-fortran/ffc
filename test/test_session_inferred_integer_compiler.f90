@@ -1,6 +1,18 @@
-program test_session_inferred_integer_compiler
+! fo: dispatcher
+module ffc_case_test_session_inferred_integer_compiler
+    implicit none
+    private
+    public :: case_test_session_inferred_integer_compiler
+    interface
+        subroutine case_test_session_inferred_integer_compiler()
+        end subroutine case_test_session_inferred_integer_compiler
+    end interface
+end module ffc_case_test_session_inferred_integer_compiler
+
+subroutine case_test_session_inferred_integer_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session inferred integer compiler test ==='
 
@@ -24,4 +36,4 @@ program test_session_inferred_integer_compiler
         '/tmp/ffc_session_inferred_int_arith')) stop 1
 
     print *, 'PASS: inferred integer variables lower through direct LIRIC session'
-end program test_session_inferred_integer_compiler
+end subroutine case_test_session_inferred_integer_compiler

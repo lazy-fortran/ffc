@@ -1,6 +1,18 @@
-program test_session_array_section_copy_rank4_compiler
+! fo: dispatcher
+module ffc_case_test_session_array_section_copy_rank4_compiler
+    implicit none
+    private
+    public :: case_test_session_array_section_copy_rank4_compiler
+    interface
+        subroutine case_test_session_array_section_copy_rank4_compiler()
+        end subroutine case_test_session_array_section_copy_rank4_compiler
+    end interface
+end module ffc_case_test_session_array_section_copy_rank4_compiler
+
+subroutine case_test_session_array_section_copy_rank4_compiler()
     use ffc_test_support, only: expect_output, expect_output_matches_gfortran
     implicit none
+    save
 
     logical :: all_passed
 
@@ -53,4 +65,4 @@ contains
             source, 'array_section_copy_fixed_rank4')
     end function test_rank4_copy_matches_gfortran
 
-end program test_session_array_section_copy_rank4_compiler
+end subroutine case_test_session_array_section_copy_rank4_compiler

@@ -1,10 +1,22 @@
-program test_session_proc_pointer_component_associated
+! fo: dispatcher
+module ffc_case_5c140e4c93b8d4c194246fb3
+    implicit none
+    private
+    public :: case_test_session_proc_pointer_component_associated_compiler
+    interface
+        subroutine case_test_session_proc_pointer_component_associated_compiler()
+        end subroutine case_test_session_proc_pointer_component_associated_compiler
+    end interface
+end module ffc_case_5c140e4c93b8d4c194246fb3
+
+subroutine case_test_session_proc_pointer_component_associated_compiler()
     ! #372: associated(obj%p) and associated(obj%p, target) for procedure
     ! pointer components. A fresh component reads as disassociated, a bound
     ! component reads as associated, and the two-argument form compares the
     ! stored callee address against the named procedure.
     use ffc_test_support, only: expect_exit_status, expect_error_contains
     implicit none
+    save
 
     print *, '=== procedure pointer component associated compiler test ==='
 
@@ -113,4 +125,4 @@ program test_session_proc_pointer_component_associated
         '/tmp/ffc_proc_comp_assoc_bad_target_test')) stop 1
 
     print *, 'PASS: procedure pointer component associated'
-end program test_session_proc_pointer_component_associated
+end subroutine case_test_session_proc_pointer_component_associated_compiler

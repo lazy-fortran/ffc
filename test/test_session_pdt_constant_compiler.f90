@@ -1,4 +1,15 @@
-program test_session_pdt_constant_compiler
+! fo: dispatcher
+module ffc_case_test_session_pdt_constant_compiler
+    implicit none
+    private
+    public :: case_test_session_pdt_constant_compiler
+    interface
+        subroutine case_test_session_pdt_constant_compiler()
+        end subroutine case_test_session_pdt_constant_compiler
+    end interface
+end module ffc_case_test_session_pdt_constant_compiler
+
+subroutine case_test_session_pdt_constant_compiler()
     ! Parameterized derived types with constant integer KIND and LEN type
     ! parameters (#411). Each distinct tuple of actual type parameters is a
     ! distinct concrete type: the actuals are folded at compile time,
@@ -9,6 +20,7 @@ program test_session_pdt_constant_compiler
     use ffc_test_support, only: expect_output, expect_exit_status, &
         expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -168,4 +180,4 @@ contains
             '/tmp/ffc_pdt_const_excess')
     end function test_excess_actuals_rejected
 
-end program test_session_pdt_constant_compiler
+end subroutine case_test_session_pdt_constant_compiler

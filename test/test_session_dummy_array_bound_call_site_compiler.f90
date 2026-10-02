@@ -1,6 +1,18 @@
-program test_session_dummy_array_bound_call_site
+! fo: dispatcher
+module ffc_case_test_session_dummy_array_bound_call_site_compiler
+    implicit none
+    private
+    public :: case_test_session_dummy_array_bound_call_site_compiler
+    interface
+        subroutine case_test_session_dummy_array_bound_call_site_compiler()
+        end subroutine case_test_session_dummy_array_bound_call_site_compiler
+    end interface
+end module ffc_case_test_session_dummy_array_bound_call_site_compiler
+
+subroutine case_test_session_dummy_array_bound_call_site_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -78,4 +90,4 @@ contains
             '/tmp/ffc_session_dummy_array_bound_r2')
     end function test_size_dim_actual_same_name_as_dummy
 
-end program test_session_dummy_array_bound_call_site
+end subroutine case_test_session_dummy_array_bound_call_site_compiler

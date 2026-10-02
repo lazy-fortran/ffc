@@ -1,6 +1,18 @@
-program test_session_reject_generic_01_compiler
+! fo: dispatcher
+module ffc_case_test_session_reject_generic_01_compiler
+    implicit none
+    private
+    public :: case_test_session_reject_generic_01_compiler
+    interface
+        subroutine case_test_session_reject_generic_01_compiler()
+        end subroutine case_test_session_reject_generic_01_compiler
+    end interface
+end module ffc_case_test_session_reject_generic_01_compiler
+
+subroutine case_test_session_reject_generic_01_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -623,4 +635,4 @@ contains
             '/tmp/ffc_reject_generic_01_r595')
     end function test_same_rank_array_specifics_ambiguous
 
-end program test_session_reject_generic_01_compiler
+end subroutine case_test_session_reject_generic_01_compiler

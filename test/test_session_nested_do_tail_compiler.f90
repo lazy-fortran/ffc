@@ -1,9 +1,21 @@
-program test_session_nested_do_tail_compiler
+! fo: dispatcher
+module ffc_case_test_session_nested_do_tail_compiler
+    implicit none
+    private
+    public :: case_test_session_nested_do_tail_compiler
+    interface
+        subroutine case_test_session_nested_do_tail_compiler()
+        end subroutine case_test_session_nested_do_tail_compiler
+    end interface
+end module ffc_case_test_session_nested_do_tail_compiler
+
+subroutine case_test_session_nested_do_tail_compiler()
     ! Regression for #626: a statement after a nested DO in a contained
     ! procedure must remain in the procedure body and execute exactly once.
     ! The gfortran executable is the independent behavioural oracle.
     use ffc_test_support, only: compile_to_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -95,4 +107,4 @@ contains
         if (ios /= 0) deallocate (contents)
     end subroutine read_file
 
-end program test_session_nested_do_tail_compiler
+end subroutine case_test_session_nested_do_tail_compiler

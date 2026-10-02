@@ -1,3 +1,4 @@
+! fo: dispatcher
 ! Issue #423: scalar formatted output goes through the runtime ABI.
 !
 ! Behavioral oracle for the migration itself. Byte stability of the output
@@ -12,10 +13,21 @@
 !      would fail again if a second, parallel convention were reintroduced.
 !   2. The runtime owns the status. A unit number outside the supported
 !      range is reported with the documented code rather than written to.
-program test_session_print_runtime_compiler
+module ffc_case_test_session_print_runtime_compiler
+    implicit none
+    private
+    public :: case_test_session_print_runtime_compiler
+    interface
+        subroutine case_test_session_print_runtime_compiler()
+        end subroutine case_test_session_print_runtime_compiler
+    end interface
+end module ffc_case_test_session_print_runtime_compiler
+
+subroutine case_test_session_print_runtime_compiler()
     use ffc_runtime_link, only: ffc_runtime_link_input
     use ffc_test_support, only: compile_to_exe
     implicit none
+    save
 
     character(len=*), parameter :: WORK = '/tmp/ffc_print_runtime_423'
     logical :: all_passed
@@ -184,4 +196,4 @@ contains
         ok = .true.
     end function test_bad_unit_status
 
-end program test_session_print_runtime_compiler
+end subroutine case_test_session_print_runtime_compiler

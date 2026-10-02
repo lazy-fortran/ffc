@@ -1,6 +1,18 @@
-program test_session_assumed_shape
+! fo: dispatcher
+module ffc_case_test_session_assumed_shape_compiler
+    implicit none
+    private
+    public :: case_test_session_assumed_shape_compiler
+    interface
+        subroutine case_test_session_assumed_shape_compiler()
+        end subroutine case_test_session_assumed_shape_compiler
+    end interface
+end module ffc_case_test_session_assumed_shape_compiler
+
+subroutine case_test_session_assumed_shape_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -131,4 +143,4 @@ contains
             '/tmp/ffc_session_assumed_shape_r3_forwarded')
     end function test_rank3_forwarded
 
-end program test_session_assumed_shape
+end subroutine case_test_session_assumed_shape_compiler

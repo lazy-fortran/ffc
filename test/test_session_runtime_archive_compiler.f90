@@ -1,3 +1,4 @@
+! fo: dispatcher
 ! Issue #376: select and load the matching runtime archive.
 !
 ! Behavioral oracle. For every backend that has an archive, this builds the
@@ -13,7 +14,17 @@
 ! #565 removed the FFC_RUNTIME_ARCHIVE_DIR opt-in and the inline-runtime path
 ! it used to fall back to, so the directory is now an explicit argument and
 ! every failure to install a requested archive is loud.
-program test_session_runtime_archive_compiler
+module ffc_case_test_session_runtime_archive_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_archive_compiler
+    interface
+        subroutine case_test_session_runtime_archive_compiler()
+        end subroutine case_test_session_runtime_archive_compiler
+    end interface
+end module ffc_case_test_session_runtime_archive_compiler
+
+subroutine case_test_session_runtime_archive_compiler()
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
         destroy, lr_session_config_t, lr_operand_desc_t, emit_i32_call, &
         emit_ret_i32_operand, begin_i32_main, finish_and_emit_exe
@@ -24,6 +35,7 @@ program test_session_runtime_archive_compiler
         LR_SESSION_BACKEND_COPY_PATCH
     use, intrinsic :: iso_c_binding, only: c_int
     implicit none
+    save
 
     character(len=*), parameter :: build_dir = '/tmp/ffc_runtime_376_build'
     character(len=*), parameter :: artifact_root = build_dir//'/artifacts'
@@ -279,4 +291,4 @@ contains
         call destroy(session)
     end subroutine check_blank_directory_is_an_error
 
-end program test_session_runtime_archive_compiler
+end subroutine case_test_session_runtime_archive_compiler

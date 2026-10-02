@@ -1,8 +1,20 @@
-program test_session_optional_args_compiler
+! fo: dispatcher
+module ffc_case_test_session_optional_args_compiler
+    implicit none
+    private
+    public :: case_test_session_optional_args_compiler
+    interface
+        subroutine case_test_session_optional_args_compiler()
+        end subroutine case_test_session_optional_args_compiler
+    end interface
+end module ffc_case_test_session_optional_args_compiler
+
+subroutine case_test_session_optional_args_compiler()
     ! optional dummy arguments and the present() intrinsic. Absence is a null
     ! reference pointer; present(x) is a null check.
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -49,4 +61,4 @@ contains
             source, 99, '/tmp/ffc_optional_absent_test')
     end function test_optional_absent_takes_default
 
-end program test_session_optional_args_compiler
+end subroutine case_test_session_optional_args_compiler

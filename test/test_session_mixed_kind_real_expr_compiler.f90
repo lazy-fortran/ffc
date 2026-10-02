@@ -1,6 +1,18 @@
-program test_session_mixed_kind_real_expr_compiler
+! fo: dispatcher
+module ffc_case_test_session_mixed_kind_real_expr_compiler
+    implicit none
+    private
+    public :: case_test_session_mixed_kind_real_expr_compiler
+    interface
+        subroutine case_test_session_mixed_kind_real_expr_compiler()
+        end subroutine case_test_session_mixed_kind_real_expr_compiler
+    end interface
+end module ffc_case_test_session_mixed_kind_real_expr_compiler
+
+subroutine case_test_session_mixed_kind_real_expr_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     ! Mixed-kind arithmetic takes the widest operand kind (F2018 10.1.5.2.1),
     ! so a binary operation that combines a default-real (f32) literal with a
@@ -37,4 +49,4 @@ program test_session_mixed_kind_real_expr_compiler
         '/tmp/ffc_session_mixed_kind_real_expr_test')) stop 1
 
     print *, 'PASS: mixed f32/f64 arithmetic lowers at real(8) precision'
-end program test_session_mixed_kind_real_expr_compiler
+end subroutine case_test_session_mixed_kind_real_expr_compiler

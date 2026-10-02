@@ -1,6 +1,18 @@
-program test_session_whole_array_not_compiler
+! fo: dispatcher
+module ffc_case_test_session_whole_array_not_compiler
+    implicit none
+    private
+    public :: case_test_session_whole_array_not_compiler
+    interface
+        subroutine case_test_session_whole_array_not_compiler()
+        end subroutine case_test_session_whole_array_not_compiler
+    end interface
+end module ffc_case_test_session_whole_array_not_compiler
+
+subroutine case_test_session_whole_array_not_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session whole-array .not./division/scalar-broadcast '// &
         'compiler test ==='
@@ -104,4 +116,4 @@ contains
             //new_line('a'), '/tmp/ffc_wa_div_scalar_broadcast_test')
     end function test_real_division_scalar_broadcast
 
-end program test_session_whole_array_not_compiler
+end subroutine case_test_session_whole_array_not_compiler

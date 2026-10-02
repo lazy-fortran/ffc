@@ -1,10 +1,22 @@
-program test_session_multi_allocate
+! fo: dispatcher
+module ffc_case_test_session_multi_allocate_compiler
+    implicit none
+    private
+    public :: case_test_session_multi_allocate_compiler
+    interface
+        subroutine case_test_session_multi_allocate_compiler()
+        end subroutine case_test_session_multi_allocate_compiler
+    end interface
+end module ffc_case_test_session_multi_allocate_compiler
+
+subroutine case_test_session_multi_allocate_compiler()
     ! Multi-variable allocate/deallocate and rank-2 scalar broadcast:
     !   allocate(a(N), b(N), c(N), stat=ierr)
     !   deallocate(a, b, c)
     !   allocate(m(P,Q)); m = scalar   (rank-2 whole-array broadcast)
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -117,4 +129,4 @@ contains
             source, 121, '/tmp/ffc_module_multi_alloc')
     end function test_module_allocatable_multi
 
-end program test_session_multi_allocate
+end subroutine case_test_session_multi_allocate_compiler

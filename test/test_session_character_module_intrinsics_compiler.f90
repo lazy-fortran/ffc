@@ -1,6 +1,18 @@
-program test_session_character_module_intrinsics_compiler
+! fo: dispatcher
+module ffc_case_test_session_character_module_intrinsics_compiler
+    implicit none
+    private
+    public :: case_test_session_character_module_intrinsics_compiler
+    interface
+        subroutine case_test_session_character_module_intrinsics_compiler()
+        end subroutine case_test_session_character_module_intrinsics_compiler
+    end interface
+end module ffc_case_test_session_character_module_intrinsics_compiler
+
+subroutine case_test_session_character_module_intrinsics_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'module m'//new_line('a')// &
@@ -43,4 +55,4 @@ program test_session_character_module_intrinsics_compiler
     if (.not. expect_exit_status(source, 0, &
         '/tmp/ffc_session_character_module_intrinsics_test')) stop 1
     print *, 'PASS: module len_trim/trim calls use character procedure lowering'
-end program test_session_character_module_intrinsics_compiler
+end subroutine case_test_session_character_module_intrinsics_compiler

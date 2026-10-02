@@ -1,6 +1,18 @@
-program test_session_associate
+! fo: dispatcher
+module ffc_case_test_session_associate_compiler
+    implicit none
+    private
+    public :: case_test_session_associate_compiler
+    interface
+        subroutine case_test_session_associate_compiler()
+        end subroutine case_test_session_associate_compiler
+    end interface
+end module ffc_case_test_session_associate_compiler
+
+subroutine case_test_session_associate_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -233,4 +245,4 @@ contains
             '/tmp/ffc_session_associate_kind_expr')
     end function test_associate_kind_constant_expression
 
-end program test_session_associate
+end subroutine case_test_session_associate_compiler

@@ -1,6 +1,18 @@
-program test_rank2_loop_debug
+! fo: dispatcher
+module ffc_case_test_rank2_loop_debug
+    implicit none
+    private
+    public :: case_test_rank2_loop_debug
+    interface
+        subroutine case_test_rank2_loop_debug()
+        end subroutine case_test_rank2_loop_debug
+    end interface
+end module ffc_case_test_rank2_loop_debug
+
+subroutine case_test_rank2_loop_debug()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     ! First: manual writes, no loops, sum all 6 elements
     logical :: ok
@@ -27,4 +39,4 @@ program test_rank2_loop_debug
         stop 1
     end if
 
-end program test_rank2_loop_debug
+end subroutine case_test_rank2_loop_debug

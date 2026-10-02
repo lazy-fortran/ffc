@@ -1,10 +1,22 @@
-program test_session_internal_ex_format_compiler
+! fo: dispatcher
+module ffc_case_test_session_internal_ex_format_compiler
+    implicit none
+    private
+    public :: case_test_session_internal_ex_format_compiler
+    interface
+        subroutine case_test_session_internal_ex_format_compiler()
+        end subroutine case_test_session_internal_ex_format_compiler
+    end interface
+end module ffc_case_test_session_internal_ex_format_compiler
+
+subroutine case_test_session_internal_ex_format_compiler()
     ! Internal write with E editing followed by X positioning:
     ! write (buf, '(Ew.dEe,nX)') value emits an exact-width exponential field
     ! and then advances the cursor n blanks. Expected buffers match gfortran
     ! byte for byte.
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -83,4 +95,4 @@ contains
             '/tmp/ffc_internal_ex_baddesc_test')
     end function test_missing_precision_is_diagnosed
 
-end program test_session_internal_ex_format_compiler
+end subroutine case_test_session_internal_ex_format_compiler

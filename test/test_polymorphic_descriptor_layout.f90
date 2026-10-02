@@ -1,4 +1,15 @@
-program test_polymorphic_descriptor_layout
+! fo: dispatcher
+module ffc_case_test_polymorphic_descriptor_layout
+    implicit none
+    private
+    public :: case_test_polymorphic_descriptor_layout
+    interface
+        subroutine case_test_polymorphic_descriptor_layout()
+        end subroutine case_test_polymorphic_descriptor_layout
+    end interface
+end module ffc_case_test_polymorphic_descriptor_layout
+
+subroutine case_test_polymorphic_descriptor_layout()
     use ffc_polymorphic_descriptor, only: polymorphic_descriptor_t, &
         POLYMORPHIC_DESCRIPTOR_DATA_OFFSET, &
         POLYMORPHIC_DESCRIPTOR_DECLARED_TYPE_OFFSET, &
@@ -17,6 +28,7 @@ program test_polymorphic_descriptor_layout
     use, intrinsic :: iso_c_binding, only: c_associated, c_int32_t, c_int64_t, &
         c_intptr_t, c_loc, c_null_ptr, c_ptr, c_sizeof
     implicit none
+    save
 
     integer(c_int64_t), parameter :: BASE_ID = 1_c_int64_t
     integer(c_int64_t), parameter :: EXTENSION_ID = 2_c_int64_t
@@ -162,4 +174,4 @@ contains
         end if
     end subroutine require
 
-end program test_polymorphic_descriptor_layout
+end subroutine case_test_polymorphic_descriptor_layout

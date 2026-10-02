@@ -1,4 +1,15 @@
-program test_session_derived_alloc_char_component_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_alloc_char_component_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_alloc_char_component_compiler
+    interface
+        subroutine case_test_session_derived_alloc_char_component_compiler()
+        end subroutine case_test_session_derived_alloc_char_component_compiler
+    end interface
+end module ffc_case_test_session_derived_alloc_char_component_compiler
+
+subroutine case_test_session_derived_alloc_char_component_compiler()
     ! Deferred-length allocatable character components (#402) through the
     ! direct LIRIC session. The component holds the canonical character
     ! descriptor (data pointer + i64 length) inline, so assignment allocates to
@@ -7,6 +18,7 @@ program test_session_derived_alloc_char_component_compiler
     ! data exactly once and restores the unallocated state.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -98,4 +110,4 @@ contains
             '/tmp/ffc_derived_alloc_char_dealloc')
     end function test_deallocate_lifecycle
 
-end program test_session_derived_alloc_char_component_compiler
+end subroutine case_test_session_derived_alloc_char_component_compiler

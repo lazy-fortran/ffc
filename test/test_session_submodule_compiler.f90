@@ -1,6 +1,18 @@
-program test_session_submodule_compiler
+! fo: dispatcher
+module ffc_case_test_session_submodule_compiler
+    implicit none
+    private
+    public :: case_test_session_submodule_compiler
+    interface
+        subroutine case_test_session_submodule_compiler()
+        end subroutine case_test_session_submodule_compiler
+    end interface
+end module ffc_case_test_session_submodule_compiler
+
+subroutine case_test_session_submodule_compiler()
     use ffc_test_support, only: expect_exit_status, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
     ! Parent, submodule, and caller for the three-file separate-compilation
@@ -530,4 +542,4 @@ contains
         ok = io_stat == 0
     end function write_source
 
-end program test_session_submodule_compiler
+end subroutine case_test_session_submodule_compiler

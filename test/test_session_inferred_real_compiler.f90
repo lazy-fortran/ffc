@@ -1,6 +1,18 @@
-program test_session_inferred_real_compiler
+! fo: dispatcher
+module ffc_case_test_session_inferred_real_compiler
+    implicit none
+    private
+    public :: case_test_session_inferred_real_compiler
+    interface
+        subroutine case_test_session_inferred_real_compiler()
+        end subroutine case_test_session_inferred_real_compiler
+    end interface
+end module ffc_case_test_session_inferred_real_compiler
+
+subroutine case_test_session_inferred_real_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session inferred real compiler test ==='
 
@@ -16,4 +28,4 @@ program test_session_inferred_real_compiler
         '/tmp/ffc_session_inferred_real')) stop 1
 
     print *, 'PASS: inferred real variables lower through direct LIRIC session'
-end program test_session_inferred_real_compiler
+end subroutine case_test_session_inferred_real_compiler

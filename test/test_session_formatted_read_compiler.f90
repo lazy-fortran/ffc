@@ -1,8 +1,20 @@
-program test_session_formatted_read_compiler
+! fo: dispatcher
+module ffc_case_test_session_formatted_read_compiler
+    implicit none
+    private
+    public :: case_test_session_formatted_read_compiler
+    interface
+        subroutine case_test_session_formatted_read_compiler()
+        end subroutine case_test_session_formatted_read_compiler
+    end interface
+end module ffc_case_test_session_formatted_read_compiler
+
+subroutine case_test_session_formatted_read_compiler()
     ! Formatted (non-list-directed) READ from a file unit: write values with
     ! explicit edit descriptors, rewind, read them back, and print.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -119,4 +131,4 @@ contains
             ' T'//new_line('a'), '/tmp/ffc_formatted_read_int')
     end function test_internal_logical_read
 
-end program test_session_formatted_read_compiler
+end subroutine case_test_session_formatted_read_compiler

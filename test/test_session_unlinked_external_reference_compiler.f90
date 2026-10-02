@@ -1,4 +1,15 @@
-program test_session_unlinked_external_reference_compiler
+! fo: dispatcher
+module ffc_case_test_session_unlinked_external_reference_compiler
+    implicit none
+    private
+    public :: case_test_session_unlinked_external_reference_compiler
+    interface
+        subroutine case_test_session_unlinked_external_reference_compiler()
+        end subroutine case_test_session_unlinked_external_reference_compiler
+    end interface
+end module ffc_case_test_session_unlinked_external_reference_compiler
+
+subroutine case_test_session_unlinked_external_reference_compiler()
     ! #585: gfortran.dg/pr118640.f90 shape. A procedure-only unit whose
     ! specification part declares an interface for a name that is NOT one of
     ! its dummy arguments references an external procedure the linker resolves.
@@ -6,6 +17,7 @@ program test_session_unlinked_external_reference_compiler
     ! definition is supplied, and still fails to link when it is not. The case
     ! therefore belongs to the linked class, not to a noref manifest.
     implicit none
+    save
 
     logical :: all_passed
 
@@ -178,4 +190,4 @@ contains
         ok = .true.
     end function write_file
 
-end program test_session_unlinked_external_reference_compiler
+end subroutine case_test_session_unlinked_external_reference_compiler

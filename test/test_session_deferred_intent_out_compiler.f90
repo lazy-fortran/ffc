@@ -1,6 +1,18 @@
-program test_session_deferred_intent_out_compiler
+! fo: dispatcher
+module ffc_case_test_session_deferred_intent_out_compiler
+    implicit none
+    private
+    public :: case_test_session_deferred_intent_out_compiler
+    interface
+        subroutine case_test_session_deferred_intent_out_compiler()
+        end subroutine case_test_session_deferred_intent_out_compiler
+    end interface
+end module ffc_case_test_session_deferred_intent_out_compiler
+
+subroutine case_test_session_deferred_intent_out_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -54,4 +66,4 @@ contains
             source, 5, '/tmp/ffc_session_alloc_intent_out_concat_test')
     end function test_alloc_intent_out_length_via_caller
 
-end program test_session_deferred_intent_out_compiler
+end subroutine case_test_session_deferred_intent_out_compiler

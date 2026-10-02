@@ -1,7 +1,19 @@
-program test_session_c_interop
+! fo: dispatcher
+module ffc_case_test_session_c_interop_compiler
+    implicit none
+    private
+    public :: case_test_session_c_interop_compiler
+    interface
+        subroutine case_test_session_c_interop_compiler()
+        end subroutine case_test_session_c_interop_compiler
+    end interface
+end module ffc_case_test_session_c_interop_compiler
+
+subroutine case_test_session_c_interop_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status, &
                                 expect_output
     implicit none
+    save
 
     print *, '=== direct session ISO_C_BINDING pointer round-trip test ==='
 
@@ -129,4 +141,4 @@ program test_session_c_interop
         '/tmp/ffc_session_c_strpointer_reject_test')) stop 5
 
     print *, 'PASS: c_loc / c_associated / c_f_pointer / c_f_strpointer'
-end program test_session_c_interop
+end subroutine case_test_session_c_interop_compiler

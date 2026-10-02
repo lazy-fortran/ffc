@@ -1,4 +1,15 @@
-program test_session_external_interface_procedure
+! fo: dispatcher
+module ffc_case_test_session_external_interface_procedure_compiler
+    implicit none
+    private
+    public :: case_test_session_external_interface_procedure_compiler
+    interface
+        subroutine case_test_session_external_interface_procedure_compiler()
+        end subroutine case_test_session_external_interface_procedure_compiler
+    end interface
+end module ffc_case_test_session_external_interface_procedure_compiler
+
+subroutine case_test_session_external_interface_procedure_compiler()
     ! #582: an interface block in the specification part of a top-level
     ! (external) procedure declares an EXTERNAL procedure, not a dummy
     ! procedure of that scope. Only a name that also appears in the enclosing
@@ -6,6 +17,7 @@ program test_session_external_interface_procedure
     ! in the lowering unit. Rejecting the external case blocked
     ! gfortran.dg/intent_out_4.f90 with "procedure body unavailable".
     implicit none
+    save
 
     logical :: all_passed
 
@@ -99,4 +111,4 @@ contains
         ok = io_stat == 0
     end function write_file
 
-end program test_session_external_interface_procedure
+end subroutine case_test_session_external_interface_procedure_compiler

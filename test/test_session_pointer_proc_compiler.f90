@@ -1,6 +1,18 @@
-program test_session_pointer_proc
+! fo: dispatcher
+module ffc_case_test_session_pointer_proc_compiler
+    implicit none
+    private
+    public :: case_test_session_pointer_proc_compiler
+    interface
+        subroutine case_test_session_pointer_proc_compiler()
+        end subroutine case_test_session_pointer_proc_compiler
+    end interface
+end module ffc_case_test_session_pointer_proc_compiler
+
+subroutine case_test_session_pointer_proc_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session procedure pointer compiler test ==='
 
@@ -125,4 +137,4 @@ program test_session_pointer_proc
         '/tmp/ffc_proc_ptr_rank_mismatch_test')) stop 1
 
     print *, 'PASS: procedure pointer to function and subroutine'
-end program test_session_pointer_proc
+end subroutine case_test_session_pointer_proc_compiler

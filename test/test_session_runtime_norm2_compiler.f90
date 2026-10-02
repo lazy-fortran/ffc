@@ -1,4 +1,15 @@
-program test_session_runtime_norm2_compiler
+! fo: dispatcher
+module ffc_case_test_session_runtime_norm2_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_norm2_compiler
+    interface
+        subroutine case_test_session_runtime_norm2_compiler()
+        end subroutine case_test_session_runtime_norm2_compiler
+    end interface
+end module ffc_case_test_session_runtime_norm2_compiler
+
+subroutine case_test_session_runtime_norm2_compiler()
     ! NORM2 over runtime-shaped real arrays must traverse every descriptor
     ! element. Positive cases are compared with an independently compiled
     ! gfortran executable; rank, DIM, and KIND boundaries have exact errors.
@@ -8,6 +19,7 @@ program test_session_runtime_norm2_compiler
     use ffc_test_support, only: compile_to_exe
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -208,4 +220,4 @@ contains
         ok = .true.
     end function test_refusal
 
-end program test_session_runtime_norm2_compiler
+end subroutine case_test_session_runtime_norm2_compiler

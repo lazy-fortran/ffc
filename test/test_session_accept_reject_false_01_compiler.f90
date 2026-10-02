@@ -1,8 +1,20 @@
-program test_session_accept_reject_false_01_compiler
+! fo: dispatcher
+module ffc_case_test_session_accept_reject_false_01_compiler
+    implicit none
+    private
+    public :: case_test_session_accept_reject_false_01_compiler
+    interface
+        subroutine case_test_session_accept_reject_false_01_compiler()
+        end subroutine case_test_session_accept_reject_false_01_compiler
+    end interface
+end module ffc_case_test_session_accept_reject_false_01_compiler
+
+subroutine case_test_session_accept_reject_false_01_compiler()
     !! Valid programs that ffc used to reject with a spurious semantic error
     !! (lazy-fortran/ffc#581). gfortran compiles and runs all of them.
     use ffc_test_support, only: expect_exit_status, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -113,4 +125,4 @@ contains
             source, 'unbalanced parenthes', '/tmp/ffc_accept_581_format_neg')
     end function test_unbalanced_format_still_rejected
 
-end program test_session_accept_reject_false_01_compiler
+end subroutine case_test_session_accept_reject_false_01_compiler

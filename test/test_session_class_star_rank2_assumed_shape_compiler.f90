@@ -1,4 +1,15 @@
-program test_session_class_star_rank2_assumed_shape_compiler
+! fo: dispatcher
+module ffc_case_test_session_class_star_rank2_assumed_shape_compiler
+    implicit none
+    private
+    public :: case_test_session_class_star_rank2_assumed_shape_compiler
+    interface
+        subroutine case_test_session_class_star_rank2_assumed_shape_compiler()
+        end subroutine case_test_session_class_star_rank2_assumed_shape_compiler
+    end interface
+end module ffc_case_test_session_class_star_rank2_assumed_shape_compiler
+
+subroutine case_test_session_class_star_rank2_assumed_shape_compiler()
     ! Differential behavioral oracle for the bounded rank-2 CLASS(*) array ABI.
     ! Positive cases compare ffc output with gfortran; refusal cases first pass
     ! gfortran syntax checking and then require a named ffc diagnostic.
@@ -7,6 +18,7 @@ program test_session_class_star_rank2_assumed_shape_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     print *, '=== rank-2 CLASS(*) assumed-shape array test ==='
     if (.not. test_integer_rank2()) stop 1
@@ -320,4 +332,4 @@ contains
         expect_refusal = .true.
     end function expect_refusal
 
-end program test_session_class_star_rank2_assumed_shape_compiler
+end subroutine case_test_session_class_star_rank2_assumed_shape_compiler

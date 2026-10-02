@@ -1,6 +1,18 @@
-program test_parity_dashboard
+! fo: dispatcher
+module ffc_case_test_parity_dashboard
+    implicit none
+    private
+    public :: case_test_parity_dashboard
+    interface
+        subroutine case_test_parity_dashboard()
+        end subroutine case_test_parity_dashboard
+    end interface
+end module ffc_case_test_parity_dashboard
+
+subroutine case_test_parity_dashboard()
     use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
+    save
 
     ! Per-run scratch directory: concurrent runs must not share fixture paths.
     character(len=:), allocatable :: ROOT
@@ -570,4 +582,4 @@ contains
         close(unit)
     end function file_contains
 
-end program test_parity_dashboard
+end subroutine case_test_parity_dashboard

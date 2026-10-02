@@ -1,6 +1,18 @@
-program test_session_allocatable_elementwise_compiler
+! fo: dispatcher
+module ffc_case_test_session_allocatable_elementwise_compiler
+    implicit none
+    private
+    public :: case_test_session_allocatable_elementwise_compiler
+    interface
+        subroutine case_test_session_allocatable_elementwise_compiler()
+        end subroutine case_test_session_allocatable_elementwise_compiler
+    end interface
+end module ffc_case_test_session_allocatable_elementwise_compiler
+
+subroutine case_test_session_allocatable_elementwise_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session allocatable elementwise assignment compiler test ==='
     if (.not. test_allocatable_sum_expression()) stop 1
@@ -46,4 +58,4 @@ contains
             '/tmp/ffc_alloc_ew_self_test')
     end function test_allocatable_self_referencing_expression
 
-end program test_session_allocatable_elementwise_compiler
+end subroutine case_test_session_allocatable_elementwise_compiler

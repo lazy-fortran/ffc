@@ -1,4 +1,15 @@
-program test_session_array_function_result_compiler
+! fo: dispatcher
+module ffc_case_test_session_array_function_result_compiler
+    implicit none
+    private
+    public :: case_test_session_array_function_result_compiler
+    interface
+        subroutine case_test_session_array_function_result_compiler()
+        end subroutine case_test_session_array_function_result_compiler
+    end interface
+end module ffc_case_test_session_array_function_result_compiler
+
+subroutine case_test_session_array_function_result_compiler()
     ! Verify contained functions returning a fixed-size rank-1 array lower
     ! through the sret result ABI: the caller passes the destination buffer as
     ! the hidden result pointer, and assignment or print of the call matches
@@ -9,6 +20,7 @@ program test_session_array_function_result_compiler
         compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     implicit none
+    save
 
     logical :: all_passed
 
@@ -174,4 +186,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_array_function_result_compiler
+end subroutine case_test_session_array_function_result_compiler

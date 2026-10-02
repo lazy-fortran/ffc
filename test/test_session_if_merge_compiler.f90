@@ -1,6 +1,18 @@
-program test_session_if_merge_compiler
+! fo: dispatcher
+module ffc_case_test_session_if_merge_compiler
+    implicit none
+    private
+    public :: case_test_session_if_merge_compiler
+    interface
+        subroutine case_test_session_if_merge_compiler()
+        end subroutine case_test_session_if_merge_compiler
+    end interface
+end module ffc_case_test_session_if_merge_compiler
+
+subroutine case_test_session_if_merge_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -164,4 +176,4 @@ contains
             '/tmp/ffc_session_do_if_test')
     end function test_do_in_if_merge
 
-end program test_session_if_merge_compiler
+end subroutine case_test_session_if_merge_compiler

@@ -1,7 +1,19 @@
-program test_session_open_close_file_compiler
+! fo: dispatcher
+module ffc_case_test_session_open_close_file_compiler
+    implicit none
+    private
+    public :: case_test_session_open_close_file_compiler
+    interface
+        subroutine case_test_session_open_close_file_compiler()
+        end subroutine case_test_session_open_close_file_compiler
+    end interface
+end module ffc_case_test_session_open_close_file_compiler
+
+subroutine case_test_session_open_close_file_compiler()
     ! OPEN / WRITE(unit,*) / CLOSE round-trip (#247 B5c).
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -45,4 +57,4 @@ contains
             '/tmp/ffc_open_close_literal')
     end function test_open_write_close_literal_unit
 
-end program test_session_open_close_file_compiler
+end subroutine case_test_session_open_close_file_compiler

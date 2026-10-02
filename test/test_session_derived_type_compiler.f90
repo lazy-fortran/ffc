@@ -1,6 +1,18 @@
-program test_session_derived_type_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_type_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_type_compiler
+    interface
+        subroutine case_test_session_derived_type_compiler()
+        end subroutine case_test_session_derived_type_compiler
+    end interface
+end module ffc_case_test_session_derived_type_compiler
+
+subroutine case_test_session_derived_type_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -506,4 +518,4 @@ contains
             source, 7, '/tmp/ffc_session_nested_ctor_default_test')
     end function test_nested_component_default_constructor
 
-end program test_session_derived_type_compiler
+end subroutine case_test_session_derived_type_compiler

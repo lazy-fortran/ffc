@@ -1,8 +1,20 @@
-program test_session_allocatable_rank2
+! fo: dispatcher
+module ffc_case_test_session_allocatable_rank2_compiler
+    implicit none
+    private
+    public :: case_test_session_allocatable_rank2_compiler
+    interface
+        subroutine case_test_session_allocatable_rank2_compiler()
+        end subroutine case_test_session_allocatable_rank2_compiler
+    end interface
+end module ffc_case_test_session_allocatable_rank2_compiler
+
+subroutine case_test_session_allocatable_rank2_compiler()
     ! Rank-2 integer allocatable: allocate(a(m,n)), a(i,j) element access
     ! (#244 slice B2e). Fill in loops, read back, sum, and check via stop code.
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -57,4 +69,4 @@ contains
             source, 39, '/tmp/ffc_alloc2d_sum')
     end function test_fill_and_sum
 
-end program test_session_allocatable_rank2
+end subroutine case_test_session_allocatable_rank2_compiler

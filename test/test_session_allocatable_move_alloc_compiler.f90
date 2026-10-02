@@ -1,8 +1,20 @@
-program test_session_allocatable_move_alloc
+! fo: dispatcher
+module ffc_case_test_session_allocatable_move_alloc_compiler
+    implicit none
+    private
+    public :: case_test_session_allocatable_move_alloc_compiler
+    interface
+        subroutine case_test_session_allocatable_move_alloc_compiler()
+        end subroutine case_test_session_allocatable_move_alloc_compiler
+    end interface
+end module ffc_case_test_session_allocatable_move_alloc_compiler
+
+subroutine case_test_session_allocatable_move_alloc_compiler()
     ! move_alloc intrinsic on integer 1-D allocatables (#244 slice B2d).
     ! Transfers ownership: source becomes unallocated, destination holds the data.
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -54,4 +66,4 @@ contains
             source, 10, '/tmp/ffc_move_alloc_data')
     end function test_move_alloc_preserves_data
 
-end program test_session_allocatable_move_alloc
+end subroutine case_test_session_allocatable_move_alloc_compiler

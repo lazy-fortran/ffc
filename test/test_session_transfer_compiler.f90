@@ -1,9 +1,21 @@
-program test_session_transfer_compiler
+! fo: dispatcher
+module ffc_case_test_session_transfer_compiler
+    implicit none
+    private
+    public :: case_test_session_transfer_compiler
+    interface
+        subroutine case_test_session_transfer_compiler()
+        end subroutine case_test_session_transfer_compiler
+    end interface
+end module ffc_case_test_session_transfer_compiler
+
+subroutine case_test_session_transfer_compiler()
     ! TRANSFER(source, mold) for scalar intrinsic types of matching byte size:
     ! integer(4)<->real(4) and integer(8)<->real(8), reinterpreting source's
     ! bit pattern as mold's type.
     use ffc_test_support, only: expect_output
     implicit none
+    save
     logical :: all_passed
 
     all_passed = .true.
@@ -88,4 +100,4 @@ contains
             '/tmp/ffc_transfer_identity_test')
     end function test_same_kind_identity
 
-end program test_session_transfer_compiler
+end subroutine case_test_session_transfer_compiler

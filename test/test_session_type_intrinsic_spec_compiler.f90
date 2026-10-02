@@ -1,6 +1,18 @@
-program test_session_type_intrinsic_spec_compiler
+! fo: dispatcher
+module ffc_case_test_session_type_intrinsic_spec_compiler
+    implicit none
+    private
+    public :: case_test_session_type_intrinsic_spec_compiler
+    interface
+        subroutine case_test_session_type_intrinsic_spec_compiler()
+        end subroutine case_test_session_type_intrinsic_spec_compiler
+    end interface
+end module ffc_case_test_session_type_intrinsic_spec_compiler
+
+subroutine case_test_session_type_intrinsic_spec_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -84,4 +96,4 @@ contains
             '/tmp/ffc_session_type_real_kind_test')
     end function test_type_real_kind_selector
 
-end program test_session_type_intrinsic_spec_compiler
+end subroutine case_test_session_type_intrinsic_spec_compiler

@@ -1,6 +1,18 @@
-program test_session_real_kind_expr_compiler
+! fo: dispatcher
+module ffc_case_test_session_real_kind_expr_compiler
+    implicit none
+    private
+    public :: case_test_session_real_kind_expr_compiler
+    interface
+        subroutine case_test_session_real_kind_expr_compiler()
+        end subroutine case_test_session_real_kind_expr_compiler
+    end interface
+end module ffc_case_test_session_real_kind_expr_compiler
+
+subroutine case_test_session_real_kind_expr_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session real-kind expression compiler test ==='
 
@@ -68,4 +80,4 @@ program test_session_real_kind_expr_compiler
         '/tmp/ffc_real_kind_mixed_f32')) stop 1
 
     print *, 'PASS: mixed int/real arithmetic and real(x,kind) lower correctly'
-end program test_session_real_kind_expr_compiler
+end subroutine case_test_session_real_kind_expr_compiler

@@ -1,6 +1,18 @@
-program test_session_use_empty_module_compiler
+! fo: dispatcher
+module ffc_case_test_session_use_empty_module_compiler
+    implicit none
+    private
+    public :: case_test_session_use_empty_module_compiler
+    interface
+        subroutine case_test_session_use_empty_module_compiler()
+        end subroutine case_test_session_use_empty_module_compiler
+    end interface
+end module ffc_case_test_session_use_empty_module_compiler
+
+subroutine case_test_session_use_empty_module_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -29,4 +41,4 @@ contains
             source, 7, '/tmp/ffc_session_use_empty_module_test')
     end function test_use_empty_module_compiles
 
-end program test_session_use_empty_module_compiler
+end subroutine case_test_session_use_empty_module_compiler

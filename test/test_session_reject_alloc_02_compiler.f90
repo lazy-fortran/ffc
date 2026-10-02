@@ -1,10 +1,22 @@
-program test_session_reject_alloc_02_compiler
+! fo: dispatcher
+module ffc_case_test_session_reject_alloc_02_compiler
+    implicit none
+    private
+    public :: case_test_session_reject_alloc_02_compiler
+    interface
+        subroutine case_test_session_reject_alloc_02_compiler()
+        end subroutine case_test_session_reject_alloc_02_compiler
+    end interface
+end module ffc_case_test_session_reject_alloc_02_compiler
+
+subroutine case_test_session_reject_alloc_02_compiler()
     ! #382: an ALLOCATE stat= specifier must name a scalar INTEGER variable
     ! and an errmsg= specifier must name a scalar default CHARACTER variable.
     ! Array or wrong-typed status targets are rejected with a source
     ! diagnostic; the corrected scalar neighbours still compile and run.
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     character(len=*), parameter :: STAT_FRAGMENT = &
         'ALLOCATE stat= must be a scalar INTEGER variable'
@@ -111,4 +123,4 @@ contains
             source, 5, '/tmp/ffc_session_alloc02_stat_errmsg_ok')
     end function test_scalar_stat_and_errmsg_accepted
 
-end program test_session_reject_alloc_02_compiler
+end subroutine case_test_session_reject_alloc_02_compiler

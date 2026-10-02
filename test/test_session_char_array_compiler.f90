@@ -1,6 +1,18 @@
-program test_session_char_array_compiler
+! fo: dispatcher
+module ffc_case_test_session_char_array_compiler
+    implicit none
+    private
+    public :: case_test_session_char_array_compiler
+    interface
+        subroutine case_test_session_char_array_compiler()
+        end subroutine case_test_session_char_array_compiler
+    end interface
+end module ffc_case_test_session_char_array_compiler
+
+subroutine case_test_session_char_array_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -124,4 +136,4 @@ contains
             '/tmp/ffc_session_char_array_after_literal_test')
     end function test_whole_array_after_literal
 
-end program test_session_char_array_compiler
+end subroutine case_test_session_char_array_compiler

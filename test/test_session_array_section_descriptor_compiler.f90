@@ -1,4 +1,15 @@
-program test_session_array_section_descriptor_compiler
+! fo: dispatcher
+module ffc_case_test_session_array_section_descriptor_compiler
+    implicit none
+    private
+    public :: case_test_session_array_section_descriptor_compiler
+    interface
+        subroutine case_test_session_array_section_descriptor_compiler()
+        end subroutine case_test_session_array_section_descriptor_compiler
+    end interface
+end module ffc_case_test_session_array_section_descriptor_compiler
+
+subroutine case_test_session_array_section_descriptor_compiler()
     ! A rank-1 section actual is a borrowed descriptor view: its base is the
     ! first selected element, its extent is the runtime trip count, and its
     ! byte stride is the source element stride. The reference executable uses
@@ -10,6 +21,7 @@ program test_session_array_section_descriptor_compiler
     use session_program_lowering, only: lower_program_to_liric_exe
     use iso_c_binding, only: c_int
     implicit none
+    save
 
     interface
         function ffc_getpid() bind(C, name='getpid') result(pid)
@@ -569,4 +581,4 @@ contains
         end if
     end function replace_text
 
-end program test_session_array_section_descriptor_compiler
+end subroutine case_test_session_array_section_descriptor_compiler

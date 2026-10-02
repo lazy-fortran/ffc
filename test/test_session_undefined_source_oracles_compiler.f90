@@ -1,4 +1,15 @@
-program test_session_undefined_source_oracles_compiler
+! fo: dispatcher
+module ffc_case_test_session_undefined_source_oracles_compiler
+    implicit none
+    private
+    public :: case_test_session_undefined_source_oracles_compiler
+    interface
+        subroutine case_test_session_undefined_source_oracles_compiler()
+        end subroutine case_test_session_undefined_source_oracles_compiler
+    end interface
+end module ffc_case_test_session_undefined_source_oracles_compiler
+
+subroutine case_test_session_undefined_source_oracles_compiler()
     ! Oracle set for workspace-plan Phase 0 "wrong output" claims that turned
     ! out not to be compiler defects. Three of the six cited corpus files
     ! cannot serve as byte-exact oracles as written:
@@ -23,6 +34,7 @@ program test_session_undefined_source_oracles_compiler
     ! Nothing here asserts the *values* the undefined sources happen to print.
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
 
     logical :: all_passed
 
@@ -108,4 +120,4 @@ contains
             expect_output_matches_gfortran(source, 'do_concurrent_locality')
     end function test_do_concurrent_scalar_locality_defined
 
-end program test_session_undefined_source_oracles_compiler
+end subroutine case_test_session_undefined_source_oracles_compiler

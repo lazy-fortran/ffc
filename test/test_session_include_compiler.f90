@@ -1,8 +1,20 @@
-program test_session_include_compiler
+! fo: dispatcher
+module ffc_case_test_session_include_compiler
+    implicit none
+    private
+    public :: case_test_session_include_compiler
+    interface
+        subroutine case_test_session_include_compiler()
+        end subroutine case_test_session_include_compiler
+    end interface
+end module ffc_case_test_session_include_compiler
+
+subroutine case_test_session_include_compiler()
     ! Behavioural coverage for Fortran INCLUDE line expansion (F2018 6.4.2).
     ! Every case drives the ffc CLI on real files on disk and checks observable
     ! program output or the emitted diagnostic.
     implicit none
+    save
 
     character(len=*), parameter :: WORK = '/tmp/ffc_include_test'
     logical :: ok
@@ -444,4 +456,4 @@ contains
         close (unit)
     end function read_text
 
-end program test_session_include_compiler
+end subroutine case_test_session_include_compiler

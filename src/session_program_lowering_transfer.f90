@@ -9,13 +9,14 @@ contains
     ! type - the same memory-punning trick EQUIVALENCE already relies on.
     !
     ! Scope: two-argument scalar TRANSFER (no SIZE argument, no array mold),
-    ! source drawn from an identifier, a declared/allocatable array element,
-    ! or a literal. Any other form declines (handled=.false., error_msg
+    ! source drawn from an identifier (including a rank-one runtime array),
+    ! a declared/allocatable array element, or a literal. Other forms decline
+    ! (handled=.false., error_msg
     ! empty) so the caller falls back to its normal unsupported-feature
     ! diagnostic.
 
     module procedure lower_transfer_intrinsic
-    integer :: source_kind
+    integer :: source_kind, source_symbol
     type(lr_operand_desc_t) :: source_value, address
 
     handled = .false.
@@ -26,6 +27,18 @@ contains
     source_kind = transfer_operand_kind(arena, node%arg_indices(1), context)
     if (source_kind < 0) return
     if (.not. transfer_pair_supported(source_kind, target_kind)) return
+
+    source_symbol = transfer_array_source_symbol(arena, node%arg_indices(1), context)
+    if (source_symbol > 0) then
+        if (transfer_source_is_runtime(context, source_symbol)) then
+            if (transfer_operand_kind(arena, node%arg_indices(2), context) /= &
+                target_kind) return
+            if (transfer_array_source_symbol(arena, node%arg_indices(2), &
+                                             context) > 0) return
+        end if
+        call check_transfer_source_count(context, source_symbol, 1, .false., error_msg)
+        if (len_trim(error_msg) > 0) return
+    end if
 
     call lower_transfer_source_element(arena, node%arg_indices(1), context, &
         source_kind, 0_c_int64_t, &
@@ -55,8 +68,13 @@ contains
     call set_empty(error_msg)
     source_symbol = transfer_array_source_symbol(arena, node_index, context)
     if (source_symbol > 0) then
-        call load_array_linear_element(context, source_symbol, linear_index, &
-            value, error_msg)
+        if (transfer_source_is_runtime(context, source_symbol)) then
+            call load_array_element_at_operand(context, source_symbol, &
+                i32_immediate(context%session, linear_index), value, error_msg)
+        else
+            call load_array_linear_element(context, source_symbol, linear_index, &
+                value, error_msg)
+        end if
         return
     end if
 
@@ -88,10 +106,83 @@ contains
     candidate = find_symbol_compat(context, id_name)
     if (candidate <= 0) return
     if (.not. context%symbols(candidate)%is_array) return
-    if (context%symbols(candidate)%is_runtime_array) return
-    if (context%symbols(candidate)%array_size <= 0) return
+    if (transfer_source_is_runtime(context, candidate)) then
+        if (context%symbols(candidate)%array_rank /= 1) return
+    else
+        if (context%symbols(candidate)%array_size <= 0) return
+    end if
     symbol_index = candidate
     end procedure transfer_array_source_symbol
+
+    logical function transfer_source_is_runtime(context, symbol_index) result(runtime)
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: symbol_index
+
+        runtime = context%symbols(symbol_index)%is_allocatable .or. &
+                  context%symbols(symbol_index)%is_runtime_array .or. &
+                  context%symbols(symbol_index)%has_runtime_descriptor .or. &
+                  context%symbols(symbol_index)%has_runtime_dim_size(1)
+    end function transfer_source_is_runtime
+
+    subroutine check_transfer_source_count(context, symbol_index, required_count, &
+                                           exact_count, error_msg)
+        !! Validate the supported defined prefix before emitting any element load.
+        !! An array result without SIZE consumes the whole runtime source.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index, required_count
+        logical, intent(in) :: exact_count
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: extent, invalid, message
+        type(lr_operand_desc_t) :: failure_args(2)
+        integer(c_int32_t) :: comparison, failure_block, valid_block, message_id
+        character(len=64) :: global_name
+
+        call set_empty(error_msg)
+        if (.not. transfer_source_is_runtime(context, symbol_index)) then
+            if (required_count > context%symbols(symbol_index)%array_size) then
+                error_msg = 'transfer source supplies fewer elements than the '// &
+                            'result requires'
+            end if
+            return
+        end if
+        if (context%symbols(symbol_index)%is_allocatable) then
+            call allocatable_descriptor_extent_i32(context, symbol_index, 1, &
+                                                   extent, error_msg)
+        else
+            call read_runtime_dim_extent(context, symbol_index, 1, extent, error_msg)
+        end if
+        if (len_trim(error_msg) > 0) return
+        comparison = LR_CMP_SLT
+        if (exact_count) comparison = LR_CMP_NE
+        if (.not. emit_liric_i32_icmp(context%session, comparison, extent, &
+                i32_immediate(context%session, int(required_count, c_int64_t)), &
+                invalid, error_msg)) return
+        failure_block = create_liric_block(context%session)
+        valid_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, invalid, failure_block, &
+                                  valid_block, error_msg)) return
+        if (.not. set_liric_block(context%session, failure_block, error_msg)) return
+        context%current_block_id = failure_block
+        context%current_block_terminated = .false.
+        context%string_literal_count = context%string_literal_count + 1
+        global_name = ffc_unit_global_name(context, 'transfer.error.', &
+                                           context%string_literal_count)
+        call create_printf_format_global(context%session, trim(global_name), &
+            'Fortran runtime error: TRANSFER source extent does not match '// &
+            'the supported result size'//achar(10), message_id, error_msg)
+        if (len_trim(error_msg) > 0) return
+        message = printf_format_ptr(context%session, message_id)
+        failure_args(1) = i32_immediate(context%session, 2_c_int64_t)
+        failure_args(2) = message
+        if (.not. emit_dprintf(context%session, failure_args, error_msg)) return
+        if (.not. emit_exit(context%session, &
+                i32_immediate(context%session, 2_c_int64_t), error_msg)) return
+        if (.not. emit_liric_br(context%session, valid_block, error_msg)) return
+        if (.not. set_liric_block(context%session, valid_block, error_msg)) return
+        context%current_block_id = valid_block
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine check_transfer_source_count
 
     module procedure transfer_operand_kind
     integer :: symbol_index
@@ -244,7 +335,7 @@ contains
     ! Whole-array TRANSFER(source, mold [, size]) assigned to an array target.
     ! Scope: source and result element kinds share a byte size (integer(4)
     ! <-> real(4), integer(8) <-> real(8)); the source is a scalar expression
-    ! or a declared whole array; SIZE, when present, is a compile-time
+    ! or a declared whole array or runtime rank-one array; SIZE is a compile-time
     ! non-negative constant. Every other form reports a diagnostic.
     module procedure lower_transfer_array_assignment
     integer :: source_kind, target_kind, source_symbol
@@ -252,6 +343,7 @@ contains
     integer :: arg_count, source_count, result_count, i
     integer(c_int64_t) :: size_value
     type(lr_operand_desc_t) :: element, converted, address
+    type(lr_operand_desc_t), allocatable :: result_elements(:)
     logical :: needs_pun
 
     call set_empty(error_msg)
@@ -277,6 +369,30 @@ contains
         end if
         source_symbol = transfer_array_source_symbol(arena, rhs%arg_indices(1), &
             context)
+        if (source_symbol > 0) then
+            if (transfer_source_is_runtime(context, source_symbol)) then
+                if (context%symbols(symbol_index)%array_rank /= 1 .or. &
+                    transfer_source_is_runtime(context, symbol_index)) then
+                    error_msg = 'runtime-source transfer requires a fixed '// &
+                                'rank-one target'
+                    return
+                end if
+                if (transfer_operand_kind(arena, rhs%arg_indices(2), context) /= &
+                    target_kind) then
+                    error_msg = 'runtime-source transfer mold must match '// &
+                                'the target kind'
+                    return
+                end if
+                if (arg_count == 2) then
+                    if (transfer_array_source_symbol(arena, rhs%arg_indices(2), &
+                                                     context) == 0) then
+                        error_msg = 'runtime-source array transfer requires an '// &
+                                    'array mold or an explicit size'
+                        return
+                    end if
+                end if
+            end if
+        end if
         source_bytes = transfer_operand_bytes(arena, rhs%arg_indices(1), &
             source_kind, context)
         target_bytes = transfer_kind_bytes(target_kind)
@@ -325,7 +441,11 @@ contains
                 return
             end if
         end if
-        if (result_count > source_count) then
+        if (source_symbol > 0) then
+            call check_transfer_source_count(context, source_symbol, result_count, &
+                arg_count == 2, error_msg)
+            if (len_trim(error_msg) > 0) return
+        else if (result_count > source_count) then
             error_msg = 'transfer source supplies fewer elements than the '// &
                 'result requires'
             return
@@ -337,6 +457,9 @@ contains
                 error_msg)) return
         end if
 
+        ! Finish the RHS before storing: a descriptor may alias the target,
+        ! including a reversed view of the same storage.
+        allocate (result_elements(result_count))
         do i = 0, result_count - 1
             call lower_transfer_source_element(arena, rhs%arg_indices(1), &
                 context, source_kind, &
@@ -370,9 +493,11 @@ contains
                 if (.not. transfer_load(context, target_kind, address, &
                     converted, error_msg)) return
             end if
+            result_elements(i + 1) = converted
+        end do
+        do i = 0, result_count - 1
             call store_array_linear_element(context, symbol_index, &
-                int(i, c_int64_t), converted, &
-                error_msg)
+                int(i, c_int64_t), result_elements(i + 1), error_msg)
             if (len_trim(error_msg) > 0) return
         end do
         call set_empty(error_msg)

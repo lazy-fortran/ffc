@@ -1,6 +1,18 @@
-program test_session_recursive_compiler
+! fo: dispatcher
+module ffc_case_test_session_recursive_compiler
+    implicit none
+    private
+    public :: case_test_session_recursive_compiler
+    interface
+        subroutine case_test_session_recursive_compiler()
+        end subroutine case_test_session_recursive_compiler
+    end interface
+end module ffc_case_test_session_recursive_compiler
+
+subroutine case_test_session_recursive_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -53,4 +65,4 @@ contains
             source, 7, '/tmp/ffc_session_named_result_test')
     end function test_named_result_variable
 
-end program test_session_recursive_compiler
+end subroutine case_test_session_recursive_compiler

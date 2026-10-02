@@ -1,8 +1,20 @@
-program test_session_stop_message_compiler
+! fo: dispatcher
+module ffc_case_test_session_stop_message_compiler
+    implicit none
+    private
+    public :: case_test_session_stop_message_compiler
+    interface
+        subroutine case_test_session_stop_message_compiler()
+        end subroutine case_test_session_stop_message_compiler
+    end interface
+end module ffc_case_test_session_stop_message_compiler
+
+subroutine case_test_session_stop_message_compiler()
     ! gfortran writes a STOP banner to stderr: "STOP <message>" for a character
     ! message (exit 0) and "STOP <n>" for an integer stop code (exit n).
     use ffc_test_support, only: expect_stderr_and_exit
     implicit none
+    save
 
     logical :: all_passed
 
@@ -61,4 +73,4 @@ contains
             '/tmp/ffc_session_error_stop_message_test')
     end function test_error_stop_message
 
-end program test_session_stop_message_compiler
+end subroutine case_test_session_stop_message_compiler

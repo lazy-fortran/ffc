@@ -1,6 +1,18 @@
-program test_concat_literal_and_deferred
+! fo: dispatcher
+module ffc_case_test_concat_literal_and_deferred
+    implicit none
+    private
+    public :: case_test_concat_literal_and_deferred
+    interface
+        subroutine case_test_concat_literal_and_deferred()
+        end subroutine case_test_concat_literal_and_deferred
+    end interface
+end module ffc_case_test_concat_literal_and_deferred
+
+subroutine case_test_concat_literal_and_deferred()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -45,4 +57,4 @@ contains
             '/tmp/ffc_literal_then_var_test')
     end function test_literal_then_var
 
-end program test_concat_literal_and_deferred
+end subroutine case_test_concat_literal_and_deferred

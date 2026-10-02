@@ -1,6 +1,18 @@
-program test_session_cli_include_paths
+! fo: dispatcher
+module ffc_case_test_session_cli_include_paths
+    implicit none
+    private
+    public :: case_test_session_cli_include_paths
+    interface
+        subroutine case_test_session_cli_include_paths()
+        end subroutine case_test_session_cli_include_paths
+    end interface
+end module ffc_case_test_session_cli_include_paths
+
+subroutine case_test_session_cli_include_paths()
     use ffc_cli_options, only: cli_options_t, parse_arguments, CLI_PATH_LEN
     implicit none
+    save
 
     call check_single_path()
     call check_repeated_paths()
@@ -74,4 +86,4 @@ contains
         end if
     end subroutine check_missing_value
 
-end program test_session_cli_include_paths
+end subroutine case_test_session_cli_include_paths

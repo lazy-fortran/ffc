@@ -1,6 +1,18 @@
-program test_session_module_parameter_kind_compiler
+! fo: dispatcher
+module ffc_case_test_session_module_parameter_kind_compiler
+    implicit none
+    private
+    public :: case_test_session_module_parameter_kind_compiler
+    interface
+        subroutine case_test_session_module_parameter_kind_compiler()
+        end subroutine case_test_session_module_parameter_kind_compiler
+    end interface
+end module ffc_case_test_session_module_parameter_kind_compiler
+
+subroutine case_test_session_module_parameter_kind_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'module math_utils_kinds'//new_line('a')// &
@@ -28,4 +40,4 @@ program test_session_module_parameter_kind_compiler
             '/tmp/ffc_session_module_parameter_kind_test')) stop 1
 
     print *, 'PASS: selected_real_kind propagates through module procedure arguments'
-end program test_session_module_parameter_kind_compiler
+end subroutine case_test_session_module_parameter_kind_compiler

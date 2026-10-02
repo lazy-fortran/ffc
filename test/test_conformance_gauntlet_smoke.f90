@@ -1,6 +1,18 @@
-program test_conformance_gauntlet_smoke
+! fo: dispatcher
+module ffc_case_test_conformance_gauntlet_smoke
+    implicit none
+    private
+    public :: case_test_conformance_gauntlet_smoke
+    interface
+        subroutine case_test_conformance_gauntlet_smoke()
+        end subroutine case_test_conformance_gauntlet_smoke
+    end interface
+end module ffc_case_test_conformance_gauntlet_smoke
+
+subroutine case_test_conformance_gauntlet_smoke()
     use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
+    save
 
     integer, parameter :: RUN_TIMEOUT_SECONDS = 120
     character(len=*), parameter :: SCRIPT = &
@@ -754,4 +766,4 @@ contains
         end if
     end function is_blank_or_comment
 
-end program test_conformance_gauntlet_smoke
+end subroutine case_test_conformance_gauntlet_smoke

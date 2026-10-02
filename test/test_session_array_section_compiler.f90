@@ -1,7 +1,19 @@
-program test_session_array_section_compiler
+! fo: dispatcher
+module ffc_case_test_session_array_section_compiler
+    implicit none
+    private
+    public :: case_test_session_array_section_compiler
+    interface
+        subroutine case_test_session_array_section_compiler()
+        end subroutine case_test_session_array_section_compiler
+    end interface
+end module ffc_case_test_session_array_section_compiler
+
+subroutine case_test_session_array_section_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output, &
                                 expect_output_matches_gfortran
     implicit none
+    save
 
     logical :: all_passed
 
@@ -223,4 +235,4 @@ contains
         test_fixed_rank3_assignment_matches_gfortran = &
             expect_output_matches_gfortran(source, 'array_section_fixed_rank3')
     end function test_fixed_rank3_assignment_matches_gfortran
-end program test_session_array_section_compiler
+end subroutine case_test_session_array_section_compiler

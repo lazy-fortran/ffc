@@ -1,7 +1,19 @@
-program test_session_integer_call_real_operand_compiler
+! fo: dispatcher
+module ffc_case_test_session_integer_call_real_operand_compiler
+    implicit none
+    private
+    public :: case_test_session_integer_call_real_operand_compiler
+    interface
+        subroutine case_test_session_integer_call_real_operand_compiler()
+        end subroutine case_test_session_integer_call_real_operand_compiler
+    end interface
+end module ffc_case_test_session_integer_call_real_operand_compiler
+
+subroutine case_test_session_integer_call_real_operand_compiler()
     use ffc_test_support, only: expect_output_matches_gfortran, expect_error_contains
     use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
+    save
 
     character(len=*), parameter :: contained_source = &
         'program main'//new_line('a')// &
@@ -89,4 +101,4 @@ program test_session_integer_call_real_operand_compiler
     end if
     call remove_temp_root(root)
     print *, 'PASS: integer call operands preserve their signatures in real arithmetic'
-end program test_session_integer_call_real_operand_compiler
+end subroutine case_test_session_integer_call_real_operand_compiler

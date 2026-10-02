@@ -1,6 +1,18 @@
-program test_session_hoisted_contained_name_compiler
+! fo: dispatcher
+module ffc_case_test_session_hoisted_contained_name_compiler
+    implicit none
+    private
+    public :: case_test_session_hoisted_contained_name_compiler
+    interface
+        subroutine case_test_session_hoisted_contained_name_compiler()
+        end subroutine case_test_session_hoisted_contained_name_compiler
+    end interface
+end module ffc_case_test_session_hoisted_contained_name_compiler
+
+subroutine case_test_session_hoisted_contained_name_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== hoisted contained procedure name clash ==='
 
@@ -27,4 +39,4 @@ program test_session_hoisted_contained_name_compiler
         '/tmp/ffc_session_hoisted_contained_name_test')) stop 1
 
     print *, 'PASS: hoisted contained duplicate name compiles and runs'
-end program test_session_hoisted_contained_name_compiler
+end subroutine case_test_session_hoisted_contained_name_compiler

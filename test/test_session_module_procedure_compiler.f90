@@ -1,6 +1,18 @@
-program test_session_module_procedure_compiler
+! fo: dispatcher
+module ffc_case_test_session_module_procedure_compiler
+    implicit none
+    private
+    public :: case_test_session_module_procedure_compiler
+    interface
+        subroutine case_test_session_module_procedure_compiler()
+        end subroutine case_test_session_module_procedure_compiler
+    end interface
+end module ffc_case_test_session_module_procedure_compiler
+
+subroutine case_test_session_module_procedure_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -155,4 +167,4 @@ contains
             source, '', '/tmp/ffc_session_bare_module_test')
     end function test_bare_module_compiles_and_runs
 
-end program test_session_module_procedure_compiler
+end subroutine case_test_session_module_procedure_compiler

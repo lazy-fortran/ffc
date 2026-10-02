@@ -1,6 +1,18 @@
-program test_session_array_shift_intrinsics_compiler
+! fo: dispatcher
+module ffc_case_test_session_array_shift_intrinsics_compiler
+    implicit none
+    private
+    public :: case_test_session_array_shift_intrinsics_compiler
+    interface
+        subroutine case_test_session_array_shift_intrinsics_compiler()
+        end subroutine case_test_session_array_shift_intrinsics_compiler
+    end interface
+end module ffc_case_test_session_array_shift_intrinsics_compiler
+
+subroutine case_test_session_array_shift_intrinsics_compiler()
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -233,4 +245,4 @@ contains
             source, 'boundary', '/tmp/ffc_session_shift_badbnd_test')
     end function test_nonconformable_boundary_rejected
 
-end program test_session_array_shift_intrinsics_compiler
+end subroutine case_test_session_array_shift_intrinsics_compiler

@@ -1,4 +1,15 @@
-program test_session_alloc_rank3_component_compiler
+! fo: dispatcher
+module ffc_case_test_session_alloc_rank3_component_compiler
+    implicit none
+    private
+    public :: case_test_session_alloc_rank3_component_compiler
+    interface
+        subroutine case_test_session_alloc_rank3_component_compiler()
+        end subroutine case_test_session_alloc_rank3_component_compiler
+    end interface
+end module ffc_case_test_session_alloc_rank3_component_compiler
+
+subroutine case_test_session_alloc_rank3_component_compiler()
     ! Rank-three intrinsic allocatable components through the direct LIRIC
     ! session. The positive case is differential against a separately built
     ! gfortran executable; boundary cases pin the deliberately narrow owner
@@ -9,6 +20,7 @@ program test_session_alloc_rank3_component_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     logical :: all_passed
 
@@ -245,4 +257,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_alloc_rank3_component_compiler
+end subroutine case_test_session_alloc_rank3_component_compiler

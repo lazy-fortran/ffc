@@ -1,4 +1,15 @@
-program test_session_c_ptr_module_compiler
+! fo: dispatcher
+module ffc_case_test_session_c_ptr_module_compiler
+    implicit none
+    private
+    public :: case_test_session_c_ptr_module_compiler
+    interface
+        subroutine case_test_session_c_ptr_module_compiler()
+        end subroutine case_test_session_c_ptr_module_compiler
+    end interface
+end module ffc_case_test_session_c_ptr_module_compiler
+
+subroutine case_test_session_c_ptr_module_compiler()
     ! The ISO_C_BINDING lowering now lives in a typed descendant.  Compare one
     ! scalar/array pointer round-trip with gfortran so the move cannot silently
     ! change address, association, or shape semantics.
@@ -7,6 +18,7 @@ program test_session_c_ptr_module_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     type(compiler_frontend_options_t) :: options
     type(compiler_frontend_result_t) :: frontend_result
@@ -84,4 +96,4 @@ program test_session_c_ptr_module_compiler
     call execute_command_line('rm -f '//src//' '//ffc_exe//' '//ref_exe//' '// &
         ffc_out//' '//ref_out)
     print *, 'PASS: c_ptr module matches gfortran'
-end program test_session_c_ptr_module_compiler
+end subroutine case_test_session_c_ptr_module_compiler

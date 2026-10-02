@@ -1,4 +1,15 @@
-program test_session_namelist_module_compiler
+! fo: dispatcher
+module ffc_case_test_session_namelist_module_compiler
+    implicit none
+    private
+    public :: case_test_session_namelist_module_compiler
+    interface
+        subroutine case_test_session_namelist_module_compiler()
+        end subroutine case_test_session_namelist_module_compiler
+    end interface
+end module ffc_case_test_session_namelist_module_compiler
+
+subroutine case_test_session_namelist_module_compiler()
     ! Reduced issue #628 leaf: a fixed-length module character member is
     ! exported with its NAMELIST groups, and a same-name program group merges
     ! its additional scalar members. The witness emits no stdout, so its
@@ -8,6 +19,7 @@ program test_session_namelist_module_compiler
     ! list-directed character-write and implicit-name paths.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'module global'//new_line('a')// &
@@ -39,4 +51,4 @@ program test_session_namelist_module_compiler
 
     if (.not. expect_output(source, '', '/tmp/ffc_namelist_module_scalar')) &
         stop 1
-end program test_session_namelist_module_compiler
+end subroutine case_test_session_namelist_module_compiler

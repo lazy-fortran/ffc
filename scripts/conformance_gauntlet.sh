@@ -49,6 +49,7 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib_conformance.sh"
+source "$SCRIPT_DIR/lib_conformance_oracles.sh"
 source "$SCRIPT_DIR/lib_expected_manifest.sh"
 source "$SCRIPT_DIR/lib_conformance_observation.sh"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
@@ -716,7 +717,7 @@ reference_cache_key() {
             "$CORPUS_REVISION" "$CORPUS_TREE"
         printf 'source:%s\n' "$CASE_SOURCE_SHA256"
         printf 'dependency_closure:%s\n' "$(case_dependency_closure_sha256)"
-        printf 'stdin:/dev/null\ncwd:empty-sandbox\n'
+        printf 'stdin_sha256:%s\ncwd:empty-sandbox\n' "$CASE_STDIN_SHA256"
     } | sha256sum | cut -d ' ' -f 1
 }
 
@@ -822,6 +823,8 @@ HARNESS_SHA256=$(digest_paths \
     "$SCRIPT_DIR/lib_conformance_observation.sh" \
     "$SCRIPT_DIR/conformance_action.py" \
     "$SCRIPT_DIR/conformance_source_snapshot.py" \
+    "$SCRIPT_DIR/lib_conformance_oracles.sh" \
+    "$PROJECT_DIR/test/conformance/oracles" \
     "$SCRIPT_DIR/conformance_observation.py")
 RUNTIME_ABI_SHA256=$(digest_paths \
     "$PROJECT_DIR/docs/RUNTIME_ABI.md" "$PROJECT_DIR/runtime" \
@@ -1243,6 +1246,7 @@ run_case_loop() {
     ref_out=""
     initialize_case_provenance "$full_path"
     full_path="$CASE_SOURCE_PATH"
+    initialize_case_oracle
 
     if check_xfail "$SKIP_LOOKUP" "$rel_path"; then
         CASE_ACTION="exclude"
@@ -1593,7 +1597,7 @@ run_case_loop() {
     fi
 
     # Step 3: run ffc binary
-    run_capture "$ffc_exe" "$ffc_out" "$TIMEOUT" ffc_run
+    run_capture "$ffc_exe" "$ffc_out" "$TIMEOUT" ffc_run "$CASE_STDIN_FILE"
     ffc_exit=$?
     CASE_FFC_RUN_ACTION="executed"
     CASE_FFC_RUN_EXIT=$ffc_exit
@@ -1606,7 +1610,8 @@ run_case_loop() {
     # (126, 127), or a signal (>=128). Lazy suites have no reference, so any
     # nonzero exit stays a failure.
     if [ "$ffc_exit" -ne 0 ] && { [ "$ffc_exit" -ge 126 ] || \
-        [ "$ffc_exit" -eq 124 ] || is_lazy_suite; }; then
+        [ "$ffc_exit" -eq 124 ] || \
+        { is_lazy_suite && [ -z "$CASE_REFERENCE_SOURCE" ]; }; }; then
         if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
             status="XFAIL"
             note="listed in xfail manifest (runtime failure)"
@@ -1627,7 +1632,7 @@ run_case_loop() {
     fi
 
     # Step 4: lazy suite, ffc succeeded and ran, no gfortran reference.
-    if is_lazy_suite; then
+    if is_lazy_suite && [ -z "$CASE_REFERENCE_SOURCE" ]; then
         if check_xfail "$XFAIL_LOOKUP" "$rel_path"; then
             status="XPASS"
             note="listed in xfail manifest but ffc ran successfully"
@@ -1641,6 +1646,12 @@ run_case_loop() {
         write_result_record "$rel_path" "$status" "$ffc_exit" "$ref_exit" \
             "$note" "$warning_expectation"
         continue
+    fi
+
+    if [ -n "$CASE_REFERENCE_SOURCE" ]; then
+        ref_extra+=(-x f95)
+        CASE_REF_FLAGS=$(canonical_flags '-w -J @private-module-dir' \
+            "${ref_extra[@]}")
     fi
 
     # Step 5: standard suite, compile with gfortran reference. Prerequisite
@@ -1672,7 +1683,8 @@ run_case_loop() {
     fi
 
     if [ "$ref_cached" -eq 0 ]; then
-        if compile_with_gfortran "$full_path" "$ref_exe" "${ref_extra[@]}"; then
+        if compile_with_gfortran "${CASE_REFERENCE_SOURCE:-$full_path}" \
+                "$ref_exe" "${ref_extra[@]}"; then
             ref_compile_status=0
             ref_exit=0
             set_last_action_evidence CASE_REF_COMPILE executed 0
@@ -1719,7 +1731,7 @@ run_case_loop() {
 
     # Step 7: run gfortran reference
     if [ "$ref_cached" -eq 0 ]; then
-        run_capture "$ref_exe" "$ref_out" "$TIMEOUT" ref_run
+        run_capture "$ref_exe" "$ref_out" "$TIMEOUT" ref_run "$CASE_STDIN_FILE"
         ref_exit=$?
         CASE_REF_RUN_ACTION="executed"
         CASE_REF_RUN_EXIT=$ref_exit
@@ -1759,10 +1771,12 @@ run_case_loop() {
     if [ "$ref_cached" -eq 1 ] && [ -z "$noref_kind" ] && \
         ! compare_outputs "$ffc_out" "$ref_out" "$ffc_exit" "$ref_exit"; then
         reference_cache_discard "$ref_cache_entry"
+        REF_CACHE_HITS=$((REF_CACHE_HITS - 1))
         ref_cached=0
-        if compile_with_gfortran "$full_path" "$ref_exe" "${ref_extra[@]}"; then
+        if compile_with_gfortran "${CASE_REFERENCE_SOURCE:-$full_path}" \
+                "$ref_exe" "${ref_extra[@]}"; then
             set_last_action_evidence CASE_REF_COMPILE executed 0
-            run_capture "$ref_exe" "$ref_out" "$TIMEOUT" ref_run
+            run_capture "$ref_exe" "$ref_out" "$TIMEOUT" ref_run "$CASE_STDIN_FILE"
             ref_exit=$?
             CASE_REF_RUN_ACTION="executed"
             CASE_REF_RUN_EXIT=$ref_exit

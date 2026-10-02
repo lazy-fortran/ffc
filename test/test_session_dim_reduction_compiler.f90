@@ -1,4 +1,15 @@
-program test_session_dim_reduction_compiler
+! fo: dispatcher
+module ffc_case_test_session_dim_reduction_compiler
+    implicit none
+    private
+    public :: case_test_session_dim_reduction_compiler
+    interface
+        subroutine case_test_session_dim_reduction_compiler()
+        end subroutine case_test_session_dim_reduction_compiler
+    end interface
+end module ffc_case_test_session_dim_reduction_compiler
+
+subroutine case_test_session_dim_reduction_compiler()
     ! Whole-array reductions along one dimension of a rank-2 source into a
     ! rank-1 target: sum/product over a stored numeric array, and count/any/all
     ! over a stored logical mask or an elementwise relational comparison. Every
@@ -7,6 +18,7 @@ program test_session_dim_reduction_compiler
     ! match gfortran list-directed formatting.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -85,4 +97,4 @@ contains
             '/tmp/ffc_dim_reduce_reshape_shape')
     end function test_reshape_shape_of
 
-end program test_session_dim_reduction_compiler
+end subroutine case_test_session_dim_reduction_compiler

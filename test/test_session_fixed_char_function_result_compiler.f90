@@ -1,4 +1,15 @@
-program test_session_fixed_char_function_result_compiler
+! fo: dispatcher
+module ffc_case_test_session_fixed_char_function_result_compiler
+    implicit none
+    private
+    public :: case_test_session_fixed_char_function_result_compiler
+    interface
+        subroutine case_test_session_fixed_char_function_result_compiler()
+        end subroutine case_test_session_fixed_char_function_result_compiler
+    end interface
+end module ffc_case_test_session_fixed_char_function_result_compiler
+
+subroutine case_test_session_fixed_char_function_result_compiler()
     ! #410: a fixed-length CHARACTER function result (character(len=N) :: s)
     ! returns exactly its declared length N. A shorter value pads with blanks,
     ! a longer one truncates, embedded blanks survive, and LEN of the result is
@@ -11,6 +22,7 @@ program test_session_fixed_char_function_result_compiler
         compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     implicit none
+    save
 
     logical :: all_passed
 
@@ -199,4 +211,4 @@ contains
         lower_source = .true.
     end function lower_source
 
-end program test_session_fixed_char_function_result_compiler
+end subroutine case_test_session_fixed_char_function_result_compiler

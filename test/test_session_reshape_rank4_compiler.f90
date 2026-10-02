@@ -1,6 +1,18 @@
-program test_session_reshape_rank4_compiler
+! fo: dispatcher
+module ffc_case_test_session_reshape_rank4_compiler
+    implicit none
+    private
+    public :: case_test_session_reshape_rank4_compiler
+    interface
+        subroutine case_test_session_reshape_rank4_compiler()
+        end subroutine case_test_session_reshape_rank4_compiler
+    end interface
+end module ffc_case_test_session_reshape_rank4_compiler
+
+subroutine case_test_session_reshape_rank4_compiler()
     use ffc_test_support, only: expect_output, expect_output_matches_gfortran
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -57,4 +69,4 @@ program test_session_reshape_rank4_compiler
     end if
     print *, 'PASS: rank-4 RESHAPE preserves order and cyclic padding'
 
-end program test_session_reshape_rank4_compiler
+end subroutine case_test_session_reshape_rank4_compiler

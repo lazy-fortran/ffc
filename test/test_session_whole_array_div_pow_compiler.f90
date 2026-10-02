@@ -1,6 +1,18 @@
-program test_session_whole_array_div_pow_compiler
+! fo: dispatcher
+module ffc_case_test_session_whole_array_div_pow_compiler
+    implicit none
+    private
+    public :: case_test_session_whole_array_div_pow_compiler
+    interface
+        subroutine case_test_session_whole_array_div_pow_compiler()
+        end subroutine case_test_session_whole_array_div_pow_compiler
+    end interface
+end module ffc_case_test_session_whole_array_div_pow_compiler
+
+subroutine case_test_session_whole_array_div_pow_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session whole-array division/power compiler test ==='
     if (.not. test_integer_whole_array_division()) stop 1
@@ -87,4 +99,4 @@ contains
             //new_line('a'), '/tmp/ffc_wa_scalar_call_test')
     end function test_scalar_call_broadcast
 
-end program test_session_whole_array_div_pow_compiler
+end subroutine case_test_session_whole_array_div_pow_compiler

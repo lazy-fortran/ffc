@@ -1,6 +1,18 @@
-program test_session_assumed_shape_rank2_runtime
+! fo: dispatcher
+module ffc_case_test_session_assumed_shape_rank2_runtime_compiler
+    implicit none
+    private
+    public :: case_test_session_assumed_shape_rank2_runtime_compiler
+    interface
+        subroutine case_test_session_assumed_shape_rank2_runtime_compiler()
+        end subroutine case_test_session_assumed_shape_rank2_runtime_compiler
+    end interface
+end module ffc_case_test_session_assumed_shape_rank2_runtime_compiler
+
+subroutine case_test_session_assumed_shape_rank2_runtime_compiler()
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -190,4 +202,4 @@ contains
             '/tmp/ffc_session_assumed_shape_rank_mismatch')
     end function test_rank1_actual_to_rank2_dummy_rejected
 
-end program test_session_assumed_shape_rank2_runtime
+end subroutine case_test_session_assumed_shape_rank2_runtime_compiler

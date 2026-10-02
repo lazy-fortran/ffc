@@ -1,4 +1,15 @@
-program test_session_array_shape_module_compiler
+! fo: dispatcher
+module ffc_case_test_session_array_shape_module_compiler
+    implicit none
+    private
+    public :: case_test_session_array_shape_module_compiler
+    interface
+        subroutine case_test_session_array_shape_module_compiler()
+        end subroutine case_test_session_array_shape_module_compiler
+    end interface
+end module ffc_case_test_session_array_shape_module_compiler
+
+subroutine case_test_session_array_shape_module_compiler()
     ! The array-shape classifier is a typed descendant of the lowering
     ! module.  Keep one differential oracle over both assumed-shape and
     ! assumed-size dummies so the extraction cannot silently alter ABI shape.
@@ -7,6 +18,7 @@ program test_session_array_shape_module_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     logical :: all_passed
 
@@ -107,4 +119,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_array_shape_module_compiler
+end subroutine case_test_session_array_shape_module_compiler

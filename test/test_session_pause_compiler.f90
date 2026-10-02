@@ -1,9 +1,21 @@
-program test_session_pause_compiler
+! fo: dispatcher
+module ffc_case_test_session_pause_compiler
+    implicit none
+    private
+    public :: case_test_session_pause_compiler
+    interface
+        subroutine case_test_session_pause_compiler()
+        end subroutine case_test_session_pause_compiler
+    end interface
+end module ffc_case_test_session_pause_compiler
+
+subroutine case_test_session_pause_compiler()
     ! #280: PAUSE writes a banner to stderr and waits on stdin. With no input
     ! (end-of-file) the job terminates with exit 0, suppressing later output,
     ! matching gfortran. Run each case with stdin from /dev/null.
     use ffc_test_support, only: expect_eof_stderr_and_exit
     implicit none
+    save
     logical :: all_passed
     character(len=*), parameter :: resume_line = &
         'To resume execution, type go.  Other input will terminate the job.'
@@ -63,4 +75,4 @@ contains
             ' before'//new_line('a'), 0, '/tmp/ffc_pause_order_test')
     end function test_pause_terminates_before_later_output
 
-end program test_session_pause_compiler
+end subroutine case_test_session_pause_compiler

@@ -1,6 +1,18 @@
-program test_session_external_dummy_callback_compiler
+! fo: dispatcher
+module ffc_case_test_session_external_dummy_callback_compiler
+    implicit none
+    private
+    public :: case_test_session_external_dummy_callback_compiler
+    interface
+        subroutine case_test_session_external_dummy_callback_compiler()
+        end subroutine case_test_session_external_dummy_callback_compiler
+    end interface
+end module ffc_case_test_session_external_dummy_callback_compiler
+
+subroutine case_test_session_external_dummy_callback_compiler()
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
 
     print *, '=== EXTERNAL-statement dummy procedure callback ==='
 
@@ -28,4 +40,4 @@ program test_session_external_dummy_callback_compiler
         'external_dummy_callback')) stop 1
 
     print *, 'PASS: EXTERNAL dummy callback matches gfortran'
-end program test_session_external_dummy_callback_compiler
+end subroutine case_test_session_external_dummy_callback_compiler

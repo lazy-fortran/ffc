@@ -1,4 +1,15 @@
-program test_conformance_flake_detection
+! fo: dispatcher
+module ffc_case_test_conformance_flake_detection
+    implicit none
+    private
+    public :: case_test_conformance_flake_detection
+    interface
+        subroutine case_test_conformance_flake_detection()
+        end subroutine case_test_conformance_flake_detection
+    end interface
+end module ffc_case_test_conformance_flake_detection
+
+subroutine case_test_conformance_flake_detection()
     ! A single conformance run cannot tell a stable result from a case that
     ! flips between runs (ffc #599). These checks drive the gauntlet with a
     ! compiler wrapper that alternates between compiling and failing, so the
@@ -6,6 +17,7 @@ program test_conformance_flake_detection
     ! the merged report to record it as FLAKY instead of taking one result.
     use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
+    save
 
     character(len=*), parameter :: SCRIPT = 'scripts/conformance_gauntlet.sh'
     character(len=*), parameter :: CASE_FILE = 'api_pipeline_minimal_program.f90'
@@ -144,4 +156,4 @@ contains
         close (unit_number)
     end function file_contains_quiet
 
-end program test_conformance_flake_detection
+end subroutine case_test_conformance_flake_detection

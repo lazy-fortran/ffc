@@ -99,6 +99,10 @@ contains
         end if
 
         if (.not. allocated(node%name)) return
+        if (same_name(node%name, 'merge')) then
+            vk = real_value_kind_of(merge_value_kind(arena, node, context))
+            return
+        end if
 
         if (same_name(node%name, 'transfer') .and. allocated(node%arg_indices)) then
             if (size(node%arg_indices) == 2) then

@@ -1,4 +1,15 @@
-program test_session_reject_result_01_compiler
+! fo: dispatcher
+module ffc_case_test_session_reject_result_01_compiler
+    implicit none
+    private
+    public :: case_test_session_reject_result_01_compiler
+    interface
+        subroutine case_test_session_reject_result_01_compiler()
+        end subroutine case_test_session_reject_result_01_compiler
+    end interface
+end module ffc_case_test_session_reject_result_01_compiler
+
+subroutine case_test_session_reject_result_01_compiler()
     ! Function-result and ENTRY rules (#379). Each invalid form below is taken
     ! from the gfortran.dg fixtures entry_15.f90, entry_dummy_ref_2.f90,
     ! func_assign.f90, func_result_7.f90, pr39695_2.f90 and pr39695_3.f90 and
@@ -6,6 +17,7 @@ program test_session_reject_result_01_compiler
     ! still compile and run.
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -213,4 +225,4 @@ contains
             source, 9, '/tmp/ffc_reject_result_local_shadow_ok')
     end function test_local_named_like_procedure_accepted
 
-end program test_session_reject_result_01_compiler
+end subroutine case_test_session_reject_result_01_compiler

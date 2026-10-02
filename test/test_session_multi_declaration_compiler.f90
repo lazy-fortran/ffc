@@ -1,6 +1,18 @@
-program test_session_multi_declaration_compiler
+! fo: dispatcher
+module ffc_case_test_session_multi_declaration_compiler
+    implicit none
+    private
+    public :: case_test_session_multi_declaration_compiler
+    interface
+        subroutine case_test_session_multi_declaration_compiler()
+        end subroutine case_test_session_multi_declaration_compiler
+    end interface
+end module ffc_case_test_session_multi_declaration_compiler
+
+subroutine case_test_session_multi_declaration_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -98,4 +110,4 @@ contains
             '/tmp/ffc_array_dummy_test')
     end function test_array_dummy_arguments
 
-end program test_session_multi_declaration_compiler
+end subroutine case_test_session_multi_declaration_compiler

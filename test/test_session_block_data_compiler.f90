@@ -1,6 +1,18 @@
-program test_session_block_data_compiler
+! fo: dispatcher
+module ffc_case_test_session_block_data_compiler
+    implicit none
+    private
+    public :: case_test_session_block_data_compiler
+    interface
+        subroutine case_test_session_block_data_compiler()
+        end subroutine case_test_session_block_data_compiler
+    end interface
+end module ffc_case_test_session_block_data_compiler
+
+subroutine case_test_session_block_data_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -276,4 +288,4 @@ contains
             source, expected, '/tmp/ffc_session_block_data_element')
     end function test_array_element_data_statement
 
-end program test_session_block_data_compiler
+end subroutine case_test_session_block_data_compiler

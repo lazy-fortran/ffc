@@ -1,3 +1,4 @@
+! fo: dispatcher
 ! Issue #565: ffc links its runtime into every executable it emits.
 !
 ! Behavioral oracle for the delivery decision. The four issues that move
@@ -24,7 +25,17 @@
 !      and then dies at run time.
 !   5. The embedded runtime source is byte-identical to runtime/ffc_runtime.c,
 !      so the compiler and the CMake-packaged archives cannot drift apart.
-program test_runtime_link_compiler
+module ffc_case_test_runtime_link_compiler
+    implicit none
+    private
+    public :: case_test_runtime_link_compiler
+    interface
+        subroutine case_test_runtime_link_compiler()
+        end subroutine case_test_runtime_link_compiler
+    end interface
+end module ffc_case_test_runtime_link_compiler
+
+subroutine case_test_runtime_link_compiler()
     use ffc_runtime_link, only: ffc_runtime_link_input, FFC_RUNTIME_SYMBOLS
     use ffc_runtime_source, only: ffc_runtime_source_text
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
@@ -33,6 +44,7 @@ program test_runtime_link_compiler
         finish_and_emit_exe_objects
     use ffc_test_support, only: compile_to_exe
     implicit none
+    save
 
     character(len=*), parameter :: WORK = '/tmp/ffc_runtime_link_565'
     integer :: failures
@@ -357,4 +369,4 @@ contains
         end do
     end subroutine check_emitted_executable_carries_runtime
 
-end program test_runtime_link_compiler
+end subroutine case_test_runtime_link_compiler

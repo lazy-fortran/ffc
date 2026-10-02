@@ -1,6 +1,18 @@
-program test_session_interface_external_call_compiler
+! fo: dispatcher
+module ffc_case_test_session_interface_external_call_compiler
+    implicit none
+    private
+    public :: case_test_session_interface_external_call_compiler
+    interface
+        subroutine case_test_session_interface_external_call_compiler()
+        end subroutine case_test_session_interface_external_call_compiler
+    end interface
+end module ffc_case_test_session_interface_external_call_compiler
+
+subroutine case_test_session_interface_external_call_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     print *, '=== external function call through an explicit interface ==='
 
@@ -77,4 +89,4 @@ program test_session_interface_external_call_compiler
         '/tmp/ffc_session_interface_unused_body_test')) stop 1
 
     print *, 'PASS: external functions called through explicit interfaces'
-end program test_session_interface_external_call_compiler
+end subroutine case_test_session_interface_external_call_compiler

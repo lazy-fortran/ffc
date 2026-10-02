@@ -1,4 +1,15 @@
-program test_session_command_argument_compiler
+! fo: dispatcher
+module ffc_case_test_session_command_argument_compiler
+    implicit none
+    private
+    public :: case_test_session_command_argument_compiler
+    interface
+        subroutine case_test_session_command_argument_compiler()
+        end subroutine case_test_session_command_argument_compiler
+    end interface
+end module ffc_case_test_session_command_argument_compiler
+
+subroutine case_test_session_command_argument_compiler()
     ! command_argument_count() and get_command_argument(i, value). The
     ! compiled binaries are invoked with arguments to check the runtime
     ! behaviour against gfortran.
@@ -7,6 +18,7 @@ program test_session_command_argument_compiler
         compile_frontend_from_string, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     logical :: all_passed
 
@@ -142,4 +154,4 @@ contains
         file_first_line_is = line == expected
     end function file_first_line_is
 
-end program test_session_command_argument_compiler
+end subroutine case_test_session_command_argument_compiler

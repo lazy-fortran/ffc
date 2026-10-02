@@ -1,9 +1,21 @@
-program test_session_allocate_source_expression_rank234_compiler
+! fo: dispatcher
+module ffc_case_e768d7228655406e1c7f15f8
+    implicit none
+    private
+    public :: case_test_session_allocate_source_expression_rank234_compiler
+    interface
+        subroutine case_test_session_allocate_source_expression_rank234_compiler()
+        end subroutine case_test_session_allocate_source_expression_rank234_compiler
+    end interface
+end module ffc_case_e768d7228655406e1c7f15f8
+
+subroutine case_test_session_allocate_source_expression_rank234_compiler()
     ! ALLOCATE(SOURCE=) from fixed-shape rank-2, rank-3, and rank-4
     ! expressions.  The checks in each generated program are independent of
     ! the compiler-under-test output comparison.
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
 
     logical :: all_passed
 
@@ -80,4 +92,4 @@ contains
             'alloc_source_expr_rank4')
     end function test_rank4
 
-end program test_session_allocate_source_expression_rank234_compiler
+end subroutine case_test_session_allocate_source_expression_rank234_compiler

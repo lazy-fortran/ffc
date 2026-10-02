@@ -1,4 +1,15 @@
-program test_session_allocatable_rank3_compiler
+! fo: dispatcher
+module ffc_case_test_session_allocatable_rank3_compiler
+    implicit none
+    private
+    public :: case_test_session_allocatable_rank3_compiler
+    interface
+        subroutine case_test_session_allocatable_rank3_compiler()
+        end subroutine case_test_session_allocatable_rank3_compiler
+    end interface
+end module ffc_case_test_session_allocatable_rank3_compiler
+
+subroutine case_test_session_allocatable_rank3_compiler()
     ! Rank-three intrinsic allocatable owners through the direct LIRIC session.
     ! Positive behavior is compared with an independently compiled gfortran
     ! executable; negative cases pin the deliberately narrow owner contract.
@@ -8,6 +19,7 @@ program test_session_allocatable_rank3_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     logical :: all_passed
 
@@ -18,7 +30,7 @@ program test_session_allocatable_rank3_compiler
     if (.not. test_rank5_rejected()) all_passed = .false.
     if (.not. test_derived_component_rank5_rejected()) all_passed = .false.
     if (.not. test_unsupported_kind_rejected()) all_passed = .false.
-    if (.not. test_pointer_rejected()) all_passed = .false.
+    if (.not. test_pointer_lowers()) all_passed = .false.
     if (.not. test_target_rejected()) all_passed = .false.
     if (.not. test_alias_rejected()) all_passed = .false.
     if (.not. all_passed) stop 1
@@ -154,16 +166,22 @@ contains
             '/tmp/ffc_alloc_rank3_kind_reject')
     end function test_unsupported_kind_rejected
 
-    logical function test_pointer_rejected()
+    logical function test_pointer_lowers()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  integer, target :: values(2,2,2,2)'//new_line('a')// &
             '  integer, pointer :: a(:,:,:,:)'//new_line('a')// &
+            '  values = 3'//new_line('a')// &
+            '  a => values'//new_line('a')// &
+            '  a(2,2,2,2) = 9'//new_line('a')// &
+            '  print *, size(a), a(1,1,1,1), values(2,2,2,2)'//new_line('a')// &
+            '  nullify(a)'//new_line('a')// &
+            '  print *, associated(a)'//new_line('a')// &
             'end program main'
 
-        test_pointer_rejected = expect_error_contains(source, &
-            'supports rank-1, rank-2, and rank-3 fixed-size integer, real, logical, and complex pointer/target arrays only', &
-            '/tmp/ffc_alloc_rank3_pointer_reject')
-    end function test_pointer_rejected
+        test_pointer_lowers = matches_gfortran(source, 'pointer_rank4')
+    end function test_pointer_lowers
 
     logical function test_target_rejected()
         character(len=*), parameter :: source = &
@@ -172,7 +190,8 @@ contains
             'end program main'
 
         test_target_rejected = expect_error_contains(source, &
-            'supports rank-1, rank-2, and rank-3 fixed-size integer, real, logical, and complex pointer/target arrays only', &
+            'supports rank-1 through rank-4 fixed-size integer, real, logical, '// &
+            'and complex pointer/target arrays only', &
             '/tmp/ffc_alloc_rank3_target_reject')
     end function test_target_rejected
 
@@ -258,4 +277,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_allocatable_rank3_compiler
+end subroutine case_test_session_allocatable_rank3_compiler

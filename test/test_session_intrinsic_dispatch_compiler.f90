@@ -1,8 +1,20 @@
-program test_session_intrinsic_dispatch_compiler
+! fo: dispatcher
+module ffc_case_test_session_intrinsic_dispatch_compiler
+    implicit none
+    private
+    public :: case_test_session_intrinsic_dispatch_compiler
+    interface
+        subroutine case_test_session_intrinsic_dispatch_compiler()
+        end subroutine case_test_session_intrinsic_dispatch_compiler
+    end interface
+end module ffc_case_test_session_intrinsic_dispatch_compiler
+
+subroutine case_test_session_intrinsic_dispatch_compiler()
     !! Independent GNU-output oracle for scalar intrinsic result kinds (#453).
     use ffc_test_support, only: expect_error_contains, expect_exit_status, &
         expect_output
     implicit none
+    save
     logical :: ok
 
     ok = .true.
@@ -252,4 +264,4 @@ contains
             '/tmp/ffc_probe_aimag')
     end function test_aimag_keeps_component_width
 
-end program test_session_intrinsic_dispatch_compiler
+end subroutine case_test_session_intrinsic_dispatch_compiler

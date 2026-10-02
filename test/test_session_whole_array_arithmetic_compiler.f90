@@ -1,6 +1,18 @@
-program test_session_whole_array_arithmetic_compiler
+! fo: dispatcher
+module ffc_case_test_session_whole_array_arithmetic_compiler
+    implicit none
+    private
+    public :: case_test_session_whole_array_arithmetic_compiler
+    interface
+        subroutine case_test_session_whole_array_arithmetic_compiler()
+        end subroutine case_test_session_whole_array_arithmetic_compiler
+    end interface
+end module ffc_case_test_session_whole_array_arithmetic_compiler
+
+subroutine case_test_session_whole_array_arithmetic_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session whole-array arithmetic compiler test ==='
     if (.not. test_rank2_whole_array_arithmetic()) stop 1
@@ -34,4 +46,4 @@ contains
             '/tmp/ffc_session_whole_array_arithmetic_test')
     end function test_rank2_whole_array_arithmetic
 
-end program test_session_whole_array_arithmetic_compiler
+end subroutine case_test_session_whole_array_arithmetic_compiler

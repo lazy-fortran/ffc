@@ -1,6 +1,18 @@
-program test_session_file_unit_io
+! fo: dispatcher
+module ffc_case_test_session_file_unit_io_compiler
+    implicit none
+    private
+    public :: case_test_session_file_unit_io_compiler
+    interface
+        subroutine case_test_session_file_unit_io_compiler()
+        end subroutine case_test_session_file_unit_io_compiler
+    end interface
+end module ffc_case_test_session_file_unit_io_compiler
+
+subroutine case_test_session_file_unit_io_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -80,4 +92,4 @@ contains
             '/tmp/ffc_session_file_unit_implicit')
     end function test_implicit_unit_connection
 
-end program test_session_file_unit_io
+end subroutine case_test_session_file_unit_io_compiler

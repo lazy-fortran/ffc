@@ -1,6 +1,18 @@
-program test_session_associate_selectors
+! fo: dispatcher
+module ffc_case_test_session_associate_selectors_compiler
+    implicit none
+    private
+    public :: case_test_session_associate_selectors_compiler
+    interface
+        subroutine case_test_session_associate_selectors_compiler()
+        end subroutine case_test_session_associate_selectors_compiler
+    end interface
+end module ffc_case_test_session_associate_selectors_compiler
+
+subroutine case_test_session_associate_selectors_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -194,4 +206,4 @@ contains
             source, 42, '/var/tmp/ert/ffc_session_nested_associate_dummy')
     end function test_nested_associate_local_dummy
 
-end program test_session_associate_selectors
+end subroutine case_test_session_associate_selectors_compiler

@@ -1,4 +1,15 @@
-program test_array_descriptor_layout
+! fo: dispatcher
+module ffc_case_test_array_descriptor_layout
+    implicit none
+    private
+    public :: case_test_array_descriptor_layout
+    interface
+        subroutine case_test_array_descriptor_layout()
+        end subroutine case_test_array_descriptor_layout
+    end interface
+end module ffc_case_test_array_descriptor_layout
+
+subroutine case_test_array_descriptor_layout()
     use ffc_array_descriptor, only: array_descriptor_t, array_dimension_t, &
         ARRAY_DESCRIPTOR_MAX_RANK, ARRAY_DESCRIPTOR_BASE_OFFSET, &
         ARRAY_DESCRIPTOR_ELEMENT_SIZE_OFFSET, &
@@ -24,6 +35,7 @@ program test_array_descriptor_layout
     use, intrinsic :: iso_c_binding, only: c_associated, c_int32_t, c_int64_t, &
         c_intptr_t, c_loc, c_null_ptr, c_ptr, c_sizeof
     implicit none
+    save
 
     integer(c_int32_t), parameter :: INT32_ELEMENT_SIZE = 4_c_int32_t
 
@@ -264,4 +276,4 @@ contains
         end if
     end subroutine require
 
-end program test_array_descriptor_layout
+end subroutine case_test_array_descriptor_layout

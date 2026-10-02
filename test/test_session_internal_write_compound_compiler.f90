@@ -1,8 +1,20 @@
-program test_session_internal_write_compound_compiler
+! fo: dispatcher
+module ffc_case_test_session_internal_write_compound_compiler
+    implicit none
+    private
+    public :: case_test_session_internal_write_compound_compiler
+    interface
+        subroutine case_test_session_internal_write_compound_compiler()
+        end subroutine case_test_session_internal_write_compound_compiler
+    end interface
+end module ffc_case_test_session_internal_write_compound_compiler
+
+subroutine case_test_session_internal_write_compound_compiler()
     ! Compound literal format string in an internal write: write (buf, '(A,I0)')
     ! s, n formats one edit descriptor per value in order.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -47,4 +59,4 @@ contains
             '/tmp/ffc_iwrite_compound_ia_test')
     end function test_compound_integer_then_string
 
-end program test_session_internal_write_compound_compiler
+end subroutine case_test_session_internal_write_compound_compiler

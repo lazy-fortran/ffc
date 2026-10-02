@@ -13,8 +13,13 @@ tests, deleted features, and vendor extensions are not language-support
 claims. They stay visible as reviewed exclusions and never count as passes.
 
 Coarrays, OpenMP, OpenACC, MPI, and device backends remain outside the current
-compiler scope. [#473](https://github.com/lazy-fortran/ffc/issues/473) owns the
-F2023 delta. Fortran Synthesis is a later vertical feature chain: standard
+compiler scope. The [F2023 delta audit](docs/F2023_DELTA.md) records every
+addition listed in the J3/24-007 Introduction and its supported subset,
+atomic issue or exclusion. Its [issue index](docs/F2023_DELTA.md#atomic-issue-index)
+contains FortFront #3022–#3035 and ffc #767–#797; these implementation gaps
+remain open. [#473](https://github.com/lazy-fortran/ffc/issues/473) tracks the
+audit and split, rather than implementation of every F2023 addition.
+Fortran Synthesis is a later vertical feature chain: standard
 [#756](https://github.com/lazy-fortran/standard/issues/756), FortFront
 [#2976](https://github.com/lazy-fortran/fortfront/issues/2976), ffc
 [#632](https://github.com/lazy-fortran/ffc/issues/632), then fo

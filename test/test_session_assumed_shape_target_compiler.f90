@@ -1,6 +1,18 @@
-program test_session_assumed_shape_target
+! fo: dispatcher
+module ffc_case_test_session_assumed_shape_target_compiler
+    implicit none
+    private
+    public :: case_test_session_assumed_shape_target_compiler
+    interface
+        subroutine case_test_session_assumed_shape_target_compiler()
+        end subroutine case_test_session_assumed_shape_target_compiler
+    end interface
+end module ffc_case_test_session_assumed_shape_target_compiler
+
+subroutine case_test_session_assumed_shape_target_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     character(len=*), parameter :: target_source = &
         'PROGRAM main'//new_line('a')// &
@@ -38,4 +50,4 @@ program test_session_assumed_shape_target
     if (.not. expect_exit_status(rank2_source, 0, &
             '/tmp/ffc_session_assumed_shape_rank2')) stop 1
     print *, 'PASS: assumed-shape TARGET and rank-2 copies use descriptors'
-end program test_session_assumed_shape_target
+end subroutine case_test_session_assumed_shape_target_compiler

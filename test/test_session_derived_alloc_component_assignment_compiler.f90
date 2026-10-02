@@ -1,4 +1,15 @@
-program test_session_derived_alloc_component_assignment_compiler
+! fo: dispatcher
+module ffc_case_4c0ecdb22b27d86d1d791509
+    implicit none
+    private
+    public :: case_test_session_derived_alloc_component_assignment_compiler
+    interface
+        subroutine case_test_session_derived_alloc_component_assignment_compiler()
+        end subroutine case_test_session_derived_alloc_component_assignment_compiler
+    end interface
+end module ffc_case_4c0ecdb22b27d86d1d791509
+
+subroutine case_test_session_derived_alloc_component_assignment_compiler()
     ! Intrinsic assignment of a derived scalar deep-copies its allocatable
     ! components: after y = x the destination owns its own storage, so writing
     ! through the source afterwards leaves the destination unchanged. Covers a
@@ -7,6 +18,7 @@ program test_session_derived_alloc_component_assignment_compiler
     ! generic function result assigned into a declared variable.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -127,4 +139,4 @@ contains
             '/tmp/ffc_derived_assign_result')
     end function test_function_result_assignment
 
-end program test_session_derived_alloc_component_assignment_compiler
+end subroutine case_test_session_derived_alloc_component_assignment_compiler

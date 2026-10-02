@@ -1,10 +1,22 @@
-program test_session_allocate_mold_source
+! fo: dispatcher
+module ffc_case_test_session_allocate_mold_source_compiler
+    implicit none
+    private
+    public :: case_test_session_allocate_mold_source_compiler
+    interface
+        subroutine case_test_session_allocate_mold_source_compiler()
+        end subroutine case_test_session_allocate_mold_source_compiler
+    end interface
+end module ffc_case_test_session_allocate_mold_source_compiler
+
+subroutine case_test_session_allocate_mold_source_compiler()
     ! ALLOCATE with MOLD= and SOURCE= on intrinsic allocatable arrays (#2820).
     ! MOLD copies the source's shape (contents are undefined). SOURCE copies
     ! both shape and element values.
     use ffc_test_support, only: expect_exit_status, expect_output, &
         expect_output_matches_gfortran
     implicit none
+    save
 
     logical :: all_passed
 
@@ -175,4 +187,4 @@ contains
             new_line('a'), '/tmp/ffc_alloc_mold_source_roundtrip')
     end function test_issue_2820_roundtrip
 
-end program test_session_allocate_mold_source
+end subroutine case_test_session_allocate_mold_source_compiler

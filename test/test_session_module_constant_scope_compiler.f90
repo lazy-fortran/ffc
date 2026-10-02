@@ -1,6 +1,18 @@
-program test_session_module_constant_scope_compiler
+! fo: dispatcher
+module ffc_case_test_session_module_constant_scope_compiler
+    implicit none
+    private
+    public :: case_test_session_module_constant_scope_compiler
+    interface
+        subroutine case_test_session_module_constant_scope_compiler()
+        end subroutine case_test_session_module_constant_scope_compiler
+    end interface
+end module ffc_case_test_session_module_constant_scope_compiler
+
+subroutine case_test_session_module_constant_scope_compiler()
     use ffc_test_support, only: expect_output, expect_object_exists
     implicit none
+    save
 
     print *, '=== module named-constant host-association test ==='
 
@@ -58,4 +70,4 @@ program test_session_module_constant_scope_compiler
     print *, 'PASS: real/logical/character parameters bind in module procedure'
 
     print *, 'PASS: module named constants host-associate into procedures'
-end program test_session_module_constant_scope_compiler
+end subroutine case_test_session_module_constant_scope_compiler

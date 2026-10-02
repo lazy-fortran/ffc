@@ -1,6 +1,18 @@
-program test_session_module_char_result_compiler
+! fo: dispatcher
+module ffc_case_test_session_module_char_result_compiler
+    implicit none
+    private
+    public :: case_test_session_module_char_result_compiler
+    interface
+        subroutine case_test_session_module_char_result_compiler()
+        end subroutine case_test_session_module_char_result_compiler
+    end interface
+end module ffc_case_test_session_module_char_result_compiler
+
+subroutine case_test_session_module_char_result_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -62,4 +74,4 @@ contains
             '/tmp/ffc_session_module_runtime_char_result_test')
     end function test_module_runtime_length_char_result
 
-end program test_session_module_char_result_compiler
+end subroutine case_test_session_module_char_result_compiler

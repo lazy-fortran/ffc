@@ -1,0 +1,8 @@
+program read_statement_reference
+    implicit none
+    real(kind=8) :: x, y
+
+    read *, x
+    y = x * 2
+    print *, 'Result:', y
+end program read_statement_reference

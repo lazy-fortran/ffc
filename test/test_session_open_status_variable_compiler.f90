@@ -1,9 +1,21 @@
-program test_session_open_status_variable_compiler
+! fo: dispatcher
+module ffc_case_test_session_open_status_variable_compiler
+    implicit none
+    private
+    public :: case_test_session_open_status_variable_compiler
+    interface
+        subroutine case_test_session_open_status_variable_compiler()
+        end subroutine case_test_session_open_status_variable_compiler
+    end interface
+end module ffc_case_test_session_open_status_variable_compiler
+
+subroutine case_test_session_open_status_variable_compiler()
     ! A dynamic STATUS= value must be evaluated at runtime. FILE= makes the
     ! runtime compare the mixed-case value rather than taking the scratch
     ! temporary-file path; REPLACE must also truncate an existing file.
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -28,4 +40,4 @@ program test_session_open_status_variable_compiler
     if (.not. expect_exit_status(source, 0, &
                                  '/tmp/ffc_628_status_variable')) stop 1
     print *, 'PASS: dynamic STATUS= values reach the OPEN runtime'
-end program test_session_open_status_variable_compiler
+end subroutine case_test_session_open_status_variable_compiler

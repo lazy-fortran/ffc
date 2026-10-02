@@ -1,6 +1,18 @@
-program test_session_real8_function_compiler
+! fo: dispatcher
+module ffc_case_test_session_real8_function_compiler
+    implicit none
+    private
+    public :: case_test_session_real8_function_compiler
+    interface
+        subroutine case_test_session_real8_function_compiler()
+        end subroutine case_test_session_real8_function_compiler
+    end interface
+end module ffc_case_test_session_real8_function_compiler
+
+subroutine case_test_session_real8_function_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     ! A contained function whose result is real(8) declared via result(b) with a
     ! body declaration, called from main and from a sibling real(8) function.
@@ -32,4 +44,4 @@ program test_session_real8_function_compiler
         '/tmp/ffc_session_real8_function_test')) stop 1
 
     print *, 'PASS: real(8) contained functions lower through direct LIRIC session'
-end program test_session_real8_function_compiler
+end subroutine case_test_session_real8_function_compiler

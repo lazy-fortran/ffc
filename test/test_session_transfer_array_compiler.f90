@@ -1,4 +1,15 @@
-program test_session_transfer_array_compiler
+! fo: dispatcher
+module ffc_case_test_session_transfer_array_compiler
+    implicit none
+    private
+    public :: case_test_session_transfer_array_compiler
+    interface
+        subroutine case_test_session_transfer_array_compiler()
+        end subroutine case_test_session_transfer_array_compiler
+    end interface
+end module ffc_case_test_session_transfer_array_compiler
+
+subroutine case_test_session_transfer_array_compiler()
     ! Array-valued TRANSFER(source, mold [, size]) for intrinsic types whose
     ! elements share a byte size (integer(4)<->real(4), integer(8)<->real(8)).
     ! The bit pattern of each source element is reinterpreted as the mold's
@@ -6,6 +17,7 @@ program test_session_transfer_array_compiler
     ! the number of result elements.
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
     logical :: all_passed
 
     all_passed = .true.
@@ -132,4 +144,4 @@ contains
             source, 'transfer size', '/tmp/ffc_transfer_negsize_test')
     end function test_negative_size_rejected
 
-end program test_session_transfer_array_compiler
+end subroutine case_test_session_transfer_array_compiler

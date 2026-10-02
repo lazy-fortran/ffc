@@ -1,4 +1,15 @@
-program test_session_runtime_product_compiler
+! fo: dispatcher
+module ffc_case_test_session_runtime_product_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_product_compiler
+    interface
+        subroutine case_test_session_runtime_product_compiler()
+        end subroutine case_test_session_runtime_product_compiler
+    end interface
+end module ffc_case_test_session_runtime_product_compiler
+
+subroutine case_test_session_runtime_product_compiler()
     ! Runtime automatic and assumed-shape arrays have no compile-time extent to
     ! unroll. PRODUCT must still walk their complete contiguous storage through
     ! rank four; unsupported rank, element-kind, and DIM forms stay precise.
@@ -8,6 +19,7 @@ program test_session_runtime_product_compiler
     use ffc_test_support, only: compile_to_exe
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -277,4 +289,4 @@ contains
         ok = .true.
     end function test_refusal
 
-end program test_session_runtime_product_compiler
+end subroutine case_test_session_runtime_product_compiler

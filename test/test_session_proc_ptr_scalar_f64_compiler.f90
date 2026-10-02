@@ -1,6 +1,18 @@
-program test_session_proc_ptr_scalar_f64_compiler
+! fo: dispatcher
+module ffc_case_test_session_proc_ptr_scalar_f64_compiler
+    implicit none
+    private
+    public :: case_test_session_proc_ptr_scalar_f64_compiler
+    interface
+        subroutine case_test_session_proc_ptr_scalar_f64_compiler()
+        end subroutine case_test_session_proc_ptr_scalar_f64_compiler
+    end interface
+end module ffc_case_test_session_proc_ptr_scalar_f64_compiler
+
+subroutine case_test_session_proc_ptr_scalar_f64_compiler()
     use ffc_test_support, only: expect_error_contains, expect_output
     implicit none
+    save
     character(len=1), parameter :: nl = new_line('a')
     logical :: all_passed
 
@@ -75,4 +87,4 @@ program test_session_proc_ptr_scalar_f64_compiler
 
     if (.not. all_passed) stop 1
     print *, 'PASS: scalar real(8) procedure pointer boundary'
-end program test_session_proc_ptr_scalar_f64_compiler
+end subroutine case_test_session_proc_ptr_scalar_f64_compiler

@@ -1,6 +1,18 @@
-program test_conformance_observation_once
+! fo: dispatcher
+module ffc_case_test_conformance_observation_once
+    implicit none
+    private
+    public :: case_test_conformance_observation_once
+    interface
+        subroutine case_test_conformance_observation_once()
+        end subroutine case_test_conformance_observation_once
+    end interface
+end module ffc_case_test_conformance_observation_once
+
+subroutine case_test_conformance_observation_once()
     use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
+    save
 
     character(len=*), parameter :: GAUNTLET = &
         'scripts/conformance_gauntlet.sh'
@@ -527,4 +539,4 @@ contains
         close(unit_number)
     end function summary_string_field
 
-end program test_conformance_observation_once
+end subroutine case_test_conformance_observation_once

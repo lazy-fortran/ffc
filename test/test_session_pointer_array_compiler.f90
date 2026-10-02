@@ -1,6 +1,18 @@
-program test_session_pointer_array
+! fo: dispatcher
+module ffc_case_test_session_pointer_array_compiler
+    implicit none
+    private
+    public :: case_test_session_pointer_array_compiler
+    interface
+        subroutine case_test_session_pointer_array_compiler()
+        end subroutine case_test_session_pointer_array_compiler
+    end interface
+end module ffc_case_test_session_pointer_array_compiler
+
+subroutine case_test_session_pointer_array_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     print *, '=== direct session rank-1 pointer/target array compiler test ==='
 
@@ -83,4 +95,4 @@ program test_session_pointer_array
         '/tmp/ffc_session_pointer_array_derived_component')) stop 5
 
     print *, 'PASS: rank-1 integer/real pointer/target array, => , element access'
-end program test_session_pointer_array
+end subroutine case_test_session_pointer_array_compiler

@@ -1,4 +1,15 @@
-program test_session_do_while_gfortran_compiler
+! fo: dispatcher
+module ffc_case_test_session_do_while_gfortran_compiler
+    implicit none
+    private
+    public :: case_test_session_do_while_gfortran_compiler
+    interface
+        subroutine case_test_session_do_while_gfortran_compiler()
+        end subroutine case_test_session_do_while_gfortran_compiler
+    end interface
+end module ffc_case_test_session_do_while_gfortran_compiler
+
+subroutine case_test_session_do_while_gfortran_compiler()
     ! Independent oracle for the typed DO WHILE descendant: compile the same
     ! source with gfortran and require byte-identical list-directed output.
     use fortfront_compiler, only: compiler_frontend_options_t, &
@@ -6,6 +17,7 @@ program test_session_do_while_gfortran_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     type(compiler_frontend_options_t) :: options
     type(compiler_frontend_result_t) :: frontend_result
@@ -81,4 +93,4 @@ program test_session_do_while_gfortran_compiler
     call execute_command_line('rm -f '//src//' '//ffc_exe//' '//gfortran_exe// &
         ' '//ffc_out//' '//gfortran_out)
     print *, 'PASS: typed DO WHILE module matches gfortran'
-end program test_session_do_while_gfortran_compiler
+end subroutine case_test_session_do_while_gfortran_compiler

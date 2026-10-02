@@ -1,6 +1,18 @@
-program test_cli_version_help
+! fo: dispatcher
+module ffc_case_test_cli_version_help
+    implicit none
+    private
+    public :: case_test_cli_version_help
+    interface
+        subroutine case_test_cli_version_help()
+        end subroutine case_test_cli_version_help
+    end interface
+end module ffc_case_test_cli_version_help
+
+subroutine case_test_cli_version_help()
     use ffc_cli_options, only: cli_options_t, parse_arguments, CLI_PATH_LEN
     implicit none
+    save
 
     call check_version()
     call check_help()
@@ -125,4 +137,4 @@ contains
         end if
     end subroutine check_normal_parse
 
-end program test_cli_version_help
+end subroutine case_test_cli_version_help

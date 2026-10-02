@@ -1,6 +1,18 @@
-program test_session_pointer_scalar_kinds
+! fo: dispatcher
+module ffc_case_test_session_pointer_scalar_kinds_compiler
+    implicit none
+    private
+    public :: case_test_session_pointer_scalar_kinds_compiler
+    interface
+        subroutine case_test_session_pointer_scalar_kinds_compiler()
+        end subroutine case_test_session_pointer_scalar_kinds_compiler
+    end interface
+end module ffc_case_test_session_pointer_scalar_kinds_compiler
+
+subroutine case_test_session_pointer_scalar_kinds_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     print *, '=== direct session real/logical scalar pointer compiler test ==='
 
@@ -42,4 +54,4 @@ program test_session_pointer_scalar_kinds
         '/tmp/ffc_session_pointer_logical_test')) stop 3
 
     print *, 'PASS: real and logical scalar pointer => , deref, associated'
-end program test_session_pointer_scalar_kinds
+end subroutine case_test_session_pointer_scalar_kinds_compiler

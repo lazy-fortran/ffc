@@ -1,4 +1,15 @@
-program test_session_random_number
+! fo: dispatcher
+module ffc_case_test_session_random_number_compiler
+    implicit none
+    private
+    public :: case_test_session_random_number_compiler
+    interface
+        subroutine case_test_session_random_number_compiler()
+        end subroutine case_test_session_random_number_compiler
+    end interface
+end module ffc_case_test_session_random_number_compiler
+
+subroutine case_test_session_random_number_compiler()
     ! RANDOM_NUMBER intrinsic subroutine (#576). Before this support existed,
     ! `call random_number(x)` lowered to a call to an undeclared external
     ! symbol: the program linked and then died at load time with
@@ -7,6 +18,7 @@ program test_session_random_number
     ! lies in [0,1), successive draws differ, and the argument round-trips.
     use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -79,4 +91,4 @@ contains
             source, 0, '/tmp/ffc_random_number_corpus')
     end function test_corpus_shape_runs
 
-end program test_session_random_number
+end subroutine case_test_session_random_number_compiler

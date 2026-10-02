@@ -1,5 +1,17 @@
-program test_session_matmul_vector_compiler
+! fo: dispatcher
+module ffc_case_test_session_matmul_vector_compiler
     implicit none
+    private
+    public :: case_test_session_matmul_vector_compiler
+    interface
+        subroutine case_test_session_matmul_vector_compiler()
+        end subroutine case_test_session_matmul_vector_compiler
+    end interface
+end module ffc_case_test_session_matmul_vector_compiler
+
+subroutine case_test_session_matmul_vector_compiler()
+    implicit none
+    save
     integer :: a(3), b(3, 2), c(2), d(2, 3), e(2)
     logical :: la(3), lb(3, 2), lc(2)
 
@@ -16,4 +28,4 @@ program test_session_matmul_vector_compiler
     lb = reshape([.true., .false., .true., .false., .true., .true.], [3, 2])
     lc = matmul(la, lb)
     if (any(lc .neqv. [.true., .true.])) error stop 3
-end program test_session_matmul_vector_compiler
+end subroutine case_test_session_matmul_vector_compiler

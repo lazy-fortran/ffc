@@ -1,6 +1,18 @@
-program test_session_mask_reduction_compiler
+! fo: dispatcher
+module ffc_case_test_session_mask_reduction_compiler
+    implicit none
+    private
+    public :: case_test_session_mask_reduction_compiler
+    interface
+        subroutine case_test_session_mask_reduction_compiler()
+        end subroutine case_test_session_mask_reduction_compiler
+    end interface
+end module ffc_case_test_session_mask_reduction_compiler
+
+subroutine case_test_session_mask_reduction_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -73,4 +85,4 @@ contains
             source, ' T'//new_line('a'), '/tmp/ffc_any_scalar_left')
     end function test_any_scalar_on_left
 
-end program test_session_mask_reduction_compiler
+end subroutine case_test_session_mask_reduction_compiler

@@ -1,10 +1,22 @@
-program test_session_keyword_arguments_compiler
+! fo: dispatcher
+module ffc_case_test_session_keyword_arguments_compiler
+    implicit none
+    private
+    public :: case_test_session_keyword_arguments_compiler
+    interface
+        subroutine case_test_session_keyword_arguments_compiler()
+        end subroutine case_test_session_keyword_arguments_compiler
+    end interface
+end module ffc_case_test_session_keyword_arguments_compiler
+
+subroutine case_test_session_keyword_arguments_compiler()
     ! #408: keyword actual arguments are mapped onto the callee's declared
     ! dummy names, so the caller may reorder or omit optional actuals. The
     ! oracle is the compiled program's exit status (and the compiler's
     ! diagnostic for invalid keyword usage).
     use ffc_test_support, only: expect_exit_status, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -259,4 +271,4 @@ contains
         ok = .true.
     end function write_file
 
-end program test_session_keyword_arguments_compiler
+end subroutine case_test_session_keyword_arguments_compiler

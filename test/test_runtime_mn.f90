@@ -1,6 +1,18 @@
-program test_runtime_mn
+! fo: dispatcher
+module ffc_case_test_runtime_mn
+    implicit none
+    private
+    public :: case_test_runtime_mn
+    interface
+        subroutine case_test_runtime_mn()
+        end subroutine case_test_runtime_mn
+    end interface
+end module ffc_case_test_runtime_mn
+
+subroutine case_test_runtime_mn()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
     logical :: ok
 
     ! Use runtime M and N (passed from command-line or computed)
@@ -23,4 +35,4 @@ program test_runtime_mn
         stop 1
     end if
 
-end program test_runtime_mn
+end subroutine case_test_runtime_mn

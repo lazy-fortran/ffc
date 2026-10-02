@@ -1,10 +1,22 @@
-program test_session_select_rank_trailing_compiler
+! fo: dispatcher
+module ffc_case_test_session_select_rank_trailing_compiler
+    implicit none
+    private
+    public :: case_test_session_select_rank_trailing_compiler
+    interface
+        subroutine case_test_session_select_rank_trailing_compiler()
+        end subroutine case_test_session_select_rank_trailing_compiler
+    end interface
+end module ffc_case_test_session_select_rank_trailing_compiler
+
+subroutine case_test_session_select_rank_trailing_compiler()
     ! Issue #2811 / #273: an assumed-rank dummy arr(..) drives a select rank
     ! whose chosen arm sets a scalar a trailing print reads back. ffc resolves
     ! the dummy's rank from the caller's actual, so the construct dispatches at
     ! compile time and the trailing statement runs as a sibling.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
     character(len=*), parameter :: nl = new_line('a')
@@ -74,4 +86,4 @@ contains
             source, '           2'//nl, '/tmp/ffc_select_rank_trailing_two')
     end function test_rank_two_actual_then_print
 
-end program test_session_select_rank_trailing_compiler
+end subroutine case_test_session_select_rank_trailing_compiler

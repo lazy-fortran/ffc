@@ -1,6 +1,18 @@
-program test_session_norm2_compiler
+! fo: dispatcher
+module ffc_case_test_session_norm2_compiler
+    implicit none
+    private
+    public :: case_test_session_norm2_compiler
+    interface
+        subroutine case_test_session_norm2_compiler()
+        end subroutine case_test_session_norm2_compiler
+    end interface
+end module ffc_case_test_session_norm2_compiler
+
+subroutine case_test_session_norm2_compiler()
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -112,4 +124,4 @@ contains
             source, 'norm2', '/tmp/ffc_norm2_int')
     end function test_norm2_integer_rejected
 
-end program test_session_norm2_compiler
+end subroutine case_test_session_norm2_compiler

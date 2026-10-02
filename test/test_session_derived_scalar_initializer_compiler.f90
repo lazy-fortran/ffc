@@ -1,6 +1,18 @@
-program test_session_derived_scalar_initializer_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_scalar_initializer_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_scalar_initializer_compiler
+    interface
+        subroutine case_test_session_derived_scalar_initializer_compiler()
+        end subroutine case_test_session_derived_scalar_initializer_compiler
+    end interface
+end module ffc_case_test_session_derived_scalar_initializer_compiler
+
+subroutine case_test_session_derived_scalar_initializer_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -109,4 +121,4 @@ contains
             '/tmp/ffc_session_derived_prog_param_test')
     end function test_program_derived_parameter
 
-end program test_session_derived_scalar_initializer_compiler
+end subroutine case_test_session_derived_scalar_initializer_compiler

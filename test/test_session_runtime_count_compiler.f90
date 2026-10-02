@@ -1,4 +1,15 @@
-program test_session_runtime_count_compiler
+! fo: dispatcher
+module ffc_case_test_session_runtime_count_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_count_compiler
+    interface
+        subroutine case_test_session_runtime_count_compiler()
+        end subroutine case_test_session_runtime_count_compiler
+    end interface
+end module ffc_case_test_session_runtime_count_compiler
+
+subroutine case_test_session_runtime_count_compiler()
     ! COUNT over a runtime-shaped logical mask must walk all descriptor elements
     ! through rank four. The positive fixture is compared with an independently
     ! compiled gfortran executable; rank five, DIM, and KIND remain precise
@@ -9,6 +20,7 @@ program test_session_runtime_count_compiler
     use ffc_test_support, only: compile_to_exe
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -263,4 +275,4 @@ contains
         ok = .true.
     end function test_refusal
 
-end program test_session_runtime_count_compiler
+end subroutine case_test_session_runtime_count_compiler

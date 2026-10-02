@@ -1,4 +1,15 @@
-program test_session_allocatable_constructor
+! fo: dispatcher
+module ffc_case_test_session_allocatable_constructor_compiler
+    implicit none
+    private
+    public :: case_test_session_allocatable_constructor_compiler
+    interface
+        subroutine case_test_session_allocatable_constructor_compiler()
+        end subroutine case_test_session_allocatable_constructor_compiler
+    end interface
+end module ffc_case_test_session_allocatable_constructor_compiler
+
+subroutine case_test_session_allocatable_constructor_compiler()
     ! Auto-reallocation on array constructor assignment (#244 slice B2c).
     ! Assigns [e1, e2, ...] to an integer 1-D allocatable: frees old data,
     ! allocates fresh storage, fills in order, then reads back via element access.
@@ -8,6 +19,7 @@ program test_session_allocatable_constructor
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     logical :: all_passed
 
@@ -269,4 +281,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_allocatable_constructor
+end subroutine case_test_session_allocatable_constructor_compiler

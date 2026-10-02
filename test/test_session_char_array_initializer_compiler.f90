@@ -1,6 +1,18 @@
-program test_session_char_array_initializer_compiler
+! fo: dispatcher
+module ffc_case_test_session_char_array_initializer_compiler
+    implicit none
+    private
+    public :: case_test_session_char_array_initializer_compiler
+    interface
+        subroutine case_test_session_char_array_initializer_compiler()
+        end subroutine case_test_session_char_array_initializer_compiler
+    end interface
+end module ffc_case_test_session_char_array_initializer_compiler
+
+subroutine case_test_session_char_array_initializer_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -71,4 +83,4 @@ contains
             source, 0, '/tmp/ffc_char_arr_init_param')
     end function test_parameter_array_initializer
 
-end program test_session_char_array_initializer_compiler
+end subroutine case_test_session_char_array_initializer_compiler

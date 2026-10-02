@@ -1,4 +1,15 @@
-program test_session_runtime_array_section_multidim_compiler
+! fo: dispatcher
+module ffc_case_test_session_runtime_array_section_multidim_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_array_section_multidim_compiler
+    interface
+        subroutine case_test_session_runtime_array_section_multidim_compiler()
+        end subroutine case_test_session_runtime_array_section_multidim_compiler
+    end interface
+end module ffc_case_test_session_runtime_array_section_multidim_compiler
+
+subroutine case_test_session_runtime_array_section_multidim_compiler()
     ! The reference executable is compiled independently by gfortran.  This
     ! catches both the section trip-count and column-major coordinate mapping;
     ! a compile-only check could miss either one.
@@ -7,6 +18,7 @@ program test_session_runtime_array_section_multidim_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -100,4 +112,4 @@ contains
         ok = .true.
     end function matches_gfortran
 
-end program test_session_runtime_array_section_multidim_compiler
+end subroutine case_test_session_runtime_array_section_multidim_compiler

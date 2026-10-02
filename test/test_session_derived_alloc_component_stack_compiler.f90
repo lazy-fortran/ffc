@@ -1,4 +1,15 @@
-program test_session_derived_alloc_component_stack_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_alloc_component_stack_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_alloc_component_stack_compiler
+    interface
+        subroutine case_test_session_derived_alloc_component_stack_compiler()
+        end subroutine case_test_session_derived_alloc_component_stack_compiler
+    end interface
+end module ffc_case_test_session_derived_alloc_component_stack_compiler
+
+subroutine case_test_session_derived_alloc_component_stack_compiler()
     ! Whole-component operations on a rank-1 allocatable array component through
     ! the direct LIRIC session: assignment from an array constructor with
     ! auto-allocation, assignment from a whole plain-array variable,
@@ -6,6 +17,7 @@ program test_session_derived_alloc_component_stack_compiler
     ! comparison against a conforming array.
     use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -82,4 +94,4 @@ contains
             source, 0, '/tmp/ffc_alloc_comp_stack_mask')
     end function test_all_any_mask
 
-end program test_session_derived_alloc_component_stack_compiler
+end subroutine case_test_session_derived_alloc_component_stack_compiler

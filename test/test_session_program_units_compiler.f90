@@ -1,6 +1,18 @@
-program test_session_program_units_compiler
+! fo: dispatcher
+module ffc_case_test_session_program_units_compiler
+    implicit none
+    private
+    public :: case_test_session_program_units_compiler
+    interface
+        subroutine case_test_session_program_units_compiler()
+        end subroutine case_test_session_program_units_compiler
+    end interface
+end module ffc_case_test_session_program_units_compiler
+
+subroutine case_test_session_program_units_compiler()
     use ffc_test_support, only: expect_exit_status, expect_exe_has_symbol
     implicit none
+    save
 
     ! #275: a source file whose only units are modules (no main program) is a
     ! valid translation unit. Each module's procedures are emitted under their
@@ -122,4 +134,4 @@ contains
         ok = io_stat == 0
     end function write_file
 
-end program test_session_program_units_compiler
+end subroutine case_test_session_program_units_compiler

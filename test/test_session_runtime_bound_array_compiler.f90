@@ -1,4 +1,15 @@
-program test_session_runtime_bound_array_compiler
+! fo: dispatcher
+module ffc_case_test_session_runtime_bound_array_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_bound_array_compiler
+    interface
+        subroutine case_test_session_runtime_bound_array_compiler()
+        end subroutine case_test_session_runtime_bound_array_compiler
+    end interface
+end module ffc_case_test_session_runtime_bound_array_compiler
+
+subroutine case_test_session_runtime_bound_array_compiler()
     ! Rank-1 allocatable arrays sized by a runtime value: allocate(a(n)) with n
     ! only known at runtime, then element fill, whole-array print, size, sum,
     ! and deallocate. The extent comes from the descriptor rather than a
@@ -6,6 +17,7 @@ program test_session_runtime_bound_array_compiler
     ! procedure sized by a dummy.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -107,4 +119,4 @@ contains
             '/tmp/ffc_runtime_automatic_array_test')
     end function test_automatic_array_in_procedure
 
-end program test_session_runtime_bound_array_compiler
+end subroutine case_test_session_runtime_bound_array_compiler

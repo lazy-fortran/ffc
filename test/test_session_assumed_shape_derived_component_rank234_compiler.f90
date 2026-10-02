@@ -1,6 +1,18 @@
-program test_session_assumed_shape_derived_component_rank234_compiler
+! fo: dispatcher
+module ffc_case_6e8d070f64b5971041a2c0b3
+    implicit none
+    private
+    public :: case_6e8d070f64b5971041a2c0b3
+    interface
+        subroutine case_6e8d070f64b5971041a2c0b3()
+        end subroutine case_6e8d070f64b5971041a2c0b3
+    end interface
+end module ffc_case_6e8d070f64b5971041a2c0b3
+
+subroutine case_6e8d070f64b5971041a2c0b3()
     use ffc_test_support, only: expect_output, expect_output_matches_gfortran
     implicit none
+    save
 
     logical :: all_passed
 
@@ -98,4 +110,4 @@ contains
             'assumed_shape_derived_component_rank4')
     end function test_rank4_matches_gfortran
 
-end program test_session_assumed_shape_derived_component_rank234_compiler
+end subroutine case_6e8d070f64b5971041a2c0b3

@@ -1,7 +1,19 @@
-program test_session_inferred_logical_compiler
+! fo: dispatcher
+module ffc_case_test_session_inferred_logical_compiler
+    implicit none
+    private
+    public :: case_test_session_inferred_logical_compiler
+    interface
+        subroutine case_test_session_inferred_logical_compiler()
+        end subroutine case_test_session_inferred_logical_compiler
+    end interface
+end module ffc_case_test_session_inferred_logical_compiler
+
+subroutine case_test_session_inferred_logical_compiler()
     use ffc_test_support, only: expect_exit_status
     use fortfront_compiler, only: INPUT_MODE_LAZY
     implicit none
+    save
 
     print *, '=== direct session inferred logical compiler test ==='
 
@@ -33,4 +45,4 @@ program test_session_inferred_logical_compiler
         stop 1
 
     print *, 'PASS: inferred logical variables lower through direct LIRIC session'
-end program test_session_inferred_logical_compiler
+end subroutine case_test_session_inferred_logical_compiler

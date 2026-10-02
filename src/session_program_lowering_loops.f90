@@ -1,7 +1,7 @@
 submodule (session_program_lowering_impl) session_program_lowering_loops
     implicit none
 contains
-    module subroutine lower_do_loop(arena, node, context, value, error_msg)
+    recursive module subroutine lower_do_loop(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(do_loop_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -20,9 +20,9 @@ contains
         call lower_counted_loop(arena, node%var_name, node%start_expr_index, &
             node%end_expr_index, node%step_expr_index, &
             node%line, node%column, emit_do_body, context, &
-            value, error_msg)
+            value, error_msg, node%construct_name)
     contains
-        subroutine emit_do_body(ctx, terminated, err)
+        recursive subroutine emit_do_body(ctx, terminated, err)
             type(lowering_context_t), intent(inout) :: ctx
             logical, intent(out) :: terminated
             character(len=:), allocatable, intent(out) :: err
@@ -45,7 +45,6 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         integer(c_int32_t) :: entry_block, header_block, body_block
         integer(c_int32_t) :: latch_block, exit_block, reserved_vreg
-        integer(c_int32_t) :: saved_exit_block, saved_latch_block
         integer(c_int32_t), allocatable :: saved_exit_blocks(:)
         type(lr_operand_desc_t), allocatable :: entry_values(:)
         type(lr_operand_desc_t), allocatable :: header_values(:)
@@ -53,6 +52,7 @@ contains
         type(lr_operand_desc_t), allocatable :: saved_exit_values(:,:)
         type(lr_operand_desc_t) :: copied_value
         type(loop_cycle_state_t) :: saved_cycles
+        type(loop_branch_target_t), target :: branch_target
         integer, allocatable :: carried_indices(:)
         integer :: carried_count, saved_exit_count, initial_symbol_count, i
         logical :: body_terminated, body_exited, saved_in_loop
@@ -98,26 +98,23 @@ contains
         if (.not. set_liric_block(context%session, body_block, error_msg)) return
         context%current_block_id = body_block
         context%current_block_terminated = .false.
-        saved_exit_block = context%current_loop_exit_block
-        saved_latch_block = context%current_loop_latch_block
         saved_in_loop = context%in_loop
-        context%current_loop_exit_block = exit_block
-        context%current_loop_latch_block = latch_block
         context%in_loop = .true.
         context%current_block_exited_loop = .false.
         call begin_loop_cycle_tracking(context, saved_cycles)
         call begin_loop_exit_tracking(context, saved_exit_blocks, saved_exit_values, &
             saved_exit_count)
+        call begin_loop_branch_target(context, branch_target, exit_block, &
+            latch_block, node%construct_name)
         if (allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
                 body_terminated, error_msg)
-            if (len_trim(error_msg) > 0) return
         else
             body_terminated = .false.
         end if
+        call end_loop_branch_target(context, branch_target, error_msg)
+        if (len_trim(error_msg) > 0) return
         body_exited = context%current_block_exited_loop
-        context%current_loop_exit_block = saved_exit_block
-        context%current_loop_latch_block = saved_latch_block
         context%in_loop = saved_in_loop
         context%current_block_exited_loop = .false.
         if (context%symbol_count /= initial_symbol_count) then
@@ -158,9 +155,9 @@ contains
             saved_exit_count)
     end subroutine lower_infinite_loop
 
-    module subroutine lower_counted_loop(arena, var_name, start_expr_index, &
+    recursive module subroutine lower_counted_loop(arena, var_name, start_expr_index, &
             end_expr_index, step_expr_index, line, column, &
-            body_emit, context, value, error_msg)
+            body_emit, context, value, error_msg, construct_name)
         ! Emit the LIRIC scaffold for a counted loop over var_name: induction
         ! phi, exit test, body, latch increment. body_emit fills the body block
         ! and reports whether it terminated (e.g. stop/return); DO and FORALL
@@ -173,6 +170,7 @@ contains
         integer, intent(in) :: line
         integer, intent(in) :: column
         procedure(counted_loop_body_i) :: body_emit
+        character(len=*), intent(in), optional :: construct_name
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
@@ -183,6 +181,7 @@ contains
         type(lr_operand_desc_t) :: next_index
         type(lr_operand_desc_t) :: copied_value
         type(loop_cycle_state_t) :: saved_cycles
+        type(loop_branch_target_t), target :: branch_target
         type(lr_operand_desc_t), allocatable :: entry_values(:)
         type(lr_operand_desc_t), allocatable :: header_values(:)
         type(lr_operand_desc_t), allocatable :: backedge_values(:)
@@ -201,8 +200,6 @@ contains
         logical :: body_terminated
         logical :: body_exited
         logical :: real_loop
-        integer(c_int32_t) :: saved_loop_exit_block
-        integer(c_int32_t) :: saved_loop_latch_block
         integer(c_int32_t), allocatable :: saved_loop_exit_blocks(:)
         type(lr_operand_desc_t), allocatable :: saved_loop_exit_values(:,:)
         integer :: saved_loop_exit_count
@@ -352,11 +349,7 @@ contains
         if (.not. set_liric_block(context%session, body_block, error_msg)) return
         context%current_block_id = body_block
         body_terminated = .false.
-        saved_loop_exit_block = context%current_loop_exit_block
-        saved_loop_latch_block = context%current_loop_latch_block
         saved_in_loop = context%in_loop
-        context%current_loop_exit_block = exit_block
-        context%current_loop_latch_block = latch_block
         context%in_loop = .true.
         context%current_block_exited_loop = .false.
         call begin_loop_cycle_tracking(context, saved_cycles)
@@ -387,11 +380,12 @@ contains
                     error_msg)) return
             end if
         end if
+        call begin_loop_branch_target(context, branch_target, exit_block, &
+            latch_block, construct_name)
         call body_emit(context, body_terminated, error_msg)
+        call end_loop_branch_target(context, branch_target, error_msg)
         if (len_trim(error_msg) > 0) return
         body_exited = context%current_block_exited_loop
-        context%current_loop_exit_block = saved_loop_exit_block
-        context%current_loop_latch_block = saved_loop_latch_block
         context%in_loop = saved_in_loop
         context%current_block_exited_loop = .false.
         if (context%symbol_count /= initial_symbol_count) then

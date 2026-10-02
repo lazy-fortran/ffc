@@ -1,5 +1,17 @@
-program test_conformance_shard_merge
+! fo: dispatcher
+module ffc_case_test_conformance_shard_merge
     implicit none
+    private
+    public :: case_test_conformance_shard_merge
+    interface
+        subroutine case_test_conformance_shard_merge()
+        end subroutine case_test_conformance_shard_merge
+    end interface
+end module ffc_case_test_conformance_shard_merge
+
+subroutine case_test_conformance_shard_merge()
+    implicit none
+    save
 
     integer :: exit_status
 
@@ -12,4 +24,4 @@ program test_conformance_shard_merge
     end if
 
     print *, 'PASS: shard merge reconstructs one full observation epoch'
-end program test_conformance_shard_merge
+end subroutine case_test_conformance_shard_merge

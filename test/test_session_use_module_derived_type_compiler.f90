@@ -1,4 +1,15 @@
-program test_session_use_module_derived_type_compiler
+! fo: dispatcher
+module ffc_case_test_session_use_module_derived_type_compiler
+    implicit none
+    private
+    public :: case_test_session_use_module_derived_type_compiler
+    interface
+        subroutine case_test_session_use_module_derived_type_compiler()
+        end subroutine case_test_session_use_module_derived_type_compiler
+    end interface
+end module ffc_case_test_session_use_module_derived_type_compiler
+
+subroutine case_test_session_use_module_derived_type_compiler()
     ! A derived type defined in a separately compiled module must reach a using
     ! unit with the same layout the defining unit compiled: component order and
     ! slot offsets, nested type identity, fixed array shapes, and character
@@ -7,6 +18,7 @@ program test_session_use_module_derived_type_compiler
     use ffc_test_support, only: expect_exit_status
     use ffc_module_artefact, only: module_info_t, write_fmod
     implicit none
+    save
 
     logical :: all_passed
 
@@ -390,4 +402,4 @@ contains
         ok = io_stat == 0
     end function write_file
 
-end program test_session_use_module_derived_type_compiler
+end subroutine case_test_session_use_module_derived_type_compiler

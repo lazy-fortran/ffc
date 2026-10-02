@@ -1,4 +1,15 @@
-program test_session_scalar_expression_compiler
+! fo: dispatcher
+module ffc_case_test_session_scalar_expression_compiler
+    implicit none
+    private
+    public :: case_test_session_scalar_expression_compiler
+    interface
+        subroutine case_test_session_scalar_expression_compiler()
+        end subroutine case_test_session_scalar_expression_compiler
+    end interface
+end module ffc_case_test_session_scalar_expression_compiler
+
+subroutine case_test_session_scalar_expression_compiler()
     !! Behavioral oracle for the typed scalar expression engine (#447).
     !!
     !! Every expected value below is what gfortran prints for the same program;
@@ -6,6 +17,7 @@ program test_session_scalar_expression_compiler
     !! shape of ffc's own lowering.
     use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
+    save
     logical :: ok
 
     print *, '=== scalar expression engine test ==='
@@ -112,4 +124,4 @@ contains
             'end program main', 3, '/tmp/ffc_scalar_expr_intcmp')
     end function test_integer_operand_promotes_not_narrows
 
-end program test_session_scalar_expression_compiler
+end subroutine case_test_session_scalar_expression_compiler

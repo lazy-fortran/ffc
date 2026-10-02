@@ -1,4 +1,15 @@
-program test_session_if_merge_derived_compiler
+! fo: dispatcher
+module ffc_case_test_session_if_merge_derived_compiler
+    implicit none
+    private
+    public :: case_test_session_if_merge_derived_compiler
+    interface
+        subroutine case_test_session_if_merge_derived_compiler()
+        end subroutine case_test_session_if_merge_derived_compiler
+    end interface
+end module ffc_case_test_session_if_merge_derived_compiler
+
+subroutine case_test_session_if_merge_derived_compiler()
     ! Regression test for IF-merge across derived-type component
     ! assignments.  Until fortfront 0f9d4a9e (May 2026) the parser
     ! dropped "p%x = 7" inside if bodies, leaving the if_node with empty
@@ -9,6 +20,7 @@ program test_session_if_merge_derived_compiler
     ! component.
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -66,4 +78,4 @@ contains
             source, 9, '/tmp/ffc_session_if_derived_else_test')
     end function test_else_branch_writes_component
 
-end program test_session_if_merge_derived_compiler
+end subroutine case_test_session_if_merge_derived_compiler

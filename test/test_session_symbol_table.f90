@@ -1,4 +1,15 @@
-program test_session_symbol_table
+! fo: dispatcher
+module ffc_case_test_session_symbol_table
+    implicit none
+    private
+    public :: case_test_session_symbol_table
+    interface
+        subroutine case_test_session_symbol_table()
+        end subroutine case_test_session_symbol_table
+    end interface
+end module ffc_case_test_session_symbol_table
+
+subroutine case_test_session_symbol_table()
     !! Unit tests for the binding-keyed symbol table.
     !!
     !! Why these exist as unit tests rather than compiler tests: review of #327
@@ -15,6 +26,7 @@ program test_session_symbol_table
     !! is the property the corpus gate could not provide.
     use session_symbol_table, only: session_symbol_table_t
     implicit none
+    save
 
     integer :: n_pass, n_fail
 
@@ -114,4 +126,4 @@ contains
             'inserting the same binding twice resolves to the same symbol')
     end subroutine require_repeated_insert_is_idempotent
 
-end program test_session_symbol_table
+end subroutine case_test_session_symbol_table

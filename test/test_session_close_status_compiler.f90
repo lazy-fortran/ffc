@@ -1,9 +1,21 @@
-program test_session_close_status_compiler
+! fo: dispatcher
+module ffc_case_test_session_close_status_compiler
+    implicit none
+    private
+    public :: case_test_session_close_status_compiler
+    interface
+        subroutine case_test_session_close_status_compiler()
+        end subroutine case_test_session_close_status_compiler
+    end interface
+end module ffc_case_test_session_close_status_compiler
+
+subroutine case_test_session_close_status_compiler()
     ! CLOSE must apply STATUS= and report its own result through IOSTAT=/IOMSG=.
     ! The helper runs the same source through ffc and gfortran, so the file
     ! deletion and invalid-unit status are independently observed.
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -42,4 +54,4 @@ program test_session_close_status_compiler
     print *, '=== direct session CLOSE(STATUS/IOSTAT/IOMSG) test ==='
     if (.not. expect_output_matches_gfortran(source, 'close_status_628')) stop 1
     print *, 'PASS: CLOSE status and diagnostics match gfortran'
-end program test_session_close_status_compiler
+end subroutine case_test_session_close_status_compiler

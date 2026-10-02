@@ -1,9 +1,21 @@
-program test_session_logical_result_call_compiler
+! fo: dispatcher
+module ffc_case_test_session_logical_result_call_compiler
+    implicit none
+    private
+    public :: case_test_session_logical_result_call_compiler
+    interface
+        subroutine case_test_session_logical_result_call_compiler()
+        end subroutine case_test_session_logical_result_call_compiler
+    end interface
+end module ffc_case_test_session_logical_result_call_compiler
+
+subroutine case_test_session_logical_result_call_compiler()
     ! Regression for #576.  This is the standard-Fortran equivalent emitted
     ! from issue_2064's Lazy source: a contained logical function result is
     ! used in an assignment after a compound comparison.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -28,4 +40,4 @@ program test_session_logical_result_call_compiler
             ' Out of range: F'//new_line('a'), &
             '/var/tmp/ert/ffc_issue576_logical_result_call')) stop 1
     print *, 'PASS: contained logical function results lower without a crash'
-end program test_session_logical_result_call_compiler
+end subroutine case_test_session_logical_result_call_compiler

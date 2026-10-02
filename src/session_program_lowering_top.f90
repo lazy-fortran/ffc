@@ -1235,11 +1235,8 @@ contains
                                                error_msg)
                 return
             end if
-            call record_loop_exit(context, error_msg)
+            call lower_loop_branch(context, .false., node%label, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_br(context%session, &
-                                    context%current_loop_exit_block, &
-                                    error_msg)) return
             context%current_block_terminated = .true.
             context%current_block_exited_loop = .true.
         type is (cycle_node)
@@ -1251,11 +1248,8 @@ contains
                                                error_msg)
                 return
             end if
-            call record_loop_cycle(context, error_msg)
+            call lower_loop_branch(context, .true., node%label, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (.not. emit_liric_br(context%session, &
-                                    context%current_loop_latch_block, &
-                                    error_msg)) return
             context%current_block_terminated = .true.
             context%current_block_exited_loop = .true.
         type is (if_node)
@@ -1397,7 +1391,7 @@ contains
                                            'support this AST node', error_msg)
         end select
     end subroutine unsupported_statement_node
-    subroutine lower_statement_list(arena, node_indices, context, value, &
+    recursive subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_indices(:)

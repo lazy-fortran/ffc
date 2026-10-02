@@ -1,6 +1,18 @@
-program test_session_pack_unpack_compiler
+! fo: dispatcher
+module ffc_case_test_session_pack_unpack_compiler
+    implicit none
+    private
+    public :: case_test_session_pack_unpack_compiler
+    interface
+        subroutine case_test_session_pack_unpack_compiler()
+        end subroutine case_test_session_pack_unpack_compiler
+    end interface
+end module ffc_case_test_session_pack_unpack_compiler
+
+subroutine case_test_session_pack_unpack_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -100,4 +112,4 @@ contains
             new_line('a'), '/tmp/ffc_unpack_scalar')
     end function test_unpack_scalar_field
 
-end program test_session_pack_unpack_compiler
+end subroutine case_test_session_pack_unpack_compiler

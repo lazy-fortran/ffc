@@ -1,4 +1,15 @@
-program test_session_procedure_dummy_argument
+! fo: dispatcher
+module ffc_case_test_session_procedure_dummy_argument_compiler
+    implicit none
+    private
+    public :: case_test_session_procedure_dummy_argument_compiler
+    interface
+        subroutine case_test_session_procedure_dummy_argument_compiler()
+        end subroutine case_test_session_procedure_dummy_argument_compiler
+    end interface
+end module ffc_case_test_session_procedure_dummy_argument_compiler
+
+subroutine case_test_session_procedure_dummy_argument_compiler()
     ! Procedure dummy arguments (#467, #606). A dummy whose signature is
     ! declared by an interface body inside the receiving procedure carries a
     ! callable address, not data storage. FortFront #2950 stopped fabricating a
@@ -10,6 +21,7 @@ program test_session_procedure_dummy_argument
     ! callee address or a wrong argument ABI fails rather than merely compiling.
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -221,4 +233,4 @@ contains
             source, 0, '/tmp/ffc_proc_dummy_argless')
     end function test_argument_less_function_dummy
 
-end program test_session_procedure_dummy_argument
+end subroutine case_test_session_procedure_dummy_argument_compiler

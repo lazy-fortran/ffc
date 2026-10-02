@@ -1,6 +1,18 @@
-program test_session_large_symbol_count_compiler
+! fo: dispatcher
+module ffc_case_test_session_large_symbol_count_compiler
+    implicit none
+    private
+    public :: case_test_session_large_symbol_count_compiler
+    interface
+        subroutine case_test_session_large_symbol_count_compiler()
+        end subroutine case_test_session_large_symbol_count_compiler
+    end interface
+end module ffc_case_test_session_large_symbol_count_compiler
+
+subroutine case_test_session_large_symbol_count_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session large symbol count test ==='
 
@@ -420,4 +432,4 @@ contains
             '/tmp/ffc_large_symbol_count_test')
     end function test_200_symbols
 
-end program test_session_large_symbol_count_compiler
+end subroutine case_test_session_large_symbol_count_compiler

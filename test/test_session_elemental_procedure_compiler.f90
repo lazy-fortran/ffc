@@ -1,4 +1,15 @@
-program test_session_elemental_procedure_compiler
+! fo: dispatcher
+module ffc_case_test_session_elemental_procedure_compiler
+    implicit none
+    private
+    public :: case_test_session_elemental_procedure_compiler
+    interface
+        subroutine case_test_session_elemental_procedure_compiler()
+        end subroutine case_test_session_elemental_procedure_compiler
+    end interface
+end module ffc_case_test_session_elemental_procedure_compiler
+
+subroutine case_test_session_elemental_procedure_compiler()
     ! Verify that a user-defined ELEMENTAL function with more than one dummy
     ! lowers through the shared array-expression iterator: array-array and
     ! array-scalar actuals produce one scalar call per result element, and the
@@ -11,6 +22,7 @@ program test_session_elemental_procedure_compiler
         compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     implicit none
+    save
 
     logical :: all_passed
 
@@ -200,4 +212,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_elemental_procedure_compiler
+end subroutine case_test_session_elemental_procedure_compiler

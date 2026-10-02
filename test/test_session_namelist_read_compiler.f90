@@ -1,4 +1,15 @@
-program test_session_namelist_read_compiler
+! fo: dispatcher
+module ffc_case_test_session_namelist_read_compiler
+    implicit none
+    private
+    public :: case_test_session_namelist_read_compiler
+    interface
+        subroutine case_test_session_namelist_read_compiler()
+        end subroutine case_test_session_namelist_read_compiler
+    end interface
+end module ffc_case_test_session_namelist_read_compiler
+
+subroutine case_test_session_namelist_read_compiler()
     ! NAMELIST input (#436). READ(unit, nml=group) scans the file unit for the
     ! group header, then assigns each ` NAME = value` pair to the declared
     ! group member of that name. Group and member names match without regard
@@ -9,6 +20,7 @@ program test_session_namelist_read_compiler
     ! compiled with gfortran, so the test is an independent oracle.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -153,4 +165,4 @@ contains
             '           1'//new_line('a'), exe_path)
     end function expect_iostat_failure
 
-end program test_session_namelist_read_compiler
+end subroutine case_test_session_namelist_read_compiler

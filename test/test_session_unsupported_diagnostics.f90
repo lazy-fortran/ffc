@@ -1,10 +1,23 @@
-program test_session_unsupported_diagnostics
+! fo: dispatcher
+module ffc_case_test_session_unsupported_diagnostics
+    implicit none
+    private
+    public :: case_test_session_unsupported_diagnostics
+    interface
+        subroutine case_test_session_unsupported_diagnostics()
+        end subroutine case_test_session_unsupported_diagnostics
+    end interface
+end module ffc_case_test_session_unsupported_diagnostics
+
+subroutine case_test_session_unsupported_diagnostics()
     use ffc_test_support, only: expect_error_contains, &
         expect_cli_error_contains, &
         expect_cli_error_on_stderr, &
         expect_cli_json_error_contains, &
         expect_output, expect_cli_no_error
+    use diagnostic_gfortran_oracle, only: matches_gfortran
     implicit none
+    save
 
     logical :: all_passed
 
@@ -12,7 +25,7 @@ program test_session_unsupported_diagnostics
 
     all_passed = .true.
     if (.not. test_character_expression_diagnostic()) all_passed = .false.
-    if (.not. test_unassigned_character_print_diagnostic()) all_passed = .false.
+    if (.not. test_character_print_lowers()) all_passed = .false.
     if (.not. test_module_diagnostic()) all_passed = .false.
     if (.not. test_character_parameter_lowers()) all_passed = .false.
     if (.not. test_complex_scalar_lowers()) all_passed = .false.
@@ -31,12 +44,12 @@ program test_session_unsupported_diagnostics
     if (.not. test_integer_exponent_operator_diagnostic()) all_passed = .false.
     if (.not. test_allocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_deallocate_statement_diagnostic()) all_passed = .false.
-    if (.not. test_return_statement_diagnostic()) all_passed = .false.
+    if (.not. test_return_statement_lowers()) all_passed = .false.
     if (.not. test_include_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_expression_diagnostic()) all_passed = .false.
     if (.not. test_cli_diagnostic_uses_stderr()) all_passed = .false.
     if (.not. test_cli_json_diagnostic()) all_passed = .false.
-    if (.not. test_cli_unassigned_character_print_diagnostic()) &
+    if (.not. test_cli_character_print_lowers()) &
         all_passed = .false.
     if (.not. test_cli_module_diagnostic()) all_passed = .false.
     if (.not. test_cli_character_parameter_lowers()) all_passed = .false.
@@ -60,7 +73,7 @@ program test_session_unsupported_diagnostics
         all_passed = .false.
     if (.not. test_cli_allocate_statement_diagnostic()) all_passed = .false.
     if (.not. test_cli_deallocate_statement_diagnostic()) all_passed = .false.
-    if (.not. test_cli_return_statement_diagnostic()) all_passed = .false.
+    if (.not. test_cli_return_statement_lowers()) all_passed = .false.
     if (.not. test_cli_include_statement_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -87,19 +100,21 @@ contains
             '/tmp/ffc_session_character_diagnostic_test')
     end function test_character_expression_diagnostic
 
-    logical function test_unassigned_character_print_diagnostic()
-        character(len=*), parameter :: expected = &
-            'unsupported character variable print'
+    logical function test_character_print_lowers()
+        ! An uninitialized character value has no defined reference bytes.
+        ! Check initialized storage and blank padding after shorter assignment.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  character(len=5) :: name'//new_line('a')// &
+            '  name = "ab"'//new_line('a')// &
+            '  print *, name'//new_line('a')// &
+            '  name = "x"'//new_line('a')// &
             '  print *, name'//new_line('a')// &
             'end program main'
 
-        test_unassigned_character_print_diagnostic = &
-            expect_error_contains(source, expected, &
-            '/tmp/ffc_session_unassigned_character_test')
-    end function test_unassigned_character_print_diagnostic
+        test_character_print_lowers = matches_gfortran( &
+            source, 'character_print_api', .false.)
+    end function test_character_print_lowers
 
     logical function test_module_diagnostic()
         ! Integer/real/logical scalar and fixed-size numeric array module
@@ -337,17 +352,17 @@ contains
             '/tmp/ffc_session_deallocate_test')
     end function test_deallocate_statement_diagnostic
 
-    logical function test_return_statement_diagnostic()
+    logical function test_return_statement_lowers()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
+            '  print *, 11'//new_line('a')// &
             '  return'//new_line('a')// &
+            '  print *, 99'//new_line('a')// &
             'end program main'
 
-        test_return_statement_diagnostic = expect_error_contains( &
-            source, &
-            'unsupported return statement', &
-            '/tmp/ffc_session_return_test')
-    end function test_return_statement_diagnostic
+        test_return_statement_lowers = matches_gfortran( &
+            source, 'main_return_api', .false.)
+    end function test_return_statement_lowers
 
     logical function test_include_statement_diagnostic()
         character(len=*), parameter :: source = &
@@ -406,19 +421,21 @@ contains
             '/tmp/ffc_cli_diagnostic_json_test')
     end function test_cli_json_diagnostic
 
-    logical function test_cli_unassigned_character_print_diagnostic()
-        character(len=*), parameter :: expected = &
-            'unsupported character variable print'
+    logical function test_cli_character_print_lowers()
+        ! An uninitialized character value has no defined reference bytes.
+        ! Check initialized storage and blank padding after shorter assignment.
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
             '  character(len=5) :: name'//new_line('a')// &
+            '  name = "ab"'//new_line('a')// &
+            '  print *, name'//new_line('a')// &
+            '  name = "x"'//new_line('a')// &
             '  print *, name'//new_line('a')// &
             'end program main'
 
-        test_cli_unassigned_character_print_diagnostic = &
-            expect_cli_error_contains(source, expected, &
-            '/tmp/ffc_cli_unassigned_character_test')
-    end function test_cli_unassigned_character_print_diagnostic
+        test_cli_character_print_lowers = matches_gfortran( &
+            source, 'character_print_cli', .true.)
+    end function test_cli_character_print_lowers
 
     logical function test_cli_module_diagnostic()
         ! Integer/real/logical scalar and fixed-size numeric array module
@@ -651,17 +668,17 @@ contains
             '/tmp/ffc_cli_deallocate_test')
     end function test_cli_deallocate_statement_diagnostic
 
-    logical function test_cli_return_statement_diagnostic()
+    logical function test_cli_return_statement_lowers()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
+            '  print *, 11'//new_line('a')// &
             '  return'//new_line('a')// &
+            '  print *, 99'//new_line('a')// &
             'end program main'
 
-        test_cli_return_statement_diagnostic = expect_cli_error_contains( &
-            source, &
-            'unsupported return statement', &
-            '/tmp/ffc_cli_return_test')
-    end function test_cli_return_statement_diagnostic
+        test_cli_return_statement_lowers = matches_gfortran( &
+            source, 'main_return_cli', .true.)
+    end function test_cli_return_statement_lowers
 
     logical function test_cli_include_statement_diagnostic()
         ! The CLI expands INCLUDE lines, so an unresolvable include name is
@@ -677,4 +694,4 @@ contains
             '/tmp/ffc_cli_include_test')
     end function test_cli_include_statement_diagnostic
 
-end program test_session_unsupported_diagnostics
+end subroutine case_test_session_unsupported_diagnostics

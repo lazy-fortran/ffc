@@ -475,7 +475,7 @@ compile_with_gfortran() {
     return $status
 }
 
-# run_capture <exe> <out_file> <timeout_seconds> [metric_label]
+# run_capture <exe> <out_file> <timeout_seconds> [metric_label] [stdin_file]
 # Runs the executable, captures stdout+stderr to out_file, respects timeout.
 # Returns the exit status of the executable (or 124 if timed out).
 # stdin is redirected from /dev/null: the caller drives the file list on the
@@ -484,6 +484,7 @@ compile_with_gfortran() {
 run_capture() {
     local exe="$1" out_file="$2" timeout="$3"
     local metric_label="${4:-run}" metrics_file="${CONFORMANCE_METRICS_FILE:-}"
+    local stdin_file="${5:-/dev/null}"
     local sandbox status metric_tmp metadata runner
     RUN_CAPTURE_TERMINATION="exec-error"
     RUN_CAPTURE_SIGNAL=0
@@ -498,14 +499,16 @@ run_capture() {
         metric_tmp="${metrics_file}.${BASHPID}.${RANDOM}.tmp"
         /usr/bin/time -f "$metric_label\t%e\t%M" -o "$metric_tmp" \
             python3 "$runner" --cwd "$sandbox" --timeout "$timeout" \
-            --output "$out_file" --metadata "$metadata" -- "$exe"
+            --output "$out_file" --metadata "$metadata" \
+            --stdin "$stdin_file" -- "$exe"
         status=$?
         awk -F '\t' -v label="$metric_label" \
             '$1 == label && NF == 3 { print }' "$metric_tmp" >> "$metrics_file"
         rm -f "$metric_tmp"
     else
         python3 "$runner" --cwd "$sandbox" --timeout "$timeout" \
-            --output "$out_file" --metadata "$metadata" -- "$exe"
+            --output "$out_file" --metadata "$metadata" \
+            --stdin "$stdin_file" -- "$exe"
         status=$?
     fi
     if [ -s "$metadata" ]; then

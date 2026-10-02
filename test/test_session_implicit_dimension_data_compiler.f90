@@ -1,6 +1,18 @@
-program test_session_implicit_dimension_data_compiler
+! fo: dispatcher
+module ffc_case_test_session_implicit_dimension_data_compiler
+    implicit none
+    private
+    public :: case_test_session_implicit_dimension_data_compiler
+    interface
+        subroutine case_test_session_implicit_dimension_data_compiler()
+        end subroutine case_test_session_implicit_dimension_data_compiler
+    end interface
+end module ffc_case_test_session_implicit_dimension_data_compiler
+
+subroutine case_test_session_implicit_dimension_data_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'subroutine gamo'//new_line('a')// &
@@ -17,4 +29,4 @@ program test_session_implicit_dimension_data_compiler
 
     if (.not. expect_output(source, ' PASS'//new_line('a'), &
                             '/tmp/ffc_implicit_dimension_data')) stop 1
-end program test_session_implicit_dimension_data_compiler
+end subroutine case_test_session_implicit_dimension_data_compiler

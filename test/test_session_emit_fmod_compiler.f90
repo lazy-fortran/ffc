@@ -1,9 +1,21 @@
-program test_session_emit_fmod_compiler
+! fo: dispatcher
+module ffc_case_test_session_emit_fmod_compiler
+    implicit none
+    private
+    public :: case_test_session_emit_fmod_compiler
+    interface
+        subroutine case_test_session_emit_fmod_compiler()
+        end subroutine case_test_session_emit_fmod_compiler
+    end interface
+end module ffc_case_test_session_emit_fmod_compiler
+
+subroutine case_test_session_emit_fmod_compiler()
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, &
         compile_frontend_from_string, INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_object
     implicit none
+    save
 
     logical :: all_passed
 
@@ -152,4 +164,4 @@ contains
         close (unit)
     end function file_contains
 
-end program test_session_emit_fmod_compiler
+end subroutine case_test_session_emit_fmod_compiler

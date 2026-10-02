@@ -1,6 +1,18 @@
-program test_session_typed_array_parameter
+! fo: dispatcher
+module ffc_case_test_session_typed_array_parameter_compiler
+    implicit none
+    private
+    public :: case_test_session_typed_array_parameter_compiler
+    interface
+        subroutine case_test_session_typed_array_parameter_compiler()
+        end subroutine case_test_session_typed_array_parameter_compiler
+    end interface
+end module ffc_case_test_session_typed_array_parameter_compiler
+
+subroutine case_test_session_typed_array_parameter_compiler()
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -124,4 +136,4 @@ contains
             '/tmp/ffc_typed_param_badconv')
     end function test_illegal_conversion_rejected
 
-end program test_session_typed_array_parameter
+end subroutine case_test_session_typed_array_parameter_compiler

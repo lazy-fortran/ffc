@@ -1,10 +1,22 @@
-program test_session_fixed_concat_compiler
+! fo: dispatcher
+module ffc_case_test_session_fixed_concat_compiler
+    implicit none
+    private
+    public :: case_test_session_fixed_concat_compiler
+    interface
+        subroutine case_test_session_fixed_concat_compiler()
+        end subroutine case_test_session_fixed_concat_compiler
+    end interface
+end module ffc_case_test_session_fixed_concat_compiler
+
+subroutine case_test_session_fixed_concat_compiler()
     ! Runtime concatenation of a // chain with variable and intrinsic operands
     ! into a fixed-length character target. FortFront's lazy standardization
     ! sizes the target to the exact concatenated length, so each leaf operand
     ! contributes its full declared length, matching gfortran.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -69,4 +81,4 @@ contains
             '/tmp/ffc_fixed_concat_trim_test')
     end function test_trim_concat
 
-end program test_session_fixed_concat_compiler
+end subroutine case_test_session_fixed_concat_compiler

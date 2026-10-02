@@ -1,6 +1,18 @@
-program test_fortfront_corpus_conformance
+! fo: dispatcher
+module ffc_case_test_fortfront_corpus_conformance
+    implicit none
+    private
+    public :: case_test_fortfront_corpus_conformance
+    interface
+        subroutine case_test_fortfront_corpus_conformance()
+        end subroutine case_test_fortfront_corpus_conformance
+    end interface
+end module ffc_case_test_fortfront_corpus_conformance
+
+subroutine case_test_fortfront_corpus_conformance()
     use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
+    save
 
     integer, parameter :: RUN_TIMEOUT_SECONDS = 180
     ! Shard width for the corpus walker: the per-file ffc/gfortran spawns are
@@ -206,4 +218,4 @@ contains
         write (text, '(I0)') min(n, 32)
     end subroutine corpus_jobs
 
-end program test_fortfront_corpus_conformance
+end subroutine case_test_fortfront_corpus_conformance

@@ -1,10 +1,22 @@
-program test_session_select_type_trailing_compiler
+! fo: dispatcher
+module ffc_case_test_session_select_type_trailing_compiler
+    implicit none
+    private
+    public :: case_test_session_select_type_trailing_compiler
+    interface
+        subroutine case_test_session_select_type_trailing_compiler()
+        end subroutine case_test_session_select_type_trailing_compiler
+    end interface
+end module ffc_case_test_session_select_type_trailing_compiler
+
+subroutine case_test_session_select_type_trailing_compiler()
     ! Issue #2811 / #273: a local class(*) allocatable, a typed allocate, and a
     ! select type whose arms reassign an SSA scalar that a trailing statement
     ! reads back. The trailing print must execute as a sibling of the construct
     ! and see the value the chosen arm wrote.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
     character(len=*), parameter :: nl = new_line('a')
@@ -64,4 +76,4 @@ contains
             source, '           2'//nl, '/tmp/ffc_select_type_trailing_def')
     end function test_class_default_then_print
 
-end program test_session_select_type_trailing_compiler
+end subroutine case_test_session_select_type_trailing_compiler

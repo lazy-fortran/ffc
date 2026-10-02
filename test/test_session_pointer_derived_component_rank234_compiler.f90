@@ -1,6 +1,18 @@
-program test_session_pointer_derived_component_rank234_compiler
+! fo: dispatcher
+module ffc_case_6060197a4bcf6129f05a0604
+    implicit none
+    private
+    public :: case_test_session_pointer_derived_component_rank234_compiler
+    interface
+        subroutine case_test_session_pointer_derived_component_rank234_compiler()
+        end subroutine case_test_session_pointer_derived_component_rank234_compiler
+    end interface
+end module ffc_case_6060197a4bcf6129f05a0604
+
+subroutine case_test_session_pointer_derived_component_rank234_compiler()
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
 
     print *, '=== direct session derived component pointer rank-2/3/4 test ==='
 
@@ -69,4 +81,4 @@ program test_session_pointer_derived_component_rank234_compiler
         'end program main', 'pointer_derived_component_rank4')) stop 3
 
     print *, 'PASS: derived array component pointers rank 2/3/4'
-end program test_session_pointer_derived_component_rank234_compiler
+end subroutine case_test_session_pointer_derived_component_rank234_compiler

@@ -1,9 +1,21 @@
-program test_liric_memory_submodule_api
+! fo: dispatcher
+module ffc_case_test_liric_memory_submodule_api
+    implicit none
+    private
+    public :: case_test_liric_memory_submodule_api
+    interface
+        subroutine case_test_liric_memory_submodule_api()
+        end subroutine case_test_liric_memory_submodule_api
+    end interface
+end module ffc_case_test_liric_memory_submodule_api
+
+subroutine case_test_liric_memory_submodule_api()
     use, intrinsic :: iso_c_binding, only: c_associated, c_int64_t
     use liric_session_bindings, only: destroy, liric_session_create, &
         liric_session_t, lr_operand_desc_t
     use liric_session_memory_bindings, only: i8_immediate, i16_immediate
     implicit none
+    save
 
     type(liric_session_t) :: session
     type(lr_operand_desc_t) :: i8_value, i16_value
@@ -30,4 +42,4 @@ program test_liric_memory_submodule_api
 
     call destroy(session)
     write (*, '(a)') 'PASS: NVHPC narrow-integer submodule API'
-end program test_liric_memory_submodule_api
+end subroutine case_test_liric_memory_submodule_api

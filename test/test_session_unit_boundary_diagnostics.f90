@@ -1,8 +1,20 @@
-program test_session_unit_boundary_diagnostics
+! fo: dispatcher
+module ffc_case_test_session_unit_boundary_diagnostics
+    implicit none
+    private
+    public :: case_test_session_unit_boundary_diagnostics
+    interface
+        subroutine case_test_session_unit_boundary_diagnostics()
+        end subroutine case_test_session_unit_boundary_diagnostics
+    end interface
+end module ffc_case_test_session_unit_boundary_diagnostics
+
+subroutine case_test_session_unit_boundary_diagnostics()
     use ffc_test_support, only: expect_exit_status, &
         expect_cli_no_error, &
         expect_no_error
     implicit none
+    save
 
     logical :: all_passed
 
@@ -75,4 +87,4 @@ contains
             source, '/tmp/ffc_cli_interface_block_test')
     end function test_cli_explicit_interface_no_error
 
-end program test_session_unit_boundary_diagnostics
+end subroutine case_test_session_unit_boundary_diagnostics

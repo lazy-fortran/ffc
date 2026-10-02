@@ -1,4 +1,15 @@
-program test_session_elemental_class_compiler
+! fo: dispatcher
+module ffc_case_test_session_elemental_class_compiler
+    implicit none
+    private
+    public :: case_test_session_elemental_class_compiler
+    interface
+        subroutine case_test_session_elemental_class_compiler()
+        end subroutine case_test_session_elemental_class_compiler
+    end interface
+end module ffc_case_test_session_elemental_class_compiler
+
+subroutine case_test_session_elemental_class_compiler()
     ! Verify that an elemental function with a scalar polymorphic dummy keeps
     ! its declared-type contract: a scalar call dispatches normally and an
     ! array call applies the scalar operation elementwise at the actual
@@ -11,6 +22,7 @@ program test_session_elemental_class_compiler
         compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     implicit none
+    save
 
     logical :: all_passed
 
@@ -227,4 +239,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_elemental_class_compiler
+end subroutine case_test_session_elemental_class_compiler

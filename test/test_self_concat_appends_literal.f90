@@ -1,6 +1,18 @@
-program test_self_concat_appends_literal
+! fo: dispatcher
+module ffc_case_test_self_concat_appends_literal
+    implicit none
+    private
+    public :: case_test_self_concat_appends_literal
+    interface
+        subroutine case_test_self_concat_appends_literal()
+        end subroutine case_test_self_concat_appends_literal
+    end interface
+end module ffc_case_test_self_concat_appends_literal
+
+subroutine case_test_self_concat_appends_literal()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -28,4 +40,4 @@ contains
             '/tmp/ffc_self_concat_literal_test')
     end function test_self_concat_appends_literal_case
 
-end program test_self_concat_appends_literal
+end subroutine case_test_self_concat_appends_literal

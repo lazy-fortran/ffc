@@ -1,6 +1,18 @@
-program test_session_derived_nested_array_component_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_nested_array_component_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_nested_array_component_compiler
+    interface
+        subroutine case_test_session_derived_nested_array_component_compiler()
+        end subroutine case_test_session_derived_nested_array_component_compiler
+    end interface
+end module ffc_case_test_session_derived_nested_array_component_compiler
+
+subroutine case_test_session_derived_nested_array_component_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -92,4 +104,4 @@ contains
             '/tmp/ffc_session_derived_nested_arr_leaf')
     end function test_nested_fixed_derived_arrays_alloc_leaf
 
-end program test_session_derived_nested_array_component_compiler
+end subroutine case_test_session_derived_nested_array_component_compiler

@@ -1,6 +1,18 @@
-program test_session_select_case_compiler
+! fo: dispatcher
+module ffc_case_test_session_select_case_compiler
+    implicit none
+    private
+    public :: case_test_session_select_case_compiler
+    interface
+        subroutine case_test_session_select_case_compiler()
+        end subroutine case_test_session_select_case_compiler
+    end interface
+end module ffc_case_test_session_select_case_compiler
+
+subroutine case_test_session_select_case_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -409,4 +421,4 @@ contains
             source, 7, '/tmp/ffc_session_select_no_default_fall_test')
     end function test_select_case_no_default_fallthrough
 
-end program test_session_select_case_compiler
+end subroutine case_test_session_select_case_compiler

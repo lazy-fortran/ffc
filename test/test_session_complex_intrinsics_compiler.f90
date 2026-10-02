@@ -1,4 +1,15 @@
-program test_session_complex_intrinsics_compiler
+! fo: dispatcher
+module ffc_case_test_session_complex_intrinsics_compiler
+    implicit none
+    private
+    public :: case_test_session_complex_intrinsics_compiler
+    interface
+        subroutine case_test_session_complex_intrinsics_compiler()
+        end subroutine case_test_session_complex_intrinsics_compiler
+    end interface
+end module ffc_case_test_session_complex_intrinsics_compiler
+
+subroutine case_test_session_complex_intrinsics_compiler()
     ! Verify scalar complex intrinsics lower through the direct LIRIC session and
     ! print byte-for-byte like gfortran: conjg/dconjg, abs(complex) -> real
     ! magnitude, cmplx/dcmplx with a kind selector (keyword or positional), the
@@ -10,6 +21,7 @@ program test_session_complex_intrinsics_compiler
         compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     implicit none
+    save
 
     logical :: all_passed
 
@@ -178,4 +190,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_complex_intrinsics_compiler
+end subroutine case_test_session_complex_intrinsics_compiler

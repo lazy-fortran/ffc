@@ -1,4 +1,15 @@
-program test_session_character_function_result_compiler
+! fo: dispatcher
+module ffc_case_test_session_character_function_result_compiler
+    implicit none
+    private
+    public :: case_test_session_character_function_result_compiler
+    interface
+        subroutine case_test_session_character_function_result_compiler()
+        end subroutine case_test_session_character_function_result_compiler
+    end interface
+end module ffc_case_test_session_character_function_result_compiler
+
+subroutine case_test_session_character_function_result_compiler()
     ! Verify character-returning contained functions lower correctly: a
     ! fixed-length result (character(len=N) :: s), a runtime-length result
     ! (character(len=k) where k is a dummy argument), and a character variable
@@ -11,6 +22,7 @@ program test_session_character_function_result_compiler
         INPUT_MODE_STANDARD
     use ffc_test_support, only: expect_no_leaks
     implicit none
+    save
 
     logical :: all_passed
 
@@ -385,4 +397,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_character_function_result_compiler
+end subroutine case_test_session_character_function_result_compiler

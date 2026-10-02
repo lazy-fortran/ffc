@@ -1,4 +1,15 @@
-program test_session_class_star_assumed_shape_compiler
+! fo: dispatcher
+module ffc_case_test_session_class_star_assumed_shape_compiler
+    implicit none
+    private
+    public :: case_test_session_class_star_assumed_shape_compiler
+    interface
+        subroutine case_test_session_class_star_assumed_shape_compiler()
+        end subroutine case_test_session_class_star_assumed_shape_compiler
+    end interface
+end module ffc_case_test_session_class_star_assumed_shape_compiler
+
+subroutine case_test_session_class_star_assumed_shape_compiler()
     ! Differential behavioral oracle for bounded CLASS(*) assumed-shape arrays.
     ! The gfortran executable is the independent semantic reference; this test
     ! does not merely inspect the emitted source or repository state.
@@ -7,6 +18,7 @@ program test_session_class_star_assumed_shape_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     print *, '=== CLASS(*) assumed-shape array test ==='
     if (.not. test_integer_array_select_type()) stop 1
@@ -284,4 +296,4 @@ contains
         expect_refusal = .true.
     end function expect_refusal
 
-end program test_session_class_star_assumed_shape_compiler
+end subroutine case_test_session_class_star_assumed_shape_compiler

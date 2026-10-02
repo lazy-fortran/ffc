@@ -1,4 +1,15 @@
-program test_session_alloc_array_component_compiler
+! fo: dispatcher
+module ffc_case_test_session_alloc_array_component_compiler
+    implicit none
+    private
+    public :: case_test_session_alloc_array_component_compiler
+    interface
+        subroutine case_test_session_alloc_array_component_compiler()
+        end subroutine case_test_session_alloc_array_component_compiler
+    end interface
+end module ffc_case_test_session_alloc_array_component_compiler
+
+subroutine case_test_session_alloc_array_component_compiler()
     ! Rank-1 allocatable array components (integer/real/logical) through the
     ! direct LIRIC session: default-unallocated state, allocate(obj%v(n)) with a
     ! runtime extent, element read and write obj%v(i), allocated(obj%v),
@@ -8,6 +19,7 @@ program test_session_alloc_array_component_compiler
     ! array components so the inline slot layout is exercised.
     use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -110,4 +122,4 @@ contains
             source, 0, '/tmp/ffc_alloc_array_comp_life')
     end function test_lifecycle_exit_status
 
-end program test_session_alloc_array_component_compiler
+end subroutine case_test_session_alloc_array_component_compiler

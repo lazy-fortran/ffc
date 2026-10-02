@@ -17,6 +17,7 @@ implicit-typing = false
 source-form = "free"
 
 [extra.fo]
+dispatcher = "test_ffc_suite"
 # The default build profile emits no DWARF. 503 test executables carried
 # 0.74 GB of `.debug_*` sections no test run ever read; `fo test --debug`
 # and `fo test --asan` still get full `-g -fcheck=all -fbacktrace`.

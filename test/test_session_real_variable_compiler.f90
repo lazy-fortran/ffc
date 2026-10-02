@@ -1,6 +1,18 @@
-program test_session_real_variable_compiler
+! fo: dispatcher
+module ffc_case_test_session_real_variable_compiler
+    implicit none
+    private
+    public :: case_test_session_real_variable_compiler
+    interface
+        subroutine case_test_session_real_variable_compiler()
+        end subroutine case_test_session_real_variable_compiler
+    end interface
+end module ffc_case_test_session_real_variable_compiler
+
+subroutine case_test_session_real_variable_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session real variable compiler test ==='
 
@@ -23,4 +35,4 @@ program test_session_real_variable_compiler
         '/tmp/ffc_session_real_sign_test')) stop 1
 
     print *, 'PASS: real variables and arithmetic lower through direct LIRIC'
-end program test_session_real_variable_compiler
+end subroutine case_test_session_real_variable_compiler

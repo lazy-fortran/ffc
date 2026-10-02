@@ -1,4 +1,15 @@
-program test_session_allocatable_dummy_array_compiler
+! fo: dispatcher
+module ffc_case_test_session_allocatable_dummy_array_compiler
+    implicit none
+    private
+    public :: case_test_session_allocatable_dummy_array_compiler
+    interface
+        subroutine case_test_session_allocatable_dummy_array_compiler()
+        end subroutine case_test_session_allocatable_dummy_array_compiler
+    end interface
+end module ffc_case_test_session_allocatable_dummy_array_compiler
+
+subroutine case_test_session_allocatable_dummy_array_compiler()
     ! An allocatable array dummy argument (W11): the parameter symbol is
     ! pre-registered generically at call-entry binding, so a naive
     ! re-declaration used to hit a false-positive "duplicate allocatable
@@ -7,6 +18,7 @@ program test_session_allocatable_dummy_array_compiler
     ! in the caller.
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -150,4 +162,4 @@ contains
             expected, '/tmp/ffc_alloc_double_deallocate_test')
     end function test_double_deallocate_is_not_a_double_free
 
-end program test_session_allocatable_dummy_array_compiler
+end subroutine case_test_session_allocatable_dummy_array_compiler

@@ -1,6 +1,18 @@
-program test_session_assumed_shape_runtime_extent
+! fo: dispatcher
+module ffc_case_test_session_assumed_shape_runtime_extent_compiler
+    implicit none
+    private
+    public :: case_test_session_assumed_shape_runtime_extent_compiler
+    interface
+        subroutine case_test_session_assumed_shape_runtime_extent_compiler()
+        end subroutine case_test_session_assumed_shape_runtime_extent_compiler
+    end interface
+end module ffc_case_test_session_assumed_shape_runtime_extent_compiler
+
+subroutine case_test_session_assumed_shape_runtime_extent_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -126,4 +138,4 @@ contains
             '/tmp/ffc_session_assumed_shape_runtime_typebound')
     end function test_type_bound_call_actual
 
-end program test_session_assumed_shape_runtime_extent
+end subroutine case_test_session_assumed_shape_runtime_extent_compiler

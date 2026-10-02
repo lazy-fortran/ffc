@@ -1,8 +1,20 @@
-program test_session_internal_read_compiler
+! fo: dispatcher
+module ffc_case_test_session_internal_read_compiler
+    implicit none
+    private
+    public :: case_test_session_internal_read_compiler
+    interface
+        subroutine case_test_session_internal_read_compiler()
+        end subroutine case_test_session_internal_read_compiler
+    end interface
+end module ffc_case_test_session_internal_read_compiler
+
+subroutine case_test_session_internal_read_compiler()
     ! Internal read: read (buf, fmt) value parses an integer from a character
     ! variable. The parsed value is returned as the process exit status.
     use ffc_test_support, only: expect_exit_status, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -60,4 +72,4 @@ contains
             source, 'internal read', '/tmp/ffc_iread_real_test')
     end function test_internal_read_real_rejected
 
-end program test_session_internal_read_compiler
+end subroutine case_test_session_internal_read_compiler

@@ -1,6 +1,18 @@
-program test_session_fixed_size_array_compiler
+! fo: dispatcher
+module ffc_case_test_session_fixed_size_array_compiler
+    implicit none
+    private
+    public :: case_test_session_fixed_size_array_compiler
+    interface
+        subroutine case_test_session_fixed_size_array_compiler()
+        end subroutine case_test_session_fixed_size_array_compiler
+    end interface
+end module ffc_case_test_session_fixed_size_array_compiler
+
+subroutine case_test_session_fixed_size_array_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -275,4 +287,4 @@ contains
             '/tmp/ffc_session_array_inline_scalar_test')
     end function test_array_inline_scalar_initializer
 
-end program test_session_fixed_size_array_compiler
+end subroutine case_test_session_fixed_size_array_compiler

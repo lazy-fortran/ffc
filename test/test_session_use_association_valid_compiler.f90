@@ -1,7 +1,19 @@
-program test_session_use_association_valid_compiler
+! fo: dispatcher
+module ffc_case_test_session_use_association_valid_compiler
+    implicit none
+    private
+    public :: case_test_session_use_association_valid_compiler
+    interface
+        subroutine case_test_session_use_association_valid_compiler()
+        end subroutine case_test_session_use_association_valid_compiler
+    end interface
+end module ffc_case_test_session_use_association_valid_compiler
+
+subroutine case_test_session_use_association_valid_compiler()
     !! Valid USE associations must not be reported as ambiguous (#587).
     use ffc_test_support, only: expect_error_absent
     implicit none
+    save
 
     logical :: all_passed
 
@@ -170,4 +182,4 @@ contains
             '/tmp/ffc_use_assoc_valid_4')
     end function test_renamed_use_of_own_name
 
-end program test_session_use_association_valid_compiler
+end subroutine case_test_session_use_association_valid_compiler

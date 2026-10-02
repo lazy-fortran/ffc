@@ -1,4 +1,15 @@
-program test_session_common_mixed_layout_compiler
+! fo: dispatcher
+module ffc_case_test_session_common_mixed_layout_compiler
+    implicit none
+    private
+    public :: case_test_session_common_mixed_layout_compiler
+    interface
+        subroutine case_test_session_common_mixed_layout_compiler()
+        end subroutine case_test_session_common_mixed_layout_compiler
+    end interface
+end module ffc_case_test_session_common_mixed_layout_compiler
+
+subroutine case_test_session_common_mixed_layout_compiler()
     ! #351: COMMON association is by storage sequence (F2018 8.10.3). Two units
     ! naming the same block with reordered mixed-width members must land on the
     ! same bytes: a real(8) consumes eight bytes and must not overlap the
@@ -6,6 +17,7 @@ program test_session_common_mixed_layout_compiler
     ! ordering must not run past the block into unrelated storage.
     use ffc_test_support, only: expect_output
     implicit none
+    save
     logical :: all_passed
 
     all_passed = .true.
@@ -110,4 +122,4 @@ contains
             '/tmp/ffc_common_mixed_halves_test')
     end function test_integer_halves_of_double
 
-end program test_session_common_mixed_layout_compiler
+end subroutine case_test_session_common_mixed_layout_compiler

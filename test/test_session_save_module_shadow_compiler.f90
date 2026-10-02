@@ -1,7 +1,19 @@
-program test_session_save_module_shadow_compiler
+! fo: dispatcher
+module ffc_case_test_session_save_module_shadow_compiler
+    implicit none
+    private
+    public :: case_test_session_save_module_shadow_compiler
+    interface
+        subroutine case_test_session_save_module_shadow_compiler()
+        end subroutine case_test_session_save_module_shadow_compiler
+    end interface
+end module ffc_case_test_session_save_module_shadow_compiler
+
+subroutine case_test_session_save_module_shadow_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status, &
         expect_output
     implicit none
+    save
 
     print *, '=== saved local shadowing a module variable ==='
 
@@ -63,4 +75,4 @@ program test_session_save_module_shadow_compiler
         '/tmp/ffc_session_host_assoc_missing')) stop 1
 
     print *, 'PASS: saved local and host association bindings are distinct'
-end program test_session_save_module_shadow_compiler
+end subroutine case_test_session_save_module_shadow_compiler

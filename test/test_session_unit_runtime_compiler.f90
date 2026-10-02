@@ -1,3 +1,4 @@
+! fo: dispatcher
 ! Issue #396: file-unit state lives in the runtime, not in emitted globals.
 !
 ! Behavioral oracle. Two halves, because the change has two consequences.
@@ -14,10 +15,21 @@
 ! below prints 0 on the pre-#396 compiler and 64 here. The computed-unit
 ! program is a regression guard rather than a discriminator; it passed before
 ! and must keep passing now that the unit number is read at run time.
-program test_session_unit_runtime_compiler
+module ffc_case_test_session_unit_runtime_compiler
+    implicit none
+    private
+    public :: case_test_session_unit_runtime_compiler
+    interface
+        subroutine case_test_session_unit_runtime_compiler()
+        end subroutine case_test_session_unit_runtime_compiler
+    end interface
+end module ffc_case_test_session_unit_runtime_compiler
+
+subroutine case_test_session_unit_runtime_compiler()
     use ffc_runtime_link, only: ffc_runtime_link_input
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     character(len=*), parameter :: WORK = '/tmp/ffc_unit_runtime_396'
     logical :: all_passed
@@ -185,4 +197,4 @@ contains
                            WORK//'/cross_scope')
     end function test_unit_survives_the_opening_scope
 
-end program test_session_unit_runtime_compiler
+end subroutine case_test_session_unit_runtime_compiler

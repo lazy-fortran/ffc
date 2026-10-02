@@ -1,6 +1,18 @@
-program test_session_logical_kind_compiler
+! fo: dispatcher
+module ffc_case_test_session_logical_kind_compiler
+    implicit none
+    private
+    public :: case_test_session_logical_kind_compiler
+    interface
+        subroutine case_test_session_logical_kind_compiler()
+        end subroutine case_test_session_logical_kind_compiler
+    end interface
+end module ffc_case_test_session_logical_kind_compiler
+
+subroutine case_test_session_logical_kind_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -23,4 +35,4 @@ program test_session_logical_kind_compiler
     if (.not. expect_output(source, &
             ' PASS: logical literal kinds'//new_line('a'), &
             '/tmp/ffc_session_logical_kind')) stop 1
-end program test_session_logical_kind_compiler
+end subroutine case_test_session_logical_kind_compiler

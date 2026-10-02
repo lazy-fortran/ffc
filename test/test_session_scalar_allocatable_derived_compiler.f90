@@ -1,10 +1,22 @@
-program test_session_scalar_allocatable_derived_compiler
+! fo: dispatcher
+module ffc_case_test_session_scalar_allocatable_derived_compiler
+    implicit none
+    private
+    public :: case_test_session_scalar_allocatable_derived_compiler
+    interface
+        subroutine case_test_session_scalar_allocatable_derived_compiler()
+        end subroutine case_test_session_scalar_allocatable_derived_compiler
+    end interface
+end module ffc_case_test_session_scalar_allocatable_derived_compiler
+
+subroutine case_test_session_scalar_allocatable_derived_compiler()
     ! Scalar allocatable derived variables: declare, allocate (bare and
     ! type-spec forms), read/write components through the heap instance,
     ! allocated(), deallocate(), default component init, whole-scalar copy,
     ! and auto-allocation on assignment to an unallocated target.
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -153,4 +165,4 @@ contains
             source, 0, '/tmp/ffc_sad_move_alloc_test')
     end function test_scalar_move_alloc
 
-end program test_session_scalar_allocatable_derived_compiler
+end subroutine case_test_session_scalar_allocatable_derived_compiler

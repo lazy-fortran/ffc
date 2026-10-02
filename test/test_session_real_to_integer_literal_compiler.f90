@@ -1,6 +1,18 @@
-program test_session_real_to_integer_literal_compiler
+! fo: dispatcher
+module ffc_case_test_session_real_to_integer_literal_compiler
+    implicit none
+    private
+    public :: case_test_session_real_to_integer_literal_compiler
+    interface
+        subroutine case_test_session_real_to_integer_literal_compiler()
+        end subroutine case_test_session_real_to_integer_literal_compiler
+    end interface
+end module ffc_case_test_session_real_to_integer_literal_compiler
+
+subroutine case_test_session_real_to_integer_literal_compiler()
     use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session real-to-integer literal compiler test ==='
 
@@ -126,4 +138,4 @@ contains
             '/tmp/ffc_exponent_real_test')
     end function test_exponentiation_real
 
-end program test_session_real_to_integer_literal_compiler
+end subroutine case_test_session_real_to_integer_literal_compiler

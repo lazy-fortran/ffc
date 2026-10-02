@@ -1,7 +1,19 @@
-program test_session_class_scalar_identity_compiler
+! fo: dispatcher
+module ffc_case_test_session_class_scalar_identity_compiler
+    implicit none
+    private
+    public :: case_test_session_class_scalar_identity_compiler
+    interface
+        subroutine case_test_session_class_scalar_identity_compiler()
+        end subroutine case_test_session_class_scalar_identity_compiler
+    end interface
+end module ffc_case_test_session_class_scalar_identity_compiler
+
+subroutine case_test_session_class_scalar_identity_compiler()
     use ffc_test_support, only: expect_output, expect_error_contains, &
         expect_exe_has_symbol
     implicit none
+    save
 
     logical :: all_passed
 
@@ -239,4 +251,4 @@ contains
             '/tmp/ffc_class_identity_parent_to_ext')
     end function test_parent_actual_to_extension_dummy_is_rejected
 
-end program test_session_class_scalar_identity_compiler
+end subroutine case_test_session_class_scalar_identity_compiler

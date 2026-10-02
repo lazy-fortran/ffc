@@ -1,6 +1,18 @@
-program test_session_loop_cycle_compiler
+! fo: dispatcher
+module ffc_case_test_session_loop_cycle_compiler
+    implicit none
+    private
+    public :: case_test_session_loop_cycle_compiler
+    interface
+        subroutine case_test_session_loop_cycle_compiler()
+        end subroutine case_test_session_loop_cycle_compiler
+    end interface
+end module ffc_case_test_session_loop_cycle_compiler
+
+subroutine case_test_session_loop_cycle_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -57,4 +69,4 @@ contains
             '/tmp/ffc_session_cycle_latch_test')
     end function test_cycle_does_not_skip_latch
 
-end program test_session_loop_cycle_compiler
+end subroutine case_test_session_loop_cycle_compiler

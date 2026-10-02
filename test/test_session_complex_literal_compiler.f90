@@ -1,4 +1,15 @@
-program test_session_complex_literal_compiler
+! fo: dispatcher
+module ffc_case_test_session_complex_literal_compiler
+    implicit none
+    private
+    public :: case_test_session_complex_literal_compiler
+    interface
+        subroutine case_test_session_complex_literal_compiler()
+        end subroutine case_test_session_complex_literal_compiler
+    end interface
+end module ffc_case_test_session_complex_literal_compiler
+
+subroutine case_test_session_complex_literal_compiler()
     ! Verify complex literal lowering: (re, im) literals reach memory with the
     ! right components (#267), declaration initializers, cmplx(re, im), complex
     ! +/- arithmetic, and real(z)/aimag(z) extraction match gfortran exactly.
@@ -8,6 +19,7 @@ program test_session_complex_literal_compiler
         compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     implicit none
+    save
 
     logical :: all_passed
 
@@ -117,4 +129,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_complex_literal_compiler
+end subroutine case_test_session_complex_literal_compiler

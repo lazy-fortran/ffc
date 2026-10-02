@@ -1,32 +1,17 @@
 #!/usr/bin/env python3
-"""Convert standalone wrapper test programs into cases of the dispatcher.
+"""Consolidate test programs without copying or hoisting their test bodies.
 
-STATUS: not wired into the build yet - see fo issue "dispatcher routing does
-not fire on the test build path". The generated dispatcher compiles and runs
-(`build/fo/bin/test_ffc_suite` prints its usage and exits 2 when run bare),
-but `fo test <name>` still executes the test's own binary: hiding
-`build/fo/bin/test_session_empty_program_compiler` makes that test FAIL, so
-routing is provably not happening. Until fo routes, this tool's output is not
-applied to `test/` - a `! fo: dispatcher` marker in the tree would promise a
-routing that does not occur. Run with `--apply` only together with that fix.
+Each original source gains a small module declaring its case procedure's
+interface. Its test name remains its filename, discovered by fo through
+``! fo: dispatcher``. The original program body becomes an external
+subroutine, with its internal procedures and indentation preserved.
+The dispatcher imports those procedures and invokes exactly one per process,
+so STOP, ERROR STOP, host association and independent case execution survive.
+An explicit SAVE retains the original PROGRAM's local-variable lifetime.
 
-Each `test/test_x.f90` is its own executable, and every one of them re-links
-~15 MB of libffc: `build/fo/obj` is 38 MB while `build/fo/bin` is 7.7 GB.
-A case runs inside the dispatcher as `ffc_suite test_x`, so the library is
-linked once. The case name is the old test name, unchanged, so `fo test
-test_x` and the per-name suite report keep working.
-
-The transformation is deliberately small: `program test_x` becomes
-`subroutine case_test_x()` and the body is copied verbatim, because `stop 1`
-inside a case exits the dispatcher process with the same status the standalone
-test returned - a failure still looks like a failure to `fo`.
-
-A wrapper whose helpers live inside itself (an internal subroutine or function)
-is refused: those helpers would become module procedures of a different scope,
-which is a real edit, not a fold. The operator does that file by hand.
-
-Usage:
-    python3 tools/make_suite_cases.py [--apply] [test/test_x.f90 ...]
+Run without arguments to register every test_*.f90 source; --apply performs
+the conversion. Repeated runs rebuild the registry from the original sources,
+including cases already converted. Test bodies have one authoritative copy.
 """
 from __future__ import annotations
 
@@ -37,191 +22,165 @@ import re
 import sys
 
 MARKER = "! fo: dispatcher"
-CASES_DIR = pathlib.Path("test/suite")
 MAIN = pathlib.Path("test/test_ffc_suite.f90")
-INTERNAL = re.compile(
-    r"^\s*(?:recursive\s+|pure\s+|elemental\s+)*"
-    r"(?:integer|logical|real|complex|character|type|class)?\s*"
-    r"(?:subroutine|function)\s+[A-Za-z_]", re.I)
+GROUPS = pathlib.Path("test/suite")
+GROUP_SIZE = 32
+PROGRAM = re.compile(r"^\s*program\s+([a-z_]\w*)\s*$", re.I)
+END_PROGRAM = re.compile(r"^\s*end\s+program(?:\s+[a-z_]\w*)?\s*$", re.I)
+MODULE = re.compile(r"^module\s+([a-z_]\w*)\s*$", re.I)
+
+
+def bounded(prefix: str, name: str) -> str:
+    candidate = prefix + name
+    if len(candidate) <= 63:
+        return candidate
+    return prefix + hashlib.sha256(name.encode()).hexdigest()[:24]
+
+
+def module_name(name: str) -> str:
+    return bounded("ffc_case_", name)
 
 
 def sym(name: str) -> str:
-    """The Fortran symbol for a case, within the compiler's identifier limit.
-
-    gfortran caps identifiers at 63 characters, and `case_` plus a long test
-    stem passes that - and it does not fail as a tidy diagnostic: the parse
-    derails, so the neighbouring `public` and `use` lines report unrelated
-    errors (this is what broke the 96-case batch). The dispatch key stays the
-    full test name, so `ffc_suite <test_name>` is unaffected; only the
-    Fortran symbol is bounded.
-    """
-    cand = f"case_{name}"
-    if len(cand) <= 63:
-        return cand
-    return "case_c" + hashlib.md5(name.encode()).hexdigest()[:16]
+    return bounded("case_", name)
 
 
-def convert(path: pathlib.Path) -> tuple[str, str] | None:
-    text = path.read_text()
-    lines = text.split("\n")
-    name = path.stem
-    body: list[str] = []
-    use: list[str] = []
-    started = False
-    # Fold continuations first. A `use m, only: a, &` list that stops at the
-    # first physical line is a syntax error, and half the wrappers here wrap
-    # their `use` lists, so the fold is not a formatting nicety.
-    folded: list[str] = []
-    i = 0
-    while i < len(lines):
-        cur = lines[i]
-        while cur.rstrip().endswith("&") and i + 1 < len(lines):
-            i += 1
-            nxt = lines[i].strip()
-            cut = cur.rstrip()[:-1].rstrip()
-            if not cut.lstrip().startswith("!"):
-                cur = cut + " " + nxt
-            else:
-                cur = cut + nxt
-        folded.append(cur)
-        i += 1
-    lines = folded
-
-    for l in lines:
-        if not started:
-            # The program statement's own name is NOT necessarily the file
-            # stem - `test_session_pointer_associated2_compiler.f90` holds
-            # `program test_session_pointer_associated2`. The dispatch name is
-            # the file stem, because that is the name `fo` discovers and
-            # reports, so match any program name here.
-            if re.match(r"^\s*program\s+[A-Za-z_][A-Za-z0-9_]*\s*$", l, re.I):
-                started = True
-            continue
-        if re.match(r"^\s*end\s+program", l, re.I):
-            break
-        if re.match(r"^\s*use\b", l, re.I):
-            use.append(l.strip())
-            continue
-        if re.match(r"^\s*implicit\b", l, re.I):
-            continue
-        if INTERNAL.match(l) and not l.strip().startswith("!"):
-            print(f"{path}: internal procedure {l.strip()[:48]} - needs a real "
-                  "edit to module scope, not a fold", file=sys.stderr)
-            return None
-        body.append(l)
-    if not started or not body:
-        print(f"{path}: no wrapper program body found", file=sys.stderr)
+def converted_module(path: pathlib.Path) -> str | None:
+    lines = path.read_text().splitlines()
+    if not lines or lines[0] != MARKER:
         return None
+    for line in lines[1:]:
+        match = MODULE.match(line)
+        if match:
+            return match[1]
+        if line.strip() and not line.lstrip().startswith("!"):
+            return None
+    return None
 
-    case = [f"    subroutine {sym(name)}()"]
-    case += [f"        {u}" for u in use]
-    case.append("        implicit none")
-    case += body
-    case.append(f"    end subroutine {sym(name)}")
-    case.append("")
-    return name, "\n".join(case)
+
+def convert(path: pathlib.Path) -> str:
+    """Keep every original procedure in its original lexical scope."""
+    existing = converted_module(path)
+    if existing:
+        if existing.lower() != module_name(path.stem).lower():
+            raise ValueError(f"{path}: unexpected case module {existing}")
+        return path.read_text()
+
+    lines = path.read_text().splitlines()
+    starts = [(i, PROGRAM.match(line)) for i, line in enumerate(lines)
+              if PROGRAM.match(line)]
+    ends = [i for i, line in enumerate(lines) if END_PROGRAM.match(line)]
+    if len(starts) != 1 or len(ends) != 1:
+        raise ValueError(f"{path}: needs exactly one standalone program")
+    start, _ = starts[0]
+    end = ends[0]
+    if end <= start:
+        raise ValueError(f"{path}: invalid program boundaries")
+    if any(line.strip() and not line.lstrip().startswith("!")
+           for line in lines[end + 1:]):
+        raise ValueError(f"{path}: external units need an explicit conversion")
+
+    body = lines[start + 1:end]
+    implicit = next((i for i, line in enumerate(body)
+                     if re.match(r"^\s*implicit\s+none\b", line, re.I)), None)
+    if implicit is None:
+        raise ValueError(f"{path}: explicit IMPLICIT NONE required")
+    body.insert(implicit + 1, "    save")
+    module = module_name(path.stem)
+    procedure = sym(path.stem)
+    out = [MARKER, *lines[:start], f"module {module}",
+           "    implicit none", "    private", f"    public :: {procedure}",
+           "    interface", f"        subroutine {procedure}()",
+           f"        end subroutine {procedure}", "    end interface",
+           f"end module {module}", "", f"subroutine {procedure}()"]
+    out.extend(body)
+    out.extend([f"end subroutine {procedure}", ""])
+    return "\n".join(out)
+
+
+def group_source(index: int, paths: list[pathlib.Path]) -> str:
+    module = f"ffc_suite_group_{index:02d}"
+    out = [f"module {module}"]
+    for path in paths:
+        alias = sym(path.stem)
+        out.extend([f"    use {module_name(path.stem)}, only: &",
+                    f"        {alias}"])
+    out.extend(["    implicit none", "    private", "    public :: run_group",
+                "contains", "    subroutine run_group(name, matched)",
+                "        character(len=*), intent(in) :: name",
+                "        logical, intent(out) :: matched", "",
+                "        matched = .true.", "        select case (name)"])
+    for path in paths:
+        out.extend([f'        case ("{path.stem}")',
+                    f"            call {sym(path.stem)}()"])
+    out.extend(["        case default", "            matched = .false.",
+                "        end select", "    end subroutine run_group",
+                f"end module {module}", ""])
+    return "\n".join(out)
+
+
+def registry(paths: list[pathlib.Path]) -> str:
+    count = (len(paths) + GROUP_SIZE - 1) // GROUP_SIZE
+    out = ["program test_ffc_suite",
+           "    ! One case per process preserves independent STOP and exit status."]
+    for index in range(count):
+        out.extend([f"    use ffc_suite_group_{index:02d}, only: &",
+                    f"        run_group_{index:02d} => run_group"])
+    out.extend(["    implicit none", "    character(len=256) :: name",
+                "    logical :: matched", "",
+                "    if (command_argument_count() /= 1) then",
+                '        print *, "usage: test_ffc_suite <test_name>"',
+                "        stop 2", "    end if",
+                "    call get_command_argument(1, name)", ""])
+    for index in range(count):
+        out.extend([f"    call run_group_{index:02d}(trim(name), matched)",
+                    "    if (matched) goto 100"])
+    out.extend(['    print *, "ffc_suite: no such case: "//trim(name)',
+                "    stop 3", "100 continue", "end program test_ffc_suite", ""])
+    return "\n".join(out)
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--apply", action="store_true")
-    ap.add_argument("tests", nargs="*")
-    a = ap.parse_args()
-
-    targets = [pathlib.Path(t) for t in a.tests] if a.tests else sorted(
-        p for p in pathlib.Path("test").glob("test_*.f90")
-        if len(p.read_text().split("\n")) <= 25)
-
-    cases: list[tuple[str, str]] = []
-    skipped: list[str] = []
-    for t in targets:
-        r = convert(t)
-        if r is None:
-            # A refusal is a fact about that file, not a reason to abandon the
-            # rest of the family; the operator sees the count and the names.
-            skipped.append(t.name)
-            continue
-        cases.append(r)
-    if skipped:
-        print(f"skipped {len(skipped)} (internal helpers need real edits): "
-              + ", ".join(skipped)[:300])
-
-    print(f"{len(cases)} cases: " + ", ".join(n for n, _ in cases)[:400])
-    if not a.apply:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--apply", action="store_true")
+    parser.add_argument("tests", nargs="*")
+    args = parser.parse_args()
+    targets = sorted(pathlib.Path(name) for name in args.tests) if args.tests else sorted(
+        path for path in pathlib.Path("test").glob("test_*.f90") if path != MAIN)
+    if not targets:
+        parser.error("no test sources selected")
+    try:
+        changes = [(path, convert(path)) for path in targets]
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    already = [path for path in pathlib.Path("test").glob("test_*.f90")
+               if path != MAIN and converted_module(path)]
+    registered = sorted(set(targets + already))
+    print(f"{len(targets)} selected; {len(registered)} registered cases")
+    if not args.apply:
         return 0
-
-    CASES_DIR.mkdir(parents=True, exist_ok=True)
-    # Case modules are numbered by chunk index, so a run that covers fewer
-    # cases than the last leaves higher-numbered modules behind. They are
-    # still compiled, and they still define case symbols the dispatcher no
-    # longer names - duplicate definitions, and a suite that fails for a
-    # reason no longer connected to the change. Clear the directory first.
-    for stale in CASES_DIR.glob("ffc_suite_cases_*.f90"):
-        stale.unlink()
-    for chunk in range(0, len(cases), 8):
-        group = cases[chunk:chunk + 8]
-        mod = CASES_DIR / f"ffc_suite_cases_{chunk // 8:02d}.f90"
-        out = [f"module ffc_suite_cases_{chunk // 8:02d}",
-               "    !! Dispatcher cases, folded from the standalone wrapper test",
-               "    !! programs of the same names. One link of libffc instead of",
-               "    !! one per test; the case name is the old test name.",
-               "    implicit none",
-               "    public :: " + ", ".join(sym(n) for n, _ in group),
-               "contains", ""]
-        for _, c in group:
-            out.append(c)
-        out.append(f"end module ffc_suite_cases_{chunk // 8:02d}")
-        mod.write_text("\n".join(out) + "\n")
-
-    # The dispatcher: `ffc_suite <case_name>` runs one case and exits with its
-    # status. An unknown name is a hard error, never a silent pass - a suite
-    # that reports success for a case it never ran is worse than one that
-    # fails, because it hides the missing check.
-    mods = [f"    use ffc_suite_cases_{i // 8:02d}, only: " +
-            ", ".join(sym(n) for n, _ in cases[i:i + 8])
-            for i in range(0, len(cases), 8)]
-    sel = []
-    for n, _ in cases:
-        sel.append(f'        if (argv(1) == "{n}") then')
-        sel.append(f"            call {sym(n)}()")
-        sel.append("            return")
-        sel.append("        end if")
-    main = ["program test_ffc_suite",
-            "    !! Consolidated test binary (W0.3). `ffc_suite <test_name>`",
-            "    !! runs that one case and exits with its status, so the suite",
-            "    !! links libffc once instead of once per test. `fo test",
-            "    !! <test_name>` routes here for every source marked",
-            "    !! `! fo: dispatcher`; the name it reports is unchanged.",
-            ]
-    # `use` must precede `implicit none` - gfortran rejects the reverse.
-    main += mods + ["    implicit none"]
-    main += ["    !! An assumed-length allocatable array is not legal Fortran; the length",
-             "    !! has to be explicit.",
-             "    character(len=256), allocatable :: argv(:)",
-             "    integer :: i",
-             "",
-             "    allocate(character(len=256) :: argv(max(1, command_argument_count())))",
-             "    do i = 1, command_argument_count()",
-             "        call get_command_argument(i, argv(i))",
-             "    end do",
-             "    if (command_argument_count() < 1) then",
-             '        print *, "usage: ffc_suite <test_name>"',
-             "        stop 2",
-             "    end if",
-             "    argv(1) = adjustl(argv(1))", ""]
-    main += sel
-    main += ["    ! Unknown name: fail loudly, do not report a pass.",
-             '    print *, "ffc_suite: no such case: "//trim(argv(1))',
-             "    stop 3",
-             "end program test_ffc_suite"]
-    MAIN.write_text("\n".join(main) + "\n")
-
-    # Mark the originals so `fo` routes them and does not link a private copy.
-    for t in targets:
-        txt = t.read_text()
-        if not txt.startswith(MARKER):
-            t.write_text(MARKER + "\n" + txt)
-    print(f"marked {len(targets)} test sources; wrote case modules in {CASES_DIR}")
+    for path, text in changes:
+        if path.read_text() != text:
+            path.write_text(text)
+    # Bounded registry fanout respects fo's source/DAG dependency limits and
+    # keeps each generated procedure below the project's 100-line cap.
+    GROUPS.mkdir(parents=True, exist_ok=True)
+    groups = {}
+    for start in range(0, len(registered), GROUP_SIZE):
+        index = start // GROUP_SIZE
+        path = GROUPS / f"ffc_suite_group_{index:02d}.f90"
+        groups[path] = group_source(index, registered[start:start + GROUP_SIZE])
+    for stale in GROUPS.glob("ffc_suite_group_*.f90"):
+        if stale not in groups:
+            stale.unlink()
+    for path, source in groups.items():
+        if not path.exists() or path.read_text() != source:
+            path.write_text(source)
+    source = registry(registered)
+    if not MAIN.exists() or MAIN.read_text() != source:
+        MAIN.write_text(source)
+    print(f"wrote {MAIN}; test bodies remain in their original source files")
     return 0
 
 

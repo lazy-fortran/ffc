@@ -1,4 +1,15 @@
-program test_session_empty_derived_type_581_compiler
+! fo: dispatcher
+module ffc_case_test_session_empty_derived_type_581_compiler
+    implicit none
+    private
+    public :: case_test_session_empty_derived_type_581_compiler
+    interface
+        subroutine case_test_session_empty_derived_type_581_compiler()
+        end subroutine case_test_session_empty_derived_type_581_compiler
+    end interface
+end module ffc_case_test_session_empty_derived_type_581_compiler
+
+subroutine case_test_session_empty_derived_type_581_compiler()
     !! The gfortran-dg witness is a valid empty BIND(C) module in the
     !! default language mode. Keep the neighbouring non-interoperable case
     !! rejected so this leaf does not relax BIND(C) component constraints.
@@ -7,6 +18,7 @@ program test_session_empty_derived_type_581_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     logical :: all_passed
 
@@ -107,4 +119,4 @@ contains
         compare_source_acceptance = .true.
     end function compare_source_acceptance
 
-end program test_session_empty_derived_type_581_compiler
+end subroutine case_test_session_empty_derived_type_581_compiler

@@ -1,8 +1,20 @@
-program test_session_reject_text_helpers
+! fo: dispatcher
+module ffc_case_test_session_reject_text_helpers
+    implicit none
+    private
+    public :: case_test_session_reject_text_helpers
+    interface
+        subroutine case_test_session_reject_text_helpers()
+        end subroutine case_test_session_reject_text_helpers
+    end interface
+end module ffc_case_test_session_reject_text_helpers
+
+subroutine case_test_session_reject_text_helpers()
     use session_program_lowering_reject_text, only: &
         normalized_base_type, base_type_root, implicit_base_type, &
         starts_with_word
     implicit none
+    save
 
     logical :: all_passed
 
@@ -41,4 +53,4 @@ contains
             .not. starts_with_word('real', 'logical')
     end function test_word_boundaries
 
-end program test_session_reject_text_helpers
+end subroutine case_test_session_reject_text_helpers

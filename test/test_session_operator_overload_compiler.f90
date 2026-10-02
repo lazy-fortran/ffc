@@ -1,6 +1,18 @@
-program test_session_operator_overload_compiler
+! fo: dispatcher
+module ffc_case_test_session_operator_overload_compiler
+    implicit none
+    private
+    public :: case_test_session_operator_overload_compiler
+    interface
+        subroutine case_test_session_operator_overload_compiler()
+        end subroutine case_test_session_operator_overload_compiler
+    end interface
+end module ffc_case_test_session_operator_overload_compiler
+
+subroutine case_test_session_operator_overload_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -160,4 +172,4 @@ contains
             source, 42, '/tmp/ffc_session_op_assignment')
     end function test_overloaded_assignment
 
-end program test_session_operator_overload_compiler
+end subroutine case_test_session_operator_overload_compiler

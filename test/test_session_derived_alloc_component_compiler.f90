@@ -1,4 +1,15 @@
-program test_session_derived_alloc_component_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_alloc_component_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_alloc_component_compiler
+    interface
+        subroutine case_test_session_derived_alloc_component_compiler()
+        end subroutine case_test_session_derived_alloc_component_compiler
+    end interface
+end module ffc_case_test_session_derived_alloc_component_compiler
+
+subroutine case_test_session_derived_alloc_component_compiler()
     ! Scalar allocatable components (integer/real/logical) through the direct
     ! LIRIC session: default-unallocated state, allocate(x%c), component read
     ! and write, allocated(x%c) in a conditional, and deallocate(x%c). The
@@ -7,6 +18,7 @@ program test_session_derived_alloc_component_compiler
     ! allocatable components.
     use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -91,4 +103,4 @@ contains
             source, 0, '/tmp/ffc_derived_alloc_dealloc')
     end function test_unallocated_after_deallocate
 
-end program test_session_derived_alloc_component_compiler
+end subroutine case_test_session_derived_alloc_component_compiler

@@ -1,9 +1,21 @@
-program test_session_character_allocatable_compiler
+! fo: dispatcher
+module ffc_case_test_session_character_allocatable_compiler
+    implicit none
+    private
+    public :: case_test_session_character_allocatable_compiler
+    interface
+        subroutine case_test_session_character_allocatable_compiler()
+        end subroutine case_test_session_character_allocatable_compiler
+    end interface
+end module ffc_case_test_session_character_allocatable_compiler
+
+subroutine case_test_session_character_allocatable_compiler()
     ! Fixed-length character 1-D allocatable arrays through the direct LIRIC
     ! session: declare, allocate(a(n)) with blank-fill, element write/read,
     ! whole-array print, and deallocate.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -67,4 +79,4 @@ contains
             source, ' '//repeat(' ', 4)//new_line('a'), '/tmp/ffc_char_alloc_blank')
     end function test_blank_fill_unwritten_slot
 
-end program test_session_character_allocatable_compiler
+end subroutine case_test_session_character_allocatable_compiler

@@ -1,4 +1,15 @@
-program test_session_nested_character_substring_compiler
+! fo: dispatcher
+module ffc_case_test_session_nested_character_substring_compiler
+    implicit none
+    private
+    public :: case_test_session_nested_character_substring_compiler
+    interface
+        subroutine case_test_session_nested_character_substring_compiler()
+        end subroutine case_test_session_nested_character_substring_compiler
+    end interface
+end module ffc_case_test_session_nested_character_substring_compiler
+
+subroutine case_test_session_nested_character_substring_compiler()
     ! #669: a substring of a character-array element is a scalar character
     ! view.  Check the four operations that previously lost the nested base:
     ! read, literal write, overlapping assignment, and an assumed-length
@@ -8,6 +19,7 @@ program test_session_nested_character_substring_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     logical :: all_passed
 
@@ -112,4 +124,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_nested_character_substring_compiler
+end subroutine case_test_session_nested_character_substring_compiler

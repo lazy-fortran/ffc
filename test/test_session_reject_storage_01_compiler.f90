@@ -1,10 +1,22 @@
-program test_session_reject_storage_01_compiler
+! fo: dispatcher
+module ffc_case_test_session_reject_storage_01_compiler
+    implicit none
+    private
+    public :: case_test_session_reject_storage_01_compiler
+    interface
+        subroutine case_test_session_reject_storage_01_compiler()
+        end subroutine case_test_session_reject_storage_01_compiler
+    end interface
+end module ffc_case_test_session_reject_storage_01_compiler
+
+subroutine case_test_session_reject_storage_01_compiler()
     ! #392: storage-association restrictions on COMMON, EQUIVALENCE, SAVE and
     ! BLOCK DATA. Each invalid form is rejected with its own source
     ! diagnostic, while the corrected neighbour still compiles and runs.
     use ffc_test_support, only: expect_cli_error_contains, expect_cli_no_error, &
         expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -267,4 +279,4 @@ contains
             test_block_data_common_object_accepted = .false.
     end function test_block_data_common_object_accepted
 
-end program test_session_reject_storage_01_compiler
+end subroutine case_test_session_reject_storage_01_compiler

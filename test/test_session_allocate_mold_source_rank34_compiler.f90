@@ -1,9 +1,21 @@
-program test_session_allocate_mold_source_rank34_compiler
+! fo: dispatcher
+module ffc_case_test_session_allocate_mold_source_rank34_compiler
+    implicit none
+    private
+    public :: case_test_session_allocate_mold_source_rank34_compiler
+    interface
+        subroutine case_test_session_allocate_mold_source_rank34_compiler()
+        end subroutine case_test_session_allocate_mold_source_rank34_compiler
+    end interface
+end module ffc_case_test_session_allocate_mold_source_rank34_compiler
+
+subroutine case_test_session_allocate_mold_source_rank34_compiler()
     ! Rank-three and rank-four ALLOCATE(MOLD=)/ALLOCATE(SOURCE=) regression
     ! coverage.  The explicit checks are the independent behavioral oracle;
     ! gfortran comparison also checks the complete observable output.
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
 
     logical :: all_passed
 
@@ -82,4 +94,4 @@ contains
             'alloc_mold_source_rank34_rank4')
     end function test_rank4
 
-end program test_session_allocate_mold_source_rank34_compiler
+end subroutine case_test_session_allocate_mold_source_rank34_compiler

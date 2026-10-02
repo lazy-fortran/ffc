@@ -1,4 +1,15 @@
-program test_liric_session_bindings
+! fo: dispatcher
+module ffc_case_test_liric_session_bindings
+    implicit none
+    private
+    public :: case_test_liric_session_bindings
+    interface
+        subroutine case_test_liric_session_bindings()
+        end subroutine case_test_liric_session_bindings
+    end interface
+end module ffc_case_test_liric_session_bindings
+
+subroutine case_test_liric_session_bindings()
     use liric_session_bindings, only: liric_session_t, &
         liric_session_create, destroy, is_open, &
         emit_ret_i32_main_exe, emit_ret_i32_operand, &
@@ -18,6 +29,7 @@ program test_liric_session_bindings
         lr_inst_desc_t, LR_OK
     use, intrinsic :: iso_c_binding, only: c_int64_t, c_size_t
     implicit none
+    save
 
     type(liric_session_t) :: session
     character(len=:), allocatable :: error_msg
@@ -321,4 +333,4 @@ contains
         call clear_liric_abi_override_for_testing()
     end subroutine expect_reject
 
-end program test_liric_session_bindings
+end subroutine case_test_liric_session_bindings

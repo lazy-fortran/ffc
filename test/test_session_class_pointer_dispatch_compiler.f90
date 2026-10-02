@@ -1,4 +1,15 @@
-program test_session_class_pointer_dispatch_compiler
+! fo: dispatcher
+module ffc_case_test_session_class_pointer_dispatch_compiler
+    implicit none
+    private
+    public :: case_test_session_class_pointer_dispatch_compiler
+    interface
+        subroutine case_test_session_class_pointer_dispatch_compiler()
+        end subroutine case_test_session_class_pointer_dispatch_compiler
+    end interface
+end module ffc_case_test_session_class_pointer_dispatch_compiler
+
+subroutine case_test_session_class_pointer_dispatch_compiler()
     ! Compare the supported scalar CLASS pointer dispatch slice with gfortran,
     ! while keeping arrays, reassociation, and unsupported ownership explicit.
     use ffc_test_support, only: expect_error_contains
@@ -7,6 +18,7 @@ program test_session_class_pointer_dispatch_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     logical :: all_passed
 
@@ -288,4 +300,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_class_pointer_dispatch_compiler
+end subroutine case_test_session_class_pointer_dispatch_compiler

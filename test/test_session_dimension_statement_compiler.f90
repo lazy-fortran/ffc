@@ -1,7 +1,19 @@
-program test_session_dimension_statement_compiler
+! fo: dispatcher
+module ffc_case_test_session_dimension_statement_compiler
+    implicit none
+    private
+    public :: case_test_session_dimension_statement_compiler
+    interface
+        subroutine case_test_session_dimension_statement_compiler()
+        end subroutine case_test_session_dimension_statement_compiler
+    end interface
+end module ffc_case_test_session_dimension_statement_compiler
+
+subroutine case_test_session_dimension_statement_compiler()
     use ffc_test_support, only: expect_exit_status
     use fortfront_compiler, only: INPUT_MODE_LAZY
     implicit none
+    save
 
     print *, '=== DIMENSION statement separate from type declaration ==='
 
@@ -30,4 +42,4 @@ program test_session_dimension_statement_compiler
         INPUT_MODE_LAZY)) stop 1
 
     print *, 'PASS: DIMENSION statement merges with typed declaration'
-end program test_session_dimension_statement_compiler
+end subroutine case_test_session_dimension_statement_compiler

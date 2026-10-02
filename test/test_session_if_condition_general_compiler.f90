@@ -1,10 +1,22 @@
-program test_session_if_condition_general_compiler
+! fo: dispatcher
+module ffc_case_test_session_if_condition_general_compiler
+    implicit none
+    private
+    public :: case_test_session_if_condition_general_compiler
+    interface
+        subroutine case_test_session_if_condition_general_compiler()
+        end subroutine case_test_session_if_condition_general_compiler
+    end interface
+end module ffc_case_test_session_if_condition_general_compiler
+
+subroutine case_test_session_if_condition_general_compiler()
     ! Cluster W6: IF condition generality. Covers logical function results
     ! (allocated(), a contained logical function), a plain logical array
     ! element, and .not./.and. trees over those, none of which the direct
     ! LIRIC session accepted before.
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -112,4 +124,4 @@ contains
             source, 0, '/tmp/ffc_if_inline_no_then_test')
     end function test_inline_if_without_then
 
-end program test_session_if_condition_general_compiler
+end subroutine case_test_session_if_condition_general_compiler

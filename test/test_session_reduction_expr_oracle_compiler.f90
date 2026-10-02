@@ -1,9 +1,21 @@
-program test_session_reduction_expr_oracle_compiler
+! fo: dispatcher
+module ffc_case_test_session_reduction_expr_oracle_compiler
+    implicit none
+    private
+    public :: case_test_session_reduction_expr_oracle_compiler
+    interface
+        subroutine case_test_session_reduction_expr_oracle_compiler()
+        end subroutine case_test_session_reduction_expr_oracle_compiler
+    end interface
+end module ffc_case_test_session_reduction_expr_oracle_compiler
+
+subroutine case_test_session_reduction_expr_oracle_compiler()
     ! Differential oracle for an allocatable-array function result used as a
     ! reduction argument.  The function mutates host state, so evaluating the
     ! reduction expression more than once changes the observable result.
     use ffc_test_support, only: compile_to_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -89,4 +101,4 @@ contains
         call execute_command_line('rm -f /tmp/ffc_reduction_expr_oracle.*')
     end subroutine cleanup
 
-end program test_session_reduction_expr_oracle_compiler
+end subroutine case_test_session_reduction_expr_oracle_compiler

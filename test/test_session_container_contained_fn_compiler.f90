@@ -1,6 +1,18 @@
-program test_session_container_contained_fn
+! fo: dispatcher
+module ffc_case_test_session_container_contained_fn_compiler
+    implicit none
+    private
+    public :: case_test_session_container_contained_fn_compiler
+    interface
+        subroutine case_test_session_container_contained_fn_compiler()
+        end subroutine case_test_session_container_contained_fn_compiler
+    end interface
+end module ffc_case_test_session_container_contained_fn_compiler
+
+subroutine case_test_session_container_contained_fn_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -59,4 +71,4 @@ contains
             source, 5, '/tmp/ffc_session_container_logical_fn_test')
     end function test_logical_contained_function
 
-end program test_session_container_contained_fn
+end subroutine case_test_session_container_contained_fn_compiler

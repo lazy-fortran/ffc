@@ -380,6 +380,10 @@ contains
                 if (.not. emit_liric_print_space(context%session, error_msg)) &
                     return
             end do
+        case ('B', 'O', 'Z')
+            call lower_boz_descriptor(arena, node, context, format_body, pos, &
+                                      kind_char, repeat_count, item_index, &
+                                      exhausted, error_msg)
         case ('I')
             call parse_decimal_digits(format_body, pos, width)
             if (len(width) == 0) then

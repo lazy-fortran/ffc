@@ -1,4 +1,15 @@
-program test_session_complex_function_result_compiler
+! fo: dispatcher
+module ffc_case_test_session_complex_function_result_compiler
+    implicit none
+    private
+    public :: case_test_session_complex_function_result_compiler
+    interface
+        subroutine case_test_session_complex_function_result_compiler()
+        end subroutine case_test_session_complex_function_result_compiler
+    end interface
+end module ffc_case_test_session_complex_function_result_compiler
+
+subroutine case_test_session_complex_function_result_compiler()
     ! Verify contained functions returning complex(4)/complex(8) lower through
     ! the sret result ABI and print byte-for-byte like gfortran (#266 E5).
     use session_program_lowering, only: lower_program_to_liric_exe
@@ -7,6 +18,7 @@ program test_session_complex_function_result_compiler
         compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     implicit none
+    save
 
     logical :: all_passed
 
@@ -114,4 +126,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_complex_function_result_compiler
+end subroutine case_test_session_complex_function_result_compiler

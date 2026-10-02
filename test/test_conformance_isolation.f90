@@ -1,4 +1,15 @@
-program test_conformance_isolation
+! fo: dispatcher
+module ffc_case_test_conformance_isolation
+    implicit none
+    private
+    public :: case_test_conformance_isolation
+    interface
+        subroutine case_test_conformance_isolation()
+        end subroutine case_test_conformance_isolation
+    end interface
+end module ffc_case_test_conformance_isolation
+
+subroutine case_test_conformance_isolation()
     ! Regression test for lazy-fortran/ffc#547.
     !
     ! Concurrent conformance runs (parallel `fo test`, several worktrees) must
@@ -6,6 +17,7 @@ program test_conformance_isolation
     ! another checkout's compiler.
     use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
+    save
 
     character(len=:), allocatable :: root
     logical :: passed
@@ -226,4 +238,4 @@ contains
         close (unit)
     end function file_contains
 
-end program test_conformance_isolation
+end subroutine case_test_conformance_isolation

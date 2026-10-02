@@ -42,8 +42,17 @@ module liric_session_format_bindings
     public :: create_i8_format_global_no_newline
     public :: create_i16_format_global_no_newline
     public :: emit_e_en_format_call
+    public :: emit_boz_write_call
 
     interface
+        module function emit_boz_write_call(session, value, radix, width, &
+                min_digits, bits, error_msg) result(ok)
+            type(liric_session_t), intent(inout) :: session
+            type(lr_operand_desc_t), intent(in) :: value
+            integer, intent(in) :: radix, width, min_digits, bits
+            character(len=:), allocatable, intent(out) :: error_msg
+            logical :: ok
+        end function emit_boz_write_call
         function lr_type_i32_s(handle) result(typ) bind(c)
             import :: c_ptr
             type(c_ptr), value :: handle

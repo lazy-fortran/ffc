@@ -1,4 +1,15 @@
-program test_session_array_literal_print_compiler
+! fo: dispatcher
+module ffc_case_test_session_array_literal_print_compiler
+    implicit none
+    private
+    public :: case_test_session_array_literal_print_compiler
+    interface
+        subroutine case_test_session_array_literal_print_compiler()
+        end subroutine case_test_session_array_literal_print_compiler
+    end interface
+end module ffc_case_test_session_array_literal_print_compiler
+
+subroutine case_test_session_array_literal_print_compiler()
     ! Verify list-directed print of an inline array constructor [e1, e2, ...]
     ! lowers through the direct LIRIC session and prints byte-for-byte like
     ! gfortran. Each element (literal, variable, or non-contained function call)
@@ -9,6 +20,7 @@ program test_session_array_literal_print_compiler
         compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     implicit none
+    save
 
     logical :: all_passed
 
@@ -128,4 +140,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_array_literal_print_compiler
+end subroutine case_test_session_array_literal_print_compiler

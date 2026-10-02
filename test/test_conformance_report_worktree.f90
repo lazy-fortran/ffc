@@ -1,4 +1,15 @@
-program test_conformance_report_worktree
+! fo: dispatcher
+module ffc_case_test_conformance_report_worktree
+    implicit none
+    private
+    public :: case_test_conformance_report_worktree
+    interface
+        subroutine case_test_conformance_report_worktree()
+        end subroutine case_test_conformance_report_worktree
+    end interface
+end module ffc_case_test_conformance_report_worktree
+
+subroutine case_test_conformance_report_worktree()
     ! ffc #642: identical commits built in different worktrees disagree on
     ! corpus results, so a report from worktree A must never be compared
     ! against a report from worktree B. The runner therefore records the
@@ -6,6 +17,7 @@ program test_conformance_report_worktree
     ! cross-worktree pair instead of reporting a meaningless delta.
     use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
+    save
 
     character(len=*), parameter :: GAUNTLET = 'scripts/conformance_gauntlet.sh'
     character(len=*), parameter :: COMPARE = 'scripts/compare_conformance_reports.sh'
@@ -111,4 +123,4 @@ contains
         close (unit)
     end subroutine write_legacy_report
 
-end program test_conformance_report_worktree
+end subroutine case_test_conformance_report_worktree

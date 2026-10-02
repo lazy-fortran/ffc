@@ -1,7 +1,19 @@
-program test_session_goto_compiler
+! fo: dispatcher
+module ffc_case_test_session_goto_compiler
+    implicit none
+    private
+    public :: case_test_session_goto_compiler
+    interface
+        subroutine case_test_session_goto_compiler()
+        end subroutine case_test_session_goto_compiler
+    end interface
+end module ffc_case_test_session_goto_compiler
+
+subroutine case_test_session_goto_compiler()
     use ffc_test_support, only: expect_output, expect_exit_status, &
         expect_eof_stderr_and_exit
     implicit none
+    save
 
     print *, '=== direct session goto/pause compiler test ==='
 
@@ -85,4 +97,4 @@ program test_session_goto_compiler
     print *, 'PASS: pause halts on end-of-input'
 
     print *, 'PASS: goto and pause lower through direct LIRIC session'
-end program test_session_goto_compiler
+end subroutine case_test_session_goto_compiler

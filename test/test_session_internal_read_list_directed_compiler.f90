@@ -1,8 +1,20 @@
-program test_session_internal_read_list_directed_compiler
+! fo: dispatcher
+module ffc_case_test_session_internal_read_list_directed_compiler
+    implicit none
+    private
+    public :: case_test_session_internal_read_list_directed_compiler
+    interface
+        subroutine case_test_session_internal_read_list_directed_compiler()
+        end subroutine case_test_session_internal_read_list_directed_compiler
+    end interface
+end module ffc_case_test_session_internal_read_list_directed_compiler
+
+subroutine case_test_session_internal_read_list_directed_compiler()
     ! List-directed internal read: read (buf, *) value parses an integer,
     ! real, or character scalar from a character variable.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -60,4 +72,4 @@ contains
             source, '[ab  ]'//new_line('a'), '/tmp/ffc_ilread_c_test')
     end function test_list_directed_character
 
-end program test_session_internal_read_list_directed_compiler
+end subroutine case_test_session_internal_read_list_directed_compiler

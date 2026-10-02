@@ -1,8 +1,20 @@
-program test_session_derived_alloc_array_finalizer_rank4_compiler
+! fo: dispatcher
+module ffc_case_42f771abaa503c9dfb375775
+    implicit none
+    private
+    public :: case_test_session_derived_alloc_array_finalizer_rank4_compiler
+    interface
+        subroutine case_test_session_derived_alloc_array_finalizer_rank4_compiler()
+        end subroutine case_test_session_derived_alloc_array_finalizer_rank4_compiler
+    end interface
+end module ffc_case_42f771abaa503c9dfb375775
+
+subroutine case_test_session_derived_alloc_array_finalizer_rank4_compiler()
     ! Rank-4 allocatable derived arrays must allocate all four extents and run
     ! one scalar FINAL procedure per element on deallocation and scope exit.
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'module m'//new_line('a')// &
@@ -40,4 +52,4 @@ program test_session_derived_alloc_array_finalizer_rank4_compiler
     if (.not. expect_exit_status(source, 0, &
             '/tmp/ffc_alloc_arr_final_rank4')) stop 1
     print *, 'PASS: rank-4 derived allocatable finalizer count oracle'
-end program test_session_derived_alloc_array_finalizer_rank4_compiler
+end subroutine case_test_session_derived_alloc_array_finalizer_rank4_compiler

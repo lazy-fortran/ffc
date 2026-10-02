@@ -1,4 +1,15 @@
-program test_session_statement_function
+! fo: dispatcher
+module ffc_case_test_session_statement_function_compiler
+    implicit none
+    private
+    public :: case_test_session_statement_function_compiler
+    interface
+        subroutine case_test_session_statement_function_compiler()
+        end subroutine case_test_session_statement_function_compiler
+    end interface
+end module ffc_case_test_session_statement_function_compiler
+
+subroutine case_test_session_statement_function_compiler()
     ! Statement-function lowering through direct LIRIC. A statement function
     ! f(x) = expr defined in the specification section is inlined at each call
     ! site: the actual arguments replace the dummy names in the stored body
@@ -6,6 +17,7 @@ program test_session_statement_function
     ! real statement function called and printed; outputs match gfortran -w.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -51,4 +63,4 @@ contains
             '/tmp/ffc_stmt_fn_real')
     end function test_real_statement_function
 
-end program test_session_statement_function
+end subroutine case_test_session_statement_function_compiler

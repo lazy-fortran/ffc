@@ -1,8 +1,20 @@
-program test_session_pointer_array_descriptor
+! fo: dispatcher
+module ffc_case_test_session_pointer_array_descriptor_compiler
+    implicit none
+    private
+    public :: case_test_session_pointer_array_descriptor_compiler
+    interface
+        subroutine case_test_session_pointer_array_descriptor_compiler()
+        end subroutine case_test_session_pointer_array_descriptor_compiler
+    end interface
+end module ffc_case_test_session_pointer_array_descriptor_compiler
+
+subroutine case_test_session_pointer_array_descriptor_compiler()
     use ffc_test_support, only: expect_error_contains, expect_output, &
         expect_output_matches_gfortran, &
         expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session pointer-array descriptor compiler test ==='
 
@@ -99,4 +111,4 @@ program test_session_pointer_array_descriptor
         'logical_pointer_sections')) stop 7
 
     print *, 'PASS: pointer array descriptor, whole array and strided section'
-end program test_session_pointer_array_descriptor
+end subroutine case_test_session_pointer_array_descriptor_compiler

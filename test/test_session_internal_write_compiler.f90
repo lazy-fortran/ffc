@@ -1,9 +1,21 @@
-program test_session_internal_write_compiler
+! fo: dispatcher
+module ffc_case_test_session_internal_write_compiler
+    implicit none
+    private
+    public :: case_test_session_internal_write_compiler
+    interface
+        subroutine case_test_session_internal_write_compiler()
+        end subroutine case_test_session_internal_write_compiler
+    end interface
+end module ffc_case_test_session_internal_write_compiler
+
+subroutine case_test_session_internal_write_compiler()
     ! Internal write: write (buf, fmt) value into a fixed-length character
     ! variable. Output is checked by printing the buffer with '(A)' and
     ! comparing the exact bytes.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -57,4 +69,4 @@ contains
             'hello               '//new_line('a'), '/tmp/ffc_iwrite_a_test')
     end function test_internal_write_string_with_a
 
-end program test_session_internal_write_compiler
+end subroutine case_test_session_internal_write_compiler

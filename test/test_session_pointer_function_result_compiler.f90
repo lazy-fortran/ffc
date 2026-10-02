@@ -1,6 +1,18 @@
-program test_session_pointer_function_result
+! fo: dispatcher
+module ffc_case_test_session_pointer_function_result_compiler
+    implicit none
+    private
+    public :: case_test_session_pointer_function_result_compiler
+    interface
+        subroutine case_test_session_pointer_function_result_compiler()
+        end subroutine case_test_session_pointer_function_result_compiler
+    end interface
+end module ffc_case_test_session_pointer_function_result_compiler
+
+subroutine case_test_session_pointer_function_result_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session pointer function result compiler test ==='
 
@@ -89,4 +101,4 @@ program test_session_pointer_function_result
         '/tmp/ffc_session_pointer_result_stale')) stop 1
 
     print *, 'PASS: scalar data pointer function result'
-end program test_session_pointer_function_result
+end subroutine case_test_session_pointer_function_result_compiler

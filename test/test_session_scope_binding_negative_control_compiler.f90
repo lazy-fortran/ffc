@@ -1,6 +1,18 @@
-program test_session_scope_binding_negative_control_compiler
+! fo: dispatcher
+module ffc_case_test_session_scope_binding_negative_control_compiler
+    implicit none
+    private
+    public :: case_test_session_scope_binding_negative_control_compiler
+    interface
+        subroutine case_test_session_scope_binding_negative_control_compiler()
+        end subroutine case_test_session_scope_binding_negative_control_compiler
+    end interface
+end module ffc_case_test_session_scope_binding_negative_control_compiler
+
+subroutine case_test_session_scope_binding_negative_control_compiler()
     use ffc_test_support, only: expect_cli_error_contains, expect_cli_no_error
     implicit none
+    save
 
     logical :: all_passed
 
@@ -85,4 +97,4 @@ contains
             source, '/tmp/ffc_scope_binding_valid_control')
     end function test_matching_override_is_accepted
 
-end program test_session_scope_binding_negative_control_compiler
+end subroutine case_test_session_scope_binding_negative_control_compiler

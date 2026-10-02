@@ -1,7 +1,19 @@
-program test_session_huge_intrinsic_compiler
+! fo: dispatcher
+module ffc_case_test_session_huge_intrinsic_compiler
+    implicit none
+    private
+    public :: case_test_session_huge_intrinsic_compiler
+    interface
+        subroutine case_test_session_huge_intrinsic_compiler()
+        end subroutine case_test_session_huge_intrinsic_compiler
+    end interface
+end module ffc_case_test_session_huge_intrinsic_compiler
+
+subroutine case_test_session_huge_intrinsic_compiler()
     use ffc_test_support, only: expect_error_contains, expect_no_error, &
         expect_output_matches_gfortran
     implicit none
+    save
 
     logical :: all_passed
 
@@ -72,4 +84,4 @@ contains
             '/tmp/ffc_huge_wrong_arity')
     end function test_huge_arity_is_rejected
 
-end program test_session_huge_intrinsic_compiler
+end subroutine case_test_session_huge_intrinsic_compiler

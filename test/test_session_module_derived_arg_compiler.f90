@@ -1,6 +1,18 @@
-program test_session_module_derived_arg_compiler
+! fo: dispatcher
+module ffc_case_test_session_module_derived_arg_compiler
+    implicit none
+    private
+    public :: case_test_session_module_derived_arg_compiler
+    interface
+        subroutine case_test_session_module_derived_arg_compiler()
+        end subroutine case_test_session_module_derived_arg_compiler
+    end interface
+end module ffc_case_test_session_module_derived_arg_compiler
+
+subroutine case_test_session_module_derived_arg_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     print *, '=== direct session module derived-type argument compiler test ==='
 
@@ -145,4 +157,4 @@ contains
             source, 0, '/tmp/ffc_module_i64_derived_component_test')
     end function test_i64_derived_component
 
-end program test_session_module_derived_arg_compiler
+end subroutine case_test_session_module_derived_arg_compiler

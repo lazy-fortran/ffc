@@ -1,4 +1,15 @@
-program test_session_derived_character_component_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_character_component_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_character_component_compiler
+    interface
+        subroutine case_test_session_derived_character_component_compiler()
+        end subroutine case_test_session_derived_character_component_compiler
+    end interface
+end module ffc_case_test_session_derived_character_component_compiler
+
+subroutine case_test_session_derived_character_component_compiler()
     ! Fixed-length character components take a place in the flat slot layout
     ! (ceil((len+1)/4) byte-storage slots, the extra byte holding a NUL
     ! terminator) so a derived type that declares them lowers and runs.
@@ -10,6 +21,7 @@ program test_session_derived_character_component_compiler
     use ffc_test_support, only: expect_no_error, &
         expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -181,4 +193,4 @@ contains
             source, expected, '/tmp/ffc_derived_char_array_component_size_test')
     end function test_character_array_component_size
 
-end program test_session_derived_character_component_compiler
+end subroutine case_test_session_derived_character_component_compiler

@@ -1,5 +1,17 @@
-program test_conformance_manifest_validation
+! fo: dispatcher
+module ffc_case_test_conformance_manifest_validation
     implicit none
+    private
+    public :: case_test_conformance_manifest_validation
+    interface
+        subroutine case_test_conformance_manifest_validation()
+        end subroutine case_test_conformance_manifest_validation
+    end interface
+end module ffc_case_test_conformance_manifest_validation
+
+subroutine case_test_conformance_manifest_validation()
+    implicit none
+    save
 
     character(len=*), parameter :: SCRIPT = &
         'scripts/conformance_gauntlet.sh'
@@ -217,4 +229,4 @@ contains
         close(unit)
     end function file_contains
 
-end program test_conformance_manifest_validation
+end subroutine case_test_conformance_manifest_validation

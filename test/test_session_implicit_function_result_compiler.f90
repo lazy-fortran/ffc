@@ -1,4 +1,15 @@
-program test_session_implicit_function_result_compiler
+! fo: dispatcher
+module ffc_case_test_session_implicit_function_result_compiler
+    implicit none
+    private
+    public :: case_test_session_implicit_function_result_compiler
+    interface
+        subroutine case_test_session_implicit_function_result_compiler()
+        end subroutine case_test_session_implicit_function_result_compiler
+    end interface
+end module ffc_case_test_session_implicit_function_result_compiler
+
+subroutine case_test_session_implicit_function_result_compiler()
     ! Verify a function whose result type is left to Fortran implicit typing
     ! (no explicit result type and no body declaration of the result variable)
     ! lowers with the kind derived from the default letter rule: i-n integer,
@@ -9,6 +20,7 @@ program test_session_implicit_function_result_compiler
         compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     implicit none
+    save
 
     logical :: all_passed
 
@@ -108,4 +120,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_implicit_function_result_compiler
+end subroutine case_test_session_implicit_function_result_compiler

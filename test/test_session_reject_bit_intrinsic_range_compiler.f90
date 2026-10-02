@@ -1,6 +1,18 @@
-program test_session_reject_bit_intrinsic_range_compiler
+! fo: dispatcher
+module ffc_case_test_session_reject_bit_intrinsic_range_compiler
+    implicit none
+    private
+    public :: case_test_session_reject_bit_intrinsic_range_compiler
+    interface
+        subroutine case_test_session_reject_bit_intrinsic_range_compiler()
+        end subroutine case_test_session_reject_bit_intrinsic_range_compiler
+    end interface
+end module ffc_case_test_session_reject_bit_intrinsic_range_compiler
+
+subroutine case_test_session_reject_bit_intrinsic_range_compiler()
     use ffc_test_support, only: expect_error_contains, expect_no_error
     implicit none
+    save
 
     logical :: all_passed
 
@@ -74,4 +86,4 @@ contains
             source, '/tmp/ffc_session_bit_intrinsic_accept')
     end function test_valid_bit_intrinsics_accepted
 
-end program test_session_reject_bit_intrinsic_range_compiler
+end subroutine case_test_session_reject_bit_intrinsic_range_compiler

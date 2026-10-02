@@ -1,6 +1,18 @@
-program test_session_runtime_array_section_broadcast_compiler
+! fo: dispatcher
+module ffc_case_test_session_runtime_array_section_broadcast_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_array_section_broadcast_compiler
+    interface
+        subroutine case_test_session_runtime_array_section_broadcast_compiler()
+        end subroutine case_test_session_runtime_array_section_broadcast_compiler
+    end interface
+end module ffc_case_test_session_runtime_array_section_broadcast_compiler
+
+subroutine case_test_session_runtime_array_section_broadcast_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -37,4 +49,4 @@ program test_session_runtime_array_section_broadcast_compiler
     if (.not. expect_output(source, expected, &
             '/tmp/ffc_session_runtime_array_section_broadcast')) stop 1
     print *, 'PASS: runtime array-section scalar broadcast preserves section shape'
-end program test_session_runtime_array_section_broadcast_compiler
+end subroutine case_test_session_runtime_array_section_broadcast_compiler

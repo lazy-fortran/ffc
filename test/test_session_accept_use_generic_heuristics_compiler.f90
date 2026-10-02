@@ -1,4 +1,15 @@
-program test_session_accept_use_generic_heuristics_compiler
+! fo: dispatcher
+module ffc_case_test_session_accept_use_generic_heuristics_compiler
+    implicit none
+    private
+    public :: case_test_session_accept_use_generic_heuristics_compiler
+    interface
+        subroutine case_test_session_accept_use_generic_heuristics_compiler()
+        end subroutine case_test_session_accept_use_generic_heuristics_compiler
+    end interface
+end module ffc_case_test_session_accept_use_generic_heuristics_compiler
+
+subroutine case_test_session_accept_use_generic_heuristics_compiler()
     ! ffc #620: the line-based generic/USE rejection heuristics must not
     ! reject valid programs. The accepted-side cases are reduced from
     ! gfortran.dg/generic_6.f90, use_14.f90 and use_26.f90, all of which
@@ -7,6 +18,7 @@ program test_session_accept_use_generic_heuristics_compiler
     use ffc_test_support, only: expect_error_contains, expect_error_lacks, &
                                 expect_no_error
     implicit none
+    save
 
     logical :: all_passed
     character(len=*), parameter :: nl = new_line('a')
@@ -207,4 +219,4 @@ contains
             '/tmp/ffc620_ambiguous')
     end function test_ambiguous_use_still_rejected
 
-end program test_session_accept_use_generic_heuristics_compiler
+end subroutine case_test_session_accept_use_generic_heuristics_compiler

@@ -1,8 +1,20 @@
-program test_session_iostat_compiler
+! fo: dispatcher
+module ffc_case_test_session_iostat_compiler
+    implicit none
+    private
+    public :: case_test_session_iostat_compiler
+    interface
+        subroutine case_test_session_iostat_compiler()
+        end subroutine case_test_session_iostat_compiler
+    end interface
+end module ffc_case_test_session_iostat_compiler
+
+subroutine case_test_session_iostat_compiler()
     ! iostat= on file-unit READ and WRITE: 0 on success, -1 at end-of-file,
     ! matching gfortran's iostat_end.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -57,4 +69,4 @@ contains
             repeat(' ', 11)//'0'//new_line('a'), '/tmp/ffc_iostat_write')
     end function test_write_iostat_success
 
-end program test_session_iostat_compiler
+end subroutine case_test_session_iostat_compiler

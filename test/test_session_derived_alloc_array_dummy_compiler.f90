@@ -1,4 +1,15 @@
-program test_session_derived_alloc_array_dummy_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_alloc_array_dummy_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_alloc_array_dummy_compiler
+    interface
+        subroutine case_test_session_derived_alloc_array_dummy_compiler()
+        end subroutine case_test_session_derived_alloc_array_dummy_compiler
+    end interface
+end module ffc_case_test_session_derived_alloc_array_dummy_compiler
+
+subroutine case_test_session_derived_alloc_array_dummy_compiler()
     ! Arrays whose elements carry allocatable components crossing a procedure
     ! boundary (#406). The outer array keeps the canonical contiguous derived
     ! layout, so an explicit-shape or assumed-shape dummy binds the caller's
@@ -10,6 +21,7 @@ program test_session_derived_alloc_array_dummy_compiler
     use ffc_test_support, only: expect_output, expect_exit_status, &
                                 expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -194,4 +206,4 @@ contains
             '/tmp/ffc_derived_alloc_arrayarg_intent')
     end function test_reject_intent_in_mutation
 
-end program test_session_derived_alloc_array_dummy_compiler
+end subroutine case_test_session_derived_alloc_array_dummy_compiler

@@ -1,6 +1,18 @@
-program test_session_module_multi_name_var_compiler
+! fo: dispatcher
+module ffc_case_test_session_module_multi_name_var_compiler
+    implicit none
+    private
+    public :: case_test_session_module_multi_name_var_compiler
+    interface
+        subroutine case_test_session_module_multi_name_var_compiler()
+        end subroutine case_test_session_module_multi_name_var_compiler
+    end interface
+end module ffc_case_test_session_module_multi_name_var_compiler
+
+subroutine case_test_session_module_multi_name_var_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     print *, '=== multi-name module variable declaration ==='
 
@@ -28,4 +40,4 @@ program test_session_module_multi_name_var_compiler
         '/tmp/ffc_session_module_multi_name_var_test')) stop 1
 
     print *, 'PASS: multi-name module variables emit and import per name'
-end program test_session_module_multi_name_var_compiler
+end subroutine case_test_session_module_multi_name_var_compiler

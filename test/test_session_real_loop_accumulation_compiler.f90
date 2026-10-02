@@ -1,6 +1,18 @@
-program test_session_real_loop_accumulation_compiler
+! fo: dispatcher
+module ffc_case_test_session_real_loop_accumulation_compiler
+    implicit none
+    private
+    public :: case_test_session_real_loop_accumulation_compiler
+    interface
+        subroutine case_test_session_real_loop_accumulation_compiler()
+        end subroutine case_test_session_real_loop_accumulation_compiler
+    end interface
+end module ffc_case_test_session_real_loop_accumulation_compiler
+
+subroutine case_test_session_real_loop_accumulation_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== real loop accumulation compiler test ==='
 
@@ -68,4 +80,4 @@ contains
             '/tmp/ffc_nested_real8_loop_accum_test')
     end function test_nested_real8_sum
 
-end program test_session_real_loop_accumulation_compiler
+end subroutine case_test_session_real_loop_accumulation_compiler

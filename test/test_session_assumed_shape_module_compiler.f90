@@ -1,6 +1,18 @@
-program test_session_assumed_shape_module
+! fo: dispatcher
+module ffc_case_test_session_assumed_shape_module_compiler
+    implicit none
+    private
+    public :: case_test_session_assumed_shape_module_compiler
+    interface
+        subroutine case_test_session_assumed_shape_module_compiler()
+        end subroutine case_test_session_assumed_shape_module_compiler
+    end interface
+end module ffc_case_test_session_assumed_shape_module_compiler
+
+subroutine case_test_session_assumed_shape_module_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -107,4 +119,4 @@ contains
             '/tmp/ffc_session_assumed_shape_param_dim')
     end function test_param_dim_actual
 
-end program test_session_assumed_shape_module
+end subroutine case_test_session_assumed_shape_module_compiler

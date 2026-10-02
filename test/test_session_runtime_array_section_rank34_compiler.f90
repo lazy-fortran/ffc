@@ -1,9 +1,21 @@
-program test_session_runtime_array_section_rank34_compiler
+! fo: dispatcher
+module ffc_case_test_session_runtime_array_section_rank34_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_array_section_rank34_compiler
+    interface
+        subroutine case_test_session_runtime_array_section_rank34_compiler()
+        end subroutine case_test_session_runtime_array_section_rank34_compiler
+    end interface
+end module ffc_case_test_session_runtime_array_section_rank34_compiler
+
+subroutine case_test_session_runtime_array_section_rank34_compiler()
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -104,4 +116,4 @@ contains
         ok = .true.
     end function matches_gfortran
 
-end program test_session_runtime_array_section_rank34_compiler
+end subroutine case_test_session_runtime_array_section_rank34_compiler

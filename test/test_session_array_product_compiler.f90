@@ -1,6 +1,18 @@
-program test_session_array_product
+! fo: dispatcher
+module ffc_case_test_session_array_product_compiler
+    implicit none
+    private
+    public :: case_test_session_array_product_compiler
+    interface
+        subroutine case_test_session_array_product_compiler()
+        end subroutine case_test_session_array_product_compiler
+    end interface
+end module ffc_case_test_session_array_product_compiler
+
+subroutine case_test_session_array_product_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -41,4 +53,4 @@ contains
             '/tmp/ffc_session_array_product_rank2_test')
     end function test_rank2_product
 
-end program test_session_array_product
+end subroutine case_test_session_array_product_compiler

@@ -1,4 +1,15 @@
-program test_session_random_seed
+! fo: dispatcher
+module ffc_case_test_session_random_seed_compiler
+    implicit none
+    private
+    public :: case_test_session_random_seed_compiler
+    interface
+        subroutine case_test_session_random_seed_compiler()
+        end subroutine case_test_session_random_seed_compiler
+    end interface
+end module ffc_case_test_session_random_seed_compiler
+
+subroutine case_test_session_random_seed_compiler()
     ! RANDOM_SEED intrinsic subroutine (#588). Before this support existed,
     ! `call random_seed(...)` fell through to the generic external-call path
     ! and emitted a call to an undeclared symbol: the link failed with
@@ -8,6 +19,7 @@ program test_session_random_seed
     ! with the same value replays the same draw.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -111,4 +123,4 @@ contains
             source, ' REPLAYED'//new_line('a'), '/tmp/ffc_random_seed_replay')
     end function test_put_replays_sequence
 
-end program test_session_random_seed
+end subroutine case_test_session_random_seed_compiler

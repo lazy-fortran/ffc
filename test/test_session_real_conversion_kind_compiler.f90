@@ -1,6 +1,18 @@
-program test_session_real_conversion_kind_compiler
+! fo: dispatcher
+module ffc_case_test_session_real_conversion_kind_compiler
+    implicit none
+    private
+    public :: case_test_session_real_conversion_kind_compiler
+    interface
+        subroutine case_test_session_real_conversion_kind_compiler()
+        end subroutine case_test_session_real_conversion_kind_compiler
+    end interface
+end module ffc_case_test_session_real_conversion_kind_compiler
+
+subroutine case_test_session_real_conversion_kind_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -70,4 +82,4 @@ contains
             '/tmp/ffc_session_real_complex_double_test')
     end function test_real_of_complex_keeps_kind
 
-end program test_session_real_conversion_kind_compiler
+end subroutine case_test_session_real_conversion_kind_compiler

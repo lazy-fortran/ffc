@@ -1,6 +1,18 @@
-program test_session_size_i64_compiler
+! fo: dispatcher
+module ffc_case_test_session_size_i64_compiler
+    implicit none
+    private
+    public :: case_test_session_size_i64_compiler
+    interface
+        subroutine case_test_session_size_i64_compiler()
+        end subroutine case_test_session_size_i64_compiler
+    end interface
+end module ffc_case_test_session_size_i64_compiler
+
+subroutine case_test_session_size_i64_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session SIZE integer(8) compiler test ==='
 
@@ -28,4 +40,4 @@ program test_session_size_i64_compiler
         'end program main', 0, '/tmp/ffc_session_size_i64')) stop 1
 
     print *, 'PASS: SIZE widens fixed and runtime extents to integer(8)'
-end program test_session_size_i64_compiler
+end subroutine case_test_session_size_i64_compiler

@@ -1,9 +1,21 @@
-program test_session_runtime_fixed_character_compiler
+! fo: dispatcher
+module ffc_case_test_session_runtime_fixed_character_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_fixed_character_compiler
+    interface
+        subroutine case_test_session_runtime_fixed_character_compiler()
+        end subroutine case_test_session_runtime_fixed_character_compiler
+    end interface
+end module ffc_case_test_session_runtime_fixed_character_compiler
+
+subroutine case_test_session_runtime_fixed_character_compiler()
     ! A character(len=len(dummy)) local is automatic fixed-width storage, not an
     ! allocatable deferred-length value: its width is captured at declaration and
     ! every later assignment must pad or truncate to that same width.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -114,4 +126,4 @@ contains
             '/tmp/ffc_runtime_fixed_char_function_result')
     end function test_runtime_width_function_result_is_fixed
 
-end program test_session_runtime_fixed_character_compiler
+end subroutine case_test_session_runtime_fixed_character_compiler

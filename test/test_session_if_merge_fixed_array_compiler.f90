@@ -1,6 +1,18 @@
-program test_session_if_merge_fixed_array_compiler
+! fo: dispatcher
+module ffc_case_test_session_if_merge_fixed_array_compiler
+    implicit none
+    private
+    public :: case_test_session_if_merge_fixed_array_compiler
+    interface
+        subroutine case_test_session_if_merge_fixed_array_compiler()
+        end subroutine case_test_session_if_merge_fixed_array_compiler
+    end interface
+end module ffc_case_test_session_if_merge_fixed_array_compiler
+
+subroutine case_test_session_if_merge_fixed_array_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -24,4 +36,4 @@ program test_session_if_merge_fixed_array_compiler
         '/tmp/ffc_session_if_merge_array_test')) stop 1
 
     print *, 'PASS: fixed-size array survives IF merge through direct LIRIC session'
-end program test_session_if_merge_fixed_array_compiler
+end subroutine case_test_session_if_merge_fixed_array_compiler

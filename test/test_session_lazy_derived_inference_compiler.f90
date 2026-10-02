@@ -1,4 +1,15 @@
-program test_session_lazy_derived_inference_compiler
+! fo: dispatcher
+module ffc_case_test_session_lazy_derived_inference_compiler
+    implicit none
+    private
+    public :: case_test_session_lazy_derived_inference_compiler
+    interface
+        subroutine case_test_session_lazy_derived_inference_compiler()
+        end subroutine case_test_session_lazy_derived_inference_compiler
+    end interface
+end module ffc_case_test_session_lazy_derived_inference_compiler
+
+subroutine case_test_session_lazy_derived_inference_compiler()
     !! Lazy Fortran derived inference (#429). A bare `v = outer_t(...)` binding
     !! in a .lf source has no declaration: FortFront resolves the constructor's
     !! concrete derived type and hands ffc one binding-keyed symbol with the
@@ -9,6 +20,7 @@ program test_session_lazy_derived_inference_compiler
     !! type contradicts the inferred binding, or a constructor naming a type
     !! that does not exist, must be a compile-time diagnostic.
     implicit none
+    save
 
     logical :: ok
 
@@ -212,4 +224,4 @@ contains
         end if
     end function read_first_line
 
-end program test_session_lazy_derived_inference_compiler
+end subroutine case_test_session_lazy_derived_inference_compiler

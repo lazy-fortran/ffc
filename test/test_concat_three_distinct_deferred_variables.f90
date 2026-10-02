@@ -1,6 +1,18 @@
-program test_concat_three_distinct_deferred_variables
+! fo: dispatcher
+module ffc_case_test_concat_three_distinct_deferred_variables
+    implicit none
+    private
+    public :: case_test_concat_three_distinct_deferred_variables
+    interface
+        subroutine case_test_concat_three_distinct_deferred_variables()
+        end subroutine case_test_concat_three_distinct_deferred_variables
+    end interface
+end module ffc_case_test_concat_three_distinct_deferred_variables
+
+subroutine case_test_concat_three_distinct_deferred_variables()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -31,4 +43,4 @@ contains
             '/tmp/ffc_distinct_deferred_concat_test')
     end function test_distinct_pair
 
-end program test_concat_three_distinct_deferred_variables
+end subroutine case_test_concat_three_distinct_deferred_variables

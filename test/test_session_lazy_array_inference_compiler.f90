@@ -1,4 +1,15 @@
-program test_session_lazy_array_inference_compiler
+! fo: dispatcher
+module ffc_case_test_session_lazy_array_inference_compiler
+    implicit none
+    private
+    public :: case_test_session_lazy_array_inference_compiler
+    interface
+        subroutine case_test_session_lazy_array_inference_compiler()
+        end subroutine case_test_session_lazy_array_inference_compiler
+    end interface
+end module ffc_case_test_session_lazy_array_inference_compiler
+
+subroutine case_test_session_lazy_array_inference_compiler()
     !! Lazy Fortran array inference (#425). A bare `name = [...]` binding in a
     !! .lf source has no declaration: FortFront infers the element type, rank
     !! and shape and hands ffc one stable descriptor before executable
@@ -7,6 +18,7 @@ program test_session_lazy_array_inference_compiler
     !! assignment whose shape contradicts the inferred contract rather than
     !! silently storing a wrong number of elements.
     implicit none
+    save
 
     logical :: ok
 
@@ -164,4 +176,4 @@ contains
         close (unit)
     end function read_first_line
 
-end program test_session_lazy_array_inference_compiler
+end subroutine case_test_session_lazy_array_inference_compiler

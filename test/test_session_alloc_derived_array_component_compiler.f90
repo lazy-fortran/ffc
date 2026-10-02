@@ -1,4 +1,15 @@
-program test_session_alloc_derived_array_component_compiler
+! fo: dispatcher
+module ffc_case_test_session_alloc_derived_array_component_compiler
+    implicit none
+    private
+    public :: case_test_session_alloc_derived_array_component_compiler
+    interface
+        subroutine case_test_session_alloc_derived_array_component_compiler()
+        end subroutine case_test_session_alloc_derived_array_component_compiler
+    end interface
+end module ffc_case_test_session_alloc_derived_array_component_compiler
+
+subroutine case_test_session_alloc_derived_array_component_compiler()
     ! Rank-1 allocatable arrays of a derived element type through the direct
     ! LIRIC session: allocate(obj%arr(n)) heap-allocates n inner instances via
     ! calloc, allocated/size read the inline 16-byte descriptor, per-element
@@ -9,6 +20,7 @@ program test_session_alloc_derived_array_component_compiler
     ! unallocated. Covers the allocate_34 nesting shape from the lfortran corpus.
     use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -114,4 +126,4 @@ contains
             source, 0, '/tmp/ffc_alloc_derived_arr_nested')
     end function test_nested_allocatable_stack
 
-end program test_session_alloc_derived_array_component_compiler
+end subroutine case_test_session_alloc_derived_array_component_compiler

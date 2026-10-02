@@ -1,10 +1,22 @@
-program test_session_select_type_runtime_compiler
+! fo: dispatcher
+module ffc_case_test_session_select_type_runtime_compiler
+    implicit none
+    private
+    public :: case_test_session_select_type_runtime_compiler
+    interface
+        subroutine case_test_session_select_type_runtime_compiler()
+        end subroutine case_test_session_select_type_runtime_compiler
+    end interface
+end module ffc_case_test_session_select_type_runtime_compiler
+
+subroutine case_test_session_select_type_runtime_compiler()
     ! SELECT TYPE on a scalar class(t) selector dispatches from the runtime
     ! dynamic type identity carried by the class descriptor (#419): the same
     ! construct, compiled once, picks a different arm for a base actual and for
     ! an extension actual.
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -268,4 +280,4 @@ contains
             'cannot match', '/tmp/ffc_st_runtime_impossible')
     end function test_impossible_guard_is_rejected
 
-end program test_session_select_type_runtime_compiler
+end subroutine case_test_session_select_type_runtime_compiler

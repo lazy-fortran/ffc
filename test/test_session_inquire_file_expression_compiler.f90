@@ -1,6 +1,18 @@
-program test_session_inquire_file_expression_compiler
+! fo: dispatcher
+module ffc_case_test_session_inquire_file_expression_compiler
+    implicit none
+    private
+    public :: case_test_session_inquire_file_expression_compiler
+    interface
+        subroutine case_test_session_inquire_file_expression_compiler()
+        end subroutine case_test_session_inquire_file_expression_compiler
+    end interface
+end module ffc_case_test_session_inquire_file_expression_compiler
+
+subroutine case_test_session_inquire_file_expression_compiler()
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
     character(len=4096) :: scratch
     character(len=:), allocatable :: path, source
     integer :: unit, status
@@ -43,4 +55,4 @@ program test_session_inquire_file_expression_compiler
     close (unit, status='delete')
     if (.not. ok) stop 1
     print *, 'PASS: INQUIRE FILE evaluates and trims character expressions'
-end program test_session_inquire_file_expression_compiler
+end subroutine case_test_session_inquire_file_expression_compiler

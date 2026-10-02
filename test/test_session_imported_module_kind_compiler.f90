@@ -1,8 +1,20 @@
-program test_session_imported_module_kind_compiler
+! fo: dispatcher
+module ffc_case_test_session_imported_module_kind_compiler
+    implicit none
+    private
+    public :: case_test_session_imported_module_kind_compiler
+    interface
+        subroutine case_test_session_imported_module_kind_compiler()
+        end subroutine case_test_session_imported_module_kind_compiler
+    end interface
+end module ffc_case_test_session_imported_module_kind_compiler
+
+subroutine case_test_session_imported_module_kind_compiler()
     ! A module kind parameter must be available while its derived types are
     ! laid out, so a separately compiled user can import both the parameter and
     ! the type. Compare the complete two-object behavior against gfortran.
     implicit none
+    save
 
     character(len=*), parameter :: root = '/tmp/ffc_imported_module_kind'
     character(len=*), parameter :: module_source = root//'/module.f90'
@@ -124,4 +136,4 @@ contains
         ok = io_stat == 0
     end function write_source
 
-end program test_session_imported_module_kind_compiler
+end subroutine case_test_session_imported_module_kind_compiler

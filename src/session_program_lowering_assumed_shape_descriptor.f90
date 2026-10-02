@@ -38,6 +38,49 @@ contains
         end select
     end function assumed_shape_element_type
 
+    integer function assumed_shape_whole_actual_node(arena, node_index, context) &
+            result(actual_node)
+        ! An identity section selects exactly the whole array. Reuse its
+        ! descriptor path so live bounds, extents and strides have one owner.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        integer :: symbol_index, dim, bounds_index
+
+        actual_node = node_index
+        if (.not. node_exists(arena, node_index)) return
+        select type (slice => arena%entries(node_index)%node)
+            type is (array_slice_node)
+            if (.not. is_identifier(arena, slice%array_index)) return
+            symbol_index = assumed_shape_actual_symbol(arena, &
+                slice%array_index, context)
+            if (symbol_index <= 0) return
+            if (.not. context%symbols(symbol_index)%is_array) return
+            if (context%symbols(symbol_index)%is_pointer) return
+            if (context%symbols(symbol_index)%value_kind /= VALUE_DERIVED) return
+            if (slice%num_dimensions /= &
+                context%symbols(symbol_index)%array_rank) return
+            do dim = 1, slice%num_dimensions
+                bounds_index = slice%bounds_indices(dim)
+                if (.not. node_exists(arena, bounds_index)) return
+                select type (bounds => arena%entries(bounds_index)%node)
+                    type is (array_bounds_node)
+                    if (bounds%lower_bound_index > 0) return
+                    if (bounds%upper_bound_index > 0) return
+                    if (bounds%stride_index > 0) return
+                    type is (range_expression_node)
+                    if (bounds%start_index > 0) return
+                    if (bounds%end_index > 0) return
+                    if (bounds%stride_index > 0) return
+                class default
+                    return
+                end select
+            end do
+            actual_node = slice%array_index
+        class default
+        end select
+    end function assumed_shape_whole_actual_node
+
     integer function assumed_shape_actual_symbol(arena, node_index, context) &
             result(symbol_index)
         ! Symbol holding the storage an assumed-shape actual designates: the
@@ -143,23 +186,29 @@ contains
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(inout) :: context
-        integer :: symbol_index, type_index, component_index
+        integer :: symbol_index, type_index, component_index, actual_node
         character(len=:), allocatable :: id_name, err
 
         rank = 0
-        if (assumed_shape_empty_constructor(arena, node_index)) then
+        actual_node = assumed_shape_whole_actual_node(arena, node_index, context)
+        if (assumed_shape_empty_constructor(arena, actual_node)) then
             rank = 1
             return
         end if
-        if (actual_is_rank1_section_view(arena, node_index, context) .or. &
-            actual_is_contiguous_section(arena, node_index, context, &
+        if (assumed_shape_descriptor_forward_actual(arena, actual_node, &
+                                                     context, symbol_index)) then
+            rank = context%symbols(symbol_index)%array_rank
+            return
+        end if
+        if (actual_is_rank1_section_view(arena, actual_node, context) .or. &
+            actual_is_contiguous_section(arena, actual_node, context, &
                                          allow_derived=.true.)) then
             rank = 1
             return
         end if
-        select type (component => arena%entries(node_index)%node)
+        select type (component => arena%entries(actual_node)%node)
         type is (component_access_node)
-            call resolve_derived_array_component(arena, node_index, context, &
+            call resolve_derived_array_component(arena, actual_node, context, &
                                                  symbol_index, type_index, &
                                                  component_index, err)
             if (len_trim(err) == 0) then
@@ -170,8 +219,8 @@ contains
             return
         class default
         end select
-        if (.not. is_identifier(arena, node_index)) return
-        symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
+        if (.not. is_identifier(arena, actual_node)) return
+        symbol_index = assumed_shape_actual_symbol(arena, actual_node, context)
         if (symbol_index <= 0) return
         if (.not. context%symbols(symbol_index)%is_array) then
             if (.not. context%symbols(symbol_index)%is_allocatable) return
@@ -181,7 +230,7 @@ contains
         ! An allocatable array symbol carries its rank only in its declaration
         ! (its shape is not fixed at declaration time), so fall back to the
         ! declared dimension count.
-        call get_identifier_name(arena, node_index, id_name, err)
+        call get_identifier_name(arena, actual_node, id_name, err)
         if (len_trim(err) > 0) return
         rank = declared_dimension_count(context, id_name)
     end function assumed_shape_actual_rank
@@ -448,26 +497,27 @@ contains
         character(len=32) :: rank_text, actual_rank_text
         character(len=:), allocatable :: dummy_type_name
         integer :: dummy_type_index
-        integer :: forwarded_symbol
+        integer :: forwarded_symbol, actual_node
 
+        actual_node = assumed_shape_whole_actual_node(arena, node_index, context)
         is_materialized_expression = .false.
         expression_symbol = 0
         is_forwarded_actual = assumed_shape_descriptor_forward_actual(arena, &
-            node_index, context, forwarded_symbol)
+            actual_node, context, forwarded_symbol)
 
         ! Array-valued expressions have no storage for the descriptor to borrow.
         ! Materialize a fixed-size expression before rank and descriptor
         ! construction; this is the same temporary representation used by the
         ! explicit-shape array-argument path. Storage-backed sections retain
         ! their existing descriptor construction below.
-        if (.not. actual_is_whole_array(arena, node_index, context) .and. &
+        if (.not. actual_is_whole_array(arena, actual_node, context) .and. &
             .not. is_forwarded_actual .and. &
-            .not. actual_is_contiguous_section(arena, node_index, context, &
+            .not. actual_is_contiguous_section(arena, actual_node, context, &
                                                allow_derived=.true.) .and. &
-            .not. actual_is_rank1_section_view(arena, node_index, context) .and. &
-            actual_is_array_expression(arena, node_index, context) .and. &
-            .not. assumed_shape_empty_constructor(arena, node_index)) then
-            call array_expression_static_extent(arena, node_index, context, &
+            .not. actual_is_rank1_section_view(arena, actual_node, context) .and. &
+            actual_is_array_expression(arena, actual_node, context) .and. &
+            .not. assumed_shape_empty_constructor(arena, actual_node)) then
+            call array_expression_static_extent(arena, actual_node, context, &
                                                 expression_extent, &
                                                 expression_extent_known)
             if (.not. expression_extent_known .or. expression_extent <= 0) then
@@ -475,13 +525,13 @@ contains
                     trim(callee_name)
                 return
             end if
-            expression_kind = expression_value_kind(arena, node_index, context, &
+            expression_kind = expression_value_kind(arena, actual_node, context, &
                                                     VALUE_F32)
             call create_array_expression_temp(context, expression_kind, &
                                               expression_extent, 0, &
                                               expression_symbol, error_msg)
             if (len_trim(error_msg) > 0) return
-            call build_array_expression(context, expression_symbol, node_index, &
+            call build_array_expression(context, expression_symbol, actual_node, &
                                         expression_plan, error_msg)
             if (len_trim(error_msg) > 0) return
             call emit_array_expression_assignment(arena, expression_plan, context, &
@@ -490,17 +540,10 @@ contains
             is_materialized_expression = .true.
         end if
 
-        if (assumed_shape_descriptor_forward_actual(arena, node_index, context, &
-                                                    forwarded_symbol)) then
-            call build_forwarded_assumed_shape_descriptor(arena, context, rank, &
-                callee_name, param_pos, forwarded_symbol, descriptor, error_msg)
-            return
-        end if
-
         if (is_materialized_expression) then
             actual_rank = 1
         else
-            actual_rank = assumed_shape_actual_rank(arena, node_index, context)
+            actual_rank = assumed_shape_actual_rank(arena, actual_node, context)
         end if
         if (actual_rank /= rank) then
             write (rank_text, '(I0)') rank
@@ -526,6 +569,13 @@ contains
             return
         end if
 
+        if (assumed_shape_descriptor_forward_actual(arena, actual_node, context, &
+                                                    forwarded_symbol)) then
+            call build_forwarded_assumed_shape_descriptor(arena, context, rank, &
+                callee_name, param_pos, forwarded_symbol, descriptor, error_msg)
+            return
+        end if
+
         if (present(assumed_rank)) then
             if (assumed_rank) then
                 dummy_lowers(1:rank) = 1
@@ -548,11 +598,11 @@ contains
                                                          param_pos)
         class_star_type_id = 0_c_int32_t
 
-        is_empty_actual = assumed_shape_empty_constructor(arena, node_index)
+        is_empty_actual = assumed_shape_empty_constructor(arena, actual_node)
         if (is_materialized_expression) then
             symbol_index = expression_symbol
         else
-            symbol_index = assumed_shape_actual_symbol(arena, node_index, context)
+            symbol_index = assumed_shape_actual_symbol(arena, actual_node, context)
         end if
         if (symbol_index <= 0 .and. .not. is_empty_actual) then
             error_msg = 'assumed-shape actual was not declared'
@@ -562,14 +612,14 @@ contains
         ! but is not a rank-one source section view.  Classify it here so the
         ! descriptor gets the section's base/extent/byte stride rather than
         ! inheriting the source array's whole-array view.
-        is_section_actual = actual_is_rank1_section_view(arena, node_index, context) .or. &
-                            actual_is_contiguous_section(arena, node_index, context, &
+        is_section_actual = actual_is_rank1_section_view(arena, actual_node, context) .or. &
+                            actual_is_contiguous_section(arena, actual_node, context, &
                                                          allow_derived=.true.)
         section_is_contiguous = .false.
         is_component_projection = .false.
-        select type (actual => arena%entries(node_index)%node)
+        select type (actual => arena%entries(actual_node)%node)
         type is (component_access_node)
-            call resolve_derived_array_component(arena, node_index, context, &
+            call resolve_derived_array_component(arena, actual_node, context, &
                                                  symbol_index, component_type, &
                                                  component_index, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -604,7 +654,7 @@ contains
             end if
         end if
         if (is_class_star_dummy) then
-            select type (actual => arena%entries(node_index)%node)
+            select type (actual => arena%entries(actual_node)%node)
             type is (array_slice_node)
                 error_msg = 'class(*) assumed-shape actuals do not support '// &
                     'sections and non-array actuals'
@@ -651,7 +701,7 @@ contains
                             'element length'
                 return
             end if
-            if (actual_is_allocatable_array(arena, node_index, context)) then
+            if (actual_is_allocatable_array(arena, actual_node, context)) then
                 error_msg = 'assumed-shape character actual of allocatable '// &
                             'array awaits contiguous character array storage'
                 return
@@ -662,9 +712,9 @@ contains
             element_bytes = int(equivalence_kind_size(value_kind), c_int64_t)
         end if
         if (is_section_actual) then
-            call reject_side_effectful_section_bounds(arena, node_index, error_msg)
+            call reject_side_effectful_section_bounds(arena, actual_node, error_msg)
             if (len_trim(error_msg) > 0) return
-            call rank1_section_stride_bytes(arena, node_index, context, &
+            call rank1_section_stride_bytes(arena, actual_node, context, &
                                             element_bytes, section_stride, &
                                             section_is_contiguous, error_msg)
             if (len_trim(error_msg) > 0) return
@@ -673,7 +723,7 @@ contains
         if (is_materialized_expression) then
             base = context%symbols(symbol_index)%element_address
         else
-            call assumed_shape_actual_base(arena, node_index, context, base, error_msg)
+            call assumed_shape_actual_base(arena, actual_node, context, base, error_msg)
         end if
         if (len_trim(error_msg) > 0) return
 
@@ -756,7 +806,7 @@ contains
                     context%symbols(symbol_index)%array_dim_sizes(dim), &
                     c_int64_t))
             else
-                call assumed_shape_actual_extent(arena, node_index, context, rank, &
+                call assumed_shape_actual_extent(arena, actual_node, context, rank, &
                                                  dim, extent, error_msg)
             end if
             if (len_trim(error_msg) > 0) return

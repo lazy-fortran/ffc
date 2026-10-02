@@ -1,9 +1,21 @@
-program test_session_elseif_chain_compiler
+! fo: dispatcher
+module ffc_case_test_session_elseif_chain_compiler
+    implicit none
+    private
+    public :: case_test_session_elseif_chain_compiler
+    interface
+        subroutine case_test_session_elseif_chain_compiler()
+        end subroutine case_test_session_elseif_chain_compiler
+    end interface
+end module ffc_case_test_session_elseif_chain_compiler
+
+subroutine case_test_session_elseif_chain_compiler()
     ! #280: ELSE IF arms must be lowered. lower_if previously ignored
     ! elseif_blocks, so the middle arm of an arithmetic IF (its expr==0 branch
     ! desugars to an elseif) was dropped. Cover the cascade directly.
     use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
+    save
     logical :: all_passed
 
     all_passed = .true.
@@ -82,4 +94,4 @@ contains
             source, '           4'//new_line('a'), '/tmp/ffc_logical_conn_test')
     end function test_logical_connectives
 
-end program test_session_elseif_chain_compiler
+end subroutine case_test_session_elseif_chain_compiler

@@ -1,7 +1,19 @@
-program test_session_scope_resolution_compiler
+! fo: dispatcher
+module ffc_case_test_session_scope_resolution_compiler
+    implicit none
+    private
+    public :: case_test_session_scope_resolution_compiler
+    interface
+        subroutine case_test_session_scope_resolution_compiler()
+        end subroutine case_test_session_scope_resolution_compiler
+    end interface
+end module ffc_case_test_session_scope_resolution_compiler
+
+subroutine case_test_session_scope_resolution_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status, &
         expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -236,4 +248,4 @@ contains
             '/tmp/ffc_session_scope_unresolved_binding_test')
     end function test_unresolved_binding_is_not_synthesized_from_text
 
-end program test_session_scope_resolution_compiler
+end subroutine case_test_session_scope_resolution_compiler

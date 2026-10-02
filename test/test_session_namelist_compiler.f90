@@ -1,4 +1,15 @@
-program test_session_namelist_compiler
+! fo: dispatcher
+module ffc_case_test_session_namelist_compiler
+    implicit none
+    private
+    public :: case_test_session_namelist_compiler
+    interface
+        subroutine case_test_session_namelist_compiler()
+        end subroutine case_test_session_namelist_compiler
+    end interface
+end module ffc_case_test_session_namelist_compiler
+
+subroutine case_test_session_namelist_compiler()
     ! NAMELIST I/O: a NAMELIST declaration records the group's members; a
     ! WRITE(unit, nml=group) emits the group banner, one ` NAME= value,` line
     ! per scalar member, and a closing ` /` line. The stdout case checks the
@@ -7,6 +18,7 @@ program test_session_namelist_compiler
     ! gfortran's namelist spacing.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -80,4 +92,4 @@ contains
             new_line('a'), '/tmp/ffc_nml_file')
     end function test_namelist_write_file
 
-end program test_session_namelist_compiler
+end subroutine case_test_session_namelist_compiler

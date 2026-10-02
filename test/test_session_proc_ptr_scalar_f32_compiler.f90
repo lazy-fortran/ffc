@@ -1,6 +1,18 @@
-program test_session_proc_ptr_scalar_f32_compiler
+! fo: dispatcher
+module ffc_case_test_session_proc_ptr_scalar_f32_compiler
+    implicit none
+    private
+    public :: case_test_session_proc_ptr_scalar_f32_compiler
+    interface
+        subroutine case_test_session_proc_ptr_scalar_f32_compiler()
+        end subroutine case_test_session_proc_ptr_scalar_f32_compiler
+    end interface
+end module ffc_case_test_session_proc_ptr_scalar_f32_compiler
+
+subroutine case_test_session_proc_ptr_scalar_f32_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
     character(len=1), parameter :: nl = new_line('a')
 
     ! gfortran.dg/proc_ptr_25.f90 (#448): a same-unit scalar default-real
@@ -29,4 +41,4 @@ program test_session_proc_ptr_scalar_f32_compiler
         '/tmp/ffc_session_proc_ptr_scalar_f32_test')) stop 1
 
     print *, 'PASS: scalar default-real procedure pointer call'
-end program test_session_proc_ptr_scalar_f32_compiler
+end subroutine case_test_session_proc_ptr_scalar_f32_compiler

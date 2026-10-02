@@ -1,10 +1,22 @@
-program test_session_allocate_typespec
+! fo: dispatcher
+module ffc_case_test_session_allocate_typespec_compiler
+    implicit none
+    private
+    public :: case_test_session_allocate_typespec_compiler
+    interface
+        subroutine case_test_session_allocate_typespec_compiler()
+        end subroutine case_test_session_allocate_typespec_compiler
+    end interface
+end module ffc_case_test_session_allocate_typespec_compiler
+
+subroutine case_test_session_allocate_typespec_compiler()
     ! ALLOCATE with a type-spec: allocate(character(len=<expr>) :: str) and
     ! allocate(<derived> :: c). The character form sizes a deferred-length
     ! character scalar from an integer literal, a variable, or len(other); the
     ! derived form binds a scalar allocatable derived variable.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -92,4 +104,4 @@ contains
             '   5.00000000    '//new_line('a'), '/tmp/ffc_alloc_typespec_derived')
     end function test_derived_typespec
 
-end program test_session_allocate_typespec
+end subroutine case_test_session_allocate_typespec_compiler

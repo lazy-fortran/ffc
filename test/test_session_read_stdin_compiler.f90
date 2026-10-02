@@ -1,7 +1,19 @@
-program test_session_read_stdin_compiler
+! fo: dispatcher
+module ffc_case_test_session_read_stdin_compiler
+    implicit none
+    private
+    public :: case_test_session_read_stdin_compiler
+    interface
+        subroutine case_test_session_read_stdin_compiler()
+        end subroutine case_test_session_read_stdin_compiler
+    end interface
+end module ffc_case_test_session_read_stdin_compiler
+
+subroutine case_test_session_read_stdin_compiler()
     ! read(*,*) var  reads list-directed input from stdin using scanf.
     use ffc_test_support, only: expect_output_with_stdin
     implicit none
+    save
 
     logical :: all_passed
 
@@ -29,4 +41,4 @@ contains
             '/tmp/ffc_read_stdin_int_test')
     end function test_read_integer_roundtrip
 
-end program test_session_read_stdin_compiler
+end subroutine case_test_session_read_stdin_compiler

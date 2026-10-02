@@ -2553,6 +2553,12 @@ recursive integer function expression_value_kind(arena, node_index, context, &
             end if
         type is (call_or_subscript_node)
             if (allocated(node%name)) then
+                if (same_name(node%name, 'merge') .and. &
+                .not. is_contained_function_reference(node, context) .and. &
+                external_procedure_index(context, node%name) == 0) then
+                    value_kind = merge_value_kind(arena, node, context)
+                    return
+                end if
                 ! Generic interface: resolve full call signature and look up the
                 ! matching specific return kind (#249 B7c).
                 if (find_generic(context, node%name) > 0) then

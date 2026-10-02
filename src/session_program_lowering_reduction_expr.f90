@@ -56,6 +56,15 @@ contains
             return
         end if
 
+        if (reduction_expression_is_abs_call(arena, node_index)) then
+            select type (abs_node => arena%entries(node_index)%node)
+            type is (call_or_subscript_node)
+                ok = reduction_arg_extent(arena, abs_node%arg_indices(1), &
+                                          context, vk, extent)
+            end select
+            return
+        end if
+
         if (is_binary_op(arena, node_index)) then
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, bin_err)
@@ -198,7 +207,8 @@ contains
             call get_identifier_name(arena, node_index, name, error_msg)
             if (len_trim(error_msg) > 0) return
             sym = find_symbol_compat(context, name)
-            if (sym <= 0 .or. .not. context%symbols(sym)%is_array) return
+            if (sym <= 0) return
+            if (.not. context%symbols(sym)%is_array) return
             if (context%symbols(sym)%is_allocatable) then
                 call allocatable_descriptor_extent_i32(context, sym, 1, extent, &
                     error_msg)
@@ -216,11 +226,15 @@ contains
                 call read_runtime_dim_extent(context, sym, 1, extent, error_msg)
                 if (len_trim(error_msg) > 0) return
                 do dim_r = 2, context%symbols(sym)%array_rank
-                    if (.not. (context%symbols(sym)%has_runtime_descriptor .or. &
-                              context%symbols(sym)%has_runtime_dim_size(dim_r))) cycle
-                    call read_runtime_dim_extent(context, sym, dim_r, ext_r, &
-                                                error_msg)
-                    if (len_trim(error_msg) > 0) return
+                    if (context%symbols(sym)%has_runtime_descriptor .or. &
+                        context%symbols(sym)%has_runtime_dim_size(dim_r)) then
+                        call read_runtime_dim_extent(context, sym, dim_r, ext_r, &
+                                                     error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    else
+                        ext_r = i32_immediate(context%session, int( &
+                            context%symbols(sym)%array_dim_sizes(dim_r), c_int64_t))
+                    end if
                     if (.not. emit_i32_binary(context%session, LR_OP_MUL, extent, &
                             ext_r, product, error_msg)) return
                     extent = product
@@ -272,7 +286,7 @@ contains
         character(len=:), allocatable :: op
         integer :: sym, left, right, line, column, opcode
         character(len=:), allocatable :: name, err
-        type(lr_operand_desc_t) :: lhs, rhs
+        type(lr_operand_desc_t) :: lhs, rhs, promoted
         type(lr_operand_desc_t) :: call_args(2)
 
         call set_empty(error_msg)
@@ -290,8 +304,17 @@ contains
                 return
             end if
             if (context%symbols(sym)%is_array) then
+                if (.not. any(context%symbols(sym)%value_kind == &
+                              [VALUE_I32, VALUE_F32, VALUE_F64])) then
+                    error_msg = 'runtime reduction expression has an unsupported kind'
+                    return
+                end if
                 call load_array_element_at_operand(context, sym, linear_index, &
                                                    value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call coerce_reduction_operand(context, value, &
+                    context%symbols(sym)%value_kind, vk, promoted, error_msg)
+                value = promoted
             else
                 call lower_reduction_scalar(arena, node_index, vk, context, value, &
                                             error_msg)
@@ -306,19 +329,7 @@ contains
                     error_msg)
                 if (len_trim(error_msg) > 0) return
             end select
-            if (vk == VALUE_F32) then
-                call_args(1) = lhs
-                if (.not. emit_liric_f32_call(context%session, 'fabsf', &
-                        call_args(1:1), &
-                        value, error_msg)) return
-            else if (vk == VALUE_F64) then
-                call_args(1) = lhs
-                if (.not. emit_liric_f64_call(context%session, 'fabs', &
-                        call_args(1:1), &
-                        value, error_msg)) return
-            else
-                error_msg = 'ABS reduction expression requires a real array'
-            end if
+            call lower_reduction_abs_value(context, vk, lhs, value, error_msg)
             return
         end if
         if (.not. is_binary_op(arena, node_index)) then
@@ -370,20 +381,130 @@ contains
         end if
     end subroutine lower_runtime_reduction_arg_element
 
+    recursive subroutine lower_runtime_reduction_mask(arena, node_index, &
+            linear_index, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lr_operand_desc_t), intent(in) :: linear_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name, op
+        integer :: sym, left, right, line, column, vk, right_vk, opcode
+        integer(c_int) :: predicate
+        type(lr_operand_desc_t) :: lhs, rhs, condition
+
+        if (is_identifier(arena, node_index)) then
+            call get_identifier_name(arena, node_index, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            sym = find_symbol_compat(context, name)
+            if (sym <= 0) then
+                error_msg = 'reduction mask was not declared: '//trim(name)
+                return
+            end if
+            if (context%symbols(sym)%value_kind /= VALUE_LOGICAL) then
+                error_msg = 'reduction MASK must be logical'
+                return
+            end if
+            if (context%symbols(sym)%is_array) then
+                call load_array_element_at_operand(context, sym, linear_index, &
+                                                   value, error_msg)
+            else
+                call lower_logical_expression(arena, node_index, context, value, &
+                                              error_msg)
+            end if
+            return
+        end if
+        if (.not. is_binary_op(arena, node_index)) then
+            call lower_logical_expression(arena, node_index, context, value, &
+                                          error_msg)
+            return
+        end if
+        call get_binary_op_info(arena, node_index, op, left, right, line, column, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+        select case (trim(lowercase_text(op)))
+        case ('.not.', 'not')
+            call lower_runtime_reduction_mask(arena, right, linear_index, &
+                                              context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, rhs, &
+                    i32_immediate(context%session, 0_c_int64_t), condition, &
+                    error_msg)) return
+        case ('.and.', 'and', '.or.', 'or', '.eqv.', 'eqv', '.neqv.', 'neqv')
+            call lower_runtime_reduction_mask(arena, left, linear_index, &
+                                              context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_runtime_reduction_mask(arena, right, linear_index, &
+                                              context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (trim(op) == '.and.' .or. trim(op) == 'and') then
+                opcode = LR_OP_AND
+            else if (trim(op) == '.or.' .or. trim(op) == 'or') then
+                opcode = LR_OP_OR
+            else
+                opcode = LR_OP_XOR
+            end if
+            if (.not. emit_i32_binary(context%session, opcode, lhs, rhs, value, &
+                                     error_msg)) return
+            if (trim(op) /= '.eqv.' .and. trim(op) /= 'eqv') return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, value, &
+                    i32_immediate(context%session, 0_c_int64_t), condition, &
+                    error_msg)) return
+        case default
+            vk = scalar_real_expr_kind(arena, left, context)
+            right_vk = scalar_real_expr_kind(arena, right, context)
+            if (vk == VALUE_F64 .or. right_vk == VALUE_F64) then
+                vk = VALUE_F64
+            else if (vk == VALUE_F32 .or. right_vk == VALUE_F32) then
+                vk = VALUE_F32
+            else
+                vk = VALUE_I32
+            end if
+            call lower_runtime_reduction_arg_element(arena, left, linear_index, &
+                                                    vk, context, lhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call lower_runtime_reduction_arg_element(arena, right, linear_index, &
+                                                    vk, context, rhs, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (vk == VALUE_I32) then
+                call integer_compare_predicate(op, predicate, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, predicate, lhs, rhs, &
+                                            condition, error_msg)) return
+            else
+                call real_compare_predicate(op, predicate, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (vk == VALUE_F32) then
+                    if (.not. emit_liric_f32_fcmp(context%session, predicate, lhs, &
+                                               rhs, condition, error_msg)) return
+                else
+                    if (.not. emit_liric_f64_fcmp(context%session, predicate, lhs, &
+                                               rhs, condition, error_msg)) return
+                end if
+            end if
+        end select
+        if (.not. emit_liric_i1_to_i32(context%session, condition, value, &
+                                     error_msg)) return
+    end subroutine lower_runtime_reduction_mask
+
     subroutine lower_runtime_general_expr_reduction(arena, arg_index, vk, context, &
-            value, error_msg, reduction_name)
+            value, error_msg, reduction_name, mask_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: arg_index, vk
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=*), intent(in) :: reduction_name
+        integer, intent(in), optional :: mask_index
         type(lr_operand_desc_t) :: extent, entry_index, header_index, backedge_index
         type(lr_operand_desc_t) :: entry_acc, header_acc, backedge_acc, next_index
-        type(lr_operand_desc_t) :: candidate, next_acc, condition, one
+        type(lr_operand_desc_t) :: candidate, next_acc, condition, one, selected
+        type(lr_operand_desc_t) :: mask, entry_hit, header_hit, backedge_hit, next_hit
         integer(c_int32_t) :: entry_block, header_block, body_block, latch_block, &
                                exit_block, index_vreg, acc_vreg
         integer :: op
+        integer(c_int32_t) :: hit_vreg
 
         op = reduction_operation(reduction_name)
         if (op == 0 .or. op == DIM_REDUCE_NORM2) then
@@ -426,6 +547,13 @@ contains
                 backedge_index, latch_block, header_index, error_msg)) return
         if (.not. emit_liric_phi(context%session, entry_acc, entry_block, &
                 backedge_acc, latch_block, header_acc, error_msg)) return
+        if (present(mask_index)) then
+            entry_hit = i32_immediate(context%session, 0_c_int64_t)
+            hit_vreg = reserve_i32_vreg(context%session)
+            backedge_hit = i32_vreg(context%session, hit_vreg)
+            if (.not. emit_liric_i32_phi(context%session, entry_hit, entry_block, &
+                    backedge_hit, latch_block, header_hit, error_msg)) return
+        end if
         if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, header_index, &
                 extent, condition, error_msg)) return
         if (.not. emit_liric_condbr(context%session, condition, body_block, &
@@ -437,6 +565,25 @@ contains
         next_acc = header_acc
         call reduction_combine(context, op, vk, next_acc, candidate, error_msg)
         if (len_trim(error_msg) > 0) return
+        if (present(mask_index)) then
+            call lower_runtime_reduction_mask(arena, mask_index, header_index, &
+                                              context, mask, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (op == DIM_REDUCE_MIN .or. op == DIM_REDUCE_MAX) then
+                ! A selected extreme replaces the empty-set identity; real
+                ! infinities can lie beyond the finite HUGE identity.
+                call select_value(context, header_hit, next_acc, candidate, &
+                                  selected, error_msg)
+                if (len_trim(error_msg) > 0) return
+                next_acc = selected
+            end if
+            call select_value(context, mask, next_acc, header_acc, selected, &
+                              error_msg)
+            if (len_trim(error_msg) > 0) return
+            next_acc = selected
+            if (.not. emit_i32_binary(context%session, LR_OP_OR, header_hit, &
+                                     mask, next_hit, error_msg)) return
+        end if
         if (.not. emit_liric_br(context%session, latch_block, error_msg)) return
         if (.not. enter_liric_block(context, latch_block, error_msg)) return
         if (.not. emit_i32_binary_into(context%session, LR_OP_ADD, header_index, one, &
@@ -447,6 +594,10 @@ contains
         else
             if (.not. emit_i32_copy_to(context%session, next_acc, acc_vreg, &
                     backedge_acc, error_msg)) return
+        end if
+        if (present(mask_index)) then
+            if (.not. emit_i32_copy_to(context%session, next_hit, hit_vreg, &
+                                      backedge_hit, error_msg)) return
         end if
         if (.not. emit_liric_br(context%session, header_block, error_msg)) return
         if (.not. enter_liric_block(context, exit_block, error_msg)) return
@@ -513,6 +664,18 @@ contains
             return
         end if
 
+        if (reduction_expression_is_abs_call(arena, node_index)) then
+            select type (abs_node => arena%entries(node_index)%node)
+            type is (call_or_subscript_node)
+                call lower_reduction_arg_element(arena, &
+                    abs_node%arg_indices(1), linear_index, vk, context, lhs, &
+                    error_msg)
+                if (len_trim(error_msg) > 0) return
+            end select
+            call lower_reduction_abs_value(context, vk, lhs, value, error_msg)
+            return
+        end if
+
         if (is_binary_op(arena, node_index)) then
             call get_binary_op_info(arena, node_index, bin_op, bin_left, &
                                     bin_right, bin_line, bin_col, error_msg)
@@ -565,6 +728,35 @@ contains
 
         error_msg = 'reduction argument expression is not supported'
     end subroutine lower_reduction_arg_element
+
+    subroutine lower_reduction_abs_value(context, vk, argument, value, error_msg)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: vk
+        type(lr_operand_desc_t), intent(in) :: argument
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: zero, negative, condition, args(1)
+
+        args(1) = argument
+        select case (vk)
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_call(context%session, 'fabsf', args, &
+                                        value, error_msg)) return
+        case (VALUE_F64)
+            if (.not. emit_liric_f64_call(context%session, 'fabs', args, &
+                                        value, error_msg)) return
+        case (VALUE_I32)
+            zero = i32_immediate(context%session, 0_c_int64_t)
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, zero, &
+                                     argument, negative, error_msg)) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLT, &
+                    argument, zero, condition, error_msg)) return
+            call select_value(context, condition, negative, argument, value, &
+                              error_msg)
+        case default
+            error_msg = 'ABS reduction expression has an unsupported element kind'
+        end select
+    end subroutine lower_reduction_abs_value
 
     subroutine lower_reduction_scalar(arena, node_index, vk, context, value, &
                                       error_msg)

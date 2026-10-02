@@ -1,6 +1,18 @@
-program test_session_character_variable_compiler
+! fo: dispatcher
+module ffc_case_test_session_character_variable_compiler
+    implicit none
+    private
+    public :: case_test_session_character_variable_compiler
+    interface
+        subroutine case_test_session_character_variable_compiler()
+        end subroutine case_test_session_character_variable_compiler
+    end interface
+end module ffc_case_test_session_character_variable_compiler
+
+subroutine case_test_session_character_variable_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -111,4 +123,4 @@ contains
             '/tmp/ffc_session_char_concat_trunc_test')
     end function test_character_concat_truncates_long_result
 
-end program test_session_character_variable_compiler
+end subroutine case_test_session_character_variable_compiler

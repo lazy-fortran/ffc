@@ -1,10 +1,22 @@
-program test_session_reject_charlen_01_compiler
+! fo: dispatcher
+module ffc_case_test_session_reject_charlen_01_compiler
+    implicit none
+    private
+    public :: case_test_session_reject_charlen_01_compiler
+    interface
+        subroutine case_test_session_reject_charlen_01_compiler()
+        end subroutine case_test_session_reject_charlen_01_compiler
+    end interface
+end module ffc_case_test_session_reject_charlen_01_compiler
+
+subroutine case_test_session_reject_charlen_01_compiler()
     ! #384: a character length specification must be a scalar INTEGER
     ! expression. Each invalid literal form is rejected with a source
     ! diagnostic, while the corrected integer neighbour still compiles and
     ! runs.
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     character(len=*), parameter :: FRAGMENT = &
         'character length must be a scalar INTEGER expression'
@@ -132,4 +144,4 @@ contains
             source, 4, '/tmp/ffc_session_charlen_dummy_ok')
     end function test_declared_character_dummy_accepted
 
-end program test_session_reject_charlen_01_compiler
+end subroutine case_test_session_reject_charlen_01_compiler

@@ -1,3 +1,4 @@
+! fo: dispatcher
 ! Issue #427: IOSTAT= and IOMSG= report stable, documented values.
 !
 ! Behavioral oracle. Before #427 a WRITE's IOSTAT= was assigned a literal 0
@@ -14,9 +15,20 @@
 !   3. IOMSG= obeys Fortran character assignment: truncated to the
 !      destination length, blank padded when shorter.
 !   4. A noninteger IOSTAT= and a noncharacter IOMSG= are still rejected.
-program test_session_iostat_iomsg_compiler
+module ffc_case_test_session_iostat_iomsg_compiler
+    implicit none
+    private
+    public :: case_test_session_iostat_iomsg_compiler
+    interface
+        subroutine case_test_session_iostat_iomsg_compiler()
+        end subroutine case_test_session_iostat_iomsg_compiler
+    end interface
+end module ffc_case_test_session_iostat_iomsg_compiler
+
+subroutine case_test_session_iostat_iomsg_compiler()
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     character(len=*), parameter :: Q = achar(39)
     logical :: all_passed
@@ -152,4 +164,4 @@ contains
                                    '/tmp/ffc_iomsg_badtype')
     end function test_noncharacter_iomsg_is_rejected
 
-end program test_session_iostat_iomsg_compiler
+end subroutine case_test_session_iostat_iomsg_compiler

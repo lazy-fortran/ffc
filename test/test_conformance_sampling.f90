@@ -1,4 +1,15 @@
-program test_conformance_sampling
+! fo: dispatcher
+module ffc_case_test_conformance_sampling
+    implicit none
+    private
+    public :: case_test_conformance_sampling
+    interface
+        subroutine case_test_conformance_sampling()
+        end subroutine case_test_conformance_sampling
+    end interface
+end module ffc_case_test_conformance_sampling
+
+subroutine case_test_conformance_sampling()
     ! Routine measurement must be cheap enough that nobody skips it (#567).
     ! Two mechanisms make it cheap: a stratified deterministic sample, and a
     ! reference-output cache. Both are only usable if they cannot corrupt the
@@ -8,6 +19,7 @@ program test_conformance_sampling
     ! a cached run produces the same verdicts without re-running gfortran.
     use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
+    save
 
     character(len=*), parameter :: GAUNTLET = 'scripts/conformance_gauntlet.sh'
     character(len=*), parameter :: CHECK = 'scripts/conformance_check.sh'
@@ -373,4 +385,4 @@ contains
         close (unit)
     end function file_contains
 
-end program test_conformance_sampling
+end subroutine case_test_conformance_sampling

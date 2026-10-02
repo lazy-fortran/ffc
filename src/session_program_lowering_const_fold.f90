@@ -796,7 +796,12 @@ contains
             error_msg = 'compile-time call has no callee name'
             return
         end if
-        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'compile-time integer array parameter was not declared: '// &
+                        trim(node%name)
+            return
+        end if
+        if (size(node%arg_indices) /= 1) then
             error_msg = 'compile-time integer array parameter was not declared: '// &
                         trim(node%name)
             return

@@ -1,6 +1,18 @@
-program test_session_character_length_runtime_compiler
+! fo: dispatcher
+module ffc_case_test_session_character_length_runtime_compiler
+    implicit none
+    private
+    public :: case_test_session_character_length_runtime_compiler
+    interface
+        subroutine case_test_session_character_length_runtime_compiler()
+        end subroutine case_test_session_character_length_runtime_compiler
+    end interface
+end module ffc_case_test_session_character_length_runtime_compiler
+
+subroutine case_test_session_character_length_runtime_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -56,4 +68,4 @@ contains
             '/tmp/ffc_session_char_runtime_len_sites_test')
     end function test_local_length_tracks_different_call_sites
 
-end program test_session_character_length_runtime_compiler
+end subroutine case_test_session_character_length_runtime_compiler

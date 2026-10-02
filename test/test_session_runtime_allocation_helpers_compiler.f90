@@ -1,3 +1,4 @@
+! fo: dispatcher
 ! Issue #428: descriptor storage is allocated, resized, and freed through
 ! runtime entry points.
 !
@@ -15,10 +16,21 @@
 ! the runtime, values survive the transitions, and the program's symbols name
 ! the runtime helpers rather than malloc and free. The symbol check fails on
 ! the pre-#428 compiler.
-program test_session_runtime_allocation_helpers_compiler
+module ffc_case_test_session_runtime_allocation_helpers_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_allocation_helpers_compiler
+    interface
+        subroutine case_test_session_runtime_allocation_helpers_compiler()
+        end subroutine case_test_session_runtime_allocation_helpers_compiler
+    end interface
+end module ffc_case_test_session_runtime_allocation_helpers_compiler
+
+subroutine case_test_session_runtime_allocation_helpers_compiler()
     use ffc_runtime_link, only: ffc_runtime_link_input
     use ffc_test_support, only: expect_output, compile_to_exe
     implicit none
+    save
 
     character(len=*), parameter :: WORK = '/tmp/ffc_alloc_helpers_428'
     logical :: all_passed
@@ -256,4 +268,4 @@ contains
         ok = .true.
     end function test_lowering_calls_the_runtime
 
-end program test_session_runtime_allocation_helpers_compiler
+end subroutine case_test_session_runtime_allocation_helpers_compiler

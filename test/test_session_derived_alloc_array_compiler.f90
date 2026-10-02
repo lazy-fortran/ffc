@@ -1,4 +1,15 @@
-program test_session_derived_alloc_array_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_alloc_array_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_alloc_array_compiler
+    interface
+        subroutine case_test_session_derived_alloc_array_compiler()
+        end subroutine case_test_session_derived_alloc_array_compiler
+    end interface
+end module ffc_case_test_session_derived_alloc_array_compiler
+
+subroutine case_test_session_derived_alloc_array_compiler()
     ! Positive behavioural oracle for #643.  gfortran 14.2 produces the
     ! expected output for the same source: an allocatable derived array uses
     ! one canonical descriptor while each element retains its concrete layout.
@@ -9,6 +20,7 @@ program test_session_derived_alloc_array_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     logical :: all_passed
 
@@ -258,4 +270,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_derived_alloc_array_compiler
+end subroutine case_test_session_derived_alloc_array_compiler

@@ -1,8 +1,21 @@
-program test_session_array_unsupported_diagnostics
+! fo: dispatcher
+module ffc_case_test_session_array_unsupported_diagnostics
+    implicit none
+    private
+    public :: case_test_session_array_unsupported_diagnostics
+    interface
+        subroutine case_test_session_array_unsupported_diagnostics()
+        end subroutine case_test_session_array_unsupported_diagnostics
+    end interface
+end module ffc_case_test_session_array_unsupported_diagnostics
+
+subroutine case_test_session_array_unsupported_diagnostics()
     use ffc_test_support, only: expect_error_contains, &
         expect_cli_error_contains, expect_no_error, &
-        expect_cli_no_error, expect_exit_status
+        expect_cli_no_error
+    use diagnostic_gfortran_oracle, only: matches_gfortran
     implicit none
+    save
 
     logical :: all_passed
 
@@ -32,7 +45,7 @@ program test_session_array_unsupported_diagnostics
     if (.not. test_cli_array_expression_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_rhs_assignment_diagnostic()) all_passed = .false.
     if (.not. test_cli_array_slice_subscript_diagnostic()) all_passed = .false.
-    if (.not. test_cli_array_real_subscript_diagnostic()) all_passed = .false.
+    if (.not. test_cli_array_real_subscript_extension()) all_passed = .false.
     if (.not. test_cli_whole_array_argument_diagnostic()) all_passed = .false.
 
     if (.not. all_passed) stop 1
@@ -157,15 +170,14 @@ contains
     logical function test_array_real_subscript_extension()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: values(3)'//new_line('a')// &
-            '  integer :: result'//new_line('a')// &
-            '  values = 2'//new_line('a')// &
-            '  result = values(1.0)'//new_line('a')// &
-            '  if (result /= 2) stop 1'//new_line('a')// &
+            '  integer :: values(3), result'//new_line('a')// &
+            '  values = [10,20,30]'//new_line('a')// &
+            '  result = values(2.75)'//new_line('a')// &
+            '  print *, result'//new_line('a')// &
             'end program main'
 
-        test_array_real_subscript_extension = expect_exit_status( &
-            source, 0, '/tmp/ffc_session_array_real_index_test')
+        test_array_real_subscript_extension = matches_gfortran( &
+            source, 'real_index_api', .false.)
     end function test_array_real_subscript_extension
 
     logical function test_whole_array_assignment_target_diagnostic()
@@ -298,17 +310,18 @@ contains
             '/tmp/ffc_cli_array_slice_test')
     end function test_cli_array_slice_subscript_diagnostic
 
-    logical function test_cli_array_real_subscript_diagnostic()
+    logical function test_cli_array_real_subscript_extension()
         character(len=*), parameter :: source = &
             'program main'//new_line('a')// &
-            '  integer :: values(3)'//new_line('a')// &
-            '  print *, values(1.0)'//new_line('a')// &
+            '  integer :: values(3), result'//new_line('a')// &
+            '  values = [10,20,30]'//new_line('a')// &
+            '  result = values(3.25)'//new_line('a')// &
+            '  print *, result'//new_line('a')// &
             'end program main'
 
-        test_cli_array_real_subscript_diagnostic = expect_cli_error_contains( &
-            source, 'unsupported array subscript', &
-            '/tmp/ffc_cli_array_real_index_test')
-    end function test_cli_array_real_subscript_diagnostic
+        test_cli_array_real_subscript_extension = matches_gfortran( &
+            source, 'real_index_cli', .true.)
+    end function test_cli_array_real_subscript_extension
 
 
     logical function test_cli_whole_array_argument_diagnostic()
@@ -329,4 +342,4 @@ contains
             '/tmp/ffc_cli_array_arg_test')
     end function test_cli_whole_array_argument_diagnostic
 
-end program test_session_array_unsupported_diagnostics
+end subroutine case_test_session_array_unsupported_diagnostics

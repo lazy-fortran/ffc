@@ -1,10 +1,22 @@
-program test_session_corpus_gaps_609_compiler
+! fo: dispatcher
+module ffc_case_test_session_corpus_gaps_609_compiler
+    implicit none
+    private
+    public :: case_test_session_corpus_gaps_609_compiler
+    interface
+        subroutine case_test_session_corpus_gaps_609_compiler()
+        end subroutine case_test_session_corpus_gaps_609_compiler
+    end interface
+end module ffc_case_test_session_corpus_gaps_609_compiler
+
+subroutine case_test_session_corpus_gaps_609_compiler()
     !! Behavioural coverage for the ffc#609 corpus gaps that this change
     !! closes: the positional character(N) type-spec, ALLOCATE on a scalar
     !! POINTER, a list-directed I/O implied-do, and SELECT TYPE on a
     !! class(t) scalar allocatable.
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -136,4 +148,4 @@ contains
             'end program main'
     end function allocatable_class_source
 
-end program test_session_corpus_gaps_609_compiler
+end subroutine case_test_session_corpus_gaps_609_compiler

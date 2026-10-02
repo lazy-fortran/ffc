@@ -1,10 +1,22 @@
-program test_session_external_only_unit_compiler
+! fo: dispatcher
+module ffc_case_test_session_external_only_unit_compiler
+    implicit none
+    private
+    public :: case_test_session_external_only_unit_compiler
+    interface
+        subroutine case_test_session_external_only_unit_compiler()
+        end subroutine case_test_session_external_only_unit_compiler
+    end interface
+end module ffc_case_test_session_external_only_unit_compiler
+
+subroutine case_test_session_external_only_unit_compiler()
     ! #416: a translation unit holding only top-level (external) procedures
     ! compiles to an object that defines no main, keeps every procedure it
     ! declares, and links against a separately compiled driver that calls the
     ! external function and subroutine through an explicit interface.
     use ffc_test_support, only: expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -331,4 +343,4 @@ contains
         ok = io_stat == 0
     end function write_file
 
-end program test_session_external_only_unit_compiler
+end subroutine case_test_session_external_only_unit_compiler

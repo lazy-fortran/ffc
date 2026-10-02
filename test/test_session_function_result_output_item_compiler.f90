@@ -1,9 +1,21 @@
-program test_session_function_result_output_item_compiler
+! fo: dispatcher
+module ffc_case_test_session_function_result_output_item_compiler
+    implicit none
+    private
+    public :: case_test_session_function_result_output_item_compiler
+    interface
+        subroutine case_test_session_function_result_output_item_compiler()
+        end subroutine case_test_session_function_result_output_item_compiler
+    end interface
+end module ffc_case_test_session_function_result_output_item_compiler
+
+subroutine case_test_session_function_result_output_item_compiler()
     ! A contained function's RESULT variable is an ordinary output-list item.
     ! An unrelated external procedure name remains an invalid bare item.
     use ffc_test_support, only: expect_output_matches_gfortran, &
         expect_error_contains
     implicit none
+    save
     character(len=*), parameter :: positive_source = &
         'program main'//new_line('a')// &
         '  implicit none'//new_line('a')// &
@@ -30,4 +42,4 @@ program test_session_function_result_output_item_compiler
             'integer identifier was not declared: ext', &
             '/var/tmp/ert/ffc_issue581_external_output_item')) stop 1
     print *, 'PASS: result output item accepted; external name rejected'
-end program test_session_function_result_output_item_compiler
+end subroutine case_test_session_function_result_output_item_compiler

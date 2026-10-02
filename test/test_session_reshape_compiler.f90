@@ -1,6 +1,18 @@
-program test_session_reshape_compiler
+! fo: dispatcher
+module ffc_case_test_session_reshape_compiler
+    implicit none
+    private
+    public :: case_test_session_reshape_compiler
+    interface
+        subroutine case_test_session_reshape_compiler()
+        end subroutine case_test_session_reshape_compiler
+    end interface
+end module ffc_case_test_session_reshape_compiler
+
+subroutine case_test_session_reshape_compiler()
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -312,4 +324,4 @@ contains
             '/tmp/ffc_session_reshape_short_source_test')
     end function test_short_source_without_pad_is_rejected
 
-end program test_session_reshape_compiler
+end subroutine case_test_session_reshape_compiler

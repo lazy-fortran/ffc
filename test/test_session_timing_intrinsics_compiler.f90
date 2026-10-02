@@ -1,10 +1,22 @@
-program test_session_timing_intrinsics
+! fo: dispatcher
+module ffc_case_test_session_timing_intrinsics_compiler
+    implicit none
+    private
+    public :: case_test_session_timing_intrinsics_compiler
+    interface
+        subroutine case_test_session_timing_intrinsics_compiler()
+        end subroutine case_test_session_timing_intrinsics_compiler
+    end interface
+end module ffc_case_test_session_timing_intrinsics_compiler
+
+subroutine case_test_session_timing_intrinsics_compiler()
     ! CPU_TIME and SYSTEM_CLOCK intrinsic subroutine calls (#2820). The values
     ! are nondeterministic, so the tests assert observable invariants instead of
     ! exact numbers: cpu_time yields a non-negative real, system_clock yields a
     ! positive tick count, and both round-trip into their intent(out) arguments.
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -68,4 +80,4 @@ contains
             source, 0, '/tmp/ffc_timing_roundtrip')
     end function test_both_round_trip
 
-end program test_session_timing_intrinsics
+end subroutine case_test_session_timing_intrinsics_compiler

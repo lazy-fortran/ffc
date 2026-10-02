@@ -1,6 +1,18 @@
-program test_session_enum_compiler
+! fo: dispatcher
+module ffc_case_test_session_enum_compiler
+    implicit none
+    private
+    public :: case_test_session_enum_compiler
+    interface
+        subroutine case_test_session_enum_compiler()
+        end subroutine case_test_session_enum_compiler
+    end interface
+end module ffc_case_test_session_enum_compiler
+
+subroutine case_test_session_enum_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session enum compiler test ==='
 
@@ -63,4 +75,4 @@ program test_session_enum_compiler
     print *, 'PASS: enumerators drive select case and expressions'
 
     print *, 'PASS: enum/enumerator lower through direct LIRIC session'
-end program test_session_enum_compiler
+end subroutine case_test_session_enum_compiler

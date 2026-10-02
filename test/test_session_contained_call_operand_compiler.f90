@@ -1,7 +1,19 @@
-program test_session_contained_call_operand_compiler
+! fo: dispatcher
+module ffc_case_test_session_contained_call_operand_compiler
+    implicit none
+    private
+    public :: case_test_session_contained_call_operand_compiler
+    interface
+        subroutine case_test_session_contained_call_operand_compiler()
+        end subroutine case_test_session_contained_call_operand_compiler
+    end interface
+end module ffc_case_test_session_contained_call_operand_compiler
+
+subroutine case_test_session_contained_call_operand_compiler()
     use conformance_temp_dir, only: make_temp_root, remove_temp_root
     use ffc_test_support, only: compile_to_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'module marker'//new_line('a')// &
@@ -147,4 +159,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_contained_call_operand_compiler
+end subroutine case_test_session_contained_call_operand_compiler

@@ -15,7 +15,7 @@ else
     MANIFESTS+=("$PROJECT_DIR"/test/conformance/scopes_*.txt)
 fi
 
-TMPDIR_WORK=$(mktemp -d /tmp/ffc_manifest_audit_XXXXXX)
+TMPDIR_WORK=$(mktemp -d "${TMPDIR:-/tmp}/ffc_manifest_audit_XXXXXX")
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 OWNER_LIST="$TMPDIR_WORK/owners.txt"
 : > "$OWNER_LIST"

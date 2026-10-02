@@ -1,9 +1,21 @@
-program test_session_scalar_finalizer_compiler
+! fo: dispatcher
+module ffc_case_test_session_scalar_finalizer_compiler
+    implicit none
+    private
+    public :: case_test_session_scalar_finalizer_compiler
+    interface
+        subroutine case_test_session_scalar_finalizer_compiler()
+        end subroutine case_test_session_scalar_finalizer_compiler
+    end interface
+end module ffc_case_test_session_scalar_finalizer_compiler
+
+subroutine case_test_session_scalar_finalizer_compiler()
     ! Scalar FINAL procedures (#403): an applicable scalar finaliser runs
     ! exactly once when an owned local or allocatable derived value reaches
     ! the end of its lifetime, and never for a borrowed dummy.
     use ffc_test_support, only: expect_exit_status, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -160,4 +172,4 @@ contains
             source, 'final', '/tmp/ffc_final_ambiguous_test')
     end function test_ambiguous_final_rejected
 
-end program test_session_scalar_finalizer_compiler
+end subroutine case_test_session_scalar_finalizer_compiler

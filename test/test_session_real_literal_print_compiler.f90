@@ -1,6 +1,18 @@
-program test_session_real_literal_print_compiler
+! fo: dispatcher
+module ffc_case_test_session_real_literal_print_compiler
+    implicit none
+    private
+    public :: case_test_session_real_literal_print_compiler
+    interface
+        subroutine case_test_session_real_literal_print_compiler()
+        end subroutine case_test_session_real_literal_print_compiler
+    end interface
+end module ffc_case_test_session_real_literal_print_compiler
+
+subroutine case_test_session_real_literal_print_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session real literal print compiler test ==='
 
@@ -19,4 +31,4 @@ program test_session_real_literal_print_compiler
         '/tmp/ffc_session_real_literal_f64_print_test')) stop 1
 
     print *, 'PASS: real literal print lowers through direct LIRIC session'
-end program test_session_real_literal_print_compiler
+end subroutine case_test_session_real_literal_print_compiler

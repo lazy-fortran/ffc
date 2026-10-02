@@ -10,6 +10,7 @@ contains
         type(lr_operand_desc_t) :: condition
         type(lr_operand_desc_t) :: copied_value
         type(loop_cycle_state_t) :: saved_cycles
+        type(loop_branch_target_t), target :: branch_target
         type(lr_operand_desc_t), allocatable :: entry_values(:)
         type(lr_operand_desc_t), allocatable :: header_values(:)
         type(lr_operand_desc_t), allocatable :: backedge_values(:)
@@ -19,8 +20,6 @@ contains
         integer(c_int32_t) :: latch_block
         integer(c_int32_t) :: exit_block
         integer(c_int32_t) :: reserved_vreg
-        integer(c_int32_t) :: saved_loop_exit_block
-        integer(c_int32_t) :: saved_loop_latch_block
         integer(c_int32_t), allocatable :: saved_loop_exit_blocks(:)
         type(lr_operand_desc_t), allocatable :: saved_loop_exit_values(:,:)
         integer :: saved_loop_exit_count
@@ -88,25 +87,22 @@ contains
         if (.not. set_liric_block(context%session, body_block, error_msg)) return
         context%current_block_id = body_block
         body_terminated = .false.
-        saved_loop_exit_block = context%current_loop_exit_block
-        saved_loop_latch_block = context%current_loop_latch_block
         saved_in_loop = context%in_loop
-        context%current_loop_exit_block = exit_block
-        context%current_loop_latch_block = latch_block
         context%in_loop = .true.
         context%current_block_exited_loop = .false.
         call begin_loop_cycle_tracking(context, saved_cycles)
         call begin_loop_exit_tracking(context, saved_loop_exit_blocks, &
             saved_loop_exit_values, &
             saved_loop_exit_count)
+        call begin_loop_branch_target(context, branch_target, exit_block, &
+            latch_block, node%construct_name)
         if (allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
                 body_terminated, error_msg)
-            if (len_trim(error_msg) > 0) return
         end if
+        call end_loop_branch_target(context, branch_target, error_msg)
+        if (len_trim(error_msg) > 0) return
         body_exited = context%current_block_exited_loop
-        context%current_loop_exit_block = saved_loop_exit_block
-        context%current_loop_latch_block = saved_loop_latch_block
         context%in_loop = saved_in_loop
         context%current_block_exited_loop = .false.
         if (context%symbol_count /= initial_symbol_count) then

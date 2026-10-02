@@ -1,6 +1,18 @@
-program test_session_type_bound_compiler
+! fo: dispatcher
+module ffc_case_test_session_type_bound_compiler
+    implicit none
+    private
+    public :: case_test_session_type_bound_compiler
+    interface
+        subroutine case_test_session_type_bound_compiler()
+        end subroutine case_test_session_type_bound_compiler
+    end interface
+end module ffc_case_test_session_type_bound_compiler
+
+subroutine case_test_session_type_bound_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     print *, '=== direct session type-bound procedure compiler test ==='
 
@@ -110,4 +122,4 @@ contains
             source, 12, '/tmp/ffc_type_bound_pass_test')
     end function test_bound_pass_rename
 
-end program test_session_type_bound_compiler
+end subroutine case_test_session_type_bound_compiler

@@ -1,6 +1,18 @@
-program test_session_array_intrinsics_cluster_compiler
+! fo: dispatcher
+module ffc_case_test_session_array_intrinsics_cluster_compiler
+    implicit none
+    private
+    public :: case_test_session_array_intrinsics_cluster_compiler
+    interface
+        subroutine case_test_session_array_intrinsics_cluster_compiler()
+        end subroutine case_test_session_array_intrinsics_cluster_compiler
+    end interface
+end module ffc_case_test_session_array_intrinsics_cluster_compiler
+
+subroutine case_test_session_array_intrinsics_cluster_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -76,4 +88,4 @@ contains
             '/tmp/ffc_session_mask_reductions_test')
     end function test_mask_reductions_and_product
 
-end program test_session_array_intrinsics_cluster_compiler
+end subroutine case_test_session_array_intrinsics_cluster_compiler

@@ -1,6 +1,18 @@
-program test_session_file_write_character_literal_compiler
+! fo: dispatcher
+module ffc_case_test_session_file_write_character_literal_compiler
+    implicit none
+    private
+    public :: case_test_session_file_write_character_literal_compiler
+    interface
+        subroutine case_test_session_file_write_character_literal_compiler()
+        end subroutine case_test_session_file_write_character_literal_compiler
+    end interface
+end module ffc_case_test_session_file_write_character_literal_compiler
+
+subroutine case_test_session_file_write_character_literal_compiler()
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
 
     logical :: all_passed
 
@@ -49,4 +61,4 @@ contains
             'file_write_character_format_control')
     end function test_explicit_format_control
 
-end program test_session_file_write_character_literal_compiler
+end subroutine case_test_session_file_write_character_literal_compiler

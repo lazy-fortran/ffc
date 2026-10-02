@@ -1,8 +1,20 @@
-program test_session_scalar_allocatable_compiler
+! fo: dispatcher
+module ffc_case_test_session_scalar_allocatable_compiler
+    implicit none
+    private
+    public :: case_test_session_scalar_allocatable_compiler
+    interface
+        subroutine case_test_session_scalar_allocatable_compiler()
+        end subroutine case_test_session_scalar_allocatable_compiler
+    end interface
+end module ffc_case_test_session_scalar_allocatable_compiler
+
+subroutine case_test_session_scalar_allocatable_compiler()
     ! Scalar integer/real/logical allocatables (W11): declare, allocate,
     ! assign, deallocate, and allocate(x, source=<expr>)/mold=<expr>.
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -103,4 +115,4 @@ contains
             source, 0, '/tmp/ffc_scalar_alloc_source_test')
     end function test_scalar_allocate_source_literal
 
-end program test_session_scalar_allocatable_compiler
+end subroutine case_test_session_scalar_allocatable_compiler

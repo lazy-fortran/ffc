@@ -1,4 +1,15 @@
-program test_session_if_merge_character_compiler
+! fo: dispatcher
+module ffc_case_test_session_if_merge_character_compiler
+    implicit none
+    private
+    public :: case_test_session_if_merge_character_compiler
+    interface
+        subroutine case_test_session_if_merge_character_compiler()
+        end subroutine case_test_session_if_merge_character_compiler
+    end interface
+end module ffc_case_test_session_if_merge_character_compiler
+
+subroutine case_test_session_if_merge_character_compiler()
     ! Regression test for IF-merge across character variables.
     ! Deferred-length character symbols share their (data_ptr, length)
     ! allocas across branches, so the merge is a no-op on the symbol;
@@ -6,6 +17,7 @@ program test_session_if_merge_character_compiler
     ! pointer per assignment and need a real phi on the pointer.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -99,4 +111,4 @@ contains
             '/tmp/ffc_session_if_fix_char_else_test')
     end function test_fixed_char_else_branch
 
-end program test_session_if_merge_character_compiler
+end subroutine case_test_session_if_merge_character_compiler

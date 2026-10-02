@@ -1,4 +1,15 @@
-program test_session_spec_expression_scope_compiler
+! fo: dispatcher
+module ffc_case_test_session_spec_expression_scope_compiler
+    implicit none
+    private
+    public :: case_test_session_spec_expression_scope_compiler
+    interface
+        subroutine case_test_session_spec_expression_scope_compiler()
+        end subroutine case_test_session_spec_expression_scope_compiler
+    end interface
+end module ffc_case_test_session_spec_expression_scope_compiler
+
+subroutine case_test_session_spec_expression_scope_compiler()
     ! A specification expression - an array bound, a character length - is
     ! evaluated in the scope where its declaration appears, so a name in one
     ! obeys host association and BLOCK shadowing like any other reference.
@@ -9,6 +20,7 @@ program test_session_spec_expression_scope_compiler
     ! width the shadowed outer constant would give (#329).
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -101,4 +113,4 @@ contains
             '/tmp/ffc_spec_expr_later_array_bound_test')
     end function test_later_declared_array_bound
 
-end program test_session_spec_expression_scope_compiler
+end subroutine case_test_session_spec_expression_scope_compiler

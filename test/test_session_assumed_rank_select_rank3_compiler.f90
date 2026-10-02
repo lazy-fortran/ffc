@@ -1,6 +1,18 @@
-program test_session_assumed_rank_select_rank3_compiler
+! fo: dispatcher
+module ffc_case_test_session_assumed_rank_select_rank3_compiler
+    implicit none
+    private
+    public :: case_test_session_assumed_rank_select_rank3_compiler
+    interface
+        subroutine case_test_session_assumed_rank_select_rank3_compiler()
+        end subroutine case_test_session_assumed_rank_select_rank3_compiler
+    end interface
+end module ffc_case_test_session_assumed_rank_select_rank3_compiler
+
+subroutine case_test_session_assumed_rank_select_rank3_compiler()
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -287,4 +299,4 @@ contains
         close (unit)
     end subroutine read_text
 
-end program test_session_assumed_rank_select_rank3_compiler
+end subroutine case_test_session_assumed_rank_select_rank3_compiler

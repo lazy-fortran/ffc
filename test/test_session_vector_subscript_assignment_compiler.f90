@@ -1,10 +1,22 @@
-program test_session_vector_subscript_assignment_compiler
+! fo: dispatcher
+module ffc_case_test_session_vector_subscript_assignment_compiler
+    implicit none
+    private
+    public :: case_test_session_vector_subscript_assignment_compiler
+    interface
+        subroutine case_test_session_vector_subscript_assignment_compiler()
+        end subroutine case_test_session_vector_subscript_assignment_compiler
+    end interface
+end module ffc_case_test_session_vector_subscript_assignment_compiler
+
+subroutine case_test_session_vector_subscript_assignment_compiler()
     ! Behavioural coverage for assignment to a vector subscript, a(v) = rhs.
     ! Fortran requires the RHS and the index vector to be evaluated before any
     ! element of the target is redefined, so a self-referential scatter such as
     ! a(v) = a(w) must observe the original values of a.
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -173,4 +185,4 @@ contains
             '/tmp/ffc_session_vector_subscript_kind_test')
     end function test_noninteger_vector_rejected
 
-end program test_session_vector_subscript_assignment_compiler
+end subroutine case_test_session_vector_subscript_assignment_compiler

@@ -1,37 +1,28 @@
 #!/usr/bin/env python3
-"""Guard the EXIT/CYCLE construct-name surface (ffc#455).
+"""Compare structured DO branch targets and scalar snapshots with gfortran.
 
-Named EXIT/CYCLE that name an ENCLOSING loop are silently mis-bound to the
-innermost loop: `outer: do; do; if (j==1) exit outer` exits the INNER loop, the
-outer loop keeps iterating, and the program prints rows gfortran never prints.
-The label is captured by FortFront on the statement (`exit_node%label`,
-`cycle_node%label`) but the DO node carries no construct name, and ffc keeps only
-a scalar innermost exit/latch block - so there is nothing to resolve a name
-against. See ffc#455 for the full chain and the forced fix order.
+Named EXIT/CYCLE resolve enclosing counted, while, and infinite loops (ffc#455).
+Two named loops nested beneath unnamed loops remain tracked as known parser
+refusals (ffc#760). Every accepted case compares complete output bytes and
+records both MD5 digests; all other mismatches and refusals fail the oracle.
 
-This guard therefore pins the half that is CORRECT today - unnamed EXIT/CYCLE at
-every nesting depth, and names on the innermost loop - because a fix for #455
-touches exactly this code and must not regress it. The enclosing-named rows are
-reported as `KNOWN_GAP`: they compile and run, and print the wrong thing. They
-are kept visible without turning the guard red, so the count of known wrong
-answers is a number that can only go down.
-
-Rows whose reference build refuses are `REF_FAIL` (reported, skipped, never a
-pass). A byte mismatch against gfortran outside KNOWN_GAP fails the run.
-
-Run:  python3 tools/test_construct_name_exit_cycle_parity.py
+Run: python3 tools/test_construct_name_exit_cycle_parity.py
+Falsify comparisons: python3 tools/test_construct_name_exit_cycle_parity.py --falsify
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 FFC = ROOT / "build" / "fo" / "app" / "ffc"
-WORK = Path("/var/tmp/ffc-goal/perf/cnname")
-REPORT = Path("/var/tmp/ffc-goal/perf/cnname/report.tsv")
+WORK = Path(os.environ.get("FFC_PARITY_WORK", "/var/tmp/ffc-goal/perf/cnname"))
+REPORT = WORK / "report.tsv"
+FALSIFY = False
 
 # Correct today - these MUST keep matching.
 GUARDED = [
@@ -61,13 +52,8 @@ GUARDED = [
     ("dowhile_plain_cycle", "program p\n  integer :: i\n  i=0\n  do while (i<5)\n    i=i+1\n    if (i==2) cycle\n    print *, i\n  end do\nend program p\n"),
 ]
 
-# Wrong today (mis-bound to innermost), kept visible, not failed.
-KNOWN_GAP = [
-    # Mis-bound to the innermost loop: #455.
-    "outer_exit", "outer_cycle", "outer_exit_named_deep", "outer_cycle_named_deep",
-    # Refused outright: named DO nested >=2 levels below unnamed DOs, #760.
-    "innermost_named_deep", "innermost_named_exit_deep",
-]
+# Parser refusals are a separate frontend issue, never output exemptions.
+KNOWN_REFUSED = {"innermost_named_deep", "innermost_named_exit_deep"}
 
 GAP = [
     ("innermost_named_exit_deep", "program p\n  do i=1,2\n    do j=1,3\n      e: do k=1,3\n        if (k==2) exit e\n        print *, i*100+j*10+k\n      end do e\n    end do\n  end do\nend program p\n"),
@@ -77,6 +63,48 @@ GAP = [
     ("outer_exit_named_deep", "program p\n  a: do i=1,2\n    b: do j=1,2\n      do k=1,3\n        if (k==1) exit a\n        print *, i*100+j*10+k\n      end do\n      print *, 7\n    end do b\n  end do a\nend program p\n"),
     ("outer_cycle_named_deep", "program p\n  a: do i=1,2\n    b: do j=1,2\n      do k=1,3\n        if (k==1) cycle a\n        print *, i*100+j*10+k\n      end do\n    end do b\n  end do a\nend program p\n"),
 ]
+
+
+TARGET_VALUES = []
+for loop_kind in ("counted", "while", "infinite"):
+    for branch in ("exit", "cycle"):
+        opening = {"counted": "outer: do i=1,4",
+                   "while": "outer: do while (i<4)",
+                   "infinite": "outer: do"}[loop_kind]
+        advance = "" if loop_kind == "counted" else "    i=i+1\n"
+        terminate = "    if (i>4) exit outer\n" if loop_kind == "infinite" else ""
+        source = ("program p\n  integer :: i,j,s\n  i=0\n  s=0\n  " + opening + "\n"
+                  + advance + terminate + "    s=s+i\n    do j=1,3\n"
+                  "      s=s+10\n      if (j==2) " + branch + " outer\n"
+                  "      s=s+1\n    end do\n    s=s+1000\n  end do outer\n"
+                  "  print *, i,j,s\nend program p\n")
+        TARGET_VALUES.append((f"outer_{loop_kind}_{branch}_values", source))
+
+for branch in ("exit", "cycle"):
+    TARGET_VALUES.append((f"outer_counted_inner_while_{branch}",
+        "program p\n  integer :: i,j,s\n  s=0\n  outer: do i=1,4\n"
+        "    j=0\n    do while (j<3)\n      j=j+1\n      s=s+10\n"
+        f"      if (j==2) {branch} outer\n"
+        "      s=s+1\n    end do\n    s=s+1000\n  end do outer\n"
+        "  print *, i,j,s\nend program p\n"))
+    TARGET_VALUES.append((f"middle_{branch}_values",
+        "program p\n  integer :: i,j,k,s\n  s=0\n  a: do i=1,2\n"
+        "    b: do j=1,3\n      do k=1,3\n        s=s+100*i+10*j+k\n"
+        f"        if (k==2) {branch} b\n"
+        "      end do\n      s=s+1000\n    end do b\n    s=s+10000\n"
+        "  end do a\n  print *, i,j,k,s\nend program p\n"))
+    TARGET_VALUES.append((f"outer_{branch}_integer8",
+        "program p\n  integer :: i,j\n  integer(8) :: s\n"
+        "  s=5000000000_8\n  outer: do i=1,4\n    do j=1,3\n"
+        "      s=s+1000000000_8\n"
+        f"      if (j==2) {branch} outer\n"
+        "    end do\n    s=s+1_8\n  end do outer\n"
+        "  print *, i,j,s\nend program p\n"))
+
+TARGET_VALUES.append(("outer_mixed_case_cycle",
+    "program p\n  integer :: i,j,s\n  s=0\n  Outer: do i=1,3\n"
+    "    do j=1,3\n      s=s+1\n      if (j==2) cycle OUTER\n"
+    "    end do\n  end do Outer\n  print *, i,j,s\nend program p\n"))
 
 
 def free_form(src: str) -> str:
@@ -101,7 +129,7 @@ def free_form(src: str) -> str:
 
 
 def run(cmd: list[str]) -> tuple[int, str, str]:
-    p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+    p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=120)
     return p.returncode, p.stdout, p.stderr
 
 
@@ -112,46 +140,54 @@ def check(name: str, src_text: str, lines: list[str]) -> tuple[int, int, int]:
     if rc_g != 0:
         lines.append(f"{name}\tREF_FAIL")
         return 0, 0, 0
-    rc_f, _, err = run([str(FFC), str(src), "-o", str(WORK / f"{name}_ffc")])
+    rc_f, _, err = run(["fo", "exec", "--no-build", "ffc", str(src),
+                        "-o", str(WORK / f"{name}_ffc")])
     if rc_f != 0:
-        if name in KNOWN_GAP:
-            lines.append(f"{name}\tKNOWN_GAP\tREFUSED_NOW")
+        if name in KNOWN_REFUSED:
+            lines.append(f"{name}\tKNOWN_REFUSED\tffc#760")
             return 0, 0, 0
         # A refusal on a currently-working form is a regression.
         lines.append(f"{name}\tREGRESSED_REFUSED\t{err.strip()[:48]}")
         return 1, 0, 1
-    _, rout, _ = run([str(WORK / f"{name}_ref")])
+    refrc, rout, _ = run([str(WORK / f"{name}_ref")])
+    if refrc != 0:
+        lines.append(f"{name}\tREF_RUNTIME_FAIL")
+        return 1, 0, 1
     ffrc, fout, _ = run([str(WORK / f"{name}_ffc")])
+    if FALSIFY:
+        fout += "falsified candidate output\n"
     rmd5 = hashlib.md5(rout.encode()).hexdigest()
     fmd5 = hashlib.md5(fout.encode()).hexdigest()
     if ffrc != 0:
         lines.append(f"{name}\tFFC_RUNTIME_FAIL")
         return 1, 0, 1
     if rmd5 == fmd5:
-        lines.append(f"{name}\tMATCH\t{rmd5}")
+        lines.append(f"{name}\tMATCH\tref={rmd5}\tffc={fmd5}")
         return 1, 1, 0
-    if name in KNOWN_GAP:
-        lines.append(f"{name}\tKNOWN_GAP\tMISMATCH_wrong")
-        return 0, 0, 0
-    lines.append(f"{name}\tMISMATCH\tref={rmd5[:12]}\tffc={fmd5[:12]}")
+    lines.append(f"{name}\tMISMATCH\tref={rmd5}\tffc={fmd5}")
     return 1, 0, 1
 
 
 def main() -> int:
+    global FALSIFY
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--falsify", action="store_true",
+                        help="inject wrong candidate bytes to prove the oracle fails")
+    FALSIFY = parser.parse_args().falsify
     if not FFC.exists():
-        print(f"SKIP: ffc not built at {FFC}", file=sys.stderr)
-        return 0
+        print(f"FAIL: ffc not built at {FFC}; run fo build", file=sys.stderr)
+        return 1
     WORK.mkdir(parents=True, exist_ok=True)
     lines: list[str] = []
     runs = match = fail = 0
-    for name, text in GUARDED + GAP:
+    for name, text in GUARDED + GAP + TARGET_VALUES:
         r, m, f = check(name, text, lines)
         runs += r
         match += m
         fail += f
-    gap_rows = sum(1 for l in lines if l.split("\t")[1] == "KNOWN_GAP")
+    gap_rows = sum(1 for l in lines if l.split("\t")[1] == "KNOWN_REFUSED")
     REPORT.write_text("\n".join(lines) + "\n")
-    print(f"runs={runs} match={match} fail={fail} known_gap={gap_rows}")
+    print(f"runs={runs} match={match} fail={fail} known_refused={gap_rows}")
     print(f"report={REPORT}")
     return 1 if fail else 0
 

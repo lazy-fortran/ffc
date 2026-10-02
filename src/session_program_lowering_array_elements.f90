@@ -1723,6 +1723,17 @@ contains
         if (n <= 0) return
 
         target_sym = sym
+        if (is_merge_call(arena, expr_index, context)) then
+            select type (merge_node => arena%entries(expr_index)%node)
+            type is (call_or_subscript_node)
+                vk = merge_value_kind(arena, merge_node, context)
+                if (context%symbols(sym)%value_kind /= vk) then
+                    call create_array_expression_temp(context, vk, int(n), &
+                                                       0, target_sym, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
+            end select
+        end if
         if (logical_expr) then
             if (target_sym <= 0 .or. &
                 context%symbols(target_sym)%value_kind /= VALUE_LOGICAL) then
@@ -1824,6 +1835,23 @@ contains
             if (i > 0) then
                 if (is_elementwise_array_operand(context, i)) sym = i
             end if
+            return
+        end if
+
+        if (is_merge_call(arena, expr_index, context)) then
+            select type (n => arena%entries(expr_index)%node)
+            type is (call_or_subscript_node)
+                block
+                    integer :: indices(3)
+                    call resolve_merge_arguments(arena, n, indices, err)
+                    if (len_trim(err) > 0) return
+                    do i = 1, 3
+                        sym = whole_array_expr_shape_symbol(arena, indices(i), &
+                                                           context)
+                        if (sym > 0) return
+                    end do
+                end block
+            end select
             return
         end if
 
@@ -2639,6 +2667,16 @@ contains
             call load_array_linear_element(context, symbol_index, &
                                            int(linear_index, c_int64_t), value, &
                                            error_msg)
+            return
+        end if
+
+        if (is_merge_call(arena, node_index, context)) then
+            select type (n => arena%entries(node_index)%node)
+            type is (call_or_subscript_node)
+                call lower_merge_call(arena, n, &
+                    context%symbols(target_symbol_index)%value_kind, context, &
+                    value, error_msg, target_symbol_index, linear_index)
+            end select
             return
         end if
 
@@ -4227,7 +4265,8 @@ contains
 
         vk = context%symbols(symbol_index)%value_kind
         if (context%symbols(symbol_index)%is_allocatable .or. &
-                context%symbols(symbol_index)%has_runtime_dim_size(1)) then
+            context%symbols(symbol_index)%has_runtime_descriptor .or. &
+            context%symbols(symbol_index)%has_runtime_dim_size(1)) then
             call lower_runtime_descriptor_array_element_address(context, &
                 symbol_index, index_value, addr, error_msg)
             if (len_trim(error_msg) > 0) return

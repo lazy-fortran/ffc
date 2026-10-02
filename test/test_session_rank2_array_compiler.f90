@@ -1,6 +1,18 @@
-program test_session_rank2_array_compiler
+! fo: dispatcher
+module ffc_case_test_session_rank2_array_compiler
+    implicit none
+    private
+    public :: case_test_session_rank2_array_compiler
+    interface
+        subroutine case_test_session_rank2_array_compiler()
+        end subroutine case_test_session_rank2_array_compiler
+    end interface
+end module ffc_case_test_session_rank2_array_compiler
+
+subroutine case_test_session_rank2_array_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session rank-2 array compiler test ==='
     if (.not. test_rank2_array_with_explicit_bounds()) stop 1
@@ -27,4 +39,4 @@ contains
             source, 10, '/tmp/ffc_session_rank2_array_test')
     end function test_rank2_array_with_explicit_bounds
 
-end program test_session_rank2_array_compiler
+end subroutine case_test_session_rank2_array_compiler

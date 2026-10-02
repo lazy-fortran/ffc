@@ -1,10 +1,22 @@
-program test_session_sum_expr_compiler
+! fo: dispatcher
+module ffc_case_test_session_sum_expr_compiler
+    implicit none
+    private
+    public :: case_test_session_sum_expr_compiler
+    interface
+        subroutine case_test_session_sum_expr_compiler()
+        end subroutine case_test_session_sum_expr_compiler
+    end interface
+end module ffc_case_test_session_sum_expr_compiler
+
+subroutine case_test_session_sum_expr_compiler()
     ! sum() over a general array-valued expression argument: a binary-op
     ! combination of arrays/sections (sum(a + b)), and a bare call to a
     ! contained function returning an allocatable array (sum(f())). Only the
     ! plain-identifier and bare-section arguments were previously supported.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -88,4 +100,4 @@ contains
             '/tmp/ffc_sum_expr_alloc')
     end function test_alloc_function_result
 
-end program test_session_sum_expr_compiler
+end subroutine case_test_session_sum_expr_compiler

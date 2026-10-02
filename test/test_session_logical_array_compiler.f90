@@ -1,10 +1,22 @@
-program test_session_logical_array
+! fo: dispatcher
+module ffc_case_test_session_logical_array_compiler
+    implicit none
+    private
+    public :: case_test_session_logical_array_compiler
+    interface
+        subroutine case_test_session_logical_array_compiler()
+        end subroutine case_test_session_logical_array_compiler
+    end interface
+end module ffc_case_test_session_logical_array_compiler
+
+subroutine case_test_session_logical_array_compiler()
     ! Logical fixed-size arrays through direct LIRIC lowering (Epic E3, #264):
     ! declaration, element write/read, scalar broadcast, whole-array copy, and
     ! rank-2 element access. Logical occupies an i32 slot, so element storage
     ! mirrors integer arrays while list-directed print formats T/F.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -73,4 +85,4 @@ contains
             '/tmp/ffc_logical_arr_rank2')
     end function test_rank2_elements
 
-end program test_session_logical_array
+end subroutine case_test_session_logical_array_compiler

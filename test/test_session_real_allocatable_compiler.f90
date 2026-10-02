@@ -1,9 +1,21 @@
-program test_session_real_allocatable_compiler
+! fo: dispatcher
+module ffc_case_test_session_real_allocatable_compiler
+    implicit none
+    private
+    public :: case_test_session_real_allocatable_compiler
+    interface
+        subroutine case_test_session_real_allocatable_compiler()
+        end subroutine case_test_session_real_allocatable_compiler
+    end interface
+end module ffc_case_test_session_real_allocatable_compiler
+
+subroutine case_test_session_real_allocatable_compiler()
     ! Real 1-D allocatable arrays through the direct LIRIC session: declare,
     ! allocate(a(n)), element write, constructor assign, whole-array print, and
     ! deallocate. Outputs match gfortran list-directed formatting.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -96,4 +108,4 @@ contains
             '/tmp/ffc_real_alloc_rt')
     end function test_runtime_size_compiles
 
-end program test_session_real_allocatable_compiler
+end subroutine case_test_session_real_allocatable_compiler

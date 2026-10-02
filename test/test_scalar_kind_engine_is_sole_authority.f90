@@ -1,9 +1,21 @@
-program test_scalar_kind_engine_is_sole_authority
+! fo: dispatcher
+module ffc_case_test_scalar_kind_engine_is_sole_authority
+    implicit none
+    private
+    public :: case_test_scalar_kind_engine_is_sole_authority
+    interface
+        subroutine case_test_scalar_kind_engine_is_sole_authority()
+        end subroutine case_test_scalar_kind_engine_is_sole_authority
+    end interface
+end module ffc_case_test_scalar_kind_engine_is_sole_authority
+
+subroutine case_test_scalar_kind_engine_is_sole_authority()
     !! Static check for #447: the ad hoc scalar-kind predicates the engine
     !! replaced must have no definitions and no callers left in src/. An engine
     !! that leaves the per-case code in place has replaced nothing, so this
     !! guards the deletion rather than the addition.
     implicit none
+    save
     logical :: ok
 
     print *, '=== scalar kind engine sole-authority check ==='
@@ -44,4 +56,4 @@ contains
         end if
     end function absent
 
-end program test_scalar_kind_engine_is_sole_authority
+end subroutine case_test_scalar_kind_engine_is_sole_authority

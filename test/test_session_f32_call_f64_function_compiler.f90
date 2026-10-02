@@ -1,9 +1,21 @@
-program test_session_f32_call_f64_function_compiler
+! fo: dispatcher
+module ffc_case_test_session_f32_call_f64_function_compiler
+    implicit none
+    private
+    public :: case_test_session_f32_call_f64_function_compiler
+    interface
+        subroutine case_test_session_f32_call_f64_function_compiler()
+        end subroutine case_test_session_f32_call_f64_function_compiler
+    end interface
+end module ffc_case_test_session_f32_call_f64_function_compiler
+
+subroutine case_test_session_f32_call_f64_function_compiler()
     ! A real(4) assignment must call a contained real(8) function through the
     ! f64 result ABI before narrowing. The mutually recursive calls make this
     ! an independent regression for same-unit procedure lowering (#448).
     use ffc_test_support, only: compile_to_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -100,4 +112,4 @@ contains
 
     end function matches_gfortran
 
-end program test_session_f32_call_f64_function_compiler
+end subroutine case_test_session_f32_call_f64_function_compiler

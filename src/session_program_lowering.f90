@@ -265,7 +265,7 @@ module session_program_lowering_impl
         multi_unit_container_node, submodule_node
     use fortfront, only: get_node_line, get_node_column
     use session_program_lowering_types, only: lowering_context_t, &
-        loop_cycle_state_t, &
+        loop_cycle_state_t, loop_branch_target_t, &
         branch_result_t, symbol_t, declaration_record_t, &
         abi_mangle_identity, &
         array_section_info_t, &
@@ -1096,6 +1096,25 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(inout) :: text
             character, intent(in) :: quote
         end subroutine collapse_doubled_quote
+        module subroutine lower_boz_descriptor(arena, node, context, format_body, &
+                pos, kind_char, repeat_count, item_index, exhausted, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(print_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: format_body
+            integer, intent(inout) :: pos, item_index
+            character, intent(in) :: kind_char
+            integer, intent(in) :: repeat_count
+            logical, intent(out) :: exhausted
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_boz_descriptor
+        module subroutine lower_boz_item(arena, node_index, context, radix, &
+                width, min_digits, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index, radix, width, min_digits
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_boz_item
         module subroutine lower_formatted_int_item(arena, node_index, context, &
                 fmt_id, error_msg)
             type(ast_arena_t), intent(in) :: arena
@@ -3086,17 +3105,17 @@ module session_program_lowering_impl
         end subroutine lower_i32_array_element
     end interface
     interface
-        module subroutine lower_do_loop(arena, node, context, value, error_msg)
+        recursive module subroutine lower_do_loop(arena, node, context, value, error_msg)
             type(ast_arena_t), intent(in) :: arena
             type(do_loop_node), intent(in) :: node
             type(lowering_context_t), intent(inout) :: context
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_do_loop
-        module subroutine lower_counted_loop(arena, var_name, start_expr_index, &
+        recursive module subroutine lower_counted_loop(arena, var_name, start_expr_index, &
                                              end_expr_index, step_expr_index, line, &
                                              column, body_emit, context, value, &
-                                             error_msg)
+                                             error_msg, construct_name)
             type(ast_arena_t), intent(in) :: arena
             character(len=*), intent(in) :: var_name
             integer, intent(in) :: start_expr_index, end_expr_index
@@ -3105,7 +3124,26 @@ module session_program_lowering_impl
             type(lowering_context_t), intent(inout) :: context
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
+            character(len=*), intent(in), optional :: construct_name
         end subroutine lower_counted_loop
+        module subroutine begin_loop_branch_target(context, target, exit_block, &
+                                                   latch_block, construct_name)
+            type(lowering_context_t), intent(inout) :: context
+            type(loop_branch_target_t), target, intent(out) :: target
+            integer(c_int32_t), intent(in) :: exit_block, latch_block
+            character(len=*), intent(in), optional :: construct_name
+        end subroutine begin_loop_branch_target
+        module subroutine end_loop_branch_target(context, target, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(loop_branch_target_t), intent(in) :: target
+            character(len=:), allocatable, intent(inout) :: error_msg
+        end subroutine end_loop_branch_target
+        module subroutine lower_loop_branch(context, is_cycle, label, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: is_cycle
+            character(len=:), allocatable, intent(in) :: label
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_loop_branch
         module subroutine begin_loop_cycle_tracking(context, saved)
             type(lowering_context_t), intent(inout) :: context
             type(loop_cycle_state_t), intent(out) :: saved
@@ -4483,14 +4521,24 @@ module session_program_lowering_impl
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_runtime_reduction_arg_element
+        recursive module subroutine lower_runtime_reduction_mask(arena, &
+                node_index, linear_index, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lr_operand_desc_t), intent(in) :: linear_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_runtime_reduction_mask
         module subroutine lower_runtime_general_expr_reduction(arena, arg_index, &
-                vk, context, value, error_msg, reduction_name)
+                vk, context, value, error_msg, reduction_name, mask_index)
             type(ast_arena_t), intent(in) :: arena
             integer, intent(in) :: arg_index, vk
             type(lowering_context_t), intent(inout) :: context
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
             character(len=*), intent(in) :: reduction_name
+            integer, intent(in), optional :: mask_index
         end subroutine lower_runtime_general_expr_reduction
         recursive module subroutine lower_reduction_arg_element(arena, node_index, &
                 linear_index, vk, context, value, error_msg)
@@ -4502,6 +4550,50 @@ module session_program_lowering_impl
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_reduction_arg_element
+        module function is_merge_call(arena, node_index, context) result(is_merge)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            logical :: is_merge
+        end function is_merge_call
+        module subroutine resolve_merge_arguments(arena, node, indices, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            integer, intent(out) :: indices(3)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine resolve_merge_arguments
+        recursive integer module function merge_value_kind(arena, node, &
+                                                          context) result(vk)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(in) :: context
+        end function merge_value_kind
+        module subroutine lower_merge_call(arena, node, vk, context, value, &
+                                           error_msg, target_symbol, linear_index)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            integer, intent(in) :: vk
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+            integer, intent(in), optional :: target_symbol, linear_index
+        end subroutine lower_merge_call
+        module subroutine lower_merge_scalar_source(arena, node_index, vk, &
+                                                    context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index, vk
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_merge_scalar_source
+        module subroutine lower_reduction_abs_value(context, vk, argument, &
+                                                   value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: vk
+            type(lr_operand_desc_t), intent(in) :: argument
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_reduction_abs_value
         module subroutine lower_reduction_scalar(arena, node_index, vk, context, &
                                                  value, error_msg)
             type(ast_arena_t), intent(in) :: arena
@@ -10235,11 +10327,12 @@ module session_program_lowering_impl
         module subroutine lower_allocate_i32_1d_operand(n_i32, &
                                                         symbol_index, &
                                                         context, &
-                                                        error_msg)
+                                                        error_msg, lower_i64)
             type(lr_operand_desc_t), intent(in) :: n_i32
             integer, intent(in) :: symbol_index
             type(lowering_context_t), intent(inout) :: context
             character(len=:), allocatable, intent(out) :: error_msg
+            type(lr_operand_desc_t), intent(in), optional :: lower_i64
         end subroutine lower_allocate_i32_1d_operand
         module subroutine expand_allocatable_constructor_elements(arena, &
                                                                   indices, &
@@ -20037,7 +20130,7 @@ module session_program_lowering_impl
             type(lr_operand_desc_t), intent(out) :: value
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_program_return
-        module subroutine lower_statement_list(arena, &
+        recursive module subroutine lower_statement_list(arena, &
                                                node_indices, &
                                                context, &
                                                value, &

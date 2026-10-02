@@ -1,62 +1,21 @@
 #!/usr/bin/env python3
-"""Pin name-namespace collision behaviour against gfortran; records live over-acceptance.
+"""Require Fortran namespace and validation decisions to agree with gfortran.
 
-PLAN W1.e carried "symbol-collision false positives (`Symbol 't' names an
-incompatible object`)" forward from a prior plan. The direction was wrong in the
-plan AND in my first reading of it. Measured against gfortran, the project's
-behavioral oracle:
-
-- fortfront's `semantic_local_name_collision_validation.f90` check fires on a DO
-  **construct label** that repeats a host/use-associated derived type name, and
-  gfortran refuses the same program at that line -> **AGREE**, that half is right.
-- What is missing is the **variable / loop-variable / COMMON-member** half. Four
-  shapes are invalid Fortran that gfortran rejects and ffc compiles and runs:
-
-      integer :: shared      with `type :: shared` use-associated
-          gfortran: Symbol 'shared' also declared as a type
-          ffc:      compiles, prints            9
-      common /g/ shared      member repeating a use-associated type name
-          gfortran: same diagnostic             ffc: compiles, prints  2
-      do shared = 1, 2       loop variable named after a derived type
-          gfortran: Derived type 'shared' cannot be used as a variable
-          ffc:      compiles, prints            2
-
-  That is ffc silently accepting invalid Fortran - a soundness gap, which is the
-  opposite failure mode from the one the plan recorded, and the more serious one:
-  the rejection gate exists to keep this set from shrinking by accident.
-
-  A second probing pass found five more of the same kind (recorded on #3021), the
-  worst being a `parameter` that ffc happily reassigns and prints:
-
-      outer: do ... / end do inner   gfortran: Expected label 'outer'
-      integer :: x  (twice)          gfortran: already has basic type of INTEGER
-      integer, parameter :: k=3;k=4  gfortran: Named constant in variable
-                                       definition context; ffc RUNS, prints 4
-      len("ab",3,4)                  gfortran: Too many arguments
-      program p / end program q      gfortran: Expected label 'p'
-
-  Nine distinct invalid-program shapes ffc accepts, all cheaply detectable, none
-  needing new lowering.
-
-Oracle shape: for each case both compilers' DECISIONS must agree (accept/refuse),
-and when both accept, outputs must match byte for byte. The four over-accepted
-programs are `KNOWN_OVERACCEPT`, counted and named in the report so the guard stays
-usable as a regression net while the count of silently-accepted invalid programs
-stays visible and can only fall when the check lands.
-
-Run:  python3 tools/test_name_namespace_collision_parity.py
+Every pinned invalid program must be refused; accepted programs must match the
+reference compiler's exit status and stdout byte for byte. Build once with
+``fo build`` before running. Use --work-dir to retain isolated evidence.
 """
 from __future__ import annotations
 
+import argparse
 import hashlib
+import shutil
 import subprocess
+import tempfile
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FFC = ROOT / "build" / "fo" / "app" / "ffc"
-WORK = Path("/var/tmp/ffc-goal/perf/nscoll")
-REPORT = Path("/var/tmp/ffc-goal/perf/nscoll/report.tsv")
 
 MOD = (
     "module ns_types\n  implicit none\n"
@@ -94,7 +53,7 @@ CASES = [
     ("nested_labels_ok", "accept", 'program p\n  implicit none\n'
      '  integer :: i, j, s\n  s = 0\n  a: do i = 1, 2\n    b: do j = 1, 2\n'
      '      s = s + 1\n    end do b\n  end do a\n  print *, s\nend program p\n'),
-    # collisions with a host/use-associated TYPE name -> both must refuse
+    # Type/entity collisions in these pinned scopes must be refused.
     ("var_collides_type", "refuse", MOD + 'program p\n  use ns_types\n'
      '  implicit none\n  integer :: shared\n  shared = 9\n'
      '  print *, shared\nend program p\n'),
@@ -112,8 +71,7 @@ CASES = [
      '  implicit none\n  type(bucket) :: o\n  o%count = 0\n'
      '  do shared = 1, 2\n    o%count = o%count + 1\n  end do\n'
      '  print *, o%count\nend program p\n'),
-    # Invalid programs gfortran rejects; ffc compiles, runs, prints a plausible
-    # value. Second probing pass, recorded on fortfront#3021.
+    # Other invalid-program shapes recorded on fortfront#3021.
     ("enddo_label_mismatch", "refuse", 'program p\n  implicit none\n'
      '  integer :: i\n  outer: do i = 1, 3\n  end do inner\nend program p\n'),
     ("dup_decl", "refuse", 'program p\n  implicit none\n  integer :: x\n'
@@ -124,6 +82,21 @@ CASES = [
      '  print *, len("ab", 3, 4)\nend program p\n'),
     ("endprog_name_mismatch", "refuse", 'program p\n  implicit none\n'
      '  print *, 1\nend program q\n'),
+    # Valid nearby scoping forms must continue to compile and agree on output.
+    ("parameter_block_shadow", "accept", 'program p\n'
+     'integer, parameter :: k=3\nblock\ninteger k\nk=4\nprint *, k\n'
+     'end block\nprint *, k\nend program p\n'),
+    ("parameter_dummy_shadow", "accept", 'module m\n'
+     'integer, parameter :: k=3\ncontains\nsubroutine s(k)\ninteger k\n'
+     'k=4\nend subroutine\nend module\nprogram p\nuse m\ninteger v\n'
+     'v=1\ncall s(v)\nprint *, v\nend program p\n'),
+    ("parameter_as_keyword", "accept", 'program p\n'
+     'integer, parameter :: kind=4\nprint *, len("abc",kind=kind)\n'
+     'end program p\n'),
+    ("renamed_type_collision", "refuse", MOD + 'program p\n'
+     'use ns_types, only: local => shared\ninteger local\nend program p\n'),
+    ("common_implicit_type_collision", "refuse", MOD + 'program p\n'
+     'use ns_types\ncommon /grp/ shared\nend program p\n'),
     # plain valid programs, unrelated namespaces, must agree on output
     ("scalar_arith", "accept", 'program p\n  implicit none\n'
      '  print *, 2+3, 7-1, 3*4, 8/2\nend program p\n'),
@@ -151,54 +124,42 @@ CASES = [
 ]
 
 
-# Over-acceptance recorded by name: gfortran REFUSES these as invalid Fortran and
-# ffc compiles them and runs them, printing a value. Counted separately so the
-# guard stays green as a regression net while the number of silently-accepted
-# invalid programs stays visible and can only fall when the check lands.
-#   var_collides_type / var_collides_bucket  gfortran: "Symbol 'X' also declared
-#     as a type"
-#   common_member_collides_type                same rule via a COMMON member
-#   loopvar_collides_type            gfortran: "Derived type 'X' cannot be used as
-#     a variable" - ffc happily makes it a loop variable
-KNOWN_OVERACCEPT = ["var_collides_type", "var_collides_bucket",
-                    "common_member_collides_type", "loopvar_collides_type",
-                    "enddo_label_mismatch", "dup_decl", "assign_parameter",
-                    "intrinsic_bad_arity", "endprog_name_mismatch"]
-
-
-def run(cmd: list[str]) -> tuple[int, str]:
-    p = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+def run(cmd: list[str], cwd: Path = ROOT) -> tuple[int, bytes]:
+    p = subprocess.run(cmd, cwd=cwd, capture_output=True, timeout=120)
     return p.returncode, p.stdout
 
 
 def main() -> int:
-    if not FFC.exists():
-        print(f"SKIP: ffc not built at {FFC}", file=sys.stderr)
-        return 0
-    WORK.mkdir(parents=True, exist_ok=True)
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--work-dir", type=Path)
+    parser.add_argument("--fo", default="fo", help="fo executable")
+    args = parser.parse_args()
+    if not shutil.which(args.fo) or not shutil.which("gfortran"):
+        parser.error("fo and gfortran must be installed")
+    compiler = [args.fo, "exec", "--no-build", "ffc"]
+    status, _ = run(compiler + ["--version"])
+    if status != 0:
+        parser.error("ffc must be built first with fo build")
+    work = args.work_dir or Path(tempfile.mkdtemp(prefix="ffc-nscoll-", dir="/var/tmp"))
+    work = work.expanduser().resolve()
+    work.mkdir(parents=True, exist_ok=True)
+    report = work / "report.tsv"
     lines: list[str] = []
     runs = agree = disagree = 0
     for name, expect, src in CASES:
-        f = WORK / f"{name}.f90"
+        f = work / f"{name}.f90"
         f.write_text(src)
-        g_ok, _ = run(["gfortran", str(f), "-o", str(WORK / f"{name}_r")])
-        f_ok, _ = run([str(FFC), str(f), "-o", str(WORK / f"{name}_f")])
+        g_ok, _ = run(["gfortran", str(f), "-o", str(work / f"{name}_r")], cwd=work)
+        f_ok, _ = run([*compiler, str(f), "-o", str(work / f"{name}_f")])
         gd = "accept" if g_ok == 0 else "refuse"
         fd = "accept" if f_ok == 0 else "refuse"
-        if gd == "refuse":
-            # gfortran is the oracle: a program it rejects is invalid, so the
-            # expected verdict was wrong if we asked for "accept".
-            if expect != "refuse":
-                lines.append(f"{name}\tBAD_CASE\tgfortran_refuses_but_expected_accept")
-                runs += 1
-                disagree += 1
-                continue
+        if gd != expect:
+            lines.append(f"{name}\tBAD_CASE\tgfortran={gd} expected={expect}")
+            runs += 1
+            disagree += 1
+            continue
         runs += 1
         if gd != fd:
-            if name in KNOWN_OVERACCEPT and gd == "refuse" and fd == "accept":
-                agree += 1
-                lines.append(f"{name}\tKNOWN_OVERACCEPT\tffc_accepts_invalid")
-                continue
             disagree += 1
             lines.append(f"{name}\tDECISION_DISAGREE\tgfortran={gd}\tffc={fd}")
             continue
@@ -206,10 +167,10 @@ def main() -> int:
             agree += 1
             lines.append(f"{name}\tAGREE_REFUSE\tboth_refuse")
             continue
-        grc, gout = run([str(WORK / f"{name}_r")])
-        frc, fout = run([str(WORK / f"{name}_f")])
-        gm = hashlib.md5(gout.encode()).hexdigest()
-        fm = hashlib.md5(fout.encode()).hexdigest()
+        grc, gout = run([str(work / f"{name}_r")], cwd=work)
+        frc, fout = run([str(work / f"{name}_f")], cwd=work)
+        gm = hashlib.md5(gout).hexdigest()
+        fm = hashlib.md5(fout).hexdigest()
         if gm == fm and grc == frc:
             agree += 1
             lines.append(f"{name}\tAGREE_OUTPUT\t{gm}")
@@ -217,11 +178,10 @@ def main() -> int:
             disagree += 1
             lines.append(f"{name}\tOUTPUT_DISAGREE\tg={gm[:12]}:{gout!r}\t"
                          f"f={fm[:12]}:{fout!r}")
-    REPORT.write_text("\n".join(lines) + "\n")
-    over = sum(1 for l in lines if l.split("\t")[1] == "KNOWN_OVERACCEPT")
-    print(f"runs={runs} agree={agree} disagree={disagree} known_overaccept={over}")
-    print(f"report={REPORT}")
-    return 1 if disagree else 0
+    report.write_text("\n".join(lines) + "\n")
+    print(f"runs={runs} agree={agree} disagree={disagree} known_overaccept=0")
+    print(f"report={report}")
+    return 1 if disagree or runs < 20 else 0
 
 
 if __name__ == "__main__":

@@ -193,6 +193,16 @@ contains
         integer :: call_arg_ranks(MAX_PROC_ARGS)
         integer :: external_index
 
+        if (allocated(node%name)) then
+            if (same_name(node%name, 'merge') .and. &
+            .not. is_contained_function_reference(node, context) .and. &
+            external_procedure_index(context, node%name) == 0) then
+                call lower_merge_call(arena, node, VALUE_LOGICAL, context, value, &
+                                      error_msg)
+                return
+            end if
+        end if
+
         if (node%is_array_access .and. &
             .not. is_contained_function_reference(node, context)) then
             call unsupported_feature_error('array expression', &
@@ -725,6 +735,14 @@ contains
             return
         end if
 
+        if (same_name(node%name, 'merge') .and. &
+            .not. is_contained_function_reference(node, context) .and. &
+            external_procedure_index(context, node%name) == 0) then
+            call lower_merge_call(arena, node, VALUE_F32, context, value, &
+                                  error_msg)
+            return
+        end if
+
         ! A contained real(8) function called in a real(4) expression still
         ! returns through the f64 ABI. Lower the call at its declared kind and
         ! narrow the result only after the call (#448). This path is also used
@@ -1054,6 +1072,14 @@ contains
         end if
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session real function call requires a name'
+            return
+        end if
+
+        if (same_name(node%name, 'merge') .and. &
+            .not. is_contained_function_reference(node, context) .and. &
+            external_procedure_index(context, node%name) == 0) then
+            call lower_merge_call(arena, node, VALUE_F64, context, value, &
+                                  error_msg)
             return
         end if
         if (.not. is_contained_function_reference(node, context)) then

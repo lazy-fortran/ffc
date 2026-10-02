@@ -1,6 +1,18 @@
-program test_session_merge_character_compiler
+! fo: dispatcher
+module ffc_case_test_session_merge_character_compiler
+    implicit none
+    private
+    public :: case_test_session_merge_character_compiler
+    interface
+        subroutine case_test_session_merge_character_compiler()
+        end subroutine case_test_session_merge_character_compiler
+    end interface
+end module ffc_case_test_session_merge_character_compiler
+
+subroutine case_test_session_merge_character_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -23,4 +35,4 @@ program test_session_merge_character_compiler
 
     if (.not. expect_output(source, ' ok'//new_line('a'), &
             '/tmp/ffc_session_merge_character')) stop 1
-end program test_session_merge_character_compiler
+end subroutine case_test_session_merge_character_compiler

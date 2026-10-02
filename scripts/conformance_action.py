@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
 import os
 from pathlib import Path
 import signal
@@ -19,12 +20,16 @@ def write_metadata(path: Path, exit_status: int, termination: str, signum: int) 
 
 def run(args: argparse.Namespace) -> int:
     output_mode = "ab" if args.append else "wb"
-    with args.output.open(output_mode) as output:
+    with ExitStack() as stack:
+        output = stack.enter_context(args.output.open(output_mode))
         try:
+            source_input = subprocess.DEVNULL
+            if args.stdin is not None:
+                source_input = stack.enter_context(args.stdin.open("rb"))
             process = subprocess.Popen(
                 args.command,
                 cwd=args.cwd,
-                stdin=subprocess.DEVNULL,
+                stdin=source_input,
                 stdout=output,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
@@ -68,6 +73,7 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--output", type=Path, required=True)
     result.add_argument("--metadata", type=Path, required=True)
     result.add_argument("--append", action="store_true")
+    result.add_argument("--stdin", type=Path)
     result.add_argument("command", nargs=argparse.REMAINDER)
     return result
 

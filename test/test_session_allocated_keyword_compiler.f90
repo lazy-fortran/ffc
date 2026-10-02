@@ -1,8 +1,20 @@
-program test_session_allocated_keyword_compiler
+! fo: dispatcher
+module ffc_case_test_session_allocated_keyword_compiler
+    implicit none
+    private
+    public :: case_test_session_allocated_keyword_compiler
+    interface
+        subroutine case_test_session_allocated_keyword_compiler()
+        end subroutine case_test_session_allocated_keyword_compiler
+    end interface
+end module ffc_case_test_session_allocated_keyword_compiler
+
+subroutine case_test_session_allocated_keyword_compiler()
     ! Behavioral oracle for ALLOCATED keyword arguments: both the scalar and
     ! array inquiry forms must reflect their allocation state at run time.
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -22,4 +34,4 @@ program test_session_allocated_keyword_compiler
     if (.not. expect_exit_status(source, 0, &
         '/tmp/ffc_allocated_keyword_test')) stop 1
     print *, 'PASS: ALLOCATED keyword arguments lower behaviorally'
-end program test_session_allocated_keyword_compiler
+end subroutine case_test_session_allocated_keyword_compiler

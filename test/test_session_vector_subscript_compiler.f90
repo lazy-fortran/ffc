@@ -1,4 +1,15 @@
-program test_session_vector_subscript_compiler
+! fo: dispatcher
+module ffc_case_test_session_vector_subscript_compiler
+    implicit none
+    private
+    public :: case_test_session_vector_subscript_compiler
+    interface
+        subroutine case_test_session_vector_subscript_compiler()
+        end subroutine case_test_session_vector_subscript_compiler
+    end interface
+end module ffc_case_test_session_vector_subscript_compiler
+
+subroutine case_test_session_vector_subscript_compiler()
     ! A bounded read-gather oracle for fixed-size rank-1 intrinsic arrays.
     ! The positive behavior is compared byte-for-byte with the pinned
     ! /usr/bin/gfortran executable; the negative case checks the ffc runtime
@@ -10,6 +21,7 @@ program test_session_vector_subscript_compiler
     use session_program_lowering, only: lower_program_to_liric_exe
     use ffc_test_support, only: expect_stderr_and_exit
     implicit none
+    save
 
     logical :: all_passed
 
@@ -179,4 +191,4 @@ contains
         call execute_command_line('rm -f '//base//'*')
     end subroutine cleanup
 
-end program test_session_vector_subscript_compiler
+end subroutine case_test_session_vector_subscript_compiler

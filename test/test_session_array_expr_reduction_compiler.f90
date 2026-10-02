@@ -1,9 +1,21 @@
-program test_session_array_expr_reduction_compiler
+! fo: dispatcher
+module ffc_case_test_session_array_expr_reduction_compiler
+    implicit none
+    private
+    public :: case_test_session_array_expr_reduction_compiler
+    interface
+        subroutine case_test_session_array_expr_reduction_compiler()
+        end subroutine case_test_session_array_expr_reduction_compiler
+    end interface
+end module ffc_case_test_session_array_expr_reduction_compiler
+
+subroutine case_test_session_array_expr_reduction_compiler()
     !! Reductions over an array-valued *expression* argument, folded through
     !! the shared identity/combine pair. Expected values are the gfortran
     !! output for the same programs.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session array-expression reduction compiler test ==='
     if (.not. test_integer_expression_reductions()) stop 1
@@ -70,4 +82,4 @@ contains
             '/tmp/ffc_session_array_expr_reduction_mask_test')
     end function test_mask_expression_reductions
 
-end program test_session_array_expr_reduction_compiler
+end subroutine case_test_session_array_expr_reduction_compiler

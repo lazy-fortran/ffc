@@ -1,6 +1,18 @@
-program test_session_runtime_local_array
+! fo: dispatcher
+module ffc_case_test_session_runtime_local_array_compiler
+    implicit none
+    private
+    public :: case_test_session_runtime_local_array_compiler
+    interface
+        subroutine case_test_session_runtime_local_array_compiler()
+        end subroutine case_test_session_runtime_local_array_compiler
+    end interface
+end module ffc_case_test_session_runtime_local_array_compiler
+
+subroutine case_test_session_runtime_local_array_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -204,4 +216,4 @@ contains
             '/tmp/ffc_session_runtime_local_array_rank2_cm')
     end function test_rank2_unit_bounds_column_major
 
-end program test_session_runtime_local_array
+end subroutine case_test_session_runtime_local_array_compiler

@@ -1,10 +1,22 @@
-program test_session_lazy_defaults_compiler
+! fo: dispatcher
+module ffc_case_test_session_lazy_defaults_compiler
+    implicit none
+    private
+    public :: case_test_session_lazy_defaults_compiler
+    interface
+        subroutine case_test_session_lazy_defaults_compiler()
+        end subroutine case_test_session_lazy_defaults_compiler
+    end interface
+end module ffc_case_test_session_lazy_defaults_compiler
+
+subroutine case_test_session_lazy_defaults_compiler()
     !! Lazy Fortran default type and intent policy (#438). A .lf source is
     !! compiled with the Lazy dialect defaults: a kind-less `real` is real(8),
     !! and a dummy argument declared without an explicit INTENT is INTENT(IN).
     !! Standard Fortran sources keep the processor default real kind and the
     !! language rule that only an explicit INTENT(IN) protects a dummy.
     implicit none
+    save
 
     logical :: ok
 
@@ -267,4 +279,4 @@ contains
         close (unit)
     end function read_first_line
 
-end program test_session_lazy_defaults_compiler
+end subroutine case_test_session_lazy_defaults_compiler

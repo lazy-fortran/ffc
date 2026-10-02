@@ -248,7 +248,7 @@ contains
     subroutine lower_allocate_statement(arena, node, context, error_msg)
         ! allocate(a(N)) or allocate(a(M,N)) for one integer allocatable.
         ! N and M may be runtime integer expressions. Multi-variable and
-        ! lower:upper forms are rejected.
+        ! Rank-one lower:upper forms carry their bounds in the descriptor.
         type(ast_arena_t), intent(in) :: arena
         type(allocate_statement_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -1587,18 +1587,102 @@ contains
 
     subroutine lower_allocate_i32_1d(arena, size_index, symbol_index, context, &
                                      error_msg)
-        ! data = malloc(N*4); descriptor.data = data; .lower = 1; .upper = N
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: size_index
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: n_i32
+        type(lr_operand_desc_t) :: n_i32, lower_i64
 
-        call lower_i32_expression(arena, size_index, context, n_i32, error_msg)
+        call lower_allocate_dimension(arena, size_index, context, n_i32, &
+                                      lower_i64, error_msg)
         if (len_trim(error_msg) > 0) return
-        call lower_allocate_i32_1d_operand(n_i32, symbol_index, context, error_msg)
+        call lower_allocate_i32_1d_operand(n_i32, symbol_index, context, &
+                                          error_msg, lower_i64)
     end subroutine lower_allocate_i32_1d
+
+    subroutine allocate_dimension_indices(arena, node_index, lower_index, &
+                                           upper_index, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        integer, intent(out) :: lower_index, upper_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: stride_index
+
+        lower_index = 0
+        upper_index = node_index
+        stride_index = 0
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, node_index)) then
+            error_msg = 'ALLOCATE dimension requires an upper bound'
+            return
+        end if
+        select type (bound => arena%entries(node_index)%node)
+        type is (range_expression_node)
+            lower_index = bound%start_index
+            upper_index = bound%end_index
+            stride_index = bound%stride_index
+        type is (array_bounds_node)
+            lower_index = bound%lower_bound_index
+            upper_index = bound%upper_bound_index
+            stride_index = bound%stride_index
+        end select
+        if (upper_index <= 0) then
+            error_msg = 'ALLOCATE dimension requires an upper bound'
+        else if (stride_index > 0) then
+            error_msg = 'ALLOCATE dimension cannot have a stride'
+        end if
+    end subroutine allocate_dimension_indices
+
+    subroutine lower_allocate_dimension(arena, node_index, context, extent_i32, &
+                                        lower_i64, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: extent_i32, lower_i64
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: lower_index, upper_index
+        type(lr_operand_desc_t) :: lower_i32, upper_i32, upper_i64, difference
+        type(lr_operand_desc_t) :: requested_extent, extent_i64, nonempty
+        type(lr_operand_desc_t) :: requested_lower
+
+        call allocate_dimension_indices(arena, node_index, lower_index, &
+                                         upper_index, error_msg)
+        if (len_trim(error_msg) > 0) return
+        lower_i64 = i64_immediate(context%session, 1_c_int64_t)
+        if (lower_index > 0) then
+            call lower_i32_expression(arena, lower_index, context, lower_i32, &
+                                       error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_to_i64(context%session, lower_i32, &
+                        lower_i64, error_msg, sign_extend=.true.)) return
+        end if
+        call lower_i32_expression(arena, upper_index, context, upper_i32, &
+                                   error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, upper_i32, upper_i64, &
+                                       error_msg, sign_extend=.true.)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_SUB, upper_i64, &
+                                  lower_i64, difference, error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, difference, &
+                i64_immediate(context%session, 1_c_int64_t), requested_extent, &
+                error_msg)) return
+        if (.not. emit_liric_i64_icmp(context%session, LR_CMP_SGT, &
+                requested_extent, i64_immediate(context%session, 0_c_int64_t), &
+                nonempty, error_msg)) return
+        call select_value(context, nonempty, requested_extent, &
+                          i64_immediate(context%session, 0_c_int64_t), &
+                          extent_i64, error_msg)
+        if (len_trim(error_msg) > 0) return
+        ! Empty allocated arrays have intrinsic bounds 1:0.
+        requested_lower = lower_i64
+        call select_value(context, nonempty, requested_lower, &
+                          i64_immediate(context%session, 1_c_int64_t), &
+                          lower_i64, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i64_to_i32(context%session, extent_i64, extent_i32, &
+                                       error_msg)) return
+    end subroutine lower_allocate_dimension
 
     subroutine lower_allocate_i32_2d(arena, size_index1, size_index2, &
                                      symbol_index, context, error_msg)
@@ -1740,16 +1824,16 @@ contains
             context%symbols(symbol_index)%value_kind, 4, extents_i64, error_msg)
     end subroutine lower_allocate_i32_4d
 
-    subroutine lower_allocate_i32_1d_operand(n_i32, symbol_index, context, error_msg)
-        ! data = malloc(N*4); descriptor.data = data; .lower = 1; .upper = N
-        ! n_i32 is the already-lowered size operand (i32).
+    subroutine lower_allocate_i32_1d_operand(n_i32, symbol_index, context, &
+                                            error_msg, lower_i64)
         type(lr_operand_desc_t), intent(in) :: n_i32
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t), intent(in), optional :: lower_i64
         type(lr_operand_desc_t) :: n_i64, data_ptr
         type(lr_operand_desc_t) :: descriptor
-        type(lr_operand_desc_t) :: extents_i64(2)
+        type(lr_operand_desc_t) :: extents_i64(1), lowers_i64(1)
 
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
         if (.not. emit_liric_i32_to_i64(context%session, n_i32, n_i64, error_msg)) &
@@ -1766,8 +1850,11 @@ contains
         if (.not. emit_ptr_store(context%session, data_ptr, descriptor, &
                 error_msg)) return
         extents_i64(1) = n_i64
+        lowers_i64(1) = i64_immediate(context%session, 1_c_int64_t)
+        if (present(lower_i64)) lowers_i64(1) = lower_i64
         call emit_alloc_desc_allocate_shape(context, descriptor, &
-            context%symbols(symbol_index)%value_kind, 1, extents_i64, error_msg)
+            context%symbols(symbol_index)%value_kind, 1, extents_i64, error_msg, &
+            lowers_i64=lowers_i64)
     end subroutine lower_allocate_i32_1d_operand
 
     subroutine lower_allocate_i32_2d_operands(m_i32, n_i32, symbol_index, &
@@ -1886,14 +1973,14 @@ contains
     subroutine lower_allocatable_constructor_assignment(arena, ctor, symbol_index, &
                                                        context, error_msg)
         ! a = [e1, e2, ...] where a is a 1-D allocatable of integer, real, or
-        ! logical elements (B2c). Deallocates old storage, allocates for N
-        ! elements, then stores each at the kind-specific stride.
+        ! logical elements (B2c). Preserve bounds when the allocated extent
+        ! matches; otherwise allocate N elements with the constructor's bounds.
         type(ast_arena_t), intent(in) :: arena
         type(array_literal_node), intent(in) :: ctor
         integer, intent(in) :: symbol_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: n_i32, elem_addr, value
+        type(lr_operand_desc_t) :: elem_addr, value
         type(lr_operand_desc_t) :: descriptor, data_ptr
         integer :: i, n, vk
         integer(c_int64_t) :: stride
@@ -1949,20 +2036,14 @@ contains
             if (len_trim(error_msg) > 0) return
         end do
 
-        ! Free old allocation if any.
         descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
-        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
-            return
-        if (.not. emit_free(context%session, data_ptr, error_msg)) return
-
-        ! Allocate N elements.
-        n_i32 = i32_immediate(context%session, int(n, c_int64_t))
-        call lower_allocate_i32_1d_operand(n_i32, symbol_index, context, error_msg)
+        call ensure_allocatable_assignment_extent(symbol_index, n, context, &
+                                                   error_msg)
         if (len_trim(error_msg) > 0) return
         context%symbols(symbol_index)%allocatable_static_size = n
 
-        ! Store each element. After lower_allocate_i32_1d_operand the descriptor
-        ! data pointer points to the fresh allocation with lower = 1.
+        ! Constructor elements occupy consecutive storage positions regardless
+        ! of the retained Fortran lower bound.
         vk = context%symbols(symbol_index)%value_kind
         stride = allocatable_elem_size(vk)
         if (.not. emit_ptr_load(context%session, descriptor, data_ptr, error_msg)) &
@@ -1987,6 +2068,46 @@ contains
         end do
         call set_empty(error_msg)
     end subroutine lower_allocatable_constructor_assignment
+
+    subroutine ensure_allocatable_assignment_extent(symbol_index, extent, &
+                                                     context, error_msg)
+        integer, intent(in) :: symbol_index, extent
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: descriptor, data_ptr, allocated_condition
+        type(lr_operand_desc_t) :: old_extent, new_extent, same_extent, retain
+        integer(c_int32_t) :: reallocate_block, merge_block
+
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_ptr_load(context%session, descriptor, data_ptr, &
+                                error_msg)) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, data_ptr, &
+                null_ptr_operand(context), allocated_condition, error_msg)) return
+        call emit_alloc_desc_load_extent(context, descriptor, 1, old_extent, &
+                                         error_msg)
+        if (len_trim(error_msg) > 0) return
+        new_extent = i64_immediate(context%session, int(extent, c_int64_t))
+        if (.not. emit_liric_i64_icmp(context%session, LR_CMP_EQ, old_extent, &
+                                     new_extent, same_extent, error_msg)) return
+        if (.not. emit_i32_binary(context%session, LR_OP_AND, allocated_condition, &
+                                  same_extent, retain, error_msg)) return
+
+        reallocate_block = create_liric_block(context%session)
+        merge_block = create_liric_block(context%session)
+        if (.not. emit_liric_condbr(context%session, retain, merge_block, &
+                                    reallocate_block, error_msg)) return
+        if (.not. set_liric_block(context%session, reallocate_block, &
+                                   error_msg)) return
+        context%current_block_id = reallocate_block
+        context%current_block_terminated = .false.
+        call reallocate_allocatable_extent(symbol_index, extent, context, &
+                                            error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_br(context%session, merge_block, error_msg)) return
+        if (.not. set_liric_block(context%session, merge_block, error_msg)) return
+        context%current_block_id = merge_block
+        context%current_block_terminated = .false.
+    end subroutine ensure_allocatable_assignment_extent
 
     subroutine expand_allocatable_constructor_elements(arena, indices, context, &
                                                         elements, source_symbols, &
@@ -3932,7 +4053,7 @@ contains
         call emit_alloc_desc_load_lower(context, descriptor, 1, lower1, error_msg)
         if (len_trim(error_msg) > 0) return
         if (.not. emit_liric_i32_to_i64(context%session, idx1_i32, idx1_i64, &
-                error_msg)) return
+                error_msg, sign_extend=.true.)) return
         if (.not. emit_i64_binary(context%session, LR_OP_SUB, idx1_i64, lower1, &
                 offset1_i64, error_msg)) return
 

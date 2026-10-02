@@ -1,6 +1,18 @@
-program test_session_pointer_associated2
+! fo: dispatcher
+module ffc_case_test_session_pointer_associated2_compiler
+    implicit none
+    private
+    public :: case_test_session_pointer_associated2_compiler
+    interface
+        subroutine case_test_session_pointer_associated2_compiler()
+        end subroutine case_test_session_pointer_associated2_compiler
+    end interface
+end module ffc_case_test_session_pointer_associated2_compiler
+
+subroutine case_test_session_pointer_associated2_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session two-argument associated compiler test ==='
 
@@ -21,4 +33,4 @@ program test_session_pointer_associated2
         '/tmp/ffc_associated2_test')) stop 1
 
     print *, 'PASS: two-argument associated(p, t)'
-end program test_session_pointer_associated2
+end subroutine case_test_session_pointer_associated2_compiler

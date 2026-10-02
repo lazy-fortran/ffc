@@ -1,6 +1,18 @@
-program test_session_alternate_return_compiler
+! fo: dispatcher
+module ffc_case_test_session_alternate_return_compiler
+    implicit none
+    private
+    public :: case_test_session_alternate_return_compiler
+    interface
+        subroutine case_test_session_alternate_return_compiler()
+        end subroutine case_test_session_alternate_return_compiler
+    end interface
+end module ffc_case_test_session_alternate_return_compiler
+
+subroutine case_test_session_alternate_return_compiler()
     use ffc_test_support, only: expect_output, expect_error_contains
     implicit none
+    save
 
     print *, '=== direct session alternate-return compiler test ==='
 
@@ -74,4 +86,4 @@ program test_session_alternate_return_compiler
     print *, 'PASS: out-of-range alternate return is rejected'
 
     print *, 'PASS: alternate returns lower through direct LIRIC session'
-end program test_session_alternate_return_compiler
+end subroutine case_test_session_alternate_return_compiler

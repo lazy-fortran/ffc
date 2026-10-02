@@ -1,4 +1,15 @@
-program test_session_allocatable_reduction_compiler
+! fo: dispatcher
+module ffc_case_test_session_allocatable_reduction_compiler
+    implicit none
+    private
+    public :: case_test_session_allocatable_reduction_compiler
+    interface
+        subroutine case_test_session_allocatable_reduction_compiler()
+        end subroutine case_test_session_allocatable_reduction_compiler
+    end interface
+end module ffc_case_test_session_allocatable_reduction_compiler
+
+subroutine case_test_session_allocatable_reduction_compiler()
     ! Array reduction intrinsics (sum, product, maxval, minval) over a 1-D
     ! allocatable whose extent is known at compile time from the preceding
     ! allocate(a(N)). The reduction unrolls over that static extent, loading
@@ -6,6 +17,7 @@ program test_session_allocatable_reduction_compiler
     ! gfortran list-directed formatting.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -170,4 +182,4 @@ contains
             '/tmp/ffc_alloc_assign_unalloc')
     end function test_assign_to_unallocated
 
-end program test_session_allocatable_reduction_compiler
+end subroutine case_test_session_allocatable_reduction_compiler

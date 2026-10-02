@@ -1,6 +1,18 @@
-program test_session_character_locate_compiler
+! fo: dispatcher
+module ffc_case_test_session_character_locate_compiler
+    implicit none
+    private
+    public :: case_test_session_character_locate_compiler
+    interface
+        subroutine case_test_session_character_locate_compiler()
+        end subroutine case_test_session_character_locate_compiler
+    end interface
+end module ffc_case_test_session_character_locate_compiler
+
+subroutine case_test_session_character_locate_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
         '  character(len=3) :: a(4)'//new_line('a')// &
@@ -18,4 +30,4 @@ program test_session_character_locate_compiler
     if (.not. expect_exit_status(source, 0, &
             '/tmp/ffc_session_character_locate_test')) stop 1
     print *, 'PASS: character MINLOC/MAXLOC use lexical ordering and masks'
-end program test_session_character_locate_compiler
+end subroutine case_test_session_character_locate_compiler

@@ -18,8 +18,9 @@ calls, LIRIC bindings, and object/exe emission.
 - `app/` — CLI entry (`ffc.f90`).
 - `src/` — direct-session lowering, LIRIC bindings, CLI parsing.
   Auto-discovered by fpm.
-- `test/` — fpm tests. Each file is a standalone `program test_*`.
-  Auto-discovered.
+- `test/` — behavioral test cases. Marked modules expose a case procedure; `fo`
+  discovers their original filenames and runs each through `test_ffc_suite`.
+  Each case runs in its own process and retains its original exit status.
 - `docs/`, `BACKLOG.md`, `ROADMAP.md`, `DESIGN.md`, `README.md` —
   current status and plans.
 
@@ -62,8 +63,11 @@ CI runs the same workflow on every push and pull request.
 
 ## Adding a new test
 
-Drop `test/test_<topic>.f90` containing `program test_<topic>` ... `end
-program`. fpm auto-discovery picks it up. No `fpm.toml` edit needed.
+Create `test/test_<topic>.f90` containing `program test_<topic>` ... `end
+program`, then run `python3 tools/make_suite_cases.py --apply`. The tool
+converts the program to a case module and updates the dispatcher registry.
+Edit existing cases in their original files; only adding or removing a case
+requires regenerating the registry. No `fpm.toml` edit is needed.
 
 ## Adding a new supported construct
 

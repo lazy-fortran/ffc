@@ -1,8 +1,20 @@
-program test_session_size_kind_compiler
+! fo: dispatcher
+module ffc_case_test_session_size_kind_compiler
+    implicit none
+    private
+    public :: case_test_session_size_kind_compiler
+    interface
+        subroutine case_test_session_size_kind_compiler()
+        end subroutine case_test_session_size_kind_compiler
+    end interface
+end module ffc_case_test_session_size_kind_compiler
+
+subroutine case_test_session_size_kind_compiler()
     ! Regression for lfortran/integration_tests/arrays_01_size.f90: SIZE's
     ! ARRAY, DIM, and KIND actuals must not be interpreted by raw position.
     use ffc_test_support, only: compile_to_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -108,4 +120,4 @@ contains
                                   gfortran_exe)
     end subroutine cleanup
 
-end program test_session_size_kind_compiler
+end subroutine case_test_session_size_kind_compiler

@@ -1,4 +1,15 @@
-program test_session_derived_alloc_array_finalizer_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_alloc_array_finalizer_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_alloc_array_finalizer_compiler
+    interface
+        subroutine case_test_session_derived_alloc_array_finalizer_compiler()
+        end subroutine case_test_session_derived_alloc_array_finalizer_compiler
+    end interface
+end module ffc_case_test_session_derived_alloc_array_finalizer_compiler
+
+subroutine case_test_session_derived_alloc_array_finalizer_compiler()
     ! Finalization of allocatable derived arrays (#643 / #403): the type's
     ! scalar FINAL procedure runs once on every element of an allocated
     ! rank-1/rank-2/rank-3 derived array, both when `deallocate` releases the
@@ -6,6 +17,7 @@ program test_session_derived_alloc_array_finalizer_compiler
     ! unallocated array finalizes nothing.
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -260,4 +272,4 @@ contains
             '/tmp/ffc_alloc_arr_final_rank5')
     end function test_rank5_array_refused
 
-end program test_session_derived_alloc_array_finalizer_compiler
+end subroutine case_test_session_derived_alloc_array_finalizer_compiler

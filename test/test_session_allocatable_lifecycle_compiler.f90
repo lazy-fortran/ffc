@@ -1,8 +1,20 @@
-program test_session_allocatable_lifecycle_compiler
+! fo: dispatcher
+module ffc_case_test_session_allocatable_lifecycle_compiler
+    implicit none
+    private
+    public :: case_test_session_allocatable_lifecycle_compiler
+    interface
+        subroutine case_test_session_allocatable_lifecycle_compiler()
+        end subroutine case_test_session_allocatable_lifecycle_compiler
+    end interface
+end module ffc_case_test_session_allocatable_lifecycle_compiler
+
+subroutine case_test_session_allocatable_lifecycle_compiler()
     ! Lifecycle of an integer 1-D allocatable. #184 covers the descriptor
     ! declaration; allocate/deallocate and element access land in later issues.
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -116,4 +128,4 @@ contains
             new_line('a'), '/tmp/ffc_alloc_real_test')
     end function test_real_allocatable_lifecycle
 
-end program test_session_allocatable_lifecycle_compiler
+end subroutine case_test_session_allocatable_lifecycle_compiler

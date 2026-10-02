@@ -1,7 +1,19 @@
-program test_session_deferred_char_compiler
+! fo: dispatcher
+module ffc_case_test_session_deferred_char_compiler
+    implicit none
+    private
+    public :: case_test_session_deferred_char_compiler
+    interface
+        subroutine case_test_session_deferred_char_compiler()
+        end subroutine case_test_session_deferred_char_compiler
+    end interface
+end module ffc_case_test_session_deferred_char_compiler
+
+subroutine case_test_session_deferred_char_compiler()
     use ffc_test_support, only: expect_output, expect_exit_status, &
         expect_no_leaks, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -678,4 +690,4 @@ contains
             '/tmp/ffc_deferred_char_class_derived_actual')
     end function test_class_derived_actual_to_deferred_result
 
-end program test_session_deferred_char_compiler
+end subroutine case_test_session_deferred_char_compiler

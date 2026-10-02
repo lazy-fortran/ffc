@@ -1,5 +1,17 @@
-program test_session_separate_compilation_compiler
+! fo: dispatcher
+module ffc_case_test_session_separate_compilation_compiler
     implicit none
+    private
+    public :: case_test_session_separate_compilation_compiler
+    interface
+        subroutine case_test_session_separate_compilation_compiler()
+        end subroutine case_test_session_separate_compilation_compiler
+    end interface
+end module ffc_case_test_session_separate_compilation_compiler
+
+subroutine case_test_session_separate_compilation_compiler()
+    implicit none
+    save
 
     logical :: all_passed
 
@@ -273,4 +285,4 @@ contains
         ok = io_stat == 0
     end function write_file
 
-end program test_session_separate_compilation_compiler
+end subroutine case_test_session_separate_compilation_compiler

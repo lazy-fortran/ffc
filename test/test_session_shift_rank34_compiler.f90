@@ -1,6 +1,18 @@
-program test_session_shift_rank34_compiler
+! fo: dispatcher
+module ffc_case_test_session_shift_rank34_compiler
+    implicit none
+    private
+    public :: case_test_session_shift_rank34_compiler
+    interface
+        subroutine case_test_session_shift_rank34_compiler()
+        end subroutine case_test_session_shift_rank34_compiler
+    end interface
+end module ffc_case_test_session_shift_rank34_compiler
+
+subroutine case_test_session_shift_rank34_compiler()
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -46,4 +58,4 @@ program test_session_shift_rank34_compiler
     if (.not. expect_output_matches_gfortran(source, 'shift_rank34')) stop 1
     print *, 'PASS: rank-3/rank-4 shifts match independent checks and gfortran'
 
-end program test_session_shift_rank34_compiler
+end subroutine case_test_session_shift_rank34_compiler

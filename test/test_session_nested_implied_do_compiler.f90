@@ -1,10 +1,22 @@
-program test_session_nested_implied_do_compiler
+! fo: dispatcher
+module ffc_case_test_session_nested_implied_do_compiler
+    implicit none
+    private
+    public :: case_test_session_nested_implied_do_compiler
+    interface
+        subroutine case_test_session_nested_implied_do_compiler()
+        end subroutine case_test_session_nested_implied_do_compiler
+    end interface
+end module ffc_case_test_session_nested_implied_do_compiler
+
+subroutine case_test_session_nested_implied_do_compiler()
     ! Nested implied-do array constructors, arr = [((expr, j=1,m), i=1,n)],
     ! fold at compile time into a flat array. The inner loop fills consecutive
     ! elements with a shared running slot. Outputs match gfortran list-directed
     ! formatting.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -54,4 +66,4 @@ contains
             '/tmp/ffc_nested_id_3x4')
     end function test_three_by_four
 
-end program test_session_nested_implied_do_compiler
+end subroutine case_test_session_nested_implied_do_compiler

@@ -1,6 +1,18 @@
-program test_session_whole_array_ops_compiler
+! fo: dispatcher
+module ffc_case_test_session_whole_array_ops_compiler
+    implicit none
+    private
+    public :: case_test_session_whole_array_ops_compiler
+    interface
+        subroutine case_test_session_whole_array_ops_compiler()
+        end subroutine case_test_session_whole_array_ops_compiler
+    end interface
+end module ffc_case_test_session_whole_array_ops_compiler
+
+subroutine case_test_session_whole_array_ops_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session whole-array unary minus/division compiler test ==='
     if (.not. test_integer_rank1_array_division()) stop 1
@@ -119,4 +131,4 @@ contains
             new_line('a'), '/tmp/ffc_wa_ops_rank2_test')
     end function test_rank2_array_division_and_unary_minus
 
-end program test_session_whole_array_ops_compiler
+end subroutine case_test_session_whole_array_ops_compiler

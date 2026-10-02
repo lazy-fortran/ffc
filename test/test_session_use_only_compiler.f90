@@ -1,6 +1,18 @@
-program test_session_use_only_compiler
+! fo: dispatcher
+module ffc_case_test_session_use_only_compiler
+    implicit none
+    private
+    public :: case_test_session_use_only_compiler
+    interface
+        subroutine case_test_session_use_only_compiler()
+        end subroutine case_test_session_use_only_compiler
+    end interface
+end module ffc_case_test_session_use_only_compiler
+
+subroutine case_test_session_use_only_compiler()
     use ffc_test_support, only: expect_exit_status, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -196,4 +208,4 @@ contains
             source, 9, '/tmp/ffc_session_use_rename_sub_test')
     end function test_use_rename_module_subroutine
 
-end program test_session_use_only_compiler
+end subroutine case_test_session_use_only_compiler

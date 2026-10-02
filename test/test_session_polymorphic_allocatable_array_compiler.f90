@@ -1,6 +1,18 @@
-program test_session_polymorphic_allocatable_array_compiler
+! fo: dispatcher
+module ffc_case_test_session_polymorphic_allocatable_array_compiler
+    implicit none
+    private
+    public :: case_test_session_polymorphic_allocatable_array_compiler
+    interface
+        subroutine case_test_session_polymorphic_allocatable_array_compiler()
+        end subroutine case_test_session_polymorphic_allocatable_array_compiler
+    end interface
+end module ffc_case_test_session_polymorphic_allocatable_array_compiler
+
+subroutine case_test_session_polymorphic_allocatable_array_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== polymorphic allocatable array allocation test ==='
     if (.not. test_allocate_extension_array()) stop 1
@@ -38,4 +50,4 @@ contains
             new_line('a'), '/tmp/ffc_poly_alloc_array_ext')
     end function test_allocate_extension_array
 
-end program test_session_polymorphic_allocatable_array_compiler
+end subroutine case_test_session_polymorphic_allocatable_array_compiler

@@ -1,7 +1,19 @@
-program test_session_write_stdout_compiler
+! fo: dispatcher
+module ffc_case_test_session_write_stdout_compiler
+    implicit none
+    private
+    public :: case_test_session_write_stdout_compiler
+    interface
+        subroutine case_test_session_write_stdout_compiler()
+        end subroutine case_test_session_write_stdout_compiler
+    end interface
+end module ffc_case_test_session_write_stdout_compiler
+
+subroutine case_test_session_write_stdout_compiler()
     ! write(*,*) and write(*,'(fmt)') are aliases for print * and print '(fmt)'.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -73,4 +85,4 @@ contains
             '5'//new_line('a'), '/tmp/ffc_write_output_unit_test')
     end function test_write_output_unit_fmt_integer
 
-end program test_session_write_stdout_compiler
+end subroutine case_test_session_write_stdout_compiler

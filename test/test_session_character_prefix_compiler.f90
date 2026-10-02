@@ -1,7 +1,19 @@
-program test_session_character_prefix_compiler
+! fo: dispatcher
+module ffc_case_test_session_character_prefix_compiler
+    implicit none
+    private
+    public :: case_test_session_character_prefix_compiler
+    interface
+        subroutine case_test_session_character_prefix_compiler()
+        end subroutine case_test_session_character_prefix_compiler
+    end interface
+end module ffc_case_test_session_character_prefix_compiler
+
+subroutine case_test_session_character_prefix_compiler()
     use ffc_test_support, only: expect_output_matches_gfortran, expect_no_leaks, &
                                 expect_error_contains
     implicit none
+    save
     character(len=:), allocatable :: source
 
     ! Prefix and body declarations must use the same declared-width ABI.
@@ -82,4 +94,4 @@ contains
             '  print *, len(prefix())'//new_line('a')// &
             'end program main'
     end function constant_width_source
-end program test_session_character_prefix_compiler
+end subroutine case_test_session_character_prefix_compiler

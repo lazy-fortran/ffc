@@ -1,6 +1,18 @@
-program test_session_save_attribute_compiler
+! fo: dispatcher
+module ffc_case_test_session_save_attribute_compiler
+    implicit none
+    private
+    public :: case_test_session_save_attribute_compiler
+    interface
+        subroutine case_test_session_save_attribute_compiler()
+        end subroutine case_test_session_save_attribute_compiler
+    end interface
+end module ffc_case_test_session_save_attribute_compiler
+
+subroutine case_test_session_save_attribute_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -191,4 +203,4 @@ contains
             source, expected, '/tmp/ffc_session_save_data_array')
     end function test_saved_data_array_applies_once
 
-end program test_session_save_attribute_compiler
+end subroutine case_test_session_save_attribute_compiler

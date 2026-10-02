@@ -1,6 +1,18 @@
-program test_session_module_allocatable_rank34_compiler
+! fo: dispatcher
+module ffc_case_test_session_module_allocatable_rank34_compiler
+    implicit none
+    private
+    public :: case_test_session_module_allocatable_rank34_compiler
+    interface
+        subroutine case_test_session_module_allocatable_rank34_compiler()
+        end subroutine case_test_session_module_allocatable_rank34_compiler
+    end interface
+end module ffc_case_test_session_module_allocatable_rank34_compiler
+
+subroutine case_test_session_module_allocatable_rank34_compiler()
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'module state'//new_line('a')// &
@@ -39,4 +51,4 @@ program test_session_module_allocatable_rank34_compiler
     if (.not. expect_output_matches_gfortran(source, &
             'module_allocatable_rank34')) stop 1
     print *, 'PASS: rank-3 and rank-4 module allocatables match gfortran'
-end program test_session_module_allocatable_rank34_compiler
+end subroutine case_test_session_module_allocatable_rank34_compiler

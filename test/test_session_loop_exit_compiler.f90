@@ -1,6 +1,18 @@
-program test_session_loop_exit_compiler
+! fo: dispatcher
+module ffc_case_test_session_loop_exit_compiler
+    implicit none
+    private
+    public :: case_test_session_loop_exit_compiler
+    interface
+        subroutine case_test_session_loop_exit_compiler()
+        end subroutine case_test_session_loop_exit_compiler
+    end interface
+end module ffc_case_test_session_loop_exit_compiler
+
+subroutine case_test_session_loop_exit_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -79,4 +91,4 @@ contains
             '/tmp/ffc_session_exit_nested_test')
     end function test_exit_inside_nested_loops_targets_inner
 
-end program test_session_loop_exit_compiler
+end subroutine case_test_session_loop_exit_compiler

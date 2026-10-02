@@ -495,6 +495,65 @@ int _ffc_write_i64(int unit, const char *fmt, long long value) {
     return ffc_write_failed(fprintf(fp, fmt, value));
 }
 
+static int ffc_write_repeated(FILE *fp, int ch, int count) {
+    while (count-- > 0) {
+        if (fputc(ch, fp) == EOF) {
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/* BOZ descriptors render the integer's storage bit pattern.
+ * Narrow negatives must be masked before unsigned conversion;
+ * overflow stars depend on the resulting digit count. */
+int _ffc_write_boz(int unit, int radix, int width,
+                   int minimum, int bits, long long value) {
+    static const char digits[] = "0123456789ABCDEF";
+    char reversed[64];
+    unsigned long long pattern = (unsigned long long) value;
+    FILE *fp = _ffc_unit_file(unit);
+    int count = 0;
+    int field;
+
+    if (fp == NULL) {
+        return ffc_unit_last_status;
+    }
+    if ((radix != 2 && radix != 8 && radix != 16) ||
+        (bits != 8 && bits != 16 && bits != 32 && bits != 64) ||
+        width < 0 || minimum < 0 ||
+        (width > 0 && minimum > width)) {
+        return ffc_write_failed(-1);
+    }
+    if (bits < 64) {
+        pattern &= (1ULL << bits) - 1ULL;
+    }
+    if (pattern != 0 || minimum != 0) {
+        do {
+            reversed[count++] = digits[pattern % radix];
+            pattern /= radix;
+        } while (pattern != 0);
+    }
+    field = count > minimum ? count : minimum;
+    if (width > 0 && field > width) {
+        int status = ffc_write_repeated(fp, '*', width);
+        return ffc_write_failed(status);
+    }
+    if (width == 0) {
+        width = field > 0 ? field : 1;
+    }
+    if (ffc_write_repeated(fp, ' ', width - field) < 0 ||
+        ffc_write_repeated(fp, '0', field - count) < 0) {
+        return ffc_write_failed(-1);
+    }
+    while (count > 0) {
+        if (fputc(reversed[--count], fp) == EOF) {
+            return ffc_write_failed(-1);
+        }
+    }
+    return ffc_write_failed(0);
+}
+
 int _ffc_write_f64(int unit, const char *fmt, double value) {
     FILE *fp = _ffc_unit_file(unit);
     if (fp == NULL) {

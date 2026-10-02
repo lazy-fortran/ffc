@@ -1,4 +1,15 @@
-program test_session_reject_data_01_compiler
+! fo: dispatcher
+module ffc_case_test_session_reject_data_01_compiler
+    implicit none
+    private
+    public :: case_test_session_reject_data_01_compiler
+    interface
+        subroutine case_test_session_reject_data_01_compiler()
+        end subroutine case_test_session_reject_data_01_compiler
+    end interface
+end module ffc_case_test_session_reject_data_01_compiler
+
+subroutine case_test_session_reject_data_01_compiler()
     ! DATA object and initializer restrictions (#383). A data-stmt-object must
     ! be a definable variable that is not a named constant, not a pointer and
     ! not already initialized in its declaration; a data-stmt-value must be a
@@ -7,6 +18,7 @@ program test_session_reject_data_01_compiler
     ! and runs.
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -179,4 +191,4 @@ contains
             source, 0, '/tmp/ffc_data01_valid_section')
     end function test_valid_section_data_accepted
 
-end program test_session_reject_data_01_compiler
+end subroutine case_test_session_reject_data_01_compiler

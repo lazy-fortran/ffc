@@ -1,6 +1,18 @@
-program test_session_dotted_operators_compiler
+! fo: dispatcher
+module ffc_case_test_session_dotted_operators_compiler
+    implicit none
+    private
+    public :: case_test_session_dotted_operators_compiler
+    interface
+        subroutine case_test_session_dotted_operators_compiler()
+        end subroutine case_test_session_dotted_operators_compiler
+    end interface
+end module ffc_case_test_session_dotted_operators_compiler
+
+subroutine case_test_session_dotted_operators_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -51,4 +63,4 @@ contains
         test_real_dotted = expect_exit_status( &
             source, 5, '/tmp/ffc_session_dotted_real_test')
     end function test_real_dotted
-end program test_session_dotted_operators_compiler
+end subroutine case_test_session_dotted_operators_compiler

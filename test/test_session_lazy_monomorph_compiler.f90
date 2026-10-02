@@ -1,4 +1,15 @@
-program test_session_lazy_monomorph_compiler
+! fo: dispatcher
+module ffc_case_test_session_lazy_monomorph_compiler
+    implicit none
+    private
+    public :: case_test_session_lazy_monomorph_compiler
+    interface
+        subroutine case_test_session_lazy_monomorph_compiler()
+        end subroutine case_test_session_lazy_monomorph_compiler
+    end interface
+end module ffc_case_test_session_lazy_monomorph_compiler
+
+subroutine case_test_session_lazy_monomorph_compiler()
     !! A Lazy procedure may leave its dummies untyped and take their types from
     !! use. When every call site agrees on one concrete type, FortFront resolves
     !! the dummies in place and one body lowers. When call sites disagree there
@@ -15,6 +26,7 @@ program test_session_lazy_monomorph_compiler
     !! for it. Binding one is a guess, and binding the wrong one returns a
     !! wrong value with no diagnostic, so that boundary stays diagnosed (#437).
     implicit none
+    save
 
     logical :: ok
 
@@ -282,4 +294,4 @@ contains
         close (unit)
     end function read_first_line
 
-end program test_session_lazy_monomorph_compiler
+end subroutine case_test_session_lazy_monomorph_compiler

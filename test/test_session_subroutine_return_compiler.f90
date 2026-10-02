@@ -1,6 +1,18 @@
-program test_session_subroutine_return_compiler
+! fo: dispatcher
+module ffc_case_test_session_subroutine_return_compiler
+    implicit none
+    private
+    public :: case_test_session_subroutine_return_compiler
+    interface
+        subroutine case_test_session_subroutine_return_compiler()
+        end subroutine case_test_session_subroutine_return_compiler
+    end interface
+end module ffc_case_test_session_subroutine_return_compiler
+
+subroutine case_test_session_subroutine_return_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -27,4 +39,4 @@ program test_session_subroutine_return_compiler
         '/tmp/ffc_session_subr_return_test')) stop 1
 
     print *, 'PASS: subroutine early return lowers through direct LIRIC session'
-end program test_session_subroutine_return_compiler
+end subroutine case_test_session_subroutine_return_compiler

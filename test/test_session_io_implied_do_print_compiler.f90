@@ -1,4 +1,15 @@
-program test_session_io_implied_do_print_compiler
+! fo: dispatcher
+module ffc_case_test_session_io_implied_do_print_compiler
+    implicit none
+    private
+    public :: case_test_session_io_implied_do_print_compiler
+    interface
+        subroutine case_test_session_io_implied_do_print_compiler()
+        end subroutine case_test_session_io_implied_do_print_compiler
+    end interface
+end module ffc_case_test_session_io_implied_do_print_compiler
+
+subroutine case_test_session_io_implied_do_print_compiler()
     ! List-directed print of an I/O implied-do, print *, (obj, ..., i = lo, hi).
     ! One dispatch path owns an implied-do item whether or not it is the only
     ! item in the statement, so the element type and the list-directed
@@ -6,6 +17,7 @@ program test_session_io_implied_do_print_compiler
     ! gfortran's output.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -110,4 +122,4 @@ contains
             new_line('a'), '/tmp/ffc_session_array_ctor_implied_do')
     end function test_array_constructor_implied_do
 
-end program test_session_io_implied_do_print_compiler
+end subroutine case_test_session_io_implied_do_print_compiler

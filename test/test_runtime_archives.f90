@@ -1,3 +1,4 @@
+! fo: dispatcher
 ! Issue #374: build backend-qualified LIRIC runtime archives.
 !
 ! Behavioral oracle for the runtime artifact production step. It drives the
@@ -11,8 +12,19 @@
 !     genuinely backend-qualified and not copies of one another
 !   * the packaged runtime IR defines the probe symbol
 !   * a missing tool dependency fails with a named diagnostic
-program test_runtime_archives
+module ffc_case_test_runtime_archives
     implicit none
+    private
+    public :: case_test_runtime_archives
+    interface
+        subroutine case_test_runtime_archives()
+        end subroutine case_test_runtime_archives
+    end interface
+end module ffc_case_test_runtime_archives
+
+subroutine case_test_runtime_archives()
+    implicit none
+    save
 
     character(len=*), parameter :: build_dir = '/tmp/ffc_runtime_374_build'
     character(len=*), parameter :: artifact_dir = &
@@ -220,4 +232,4 @@ contains
         end if
     end subroutine check_missing_tool_diagnostic
 
-end program test_runtime_archives
+end subroutine case_test_runtime_archives

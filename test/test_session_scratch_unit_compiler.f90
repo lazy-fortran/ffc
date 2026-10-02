@@ -1,8 +1,20 @@
-program test_session_scratch_unit_compiler
+! fo: dispatcher
+module ffc_case_test_session_scratch_unit_compiler
+    implicit none
+    private
+    public :: case_test_session_scratch_unit_compiler
+    interface
+        subroutine case_test_session_scratch_unit_compiler()
+        end subroutine case_test_session_scratch_unit_compiler
+    end interface
+end module ffc_case_test_session_scratch_unit_compiler
+
+subroutine case_test_session_scratch_unit_compiler()
     ! OPEN with status='scratch' (no file=) round-trips through a tmpfile()
     ! handle: WRITE, REWIND, READ back, and a redundant CLOSE must not abort.
     use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -51,4 +63,4 @@ contains
             '/tmp/ffc_scratch_double_close')
     end function test_double_close_is_noop
 
-end program test_session_scratch_unit_compiler
+end subroutine case_test_session_scratch_unit_compiler

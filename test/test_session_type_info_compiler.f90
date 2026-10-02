@@ -1,6 +1,18 @@
-program test_session_type_info_compiler
+! fo: dispatcher
+module ffc_case_test_session_type_info_compiler
+    implicit none
+    private
+    public :: case_test_session_type_info_compiler
+    interface
+        subroutine case_test_session_type_info_compiler()
+        end subroutine case_test_session_type_info_compiler
+    end interface
+end module ffc_case_test_session_type_info_compiler
+
+subroutine case_test_session_type_info_compiler()
     use ffc_test_support, only: expect_exe_has_symbol
     implicit none
+    save
 
     logical :: all_passed
 
@@ -41,4 +53,4 @@ contains
             test_each_derived_type_definition_emits_type_info = .false.
     end function test_each_derived_type_definition_emits_type_info
 
-end program test_session_type_info_compiler
+end subroutine case_test_session_type_info_compiler

@@ -1,6 +1,18 @@
-program test_session_cli_backend
+! fo: dispatcher
+module ffc_case_test_session_cli_backend
+    implicit none
+    private
+    public :: case_test_session_cli_backend
+    interface
+        subroutine case_test_session_cli_backend()
+        end subroutine case_test_session_cli_backend
+    end interface
+end module ffc_case_test_session_cli_backend
+
+subroutine case_test_session_cli_backend()
     use ffc_cli_options, only: cli_options_t, parse_arguments, CLI_PATH_LEN
     implicit none
+    save
 
     call check_default()
     call check_named('isel', 1)
@@ -77,4 +89,4 @@ contains
         end if
     end subroutine check_missing_value
 
-end program test_session_cli_backend
+end subroutine case_test_session_cli_backend

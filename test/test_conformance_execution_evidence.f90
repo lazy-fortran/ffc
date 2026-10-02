@@ -1,5 +1,17 @@
-program test_conformance_execution_evidence
+! fo: dispatcher
+module ffc_case_test_conformance_execution_evidence
     implicit none
+    private
+    public :: case_test_conformance_execution_evidence
+    interface
+        subroutine case_test_conformance_execution_evidence()
+        end subroutine case_test_conformance_execution_evidence
+    end interface
+end module ffc_case_test_conformance_execution_evidence
+
+subroutine case_test_conformance_execution_evidence()
+    implicit none
+    save
 
     integer :: exit_status
 
@@ -12,4 +24,4 @@ program test_conformance_execution_evidence
     end if
 
     print *, 'PASS: compile/run exits and terminations remain distinct'
-end program test_conformance_execution_evidence
+end subroutine case_test_conformance_execution_evidence

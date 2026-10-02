@@ -1,6 +1,18 @@
-program test_session_integer_subroutine_compiler
+! fo: dispatcher
+module ffc_case_test_session_integer_subroutine_compiler
+    implicit none
+    private
+    public :: case_test_session_integer_subroutine_compiler
+    interface
+        subroutine case_test_session_integer_subroutine_compiler()
+        end subroutine case_test_session_integer_subroutine_compiler
+    end interface
+end module ffc_case_test_session_integer_subroutine_compiler
+
+subroutine case_test_session_integer_subroutine_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session integer subroutine compiler test ==='
 
@@ -19,4 +31,4 @@ program test_session_integer_subroutine_compiler
         '/tmp/ffc_session_integer_sub_test')) stop 1
 
     print *, 'PASS: integer subroutine reference args lower through direct LIRIC session'
-end program test_session_integer_subroutine_compiler
+end subroutine case_test_session_integer_subroutine_compiler

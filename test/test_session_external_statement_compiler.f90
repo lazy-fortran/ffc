@@ -1,6 +1,18 @@
-program test_session_external_statement_compiler
+! fo: dispatcher
+module ffc_case_test_session_external_statement_compiler
+    implicit none
+    private
+    public :: case_test_session_external_statement_compiler
+    interface
+        subroutine case_test_session_external_statement_compiler()
+        end subroutine case_test_session_external_statement_compiler
+    end interface
+end module ffc_case_test_session_external_statement_compiler
+
+subroutine case_test_session_external_statement_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     print *, '=== bare EXTERNAL statement ==='
 
@@ -24,4 +36,4 @@ program test_session_external_statement_compiler
         '/tmp/ffc_session_external_statement_test')) stop 1
 
     print *, 'PASS: bare EXTERNAL statement lowers and call resolves'
-end program test_session_external_statement_compiler
+end subroutine case_test_session_external_statement_compiler

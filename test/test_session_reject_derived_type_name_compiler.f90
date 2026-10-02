@@ -1,6 +1,18 @@
-program test_session_reject_derived_type_name_compiler
+! fo: dispatcher
+module ffc_case_test_session_reject_derived_type_name_compiler
+    implicit none
+    private
+    public :: case_test_session_reject_derived_type_name_compiler
+    interface
+        subroutine case_test_session_reject_derived_type_name_compiler()
+        end subroutine case_test_session_reject_derived_type_name_compiler
+    end interface
+end module ffc_case_test_session_reject_derived_type_name_compiler
+
+subroutine case_test_session_reject_derived_type_name_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -86,4 +98,4 @@ contains
             'end program main'
     end function derived_type_source
 
-end program test_session_reject_derived_type_name_compiler
+end subroutine case_test_session_reject_derived_type_name_compiler

@@ -1,4 +1,15 @@
-program test_session_complex_compiler
+! fo: dispatcher
+module ffc_case_test_session_complex_compiler
+    implicit none
+    private
+    public :: case_test_session_complex_compiler
+    interface
+        subroutine case_test_session_complex_compiler()
+        end subroutine case_test_session_complex_compiler
+    end interface
+end module ffc_case_test_session_complex_compiler
+
+subroutine case_test_session_complex_compiler()
     ! Verify complex(4) and complex(8) declarations, assignment, and
     ! list-directed print match gfortran byte-for-byte (#246).
     use session_program_lowering, only: lower_program_to_liric_exe
@@ -7,6 +18,7 @@ program test_session_complex_compiler
         compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     implicit none
+    save
 
     logical :: all_passed
 
@@ -132,4 +144,4 @@ contains
         matches_gfortran = .true.
     end function matches_gfortran
 
-end program test_session_complex_compiler
+end subroutine case_test_session_complex_compiler

@@ -1,9 +1,21 @@
-program test_session_host_shadowed_dummy
+! fo: dispatcher
+module ffc_case_test_session_host_shadowed_dummy_compiler
+    implicit none
+    private
+    public :: case_test_session_host_shadowed_dummy_compiler
+    interface
+        subroutine case_test_session_host_shadowed_dummy_compiler()
+        end subroutine case_test_session_host_shadowed_dummy_compiler
+    end interface
+end module ffc_case_test_session_host_shadowed_dummy_compiler
+
+subroutine case_test_session_host_shadowed_dummy_compiler()
     !! A contained procedure whose scalar dummy shadows a host array must keep
     !! the host array's declaration intact, however deeply the dummy is used
     !! inside nested ASSOCIATE constructs (#584).
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -68,4 +80,4 @@ contains
             '/tmp/ffc_session_host_shadow_single')
     end function test_single_associate_shadowing_dummy
 
-end program test_session_host_shadowed_dummy
+end subroutine case_test_session_host_shadowed_dummy_compiler

@@ -1,9 +1,21 @@
-program test_session_block_shadow_compiler
+! fo: dispatcher
+module ffc_case_test_session_block_shadow_compiler
+    implicit none
+    private
+    public :: case_test_session_block_shadow_compiler
+    interface
+        subroutine case_test_session_block_shadow_compiler()
+        end subroutine case_test_session_block_shadow_compiler
+    end interface
+end module ffc_case_test_session_block_shadow_compiler
+
+subroutine case_test_session_block_shadow_compiler()
     ! #280: a variable declared inside a BLOCK shadows an identically named
     ! outer variable. Writes to the inner name must not touch the outer storage,
     ! and the outer value must be visible again after the block ends.
     use ffc_test_support, only: expect_error_contains, expect_output
     implicit none
+    save
     logical :: all_passed
 
     all_passed = .true.
@@ -103,4 +115,4 @@ contains
             '/tmp/ffc_block_scope_error_test')
     end function test_block_local_is_not_visible_after_end
 
-end program test_session_block_shadow_compiler
+end subroutine case_test_session_block_shadow_compiler

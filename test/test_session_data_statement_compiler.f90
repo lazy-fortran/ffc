@@ -1,4 +1,15 @@
-program test_session_data_statement
+! fo: dispatcher
+module ffc_case_test_session_data_statement_compiler
+    implicit none
+    private
+    public :: case_test_session_data_statement_compiler
+    interface
+        subroutine case_test_session_data_statement_compiler()
+        end subroutine case_test_session_data_statement_compiler
+    end interface
+end module ffc_case_test_session_data_statement_compiler
+
+subroutine case_test_session_data_statement_compiler()
     ! DATA statement lowering through direct LIRIC (#2349, #2251). DATA gives
     ! variables their initial value before execution, independent of textual
     ! position. Covers scalar and array initialisation, an executable
@@ -6,6 +17,7 @@ program test_session_data_statement
     ! implied-do, and a hexadecimal BOZ constant.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -199,4 +211,4 @@ contains
             '/tmp/ffc_data_empty_derived')
     end function test_empty_derived_constructor_data
 
-end program test_session_data_statement
+end subroutine case_test_session_data_statement_compiler

@@ -1,6 +1,18 @@
-program test_session_module_derived_variable_compiler
+! fo: dispatcher
+module ffc_case_test_session_module_derived_variable_compiler
+    implicit none
+    private
+    public :: case_test_session_module_derived_variable_compiler
+    interface
+        subroutine case_test_session_module_derived_variable_compiler()
+        end subroutine case_test_session_module_derived_variable_compiler
+    end interface
+end module ffc_case_test_session_module_derived_variable_compiler
+
+subroutine case_test_session_module_derived_variable_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -120,4 +132,4 @@ contains
             source, 47, '/tmp/ffc_session_mod_derived_param_test')
     end function test_module_derived_parameter
 
-end program test_session_module_derived_variable_compiler
+end subroutine case_test_session_module_derived_variable_compiler

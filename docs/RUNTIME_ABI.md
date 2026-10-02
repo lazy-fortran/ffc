@@ -857,11 +857,11 @@ C conversion descriptor its edit descriptor implies; the runtime owns the
 stream lookup, the conversion, and the status. Output bytes are unchanged from
 the `printf` calls these replaced.
 
-There is one entry point per scalar type rather than one call carrying a type
-tag as data, so the type is resolved at compile time and **the calls are not
-variadic**: a fixed-arity ABI is the same on every target, a variadic one is
-not. `_ffc_write_text` carries record text with nothing to convert — the
-list-directed separating blank and the record terminator.
+Scalar output calls have a fixed-arity ABI. Decimal and character conversions
+select an entry point per scalar type at compile time; BOZ conversion carries
+the resolved integer storage width and radix explicitly. `_ffc_write_text`
+carries record text with nothing to convert: the list-directed separating
+blank and the record terminator.
 
 Each returns 0, or the unit status when the unit is unusable, or 5006 when the
 conversion fails.
@@ -870,6 +870,7 @@ conversion fails.
 |---|---|
 | `_ffc_write_i32` | `int _ffc_write_i32(int unit, const char *fmt, int value)` |
 | `_ffc_write_i64` | `int _ffc_write_i64(int unit, const char *fmt, long long value)` |
+| `_ffc_write_boz` | `int _ffc_write_boz(int unit, int radix, int width, int minimum, int bits, long long value)` |
 | `_ffc_write_f64` | `int _ffc_write_f64(int unit, const char *fmt, double value)` |
 | `_ffc_write_str` | `int _ffc_write_str(int unit, const char *fmt, const char *value)` |
 | `_ffc_write_text` | `int _ffc_write_text(int unit, const char *text)` |
@@ -878,6 +879,14 @@ conversion fails.
 `printf`. Logical and character scalars use `_ffc_write_i32` and
 `_ffc_write_str`. Complex output, list-directed input, NAMELIST, and internal
 I/O still use their established paths; they are named by their own issues.
+
+`_ffc_write_boz` writes an integer storage bit pattern in radix 2, 8, or 16
+for stdout `B`, `O`, and `Z` descriptors. `bits` is 8, 16, 32, or 64 and
+preserves the declared integer kind after widening the argument to `i64`.
+The runtime masks narrow patterns, uses uppercase hexadecimal digits, pads
+with blanks and minimum-count zeros, and emits width-many stars on overflow.
+Zero width chooses the smallest field; zero with a zero minimum digit count
+uses a blank field (one blank when width is zero). The call is fixed-arity.
 
 ### Scalar unformatted output
 

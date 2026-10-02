@@ -1,6 +1,18 @@
-program test_session_real_parameter_compiler
+! fo: dispatcher
+module ffc_case_test_session_real_parameter_compiler
+    implicit none
+    private
+    public :: case_test_session_real_parameter_compiler
+    interface
+        subroutine case_test_session_real_parameter_compiler()
+        end subroutine case_test_session_real_parameter_compiler
+    end interface
+end module ffc_case_test_session_real_parameter_compiler
+
+subroutine case_test_session_real_parameter_compiler()
     use ffc_test_support, only: expect_error_contains, expect_output
     implicit none
+    save
     character(len=1), parameter :: nl = new_line('a')
 
     print *, '=== direct session real/logical/character parameter test ==='
@@ -54,4 +66,4 @@ program test_session_real_parameter_compiler
         '/tmp/ffc_session_old_parameter_nonconst_test')) stop 1
 
     print *, 'PASS: real/logical/character parameters lower through LIRIC'
-end program test_session_real_parameter_compiler
+end subroutine case_test_session_real_parameter_compiler

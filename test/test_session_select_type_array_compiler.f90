@@ -1,4 +1,15 @@
-program test_session_select_type_array_compiler
+! fo: dispatcher
+module ffc_case_test_session_select_type_array_compiler
+    implicit none
+    private
+    public :: case_test_session_select_type_array_compiler
+    interface
+        subroutine case_test_session_select_type_array_compiler()
+        end subroutine case_test_session_select_type_array_compiler
+    end interface
+end module ffc_case_test_session_select_type_array_compiler
+
+subroutine case_test_session_select_type_array_compiler()
     ! Positive behavioural oracle for SELECT TYPE on a polymorphic derived
     ! array section.  The gfortran result is compared at runtime so shape,
     ! dynamic type, and inherited/extension components are all checked.
@@ -7,6 +18,7 @@ program test_session_select_type_array_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     print *, '=== SELECT TYPE polymorphic array section test ==='
     if (.not. test_array_section()) stop 1
@@ -107,4 +119,4 @@ contains
         test_array_section = .true.
     end function test_array_section
 
-end program test_session_select_type_array_compiler
+end subroutine case_test_session_select_type_array_compiler

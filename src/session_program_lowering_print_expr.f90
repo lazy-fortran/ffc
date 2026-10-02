@@ -287,6 +287,17 @@ contains
                 return
             end if
             if (allocated(node%name)) then
+                if (same_name(node%name, 'merge') .and. &
+                .not. is_contained_function_reference(node, context) .and. &
+                external_procedure_index(context, node%name) == 0) then
+                    if (merge_value_kind(arena, node, context) == VALUE_LOGICAL) then
+                        call lower_logical_expression(arena, node_index, context, &
+                                                      value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        call lower_print_logical_value(context, value, error_msg)
+                        return
+                    end if
+                end if
                 if (is_contained_logical_function(context, node%name)) then
                     call lower_logical_expression(arena, node_index, context, &
                                                   value, error_msg)
@@ -701,6 +712,17 @@ contains
                 return
             end if
             if (allocated(node%name)) then
+                if (same_name(node%name, 'merge') .and. &
+                .not. is_contained_function_reference(node, context) .and. &
+                external_procedure_index(context, node%name) == 0) then
+                    if (merge_value_kind(arena, node, context) == VALUE_LOGICAL) then
+                        call lower_logical_expression(arena, node_index, context, &
+                                                      value, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        call lower_print_logical_value(context, value, error_msg)
+                        return
+                    end if
+                end if
                 if (is_contained_logical_function(context, node%name)) then
                     call lower_logical_expression(arena, node_index, context, &
                                                   value, error_msg)

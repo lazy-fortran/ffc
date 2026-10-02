@@ -1,4 +1,15 @@
-program test_session_reject_array_02_compiler
+! fo: dispatcher
+module ffc_case_test_session_reject_array_02_compiler
+    implicit none
+    private
+    public :: case_test_session_reject_array_02_compiler
+    interface
+        subroutine case_test_session_reject_array_02_compiler()
+        end subroutine case_test_session_reject_array_02_compiler
+    end interface
+end module ffc_case_test_session_reject_array_02_compiler
+
+subroutine case_test_session_reject_array_02_compiler()
     ! #388: array constructor compatibility.
     !   * (/ ... ] and [ ... /) mix the constructor delimiters,
     !   * a structure constructor cannot initialise an intrinsic type and an
@@ -8,6 +19,7 @@ program test_session_reject_array_02_compiler
     ! still compile and run.
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     character(len=*), parameter :: DELIM_FRAGMENT = 'array constructor'
     character(len=*), parameter :: TYPE_FRAGMENT = 'cannot convert TYPE('
@@ -162,4 +174,4 @@ contains
             source, 5, '/tmp/ffc_session_array02_real_ctor_ok')
     end function test_real_ctor_to_real_accepted
 
-end program test_session_reject_array_02_compiler
+end subroutine case_test_session_reject_array_02_compiler

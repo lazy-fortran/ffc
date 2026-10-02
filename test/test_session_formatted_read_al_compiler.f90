@@ -1,8 +1,20 @@
-program test_session_formatted_read_al_compiler
+! fo: dispatcher
+module ffc_case_test_session_formatted_read_al_compiler
+    implicit none
+    private
+    public :: case_test_session_formatted_read_al_compiler
+    interface
+        subroutine case_test_session_formatted_read_al_compiler()
+        end subroutine case_test_session_formatted_read_al_compiler
+    end interface
+end module ffc_case_test_session_formatted_read_al_compiler
+
+subroutine case_test_session_formatted_read_al_compiler()
     ! Fixed-width A and L edit descriptors on a formatted file-unit READ
     ! (#434). Values and IOSTAT classifications match gfortran.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     character(len=1), parameter :: q = achar(39)
     character(len=*), parameter :: data_path = '/tmp/ffc_formatted_read_al.dat'
@@ -89,4 +101,4 @@ contains
             '/tmp/ffc_formatted_read_al_groups')
     end function test_read_al_groups
 
-end program test_session_formatted_read_al_compiler
+end subroutine case_test_session_formatted_read_al_compiler

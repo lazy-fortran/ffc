@@ -1,7 +1,19 @@
-program test_session_typebound_override_dispatch_compiler
+! fo: dispatcher
+module ffc_case_test_session_typebound_override_dispatch_compiler
+    implicit none
+    private
+    public :: case_test_session_typebound_override_dispatch_compiler
+    interface
+        subroutine case_test_session_typebound_override_dispatch_compiler()
+        end subroutine case_test_session_typebound_override_dispatch_compiler
+    end interface
+end module ffc_case_test_session_typebound_override_dispatch_compiler
+
+subroutine case_test_session_typebound_override_dispatch_compiler()
     use ffc_test_support, only: expect_output, expect_output_matches_gfortran, &
         expect_error_contains, expect_exe_has_symbol
     implicit none
+    save
 
     logical :: all_passed
 
@@ -431,4 +443,4 @@ contains
             '/tmp/ffc_tbp_duplicate_binding')
     end function test_duplicate_binding_is_rejected
 
-end program test_session_typebound_override_dispatch_compiler
+end subroutine case_test_session_typebound_override_dispatch_compiler

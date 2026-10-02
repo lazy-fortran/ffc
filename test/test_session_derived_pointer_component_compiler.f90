@@ -1,6 +1,18 @@
-program test_session_derived_pointer_component
+! fo: dispatcher
+module ffc_case_test_session_derived_pointer_component_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_pointer_component_compiler
+    interface
+        subroutine case_test_session_derived_pointer_component_compiler()
+        end subroutine case_test_session_derived_pointer_component_compiler
+    end interface
+end module ffc_case_test_session_derived_pointer_component_compiler
+
+subroutine case_test_session_derived_pointer_component_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session derived pointer component compiler test ==='
 
@@ -67,4 +79,4 @@ program test_session_derived_pointer_component
         '/tmp/ffc_session_derived_pointer_component_negative')) stop 1
 
     print *, 'PASS: scalar derived-type pointer components'
-end program test_session_derived_pointer_component
+end subroutine case_test_session_derived_pointer_component_compiler

@@ -1,10 +1,22 @@
-program test_session_character_fixed_ops_compiler
+! fo: dispatcher
+module ffc_case_test_session_character_fixed_ops_compiler
+    implicit none
+    private
+    public :: case_test_session_character_fixed_ops_compiler
+    interface
+        subroutine case_test_session_character_fixed_ops_compiler()
+        end subroutine case_test_session_character_fixed_ops_compiler
+    end interface
+end module ffc_case_test_session_character_fixed_ops_compiler
+
+subroutine case_test_session_character_fixed_ops_compiler()
     ! Fixed-length character operations: var-to-var assignment with blank
     ! padding/truncation, fixed-length dummy arguments, lexical comparisons,
     ! SELECT CASE character ranges, and named constants with a declared
     ! length or a concatenation of earlier named constants.
     use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -153,4 +165,4 @@ contains
             '/tmp/ffc_session_char_const_len_test')
     end function test_named_constant_declared_length
 
-end program test_session_character_fixed_ops_compiler
+end subroutine case_test_session_character_fixed_ops_compiler

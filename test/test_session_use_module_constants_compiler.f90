@@ -1,6 +1,18 @@
-program test_session_use_module_constants_compiler
+! fo: dispatcher
+module ffc_case_test_session_use_module_constants_compiler
+    implicit none
+    private
+    public :: case_test_session_use_module_constants_compiler
+    interface
+        subroutine case_test_session_use_module_constants_compiler()
+        end subroutine case_test_session_use_module_constants_compiler
+    end interface
+end module ffc_case_test_session_use_module_constants_compiler
+
+subroutine case_test_session_use_module_constants_compiler()
     use ffc_test_support, only: expect_exit_status, expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -61,4 +73,4 @@ contains
             '/tmp/ffc_session_module_const_real_test')
     end function test_module_parameter_real_still_diagnosed
 
-end program test_session_use_module_constants_compiler
+end subroutine case_test_session_use_module_constants_compiler

@@ -1,6 +1,18 @@
-program test_counted_do_negative_step_compiler
+! fo: dispatcher
+module ffc_case_test_counted_do_negative_step_compiler
+    implicit none
+    private
+    public :: case_test_counted_do_negative_step_compiler
+    interface
+        subroutine case_test_counted_do_negative_step_compiler()
+        end subroutine case_test_counted_do_negative_step_compiler
+    end interface
+end module ffc_case_test_counted_do_negative_step_compiler
+
+subroutine case_test_counted_do_negative_step_compiler()
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     logical :: all_passed
 
@@ -47,4 +59,4 @@ contains
             source, 30, '/tmp/ffc_do_neg_step_skip2_test')
     end function test_negative_step_skip_two
 
-end program test_counted_do_negative_step_compiler
+end subroutine case_test_counted_do_negative_step_compiler

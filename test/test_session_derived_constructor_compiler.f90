@@ -1,7 +1,19 @@
-program test_session_derived_constructor_compiler
+! fo: dispatcher
+module ffc_case_test_session_derived_constructor_compiler
+    implicit none
+    private
+    public :: case_test_session_derived_constructor_compiler
+    interface
+        subroutine case_test_session_derived_constructor_compiler()
+        end subroutine case_test_session_derived_constructor_compiler
+    end interface
+end module ffc_case_test_session_derived_constructor_compiler
+
+subroutine case_test_session_derived_constructor_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output, &
         expect_error_contains
     implicit none
+    save
 
     logical :: all_passed
 
@@ -195,4 +207,4 @@ contains
             '/tmp/ffc_session_ctor_interface')
     end function test_interface_constructor_unsupported
 
-end program test_session_derived_constructor_compiler
+end subroutine case_test_session_derived_constructor_compiler

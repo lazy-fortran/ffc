@@ -1,4 +1,15 @@
-program test_session_lazy_toplevel_function_compiler
+! fo: dispatcher
+module ffc_case_test_session_lazy_toplevel_function_compiler
+    implicit none
+    private
+    public :: case_test_session_lazy_toplevel_function_compiler
+    interface
+        subroutine case_test_session_lazy_toplevel_function_compiler()
+        end subroutine case_test_session_lazy_toplevel_function_compiler
+    end interface
+end module ffc_case_test_session_lazy_toplevel_function_compiler
+
+subroutine case_test_session_lazy_toplevel_function_compiler()
     !! A lazy (.lf) program with a bare top-level function called from top-level
     !! statements must lower and run. Lazy-mode standardization wraps the
     !! function and the caller in a synthetic __MULTI_UNIT__ program and restates
@@ -7,6 +18,7 @@ program test_session_lazy_toplevel_function_compiler
     !! has not got and aborted the whole unit; an intent now marks it as the
     !! already-bound dummy so it takes the normal scalar path (#2812).
     implicit none
+    save
 
     logical :: ok
 
@@ -180,4 +192,4 @@ contains
         close (unit)
     end function read_first_line
 
-end program test_session_lazy_toplevel_function_compiler
+end subroutine case_test_session_lazy_toplevel_function_compiler

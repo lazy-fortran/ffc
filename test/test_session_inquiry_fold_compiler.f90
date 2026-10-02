@@ -1,6 +1,18 @@
-program test_session_inquiry_fold
+! fo: dispatcher
+module ffc_case_test_session_inquiry_fold_compiler
+    implicit none
+    private
+    public :: case_test_session_inquiry_fold_compiler
+    interface
+        subroutine case_test_session_inquiry_fold_compiler()
+        end subroutine case_test_session_inquiry_fold_compiler
+    end interface
+end module ffc_case_test_session_inquiry_fold_compiler
+
+subroutine case_test_session_inquiry_fold_compiler()
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     logical :: all_passed
 
@@ -172,4 +184,4 @@ contains
             '/tmp/ffc_session_nondefault_int_param')
     end function test_nondefault_int_parameter_bound
 
-end program test_session_inquiry_fold
+end subroutine case_test_session_inquiry_fold_compiler

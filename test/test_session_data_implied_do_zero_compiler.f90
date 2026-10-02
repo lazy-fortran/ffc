@@ -1,6 +1,18 @@
-program test_session_data_implied_do_zero_compiler
+! fo: dispatcher
+module ffc_case_test_session_data_implied_do_zero_compiler
+    implicit none
+    private
+    public :: case_test_session_data_implied_do_zero_compiler
+    interface
+        subroutine case_test_session_data_implied_do_zero_compiler()
+        end subroutine case_test_session_data_implied_do_zero_compiler
+    end interface
+end module ffc_case_test_session_data_implied_do_zero_compiler
+
+subroutine case_test_session_data_implied_do_zero_compiler()
     use ffc_test_support, only: expect_output_matches_gfortran
     implicit none
+    save
 
     print *, '=== DATA partial init zero-fills the rest (#2349) ==='
 
@@ -58,4 +70,4 @@ program test_session_data_implied_do_zero_compiler
         'data_partial_zero_labeled')) stop 1
 
     print *, 'PASS: DATA partial init zero-fills omitted elements'
-end program test_session_data_implied_do_zero_compiler
+end subroutine case_test_session_data_implied_do_zero_compiler

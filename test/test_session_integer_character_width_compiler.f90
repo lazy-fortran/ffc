@@ -1,7 +1,19 @@
-program test_session_integer_character_width_compiler
+! fo: dispatcher
+module ffc_case_test_session_integer_character_width_compiler
+    implicit none
+    private
+    public :: case_test_session_integer_character_width_compiler
+    interface
+        subroutine case_test_session_integer_character_width_compiler()
+        end subroutine case_test_session_integer_character_width_compiler
+    end interface
+end module ffc_case_test_session_integer_character_width_compiler
+
+subroutine case_test_session_integer_character_width_compiler()
     use ffc_test_support, only: expect_output_matches_gfortran, &
                                 expect_stderr_and_exit, expect_error_contains
     implicit none
+    save
     character(len=:), allocatable :: source
 
     source = width_source('integer', '-2')
@@ -85,4 +97,4 @@ contains
             '  end function fill'//new_line('a')// &
             'end program main'
     end function width_source
-end program test_session_integer_character_width_compiler
+end subroutine case_test_session_integer_character_width_compiler

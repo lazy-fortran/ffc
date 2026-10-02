@@ -20,8 +20,11 @@ experiment lives only in git history.
 
 The public contract is `docs/SUPPORT_CONTRACT.md`. It lists every
 supported construct, its ABI, and every tracked gap with issue links.
+Frontend validation rejects conflicting local declarations, derived-type/object
+collisions, writes to named constants, invalid character inquiry arity, and
+mismatched program or DO closing names while preserving legal shadowing.
 Refer to that document instead of this README for the feature list.
-Current slices include compound formatted `print` with literal `I`, `X`,
+Current slices include compound formatted `print` with literal `I`, `B`, `O`, `Z`, `X`,
 `F`, and `A` descriptors on stdout, including a bare array among other print
 items and an inline array constructor as a print item
 (`print *, [e1, e2, ...]`, each explicit numeric element printed like a scalar);
@@ -403,7 +406,10 @@ program unit`.
 Scalar `integer(8)` loop accumulators and IF branch merges retain their native
 width across counted `DO`, `DO WHILE`, bare `DO`, and EXIT/CYCLE paths. This
 support includes reference dummies; counted-DO induction variables retain
-their existing kind restrictions.
+their existing kind restrictions. Named `EXIT` and `CYCLE` can target an
+outer counted `DO`, `DO WHILE`, or bare `DO` and preserve scalar updates made
+before the branch. Construct names are case-insensitive. A named loop beneath
+two unnamed loops remains a frontend refusal tracked by #760.
 The `associate` construct binds scalar selectors, a rank-1 unit-stride
 array-section selector (`associate (x => a(lo:hi))`, reindexed to lower
 bound 1), and a derived-type component selector (`associate (s => a%comp)`);
@@ -536,8 +542,9 @@ scripts/fetch_corpora.sh
 
 - `app/ffc.f90` - CLI entry.
 - `src/` - lowering, LIRIC bindings, CLI options (fpm auto-discovers).
-- `test/` - behavioural tests; each file is a standalone `program test_*`
-  picked up by fpm auto-discovery.
+- `test/` - behavioral case modules; `fo` retains each filename as its test
+  name and runs it through one dispatcher executable, in a fresh process.
+  `python3 tools/make_suite_cases.py --apply` registers new test programs.
 - `docs/` - `SUPPORT_CONTRACT.md`, `RUNTIME_ABI.md`, `DEVELOPER_GUIDE.md`,
   `API_REFERENCE.md`, `C_API_USAGE.md`, `MIGRATION_GUIDE.md`,
   `CONFORMANCE.md`.

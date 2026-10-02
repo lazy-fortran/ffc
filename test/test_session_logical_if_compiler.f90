@@ -1,6 +1,18 @@
-program test_session_logical_if_compiler
+! fo: dispatcher
+module ffc_case_test_session_logical_if_compiler
+    implicit none
+    private
+    public :: case_test_session_logical_if_compiler
+    interface
+        subroutine case_test_session_logical_if_compiler()
+        end subroutine case_test_session_logical_if_compiler
+    end interface
+end module ffc_case_test_session_logical_if_compiler
+
+subroutine case_test_session_logical_if_compiler()
     use ffc_test_support, only: expect_output, expect_exit_status
     implicit none
+    save
 
     print *, '=== direct session single-line logical IF compiler test ==='
 
@@ -34,4 +46,4 @@ program test_session_logical_if_compiler
         '/tmp/ffc_session_logical_if_guard_true')) stop 1
 
     print *, 'PASS: single-line logical IF lowers through direct LIRIC session'
-end program test_session_logical_if_compiler
+end subroutine case_test_session_logical_if_compiler

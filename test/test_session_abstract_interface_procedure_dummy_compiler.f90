@@ -1,8 +1,20 @@
-program test_session_abstract_interface_procedure_dummy
+! fo: dispatcher
+module ffc_case_2b23d77d694bf09939b9d7c7
+    implicit none
+    private
+    public :: case_test_session_abstract_interface_procedure_dummy_compiler
+    interface
+        subroutine case_test_session_abstract_interface_procedure_dummy_compiler()
+        end subroutine case_test_session_abstract_interface_procedure_dummy_compiler
+    end interface
+end module ffc_case_2b23d77d694bf09939b9d7c7
+
+subroutine case_test_session_abstract_interface_procedure_dummy_compiler()
     ! A PROCEDURE(interface) dummy names an ABSTRACT INTERFACE declared in the
     ! host scope. Its callable address must survive the dummy boundary.
     use ffc_test_support, only: expect_exit_status
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -29,4 +41,4 @@ program test_session_abstract_interface_procedure_dummy
     if (.not. expect_exit_status(source, 0, &
             '/tmp/ffc_abstract_interface_procedure_dummy')) stop 1
     print *, 'PASS: abstract-interface procedure dummy calls run correctly'
-end program test_session_abstract_interface_procedure_dummy
+end subroutine case_test_session_abstract_interface_procedure_dummy_compiler

@@ -1,4 +1,15 @@
-program test_session_logical_not_reduction_oracle_compiler
+! fo: dispatcher
+module ffc_case_test_session_logical_not_reduction_oracle_compiler
+    implicit none
+    private
+    public :: case_test_session_logical_not_reduction_oracle_compiler
+    interface
+        subroutine case_test_session_logical_not_reduction_oracle_compiler()
+        end subroutine case_test_session_logical_not_reduction_oracle_compiler
+    end interface
+end module ffc_case_test_session_logical_not_reduction_oracle_compiler
+
+subroutine case_test_session_logical_not_reduction_oracle_compiler()
     ! Keep this fixture independent from the broader whole-array regression:
     ! the FFC API and gfortran must agree on ANY(.NOT. array).
     use fortfront_compiler, only: compiler_frontend_options_t, &
@@ -6,6 +17,7 @@ program test_session_logical_not_reduction_oracle_compiler
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
+    save
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -86,4 +98,4 @@ contains
         ok = .true.
     end function matches_gfortran
 
-end program test_session_logical_not_reduction_oracle_compiler
+end subroutine case_test_session_logical_not_reduction_oracle_compiler

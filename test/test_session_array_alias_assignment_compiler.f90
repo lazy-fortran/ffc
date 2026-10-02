@@ -1,10 +1,22 @@
-program test_session_array_alias_assignment_compiler
+! fo: dispatcher
+module ffc_case_test_session_array_alias_assignment_compiler
+    implicit none
+    private
+    public :: case_test_session_array_alias_assignment_compiler
+    interface
+        subroutine case_test_session_array_alias_assignment_compiler()
+        end subroutine case_test_session_array_alias_assignment_compiler
+    end interface
+end module ffc_case_test_session_array_alias_assignment_compiler
+
+subroutine case_test_session_array_alias_assignment_compiler()
     !! Overlapping array section assignment must behave as if the right-hand
     !! side were fully evaluated before any element of the target is written
     !! (Fortran 2018 clause 10.2.1.3). Expected values are the gfortran output
     !! for the same program.
     use ffc_test_support, only: expect_output
     implicit none
+    save
 
     print *, '=== direct session overlapping array assignment compiler test ==='
     if (.not. test_forward_overlap()) stop 1
@@ -87,4 +99,4 @@ contains
             '/tmp/ffc_session_array_alias_whole_reverse_test')
     end function test_whole_array_reverse_self
 
-end program test_session_array_alias_assignment_compiler
+end subroutine case_test_session_array_alias_assignment_compiler
