@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) derived_types
+    !! `derived_types` procedures, moved out of `session_program_lowering_derived_types.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine collect_program_parameters(arena, root_index, context, error_msg)
         ! Pre-collect program-scope integer scalar parameters so derived-type
         ! array component bounds (integer :: a(n)) can resolve them. Parameters
@@ -2835,3 +2843,6 @@ subroutine collect_component_declaration(component_index, parent_line, &
             word = trim(trimmed(:stop_at - 1))
         end if
     end function first_word_of
+
+
+end submodule derived_types

@@ -1,16 +1,10 @@
-    ! Assumed-shape dummy ABI (#334). A rank-1 through rank-4 assumed-shape dummy
-    ! `a(:)` / `a(:,:)` / `a(:,:,:)` / `a(:,:,:,:)` is bound through exactly one canonical array descriptor
-    ! (`ffc_array_descriptor`, `docs/ARRAY_DESCRIPTOR_ABI.md`). The caller
-    ! materializes a descriptor for the actual and passes its address in the
-    ! dummy's single visible parameter slot. No hidden extent arguments are
-    ! appended, and the callee reads bounds, extents, and the base address from
-    ! that descriptor alone.
-    !
-    ! The descriptor describes the DUMMY's view of the actual, which is what
-    ! F2018 15.5.2.4 associates: `base` is the address of the actual's first
-    ! element; a bare-colon dummy has lower bound 1, while an explicit lower
-    ! bound such as 0: is retained. Extents and byte strides are the actual's,
-    ! so column-major layout and element identity are preserved exactly.
+submodule (session_program_lowering_impl) assumed_shape_descriptor
+    !! `assumed_shape_descriptor` procedures, moved out of `session_program_lowering_assumed_shape_descriptor.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     integer(c_int64_t) function assumed_shape_dim_field_offset(dim, field) &
             result(offset)
@@ -1278,3 +1272,6 @@
         extent_i32 = context%symbols(sym_index)%runtime_dim_size(dim)
         call set_empty(error_msg)
     end subroutine read_runtime_dim_extent
+
+
+end submodule assumed_shape_descriptor

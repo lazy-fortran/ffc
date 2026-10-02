@@ -1,11 +1,10 @@
-    ! DATA statement lowering. A DATA statement gives variables their initial
-    ! value before execution begins, independent of its textual position; the
-    ! body walk applies it ahead of the first executable statement (#2349,
-    ! #2251, #2252). Objects and values are flat parallel lists. An array object
-    ! consumes one value per element in storage order. Implied-do objects and
-    ! values are unrolled over compile-time-constant control bounds: the loop
-    ! variable's SSA value is bound to each constant in turn, so subscript
-    ! expressions like coeff(i+2) resolve to the right element.
+submodule (session_program_lowering_impl) session_program_lowering_data
+    !! `session_program_lowering_data` procedures, moved out of `session_program_lowering_data.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     subroutine flush_data_statements(arena, body_indices, context, error_msg, &
                                       zero_fill)
@@ -1276,3 +1275,6 @@
         if (decl <= 0) return
         cls = data_type_class_of_declaration(arena, decl)
     end function data_value_type_class
+
+
+end submodule session_program_lowering_data

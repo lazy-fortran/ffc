@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) intrinsics
+    !! `intrinsics` procedures, moved out of `session_program_lowering_intrinsics.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine lower_i32_intrinsic_call(arena, node, intrinsic_id, context, &
                                         value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -2347,3 +2355,6 @@
         context%symbols(symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_get_command_argument
+
+
+end submodule intrinsics

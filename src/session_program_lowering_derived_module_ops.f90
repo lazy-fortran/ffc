@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) derived_module_ops
+    !! `derived_module_ops` procedures, moved out of `session_program_lowering_derived_module_ops.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine component_base_name(arena, node_index, name, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -2797,3 +2805,6 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
             end select
         end do
     end subroutine find_module_in_arena
+
+
+end submodule derived_module_ops

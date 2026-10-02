@@ -1,3 +1,10 @@
+submodule (session_program_lowering_impl) arrays
+    !! `arrays` procedures, moved out of `session_program_lowering_arrays.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     logical function declaration_is_parameter_assumed_size_array(node, context) &
             result(is_match)
@@ -7640,3 +7647,6 @@
         end select
         call set_empty(error_msg)
     end subroutine resolve_reshape_identifier_source
+
+
+end submodule arrays

@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) derived_ctor
+    !! `derived_ctor` procedures, moved out of `session_program_lowering_derived_ctor.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine lower_derived_whole_assignment(arena, node, context, &
                                               symbol_index, handled, error_msg)
         ! Whole-derived scalar assignment: a structure constructor RHS
@@ -1404,3 +1412,6 @@
         if (contained_function_kind(context, name) /= 0) return
         constructor_uses_user_routine = .false.
     end function constructor_uses_user_routine
+
+
+end submodule derived_ctor

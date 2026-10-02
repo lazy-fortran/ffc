@@ -1,9 +1,11 @@
-    ! Return the unit body for the body-walking passes. A program root yields its
-    ! body_indices. A mixed_construct_container root (lazy source mixing a
-    ! top-level procedure with bare main-program statements) yields its explicit
-    ! program units followed by the implicit main statements, so the existing
-    ! walk lowers the procedures as contained functions and the statements as the
-    ! main body (#266, #275).
+submodule (session_program_lowering_impl) functions
+    !! `functions` procedures, moved out of `session_program_lowering_functions.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine get_unit_body_indices(arena, root_index, body_indices, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
@@ -3863,3 +3865,6 @@
         call set_empty(error_msg)
     end subroutine lower_scalar_function
 
+
+
+end submodule functions

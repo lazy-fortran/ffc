@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) array_elements
+    !! `array_elements` procedures, moved out of `session_program_lowering_array_elements.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine describe_array_section(arena, slice_node, context, info, &
                                       error_msg, allow_derived)
         type(ast_arena_t), intent(in) :: arena
@@ -5957,3 +5965,6 @@
                                           cond, error_msg)) return
         end select
     end subroutine dim_reduction_mask_element
+
+
+end submodule array_elements

@@ -1,14 +1,10 @@
-    ! NAMELIST I/O lowering (#247 namelist).
-    !
-    ! A `namelist /group/ a, b, c` declaration records the group's ordered
-    ! members. A `write(unit, nml=group)` then emits the gfortran-style group
-    ! banner, one ` NAME= value,` line per member, and a closing ` /` line,
-    ! reusing the scalar value formatting of list-directed and file output.
-    !
-    ! Scope: write remains scalar integer, real, and logical members. Read also
-    ! accepts fixed-length character members, including one same-unit module
-    ! group imported by a plain USE. Array and derived members remain outside
-    ! this leaf.
+submodule (session_program_lowering_impl) session_program_lowering_namelist
+    !! `session_program_lowering_namelist` procedures, moved out of `session_program_lowering_namelist.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     subroutine record_namelist_group(node, context, error_msg)
         type(namelist_statement_node), intent(in) :: node
@@ -1708,3 +1704,6 @@
             end select
         end do
     end function namelist_find_derived_type
+
+
+end submodule session_program_lowering_namelist

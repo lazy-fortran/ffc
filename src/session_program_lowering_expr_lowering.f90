@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) expr_lowering
+    !! `expr_lowering` procedures, moved out of `session_program_lowering_expr_lowering.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     logical function is_present_call(arena, node_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
@@ -2004,3 +2012,6 @@
         end if
         call set_empty(error_msg)
     end subroutine lower_i16_array_element
+
+
+end submodule expr_lowering

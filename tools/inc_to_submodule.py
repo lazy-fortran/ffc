@@ -159,8 +159,13 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
 
     procedures: list[dict] = []
     heads = [(i, HEADER.match(l)) for i, l in enumerate(lines)]
+    EXECUTABLE = re.compile(
+        r"^\s*(?:call|print|write|read|if|do|select|associate|return|exit|"
+        r"cycle|block|allocate|deallocate|nullify|goto|error|then|else|"
+        r"end|use|implicit|interface|public|private|save|common)\b", re.I)
     heads = [(i, m) for i, m in heads
-             if m and not END_HEADER.match(lines[i])]
+             if m and not END_HEADER.match(lines[i])
+             and not EXECUTABLE.match(lines[i])]
     if not heads:
         print(f"{path}: no procedures found", file=sys.stderr)
         return 2
@@ -272,7 +277,7 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
                             r"*(?:[A-Za-z_][A-Za-z0-9_]*(?:\([^)\n]*\))? )*"
                             r"(?:subroutine|function)\s+[A-Za-z_]", region, re.M))
     n_end = len(re.findall(r"^[ \t]*end\s+(?:subroutine|function)\b", region, re.M))
-    if n_head != n_end:
+    if n_head != n_end and "--force" not in sys.argv:
         print(f"{path}: {n_head} procedure headers but {n_end} terminators in "
               "the captured region - this include holds a fragment of a "
               "procedure that starts outside it, so it cannot move as a unit",
@@ -437,6 +442,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("inc", type=pathlib.Path)
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--force", action="store_true",
+                    help="skip false-positive procedure balance refusal")
     a = ap.parse_args()
     return migrate(a.inc, a.apply)
 

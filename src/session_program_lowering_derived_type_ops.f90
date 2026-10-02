@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) derived_type_ops
+    !! `derived_type_ops` procedures, moved out of `session_program_lowering_derived_type_ops.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine component_default_words(context, type_index, comp_index, words, &
                                        error_msg)
         ! The i32 slot payloads a component's folded default occupies, in slot
@@ -6818,3 +6826,6 @@
         end select
         if (.not. ok) error_msg = 'component_load: '//error_msg
     end subroutine emit_typed_component_load
+
+
+end submodule derived_type_ops

@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) deferred_char
+    !! `deferred_char` procedures, moved out of `session_program_lowering_deferred_char.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
 integer function resolve_concat_operand(arena, node_index, context, &
                                            out_name, operand_is_literal, error_msg, &
                                            operand_is_call, operand_is_view) &
@@ -1052,3 +1060,6 @@ integer function resolve_concat_operand(arena, node_index, context, &
         context%current_block_terminated = .false.
         call set_empty(error_msg)
     end subroutine reown_alloc_char_component
+
+
+end submodule deferred_char

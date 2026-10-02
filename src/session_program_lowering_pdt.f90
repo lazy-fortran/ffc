@@ -1,11 +1,10 @@
-    ! Parameterized derived types with constant integer KIND and LEN type
-    ! parameters (#411). A PDT definition has no layout of its own: it is
-    ! registered as a template, and every declaration that names it with
-    ! constant actual parameters instantiates one concrete derived type whose
-    ! components were laid out with the formals bound to those constants.
-    ! Instances are cached under the mangled name base(v1,v2,...), so two
-    ! declarations with the same actuals share one layout and two with
-    ! different actuals get distinct layouts.
+submodule (session_program_lowering_impl) pdt
+    !! `pdt` procedures, moved out of `session_program_lowering_pdt.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     logical function derived_type_is_parameterized(node) result(is_pdt)
         type(derived_type_node), intent(in) :: node
@@ -449,3 +448,6 @@
         end do
         context%symbol_count = saved_symbol_count
     end subroutine unbind_pdt_parameters
+
+
+end submodule pdt

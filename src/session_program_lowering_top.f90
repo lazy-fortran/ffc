@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) top
+    !! `top` procedures, moved out of `session_program_lowering_top.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine lower_program_to_liric_exe(arena, root_index, output_path, &
                                           error_msg, include_paths, link_objects, &
                                           backend, opt_level, lazy_mode)
@@ -973,7 +981,6 @@
             module_declaration_is_procedure = declaration_names_procedure(decl)
         end select
     end function module_declaration_is_procedure
-    include 'session_program_lowering_functions.inc'
     recursive subroutine lower_statement(arena, node_index, context, value, &
                                          error_msg)
         ! A statement owns the character result temporaries created while it is
@@ -1390,12 +1397,6 @@
                                            'support this AST node', error_msg)
         end select
     end subroutine unsupported_statement_node
-    include 'session_program_lowering_derived_types.inc'
-    include 'session_program_lowering_pdt.inc'
-    include 'session_program_lowering_derived_type_ops.inc'
-    include 'session_program_lowering_derived_module_ops.inc'
-    include 'session_program_lowering_derived_ctor.inc'
-    include 'session_program_lowering_namelist.inc'
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -1422,3 +1423,6 @@
             end if
         end do
     end subroutine lower_statement_list
+
+
+end submodule top
