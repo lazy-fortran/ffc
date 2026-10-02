@@ -161,10 +161,39 @@ contains
                 if (len_trim(error_msg) > 0) return
             end block
         end if
+        ! A `use`-associated module variable occupies a GLOBAL-reference
+        ! symbol slot here. A local `type :: name` for that same name is a
+        ! redeclaration of the use-associated entity, which gfortran
+        ! refuses; ffc accepted it and silently kept the module binding
+        ! (#3021 USE-shadow shape).
+        if (allocated(node%type_name) .and. is_use_imported_symbol( &
+            context, trim(name))) then
+            error_msg = 'symbol '//trim(name)// &
+                        ' is use-associated and cannot be redeclared'
+            return
+        end if
         call make_declaration_record(node, name, binding, context, record)
         record%origin_node_index = node_index
         call store_declaration_record(context, record, error_msg)
     end subroutine collect_one_declaration_entity
+
+    logical function is_use_imported_symbol(context, name) result(is_import)
+        ! A module variable imported by USE lives in the symbol table as a
+        ! GLOBAL-address reference slot, never as a local stack slot.
+        type(lowering_context_t), intent(in) :: context
+        character(len=*), intent(in) :: name
+        integer :: i
+
+        is_import = .false.
+        do i = 1, context%symbol_count
+            if (.not. same_name(context%symbols(i)%name, name)) cycle
+            if (context%symbols(i)%is_reference .and. &
+                context%symbols(i)%address%kind == LR_OP_KIND_GLOBAL) then
+                is_import = .true.
+                return
+            end if
+        end do
+    end function is_use_imported_symbol
 
     subroutine collect_parameter_declaration_node(arena, node_index, node, &
                                                   context, error_msg)
