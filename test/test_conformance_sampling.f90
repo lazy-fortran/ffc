@@ -79,22 +79,29 @@ contains
         character(len=*), intent(in) :: work_dir
         logical, intent(inout) :: ok
 
-        if (.not. run_shell('(timeout 300 bash '//GAUNTLET// &
+        ! The repeat and second-seed walks are independent: launch both
+        ! concurrently, each in its own TMPDIR so concurrent same-suite
+        ! gauntlet runs cannot share scratch state, then barrier on rc.
+        if (.not. run_shell('mkdir -p '//work_dir//'/t_seed3 '// &
+            work_dir//'/t_seed9')) then
+            print *, 'FAIL: could not create sample scratch dirs'
+            ok = .false.
+            return
+        end if
+        call issue_bg('TMPDIR='//work_dir//'/t_seed3 timeout 300 '// &
+            'bash '//GAUNTLET// &
             ' --suite fortfront-f90 --sample 6 --seed 3 --report '// &
-            work_dir//'/repeat.jsonl > /dev/null 2>&1; '// &
-            'status=$?; [ "$status" -le 1 ])')) then
-            print *, 'FAIL: repeated sampled run did not succeed'
-            ok = .false.
-            return
-        end if
-        if (.not. run_shell('(timeout 300 bash '//GAUNTLET// &
+            work_dir//'/repeat.jsonl', work_dir//'/repeat')
+        call issue_bg('TMPDIR='//work_dir//'/t_seed9 timeout 300 '// &
+            'bash '//GAUNTLET// &
             ' --suite fortfront-f90 --sample 6 --seed 9 --report '// &
-            work_dir//'/other_seed.jsonl > /dev/null 2>&1; '// &
-            'status=$?; [ "$status" -le 1 ])')) then
-            print *, 'FAIL: second-seed sampled run did not succeed'
-            ok = .false.
-            return
-        end if
+            work_dir//'/other_seed.jsonl', work_dir//'/other_seed')
+        call barrier_bg(work_dir, 2)
+        if (.not. rc_le1(work_dir//'/repeat.rc', &
+            'repeated sampled run')) ok = .false.
+        if (.not. rc_le1(work_dir//'/other_seed.rc', &
+            'second-seed sampled run')) ok = .false.
+        if (ok) then
         call extract_files(work_dir//'/sampled.jsonl', work_dir//'/files_a.txt')
         call extract_files(work_dir//'/repeat.jsonl', work_dir//'/files_b.txt')
         call extract_files(work_dir//'/other_seed.jsonl', &
@@ -109,7 +116,56 @@ contains
             print *, 'FAIL: a different seed selected the same files'
             ok = .false.
         end if
+        end if
     end subroutine check_sample_determinism
+
+    subroutine issue_bg(cmd, stem)
+        !! Background a gauntlet run; rc lands in STEM//'.rc'.
+        character(len=*), intent(in) :: cmd
+        character(len=*), intent(in) :: stem
+        character(len=:), allocatable :: wrapped
+
+        if (run_shell('rm -f '//stem//'.rc')) then
+            wrapped = '{ ( ' // cmd // ' ) > /dev/null 2>&1; echo $? > ' //&
+                stem // '.rc; } &'
+            if (run_shell(wrapped)) return
+        end if
+        print *, 'FAIL: could not launch background block for ', trim(stem)
+    end subroutine issue_bg
+
+    subroutine barrier_bg(work_dir, expected)
+        character(len=*), intent(in) :: work_dir
+        integer, intent(in) :: expected
+        character(len=16) :: cnt
+
+        write(cnt, '(I0)') expected
+        if (.not. run_shell('for i in $(seq 1 1200); do n=$(ls '// &
+            work_dir//'/*.rc 2>/dev/null | wc -l); [ "$n" -ge '//cnt// &
+            ' ] && break; sleep 0.25; done')) &
+            print *, 'FAIL: barrier poll failed'
+    end subroutine barrier_bg
+
+    logical function rc_le1(path, label) result(ok)
+        character(len=*), intent(in) :: path
+        character(len=*), intent(in) :: label
+        integer :: unit, io_stat, rc
+
+        ok = .false.
+        open(newunit=unit, file=path, status='old', action='read', &
+            iostat=io_stat)
+        if (io_stat /= 0) then
+            print *, 'FAIL: no rc for ', trim(label)
+            return
+        end if
+        read(unit, *, iostat=io_stat) rc
+        close(unit)
+        if (io_stat /= 0 .or. rc > 126) then
+            print *, 'FAIL: timed out: ', trim(label)
+            return
+        end if
+        ok = rc <= 1
+        if (.not. ok) print *, 'FAIL: ', trim(label), ' rc=', rc
+    end function rc_le1
 
     ! The checked-in snapshot stays a full run: the report validator that feeds
     ! the parity dashboard must refuse a sampled report outright.
