@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) allocatable
+    !! `allocatable` procedures, moved out of `session_program_lowering_allocatable.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine validate_allocate_status_specifiers(arena, node, context, error_msg)
         ! #382: an ALLOCATE stat= specifier must name a scalar INTEGER
         ! variable and errmsg= must name a scalar default CHARACTER variable.
@@ -4524,3 +4532,6 @@
             end block
         end select
     end subroutine lower_deallocate_scalar_component
+
+
+end submodule allocatable

@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) arguments
+    !! `arguments` procedures, moved out of `session_program_lowering_arguments.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine store_reference_value(context, symbol_index, value, error_msg)
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
@@ -3257,3 +3265,6 @@ recursive integer function expression_value_kind(arena, node_index, context, &
         if (param_pos > context%external_procedures(idx)%arg_count) return
         is_array = context%external_procedures(idx)%arg_ranks(param_pos) > 0
     end function callee_dummy_is_array_ctx
+
+
+end submodule arguments
