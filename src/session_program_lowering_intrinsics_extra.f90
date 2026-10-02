@@ -503,13 +503,43 @@ contains
         type(lowering_context_t), intent(inout) :: context
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
-        character(len=:), allocatable :: mask_name, source_op
-        integer :: sym, array_size, i, scalar_index
+        character(len=:), allocatable :: mask_name, source_op, keyword
+        integer :: sym, array_size, i, scalar_index, mask_arg, arg_value
         logical :: array_on_left
         type(lr_operand_desc_t) :: elem, total, next_total
 
-        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+        ! Resolve the mask actual: positional or MASK=. Dropping MASK= here
+        ! made count(mask=a>2) die with "AST node is not an identifier" while
+        ! count(a>2) worked - the keyword form reached the resolver still
+        ! wrapped in its assignment node (#766).
+        mask_arg = 0
+        if (.not. allocated(node%arg_indices) .or. &
+            size(node%arg_indices) < 1) then
             error_msg = 'count requires exactly one logical array argument; DIM and KIND forms are not supported'
+            return
+        end if
+        do i = 1, size(node%arg_indices)
+            call search_actual_keyword(arena, node%arg_indices(i), keyword, &
+                                       arg_value)
+            if (len_trim(keyword) == 0) then
+                if (mask_arg == 0) then
+                    mask_arg = arg_value
+                else
+                    error_msg = 'count accepts one mask argument only'
+                    return
+                end if
+            else if (same_name(keyword, 'mask')) then
+                mask_arg = arg_value
+            else if (same_name(keyword, 'dim') .or. same_name(keyword, 'kind')) then
+                error_msg = 'count DIM= and KIND= forms are not supported'
+                return
+            else
+                error_msg = 'count unsupported keyword argument: '//trim(keyword)
+                return
+            end if
+        end do
+        if (mask_arg == 0) then
+            error_msg = 'count requires a mask argument'
             return
         end if
 
@@ -517,12 +547,18 @@ contains
             logical :: handled
             call try_general_mask_reduction(arena, node, context, 'count', &
                 handled, value, error_msg)
-            if (handled .or. len_trim(error_msg) > 0) return
+            if (handled) return
+            if (len_trim(error_msg) > 0) then
+                ! A keyword-wrapped mask cannot match the node-level shapes that
+                ! try_general_mask_reduction inspects; clear and continue with
+                ! the resolved actual.
+                call set_empty(error_msg)
+            end if
         end block
 
         ! A comparison-expression mask (count(a > 2)) reduces over the compared
         ! array's elements; an identifier mask names a declared logical array.
-        call resolve_comparison_mask(arena, node%arg_indices(1), context, sym, &
+        call resolve_comparison_mask(arena, mask_arg, context, sym, &
             scalar_index, array_on_left, source_op, &
             error_msg)
         if (len_trim(error_msg) > 0) return
@@ -551,15 +587,15 @@ contains
 
         ! A section mask (count(a(lo:hi))) reduces over the section extent;
         ! the identifier lookup below only names whole declared arrays.
-        if (node_exists(arena, node%arg_indices(1))) then
-            select type (sarg => arena%entries(node%arg_indices(1))%node)
+        if (node_exists(arena, mask_arg)) then
+            select type (sarg => arena%entries(mask_arg)%node)
             type is (array_slice_node)
                 call lower_section_reduction(arena, sarg, context, value, &
                     'count', error_msg)
                 return
             end select
         end if
-        call get_identifier_name(arena, node%arg_indices(1), mask_name, error_msg)
+        call get_identifier_name(arena, mask_arg, mask_name, error_msg)
         if (len_trim(error_msg) > 0) return
         sym = find_symbol_compat(context, mask_name)
         if (sym <= 0) then
@@ -1351,6 +1387,30 @@ contains
             end if
         end do
     end subroutine search_back_kind_actual
+
+    ! Keyword/positional resolver for single-mask intrinsics: returns the
+    ! actual's keyword (empty for positional) and its value node.
+    subroutine search_actual_keyword(arena, arg_index, keyword, value_index)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_index
+        character(len=:), allocatable, intent(out) :: keyword
+        integer, intent(out) :: value_index
+        character(len=:), allocatable :: name_err
+
+        keyword = ''
+        value_index = arg_index
+        if (.not. node_exists(arena, arg_index)) return
+        select type (n => arena%entries(arg_index)%node)
+            type is (assignment_node)
+            if (.not. is_identifier(arena, n%target_index)) return
+            call get_identifier_name(arena, n%target_index, keyword, name_err)
+            if (len_trim(name_err) > 0) then
+                keyword = ''
+                return
+            end if
+            if (n%value_index > 0) value_index = n%value_index
+        end select
+    end subroutine search_actual_keyword
 
     ! scan(s, set [, back [, kind]]): 1-based position of first char of s
     ! found in set, or the LAST one when back is true; 0 if none.

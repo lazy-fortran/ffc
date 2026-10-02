@@ -65,8 +65,39 @@ contains
             return
         end select
         if (.not. allocated(node%arg_indices)) return
-        if (size(node%arg_indices) /= 1 .and. &
+        if (size(node%arg_indices) < 1) return
+        if (size(node%arg_indices) > 2 .and. &
             trim(node%name) /= 'norm2') return
+        ! A second actual is MASK= (or DIM=, rejected downstream); the kind
+        ! gate reads the ARRAY argument only. An ARRAY= keyword actual arrives
+        ! wrapped in its assignment node.
+        if (size(node%arg_indices) == 2 .and. &
+            trim(node%name) /= 'norm2') then
+            if (node_exists(arena, node%arg_indices(1))) then
+                select type (kw => arena%entries(node%arg_indices(1))%node)
+                type is (assignment_node)
+                    ! sum(mask=m) without a positional array is invalid; the
+                    ! first actual must be the array itself or ARRAY=.
+                    if (kw%value_index <= 0) return
+                end select
+            end if
+        end if
+        if (node_exists(arena, node%arg_indices(1))) then
+            select type (kw1 => arena%entries(node%arg_indices(1))%node)
+            type is (assignment_node)
+                ! ARRAY=a form: unwrap to the array value for kind gating.
+                if (kw1%value_index > 0) then
+                    call get_identifier_name(arena, kw1%value_index, arg_name, err)
+                    if (len_trim(err) > 0) return
+                    sym = find_symbol_compat(context, arg_name)
+                    if (sym <= 0) return
+                    ok = (context%symbols(sym)%is_array .or. &
+                          context%symbols(sym)%is_allocatable) .and. &
+                         context%symbols(sym)%value_kind == vk
+                    return
+                end if
+            end select
+        end if
         if (node_exists(arena, node%arg_indices(1))) then
             ! sum(a(lo:hi)) and friends: the section reduces over its base
             ! array's element kind, so gate on that base's value kind.

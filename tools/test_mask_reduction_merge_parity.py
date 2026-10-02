@@ -35,16 +35,21 @@ FFC = ROOT / "build" / "fo" / "app" / "ffc"
 WORK = Path("/var/tmp/ffc-goal/perf/mask")
 REPORT = Path("/var/tmp/ffc-goal/perf/mask/report.tsv")
 
-DECL = ("integer :: a(5)\n  integer :: b(5)\n  real :: r(4)\n"
+DECL = ("integer :: a(5)\n  integer :: b(5)\n  real :: r(4)\n  logical :: lm(5)\n  lm = [.true.,.true.,.false.,.true.,.true.]\n"
         "  a = [1,2,3,4,5]\n  b = [10,20,30,40,50]\n"
         "  r = [1.5,-2.5,3.0,-4.0]")
 
+# FIXED at this commit: MASK= lands on sum/product/maxval/minval/count over
+# fixed-size arrays (MASK= rows below now score MATCH and fail the oracle if
+# they ever regress). Still refused by name, honestly:
 KNOWN_REFUSED = [
     "abs_nested_int", "abs_nested_min",
-    "sum_mask", "maxval_mask", "minval_mask", "count_kw_mask",
-    "merge_scalar", "merge_array", "sum_mask_all_true", "sum_mask_none",
-    "maxval_mask_excludes_max", "minval_mask_excludes_min",
+    "merge_scalar", "merge_array",
 ]
+
+# KIND/DIM stay honest refusals; a silently dropped KIND or DIM is the same
+# failure mode as the dropped MASK that hid #766.
+KNOWN_REFUSED = KNOWN_REFUSED + ["dim_refused", "kind_refused"]
 
 CASES = [
     ("sum_plain", "sum(a)"), ("maxval_plain", "maxval(a)"),
@@ -63,9 +68,23 @@ CASES = [
     ("sum_mask_none", "sum(a, mask=a>99)"),
     ("maxval_mask", "maxval(a, mask=a<4)"),
     ("maxval_mask_excludes_max", "maxval(a, mask=a<5)"),
+    ("maxval_mask_none", "maxval(a, mask=a>99)"),
     ("minval_mask", "minval(a, mask=a<4)"),
     ("minval_mask_excludes_min", "minval(a, mask=a>1)"),
+    ("minval_mask_none", "minval(a, mask=a>99)"),
+    ("product_mask", "product(a, mask=a<3)"),
+    ("product_mask_none", "product(a, mask=a>99)"),
     ("count_kw_mask", "count(mask=a>2)"),
+    ("sum_pos_mask", "sum(a, a>2)"),
+    ("sum_mask_ident", "sum(a, mask=lm)"),
+    ("sum_r_mask", "sum(r, mask=r>0)"),
+    ("maxval_r_mask", "maxval(r, mask=r>0)"),
+    ("maxval_r_mask_none", "maxval(r, mask=r>100.0)"),
+    ("minval_r_mask", "minval(r, mask=r<-1.0)"),
+    ("minval_r_mask_none", "minval(r, mask=r>100.0)"),
+    ("product_r_mask", "product(r, mask=r>0)"),
+    ("dim_refused", "sum(a, dim=1)"),
+    ("kind_refused", "maxval(a, mask=a>2, kind=8)"),
     ("merge_scalar", "merge(1,2,a>2)"),
     ("merge_array", "merge(a,b,a>2)"),
     # numeric core - passes today, pinned as regression guards
@@ -106,6 +125,17 @@ def main() -> int:
         src.write_text(f"program prog\n  implicit none\n  {decl}\n  print *, {body}\n"
                        "end program prog\n")
         grc, _ = run(["gfortran", str(src), "-o", str(WORK / f"{name}_r")])
+        if grc != 0 and name in KNOWN_REFUSED:
+            # Invalid on this gfortran (e.g. KIND= predates it on maxval);
+            # ffc refusing the same input is agreement, not a bad row.
+            frc0, ferr0 = run([str(FFC), str(src), "-o", str(WORK / f"{name}_f")])
+            runs += 1
+            if frc0 != 0:
+                refused += 1
+                lines.append(f"{name}\tKNOWN_REFUSED\tboth_refuse")
+            else:
+                lines.append(f"{name}\tREGRESSION\tffc_accepts_invalid")
+            continue
         if grc != 0:
             lines.append(f"{name}\tBAD_CASE\tgfortran_refuses")
             continue

@@ -3819,6 +3819,397 @@
         call set_empty(error_msg)
     end subroutine lower_array_size_intrinsic
 
+    subroutine call_actual_keyword(arena, arg_index, keyword, value_index)
+        !! A keyword actual (mask=m, dim=1) is an assignment node whose target
+        !! identifier is the keyword; positional actuals return empty keyword.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: arg_index
+        character(len=:), allocatable, intent(out) :: keyword
+        integer, intent(out) :: value_index
+        character(len=:), allocatable :: id_name, id_error
+
+        keyword = ''
+        value_index = arg_index
+        if (.not. node_exists(arena, arg_index)) return
+        select type (n => arena%entries(arg_index)%node)
+            type is (assignment_node)
+            if (.not. is_identifier(arena, n%target_index)) return
+            call get_identifier_name(arena, n%target_index, id_name, id_error)
+            if (len_trim(id_error) > 0) return
+            keyword = lowercase_text(trim(id_name))
+            if (n%value_index > 0) value_index = n%value_index
+        end select
+    end subroutine call_actual_keyword
+
+    subroutine lower_masked_reduction(arena, array_arg_index, mask_index, &
+            context, reduction_name, value, error_msg)
+        ! sum/product/maxval/minval over a fixed-size rank-1 identifier array
+        ! with a logical array or elementwise-comparison mask (#766). Masked-
+        ! off elements skip the accumulator update; maxval/minval track a
+        ! found flag so an empty selection yields the Fortran empty-set answer
+        ! (HUGE/-HUGE), not garbage or the unmasked extreme.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: array_arg_index, mask_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: reduction_name
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: array_name
+        type(lr_operand_desc_t) :: m, cand, sel, acc, next, cond, cond2, or1, better, hit, zero
+        type(lr_operand_desc_t) :: loaded
+        integer :: blk_c, blk_s, blk_n, blk_m, blk_y, blk_f, blk_o
+        type(lr_operand_desc_t) :: acc_addr, hit_addr
+        integer :: sym, array_size, i, mask_size
+        integer :: vk
+
+        call get_identifier_name(arena, array_arg_index, array_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        sym = find_symbol_compat(context, array_name)
+        if (sym <= 0) then
+            error_msg = trim(reduction_name)//' array not declared: '// &
+                        trim(array_name)
+            return
+        end if
+        if (.not. context%symbols(sym)%is_array .or. &
+            context%symbols(sym)%is_allocatable .or. &
+            context%symbols(sym)%has_runtime_dim_size(1)) then
+            error_msg = trim(reduction_name)//' MASK= supports fixed-size '// &
+                        'rank-1 arrays only'
+            return
+        end if
+        array_size = context%symbols(sym)%array_size
+        if (array_size <= 0) then
+            error_msg = trim(reduction_name)//' requires a non-empty array'
+            return
+        end if
+        mask_size = mask_extent(arena, mask_index, context)
+        if (mask_size /= array_size) then
+            if (mask_size <= 0) then
+                error_msg = trim(reduction_name)//' MASK= needs a same-size logical array or comparison mask'
+            else
+                error_msg = trim(reduction_name)//' MASK= extent differs from array extent'
+            end if
+            return
+        end if
+        vk = context%symbols(sym)%value_kind
+        if (.not. any(vk == [VALUE_I32, VALUE_F32, VALUE_F64])) then
+            error_msg = trim(reduction_name)//' MASK= supports default integer, real, and real(8) elements only'
+            return
+        end if
+
+        if (vk == VALUE_I32) then
+            zero = i32_immediate(context%session, 0_c_int64_t)
+            if (trim(reduction_name) == 'sum' .or. &
+                trim(reduction_name) == 'product') then
+                ! The skipped-element operand is the accumulator IDENTITY:
+                ! multiplying a masked-out 0 into a product would annihilate
+                ! the whole reduction (product(a, mask=a<3) is 2, not 0).
+                if (trim(reduction_name) == 'product') then
+                    zero = i32_immediate(context%session, 1_c_int64_t)
+                end if
+                acc = zero
+                do i = 0, array_size - 1
+                    call mask_element_value(arena, mask_index, context, &
+                        int(i, c_int64_t), m, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call load_array_linear_element(context, sym, &
+                        int(i, c_int64_t), cand, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    call select_value(context, m, cand, zero, sel, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_i32_binary(context%session, &
+                        merge(LR_OP_MUL, LR_OP_ADD, &
+                            trim(reduction_name) == 'product'), &
+                        acc, sel, next, error_msg)) return
+                    acc = next
+                end do
+                value = acc
+                call set_empty(error_msg)
+                return
+            end if
+            ! maxval/minval: found-flag so empty selection answers HUGE.
+            acc = i32_immediate(context%session, 0_c_int64_t)
+            hit = i32_immediate(context%session, 0_c_int64_t)
+            do i = 0, array_size - 1
+                call mask_element_value(arena, mask_index, context, &
+                    int(i, c_int64_t), m, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call load_array_linear_element(context, sym, &
+                    int(i, c_int64_t), cand, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_icmp(context%session, &
+                    merge(LR_CMP_SGT, LR_CMP_SLT, &
+                        trim(reduction_name) == 'maxval'), &
+                    cand, acc, cond, error_msg)) return
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, &
+                    hit, zero, cond2, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_OR, cond, &
+                    cond2, or1, error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_AND, or1, &
+                    m, better, error_msg)) return
+                call select_value(context, better, cand, acc, next, error_msg)
+                if (len_trim(error_msg) > 0) return
+                acc = next
+                if (.not. emit_i32_binary(context%session, LR_OP_OR, hit, &
+                    m, next, error_msg)) return
+                hit = next
+            end do
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, hit, &
+                zero, cond, error_msg)) return
+            ! gfortran's empty-selection answers, byte-for-byte (measured):
+            ! maxval -> -HUGE, minval -> +HUGE. The F2018 prose says the
+            ! opposite; this project's reference is the reference compiler.
+            if (trim(reduction_name) == 'maxval') then
+                call select_value(context, cond, acc, &
+                    i32_immediate(context%session, -2147483648_c_int64_t), &
+                    value, error_msg)
+            else
+                call select_value(context, cond, acc, &
+                    i32_immediate(context%session, 2147483647_c_int64_t), &
+                    value, error_msg)
+            end if
+            if (len_trim(error_msg) > 0) return
+            call set_empty(error_msg)
+            return
+        end if
+
+        ! real(4)/real(8): same shapes with the matching compare and ops.
+        block
+            logical :: is_wide, want_max
+            logical :: is_wide2, want_max2
+            is_wide = vk == VALUE_F64
+            want_max = trim(reduction_name) == 'maxval'
+            if (is_wide) then
+                acc = liric_f64_immediate(context%session, 0.0_c_double)
+                zero = liric_f64_immediate(context%session, 0.0_c_double)
+                if (trim(reduction_name) == 'product') then
+                    acc = liric_f64_immediate(context%session, 1.0_c_double)
+                    zero = acc
+                end if
+            else
+                acc = liric_f32_immediate(context%session, 0.0_c_float)
+                zero = liric_f32_immediate(context%session, 0.0_c_float)
+                if (trim(reduction_name) == 'product') then
+                    acc = liric_f32_immediate(context%session, 1.0_c_float)
+                    zero = acc
+                end if
+            end if
+            ! Real accumulators live in a typed stack slot and each masked
+            ! step is an explicit branch route, with the accumulator in a
+            ! typed stack slot. This shape was forced by measurement: the
+            ! first version fell through into this accumulate loop for
+            ! maxval/minval (missing kind dispatch guard) and printed a SUM,
+            ! and the empty-selection fallback only reads correctly from the
+            ! slot after the found-flag merge block.
+            if (.not. (trim(reduction_name) == 'sum' .or. &
+                trim(reduction_name) == 'product')) then
+                ! maxval/minval take the found-flag route further below;
+                ! without this guard they would fall into the accumulator loop
+                ! and compute a SUM (measured: maxval printed 4.5).
+                go to 1766
+            end if
+            if (is_wide) then
+                if (.not. emit_liric_f64_alloca(context%session, acc_addr, &
+                    error_msg)) return
+                if (.not. emit_liric_f64_store(context%session, acc, &
+                    acc_addr, error_msg)) return
+            else
+                if (.not. emit_liric_f32_alloca(context%session, acc_addr, &
+                    error_msg)) return
+                if (.not. emit_liric_f32_store(context%session, acc, &
+                    acc_addr, error_msg)) return
+            end if
+            do i = 0, array_size - 1
+                call mask_element_value(arena, mask_index, context, &
+                    int(i, c_int64_t), m, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call load_array_linear_element(context, sym, &
+                    int(i, c_int64_t), cand, error_msg)
+                if (len_trim(error_msg) > 0) return
+                blk_c = create_liric_block(context%session)
+                blk_n = create_liric_block(context%session)
+                blk_m = create_liric_block(context%session)
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, m, &
+                    i32_immediate(context%session, 0_c_int64_t), cond, &
+                    error_msg)) return
+                if (.not. emit_liric_condbr(context%session, cond, blk_c, &
+                    blk_n, error_msg)) return
+                if (.not. set_liric_block(context%session, blk_c, error_msg)) return
+                if (is_wide) then
+                    if (.not. emit_liric_f64_load(context%session, acc_addr, &
+                        loaded, error_msg)) return
+                    if (.not. emit_liric_f64_binary(context%session, &
+                        merge(LR_OP_FMUL, LR_OP_FADD, &
+                            trim(reduction_name) == 'product'), &
+                        loaded, cand, next, error_msg)) return
+                    if (.not. emit_liric_f64_store(context%session, next, &
+                        acc_addr, error_msg)) return
+                else
+                    if (.not. emit_liric_f32_load(context%session, acc_addr, &
+                        loaded, error_msg)) return
+                    if (.not. emit_liric_f32_binary(context%session, &
+                        merge(LR_OP_FMUL, LR_OP_FADD, &
+                            trim(reduction_name) == 'product'), &
+                        loaded, cand, next, error_msg)) return
+                    if (.not. emit_liric_f32_store(context%session, next, &
+                        acc_addr, error_msg)) return
+                end if
+                if (.not. emit_liric_br(context%session, blk_m, error_msg)) return
+                if (.not. set_liric_block(context%session, blk_n, error_msg)) return
+                if (.not. emit_liric_br(context%session, blk_m, error_msg)) return
+                if (.not. set_liric_block(context%session, blk_m, error_msg)) return
+                context%current_block_id = blk_m
+                context%current_block_terminated = .false.
+            end do
+            if (is_wide) then
+                if (.not. emit_liric_f64_load(context%session, acc_addr, acc, &
+                    error_msg)) return
+            else
+                if (.not. emit_liric_f32_load(context%session, acc_addr, acc, &
+                    error_msg)) return
+            end if
+            if (len_trim(error_msg) > 0) return
+            value = acc
+            call set_empty(error_msg)
+            return
+
+            ! maxval/minval: found flag + typed accumulator slot; empty
+            ! selection answers gfortran's measured -HUGE/maxval and
+            ! +HUGE/minval (the F2018 prose inverts these; gfortran is the
+            ! reference and was probed, not assumed).
+            1766 continue
+            is_wide2 = vk == VALUE_F64
+            want_max2 = trim(reduction_name) == 'maxval'
+            if (.not. emit_i32_alloca(context%session, hit_addr, &
+                error_msg)) return
+            if (.not. emit_i32_store(context%session, &
+                i32_immediate(context%session, 0_c_int64_t), hit_addr, &
+                error_msg)) return
+            if (is_wide2) then
+                if (.not. emit_liric_f64_alloca(context%session, acc_addr, &
+                    error_msg)) return
+                if (.not. emit_liric_f64_store(context%session, &
+                    liric_f64_immediate(context%session, 0.0_c_double), &
+                    acc_addr, error_msg)) return
+            else
+                if (.not. emit_liric_f32_alloca(context%session, acc_addr, &
+                    error_msg)) return
+                if (.not. emit_liric_f32_store(context%session, &
+                    liric_f32_immediate(context%session, 0.0_c_float), &
+                    acc_addr, error_msg)) return
+            end if
+            do i = 0, array_size - 1
+                call mask_element_value(arena, mask_index, context, &
+                    int(i, c_int64_t), m, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call load_array_linear_element(context, sym, &
+                    int(i, c_int64_t), cand, error_msg)
+                if (len_trim(error_msg) > 0) return
+                blk_c = create_liric_block(context%session)
+                blk_s = create_liric_block(context%session)
+                blk_n = create_liric_block(context%session)
+                blk_m = create_liric_block(context%session)
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, m, &
+                    i32_immediate(context%session, 0_c_int64_t), cond, &
+                    error_msg)) return
+                if (.not. emit_liric_condbr(context%session, cond, blk_c, &
+                    blk_n, error_msg)) return
+                if (.not. set_liric_block(context%session, blk_c, error_msg)) return
+                if (is_wide2) then
+                    if (.not. emit_liric_f64_load(context%session, acc_addr, loaded, &
+                        error_msg)) return
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f64_fcmp(context%session, &
+                        merge(LR_FCMP_OGT, LR_FCMP_OLT, want_max2), &
+                        cand, loaded, cond2, error_msg)) return
+                else
+                    if (.not. emit_liric_f32_load(context%session, acc_addr, loaded, &
+                        error_msg)) return
+                    if (len_trim(error_msg) > 0) return
+                    if (.not. emit_liric_f32_fcmp(context%session, &
+                        merge(LR_FCMP_OGT, LR_FCMP_OLT, want_max2), &
+                        cand, loaded, cond2, error_msg)) return
+                end if
+                if (.not. emit_i32_load(context%session, hit_addr, &
+                    hit, error_msg)) return
+                if (.not. emit_liric_i32_icmp(context%session, LR_CMP_EQ, &
+                    hit, i32_immediate(context%session, 0_c_int64_t), cond, &
+                    error_msg)) return
+                if (.not. emit_i32_binary(context%session, LR_OP_OR, cond2, &
+                    cond, better, error_msg)) return
+                if (.not. emit_liric_condbr(context%session, better, blk_s, &
+                    blk_n, error_msg)) return
+                if (.not. set_liric_block(context%session, blk_s, error_msg)) return
+                if (is_wide2) then
+                    if (.not. emit_liric_f64_store(context%session, cand, &
+                        acc_addr, error_msg)) return
+                else
+                    if (.not. emit_liric_f32_store(context%session, cand, &
+                        acc_addr, error_msg)) return
+                end if
+                if (.not. emit_i32_store(context%session, &
+                    i32_immediate(context%session, 1_c_int64_t), hit_addr, &
+                    error_msg)) return
+                if (.not. emit_liric_br(context%session, blk_m, error_msg)) return
+                if (.not. set_liric_block(context%session, blk_n, error_msg)) return
+                if (.not. emit_liric_br(context%session, blk_m, error_msg)) return
+                if (.not. set_liric_block(context%session, blk_m, error_msg)) return
+                context%current_block_id = blk_m
+                context%current_block_terminated = .false.
+            end do
+            if (.not. emit_i32_load(context%session, hit_addr, hit, &
+                error_msg)) return
+            blk_y = create_liric_block(context%session)
+            blk_f = create_liric_block(context%session)
+            blk_o = create_liric_block(context%session)
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, hit, &
+                i32_immediate(context%session, 0_c_int64_t), cond, &
+                error_msg)) return
+            if (.not. emit_liric_condbr(context%session, cond, blk_y, blk_f, &
+                error_msg)) return
+            if (.not. set_liric_block(context%session, blk_y, error_msg)) return
+            if (.not. emit_liric_br(context%session, blk_o, error_msg)) return
+            if (.not. set_liric_block(context%session, blk_f, error_msg)) return
+            if (is_wide2) then
+                if (want_max2) then
+                    if (.not. emit_liric_f64_store(context%session, &
+                        liric_f64_immediate(context%session, &
+                            -1.7976931348623157d308), acc_addr, &
+                        error_msg)) return
+                else
+                    if (.not. emit_liric_f64_store(context%session, &
+                        liric_f64_immediate(context%session, &
+                            1.7976931348623157d308), acc_addr, &
+                        error_msg)) return
+                end if
+            else
+                if (want_max2) then
+                    if (.not. emit_liric_f32_store(context%session, &
+                        liric_f32_immediate(context%session, &
+                            -3.40282347e38), acc_addr, error_msg)) return
+                else
+                    if (.not. emit_liric_f32_store(context%session, &
+                        liric_f32_immediate(context%session, &
+                            3.40282347e38), acc_addr, error_msg)) return
+                end if
+            end if
+            if (.not. emit_liric_br(context%session, blk_o, error_msg)) return
+            if (.not. set_liric_block(context%session, blk_o, error_msg)) return
+            context%current_block_id = blk_o
+            context%current_block_terminated = .false.
+            if (is_wide2) then
+                if (.not. emit_liric_f64_load(context%session, acc_addr, acc, &
+                    error_msg)) return
+            else
+                if (.not. emit_liric_f32_load(context%session, acc_addr, acc, &
+                    error_msg)) return
+            end if
+            if (len_trim(error_msg) > 0) return
+            value = acc
+        end block
+        call set_empty(error_msg)
+    end subroutine lower_masked_reduction
+
     subroutine lower_array_reduction_intrinsic(arena, node, context, value, &
                                                error_msg, reduction_name)
         type(ast_arena_t), intent(in) :: arena
@@ -3828,6 +4219,8 @@
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=*), intent(in) :: reduction_name
         character(len=:), allocatable :: array_name
+        character(len=:), allocatable :: keyword
+        integer :: array_arg_index, mask_index, arg_value
         type(lr_operand_desc_t) :: candidate
         type(lr_operand_desc_t) :: next_value
         type(lr_operand_desc_t) :: condition
@@ -3840,23 +4233,55 @@
         logical :: saved_runtime_dim1, saved_runtime_dim2
         type(lr_operand_desc_t) :: saved_runtime_extent1, saved_runtime_extent2
 
-        if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) /= 1) then
+        ! Resolve the array and optional MASK actuals (positional or keyword).
+        ! Blaming the arity for MASK=/DIM= is actively misleading: a user who
+        ! obeys an "exactly one argument" message deletes the mask, the call
+        ! then compiles, and the result changes silently (#766).
+        array_arg_index = 0
+        mask_index = 0
+        if (allocated(node%arg_indices)) then
+            do i = 1, size(node%arg_indices)
+                call call_actual_keyword(arena, node%arg_indices(i), keyword, &
+                                         arg_value)
+                if (len_trim(keyword) == 0) then
+                    if (array_arg_index == 0) then
+                        array_arg_index = arg_value
+                    else if (mask_index == 0) then
+                        mask_index = arg_value
+                    else
+                        error_msg = trim(reduction_name)// &
+                            ' accepts at most array and MASK arguments'
+                        return
+                    end if
+                else if (same_name(keyword, 'mask')) then
+                    mask_index = arg_value
+                else if (same_name(keyword, 'dim')) then
+                    error_msg = trim(reduction_name)// &
+                        ' DIM= is not supported; the MASK= form is'
+                    return
+                else if (same_name(keyword, 'kind')) then
+                    error_msg = trim(reduction_name)// &
+                        ' KIND= is not supported'
+                    return
+                else
+                    error_msg = trim(reduction_name)// &
+                        ' unsupported keyword argument: '//trim(keyword)
+                    return
+                end if
+            end do
+        end if
+        if (array_arg_index == 0) then
             if (trim(reduction_name) == 'norm2') then
                 error_msg = 'norm2 supports exactly one real array argument; '// &
                             'DIM and KIND forms are not supported'
-            else if (allocated(node%arg_indices) .and. &
-                     size(node%arg_indices) > 1) then
-                ! More arguments than expected means the caller supplied MASK= or
-                ! DIM= (or extra positional arguments), not that the array argument
-                ! is missing. Blaming the arity is actively misleading here: a user
-                ! who obeys it deletes the mask, the call then compiles, and the
-                ! result changes silently (sum(a, mask=a>2) is 12, sum(a) is 15)
-                ! with no diagnostic left to investigate. Name the unsupported thing.
-                error_msg = trim(reduction_name)//' accepts one array argument; '// &
-                            'MASK= and DIM= arguments are not supported'
             else
                 error_msg = trim(reduction_name)//' requires exactly one array argument'
             end if
+            return
+        end if
+        if (mask_index > 0) then
+            call lower_masked_reduction(arena, array_arg_index, mask_index, &
+                context, reduction_name, value, error_msg)
             return
         end if
 
