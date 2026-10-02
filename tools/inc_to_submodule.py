@@ -337,17 +337,18 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
         print(f"{includer}: expected exactly one include of {path.name}, "
               f"found {n}", file=sys.stderr)
         return 4
+    def drop_include(text):
+        # Line filter, not re.sub: CPython 3.14.7 re.sub matched zero
+        # replacements here while re.search found the line (reproducible in
+        # memory); the filter is immune and equally exact.
+        want = f"include '{path.name}'"
+        return "".join(l for l in text.splitlines(keepends=True)
+                       if l.strip() != want)
     if includer != ROOT:
-        includer.write_text(re.sub(
-            rf"^\s*include\s+'{re.escape(path.name)}'\s*\n", "",
-            inc_text, count=1))
-        root_text = ROOT.read_text()
+        includer.write_text(drop_include(inc_text))
+        root_text = drop_include(ROOT.read_text())
     else:
-        root_text = inc_text
-    if includer == ROOT:
-        root_text = re.sub(
-            rf"^\s*include\s+'{re.escape(path.name)}'\s*\n", "",
-            root_text, count=1)
+        root_text = drop_include(inc_text)
     nl = "\n" + "contains" + "\n"
     if root_text.count(nl) != 1:
         print(f"{ROOT}: cannot locate `contains`", file=sys.stderr)

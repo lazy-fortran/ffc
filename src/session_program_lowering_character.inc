@@ -2506,7 +2506,6 @@
         call set_empty(error_msg)
     end subroutine fill_spaces
 
-    include 'session_program_lowering_character_tail.inc'
 
     ! #384: every CHARACTER length specification must be a scalar INTEGER
     ! expression. The parser drops a length it cannot read as an integer, so

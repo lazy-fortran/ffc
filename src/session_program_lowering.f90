@@ -5634,6 +5634,124 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine collect_resolved_declarations
     end interface
+    interface
+        module function emit_or_add1(context, len64) result(size_op)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: len64
+            type(lr_operand_desc_t) :: size_op
+        end function emit_or_add1
+        module subroutine ptr_plus_i32(context, base, offset_i32, result, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: base
+            type(lr_operand_desc_t), intent(in) :: offset_i32
+            type(lr_operand_desc_t), intent(out) :: result
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine ptr_plus_i32
+        module subroutine char_equals(context, &
+                                      a_data, &
+                                      a_len, &
+                                      b_data, &
+                                      b_len, &
+                                      result, &
+                                      error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: a_data, a_len, b_data, b_len
+            type(lr_operand_desc_t), intent(out) :: result
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine char_equals
+        module subroutine char_compare(context, &
+                                       a_data, &
+                                       a_len, &
+                                       b_data, &
+                                       b_len, &
+                                       cmp, &
+                                       error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: a_data, a_len, b_data, b_len
+            type(lr_operand_desc_t), intent(out) :: cmp
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine char_compare
+        module subroutine lower_index_intrinsic(arena, node, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_index_intrinsic
+        recursive module subroutine concat_char_operands(arena, &
+                                                         node_index, &
+                                                         context, &
+                                                         out_data, &
+                                                         out_length, &
+                                                         error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: out_data
+            type(lr_operand_desc_t), intent(out) :: out_length
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine concat_char_operands
+        module subroutine concat_character_operands(context, &
+                                                    left_data, &
+                                                    left_length, &
+                                                    right_data, &
+                                                    right_length, &
+                                                    out_data, &
+                                                    out_length, &
+                                                    error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: left_data, left_length
+            type(lr_operand_desc_t), intent(in) :: right_data, right_length
+            type(lr_operand_desc_t), intent(out) :: out_data, out_length
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine concat_character_operands
+        module subroutine compute_len_trim(context, data_ptr, length, value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: data_ptr
+            type(lr_operand_desc_t), intent(in) :: length
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine compute_len_trim
+        module subroutine lower_adjust_deferred(arena, &
+                                                node, &
+                                                context, &
+                                                left, &
+                                                out_data, &
+                                                out_length, &
+                                                error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: left
+            type(lr_operand_desc_t), intent(out) :: out_data
+            type(lr_operand_desc_t), intent(out) :: out_length
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_adjust_deferred
+        module subroutine lower_trim_deferred(arena, &
+                                              node, &
+                                              context, &
+                                              out_data, &
+                                              out_length, &
+                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: out_data
+            type(lr_operand_desc_t), intent(out) :: out_length
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_trim_deferred
+        module subroutine lower_i32_len_trim_intrinsic(arena, &
+                                                       node, &
+                                                       context, &
+                                                       value, &
+                                                       error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_i32_len_trim_intrinsic
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)

@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) character_tail
+    !! `character_tail` procedures, moved out of `session_program_lowering_character_tail.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine lower_adjust_deferred(arena, node, context, left, out_data, &
                                      out_length, error_msg)
         ! adjustl(s): move leading blanks to the end. adjustr(s): move trailing
@@ -845,3 +853,6 @@
             return
         call set_empty(error_msg)
     end subroutine compute_len_trim
+
+
+end submodule character_tail
