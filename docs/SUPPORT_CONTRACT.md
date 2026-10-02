@@ -485,6 +485,17 @@ the printf precision field:
 
 ### Internal write: groups, repeats and implied-do
 
+Formatted `print` with an implied-do now lowers through a flattened walk:
+the value list expands with loop variables bound per value (multi-object
+`(i, -i, i=2,1,-1)`, nested `((a(i,j), i=1,2), j=1,2)`, negative steps and
+strides, constant bounds), and the format expands groups and repeat counts
+into single-descriptor steps. Trailing `nX` steps are dropped because a
+print record omits trailing blanks (F2018 13.10.2); this also holds for the
+plain compound path with surplus trailing X. A zero-iteration control prints
+the empty record. Array-constructor items stay a named gap
+(`wide_multi` in `tools/test_print_implied_do_parity.py`,
+`runs=21 match=21`, `/var/tmp/ffc-goal/perf/pimdo/report.tsv`).
+
 `write (buf, fmt)` with a literal format expands the format at lowering time
 into a flat list of single-use edit descriptors — `r(...)` groups and `rX`
 repeats unrolled — and walks the value list once:
