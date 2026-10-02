@@ -6179,6 +6179,390 @@ module session_program_lowering_impl
             integer, intent(in), optional :: procedure_node_index
         end subroutine lower_void_subroutine
     end interface
+    interface
+        module subroutine define_deferred_character_pointer(node, context, error_msg)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine define_deferred_character_pointer
+        module subroutine scalar_character_cstring_symbol(arena, &
+                                                          node_index, &
+                                                          context, &
+                                                          symbol_index)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(out) :: symbol_index
+        end subroutine scalar_character_cstring_symbol
+        module subroutine unsupported_pointer_target_array(node, error_msg)
+            type(declaration_node), intent(in) :: node
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine unsupported_pointer_target_array
+        module subroutine define_target_array_symbol(context, &
+                                                     node, &
+                                                     name, &
+                                                     array_lower_bound, &
+                                                     array_size, &
+                                                     value_kind, &
+                                                     error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(declaration_node), intent(in) :: node
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: array_lower_bound
+            integer, intent(in) :: array_size
+            integer, intent(in) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine define_target_array_symbol
+        module subroutine define_pointer_array_stub(context, &
+                                                    name, &
+                                                    value_kind, &
+                                                    array_rank, &
+                                                    error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: value_kind
+            integer, intent(in) :: array_rank
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine define_pointer_array_stub
+        module subroutine emit_pointer_target_slot(context, &
+                                                   symbol_index, &
+                                                   value_kind, &
+                                                   error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            integer, intent(in) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_pointer_target_slot
+        logical module function is_declared_scalar_array_element_target(arena, &
+                                                                        target_index, &
+                                                                        context) result(is_target)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: target_index
+            type(lowering_context_t), intent(in) :: context
+        end function is_declared_scalar_array_element_target
+        module subroutine alias_pointer_to_scalar_array_element(arena, &
+                                                                target_index, &
+                                                                context, &
+                                                                ptr_index, &
+                                                                error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: target_index, ptr_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine alias_pointer_to_scalar_array_element
+        logical module function component_access_is_scalar_derived_pointer(arena, &
+                                                                           access_index, &
+                                                                           context) result(is_ptr)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: access_index
+            type(lowering_context_t), intent(in) :: context
+        end function component_access_is_scalar_derived_pointer
+        logical module function component_access_is_alloc_array_target(arena, &
+                                                                       access_index, &
+                                                                       context) result(is_target)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: access_index
+            type(lowering_context_t), intent(in) :: context
+        end function component_access_is_alloc_array_target
+        module subroutine alias_pointer_to_alloc_array_component(arena, &
+                                                                 access_index, &
+                                                                 context, &
+                                                                 ptr_index, &
+                                                                 error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: access_index, ptr_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine alias_pointer_to_alloc_array_component
+        module subroutine alias_pointer_to_derived_component(arena, &
+                                                             access_index, &
+                                                             context, &
+                                                             ptr_index, &
+                                                             error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: access_index, ptr_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine alias_pointer_to_derived_component
+        module subroutine alias_pointer_to_derived_array_component(arena, &
+                                                                   target_index, &
+                                                                   context, &
+                                                                   ptr_index, &
+                                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: target_index, ptr_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine alias_pointer_to_derived_array_component
+        logical module function target_outlives_procedure(symbol) result(outlives)
+            type(symbol_t), intent(in) :: symbol
+        end function target_outlives_procedure
+        logical module function data_pointer_result_call(arena, &
+                                                         node_index, &
+                                                         context) result(is_call)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+        end function data_pointer_result_call
+        integer module function data_pointer_result_kind(context, &
+                                                         name) result(pointee_kind)
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: name
+        end function data_pointer_result_kind
+        logical module function promote_inferred_data_pointer(context, symbol_index)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+        end function promote_inferred_data_pointer
+        module subroutine alias_pointer_array(context, ptr_index, target_index, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: ptr_index, target_index
+            character(len=:), allocatable :: error_msg
+        end subroutine alias_pointer_array
+        module subroutine alias_pointer_array_section(arena, &
+                                                      target_index, &
+                                                      context, &
+                                                      ptr_index, &
+                                                      error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: target_index
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: ptr_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine alias_pointer_array_section
+        module subroutine lower_c_f_procpointer(arena, arg_indices, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: arg_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_c_f_procpointer
+        module subroutine define_proc_pointer_symbol(context, name, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine define_proc_pointer_symbol
+        logical module function is_proc_pointer_call(context, name) result(ok)
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: name
+        end function is_proc_pointer_call
+        module subroutine resolve_proc_pointer_callee_name(arena, ptr_name, callee_name)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: ptr_name
+            character(len=:), allocatable, intent(out) :: callee_name
+        end subroutine resolve_proc_pointer_callee_name
+        logical module function is_proc_pointer_component_access(arena, &
+                                                                 node_index, &
+                                                                 context) result(is_proc)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+        end function is_proc_pointer_component_access
+        logical module function pointer_target_is_null(arena, node_index) result(is_null)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+        end function pointer_target_is_null
+        module subroutine proc_component_slot_address(arena, &
+                                                      access_index, &
+                                                      context, &
+                                                      addr, &
+                                                      error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: access_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: addr
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine proc_component_slot_address
+        logical module function is_data_pointer_component_access(arena, &
+                                                                 node_index, &
+                                                                 context) result(is_ptr)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+        end function is_data_pointer_component_access
+        module subroutine data_component_slot_address(arena, &
+                                                      access_index, &
+                                                      context, &
+                                                      addr, &
+                                                      error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: access_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: addr
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine data_component_slot_address
+        module subroutine data_pointer_target_address(arena, &
+                                                      access_index, &
+                                                      target_index, &
+                                                      context, &
+                                                      target_addr, &
+                                                      error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: access_index
+            integer, intent(in) :: target_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: target_addr
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine data_pointer_target_address
+        module subroutine lower_c_f_strpointer(arena, arg_indices, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: arg_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_c_f_strpointer
+        module subroutine lower_pointer_target_array(node, context, value_kind, error_msg)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_pointer_target_array
+        module subroutine define_scalar_pointer_target_symbol(context, &
+                                                              node, &
+                                                              name, &
+                                                              value_kind, &
+                                                              character_length, &
+                                                              error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(declaration_node), intent(in) :: node
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: value_kind
+            integer, intent(in) :: character_length
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine define_scalar_pointer_target_symbol
+        module subroutine bind_data_pointer_result(arena, &
+                                                   node_index, &
+                                                   context, &
+                                                   ptr_index, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: ptr_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_data_pointer_result
+        module subroutine lower_proc_pointer_declaration(node, context, error_msg)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_proc_pointer_declaration
+        module subroutine lower_i32_proc_ptr_call(arena, node, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_i32_proc_ptr_call
+        module subroutine lower_void_proc_ptr_call(arena, node_index, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_void_proc_ptr_call
+        logical module function associated_uses_proc_component(arena, &
+                                                               arg_indices, &
+                                                               context) result(uses)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: arg_indices(:)
+            type(lowering_context_t), intent(in) :: context
+        end function associated_uses_proc_component
+        module subroutine load_proc_pointer_operand(arena, &
+                                                    node_index, &
+                                                    context, &
+                                                    ptr_value, &
+                                                    error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: ptr_value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine load_proc_pointer_operand
+        module subroutine lower_data_component_assignment(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(pointer_assignment_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_data_component_assignment
+        module subroutine nullify_data_pointer_component(arena, &
+                                                         access_index, &
+                                                         context, &
+                                                         error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: access_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine nullify_data_pointer_component
+        module subroutine lower_data_pointer_component_associated(arena, &
+                                                                  arg_indices, &
+                                                                  context, &
+                                                                  value, &
+                                                                  error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: arg_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_data_pointer_component_associated
+        module subroutine lower_scalar_pointer_target(node, &
+                                                      context, &
+                                                      value_kind, &
+                                                      error_msg)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_scalar_pointer_target
+        module subroutine lower_nullify(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(nullify_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_nullify
+        module subroutine lower_proc_pointer_assignment(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(pointer_assignment_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_proc_pointer_assignment
+        module subroutine proc_target_address(arena, &
+                                              node_index, &
+                                              context, &
+                                              ptr_value, &
+                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: ptr_value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine proc_target_address
+        module subroutine lower_proc_component_assignment(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(pointer_assignment_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_proc_component_assignment
+        module subroutine lower_proc_pointer_associated(arena, &
+                                                        arg_indices, &
+                                                        context, &
+                                                        value, &
+                                                        error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: arg_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_proc_pointer_associated
+        module subroutine lower_pointer_assignment(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(pointer_assignment_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_pointer_assignment
+        module subroutine lower_associated(arena, arg_indices, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: arg_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_associated
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -7849,7 +8233,6 @@ contains
     include 'session_program_lowering_complex_arrays.inc'
     include 'session_program_lowering_intrinsics.inc'
     include 'session_program_lowering_logical_reduction.inc'
-    include 'session_program_lowering_pointer.inc'
     include 'session_program_lowering_proc_dummy.inc'
     include 'session_program_lowering_statement_function.inc'
     subroutine lower_subroutine_call(arena, node_index, context, error_msg)

@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) pointer
+    !! `pointer` procedures, moved out of `session_program_lowering_pointer.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine lower_scalar_pointer_target(node, context, value_kind, error_msg)
         ! Scalar integer/real/logical POINTER/TARGET (#245 slice B3a). A target
         ! is given a stable in-memory slot so a pointer can address it; a pointer
@@ -2274,3 +2282,6 @@
                                   value, error_msg)) return
         call set_empty(error_msg)
     end subroutine lower_proc_pointer_associated
+
+
+end submodule pointer
