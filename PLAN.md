@@ -679,6 +679,17 @@ corpus TIMEOUT (#754).
 
 #### W1.b — derived types, polymorphism, control flow
 
+- [x] I/O implied-do lowering (print + internal read): flattened walk
+      binds loop vars per value, unfolds nesting, expands format groups;
+      internal read uses one sscanf with one conversion per target.
+      Evidence: ffc `73e8a92`+`4c4c1fa` (print, oracle
+      `tools/test_print_implied_do_parity.py` runs=21 match=21,
+      `/var/tmp/ffc-goal/perf/pimdo/report.tsv`), ffc `31624a4`
+      (internal read, oracle `tools/test_internal_read_implied_do_parity.py`
+      runs=20 match=20, `/var/tmp/ffc-goal/perf/irido/report.tsv`,
+      falsification recorded). Remaining named gaps: array-constructor
+      print items (`wide_multi`), implied-do beside other items,
+      fixed-width exact-field stance, stdin implied-do unit.
 - [ ] Assumed-shape derived-type dummies (8 live files: no
       compile-time-size whole-array actuals required). rank-1 + rank≥2
       runtime strides landed (`ce89457`, `04a50c4`, nested-write oracle
