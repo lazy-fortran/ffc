@@ -5199,6 +5199,174 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_class_star_allocate_source
     end interface
+    interface
+        logical module function is_submodule_unit(node_type)
+            character(len=*), intent(in) :: node_type
+        end function is_submodule_unit
+        module function submodule_parent_module(parent_identifier) result(parent_module)
+            character(len=*), intent(in) :: parent_identifier
+            character(len=:), allocatable :: parent_module
+        end function submodule_parent_module
+        logical module function module_node_defined(arena, name)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: name
+        end function module_node_defined
+        module subroutine refresh_parent_module_generics(arena, &
+                                                         parent_module, &
+                                                         context, &
+                                                         error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: parent_module
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine refresh_parent_module_generics
+        module subroutine register_submodule_generic_interfaces(arena, &
+                                                                decl_indices, &
+                                                                context, &
+                                                                error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: decl_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine register_submodule_generic_interfaces
+        module subroutine submodule_signature_mismatch(arena, &
+                                                       proc_index, &
+                                                       proc_name, &
+                                                       parent_module, &
+                                                       what, &
+                                                       error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: proc_index
+            character(len=*), intent(in) :: proc_name
+            character(len=*), intent(in) :: parent_module
+            character(len=*), intent(in) :: what
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine submodule_signature_mismatch
+        logical module function submodule_body_restates_signature(arena, &
+                                                                  proc_index)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: proc_index
+        end function submodule_body_restates_signature
+        integer module function fmod_procedure_index(info, name) result(idx)
+            type(module_info_t), intent(in) :: info
+            character(len=*), intent(in) :: name
+        end function fmod_procedure_index
+        module function field_text(text) result(out)
+            character(len=:), allocatable, intent(in) :: text
+            character(len=:), allocatable :: out
+        end function field_text
+        module subroutine concat_indices(head, tail, joined)
+            integer, allocatable, intent(in) :: head(:)
+            integer, allocatable, intent(in) :: tail(:)
+            integer, allocatable, intent(out) :: joined(:)
+        end subroutine concat_indices
+        integer module function find_module_interface_procedure(arena, &
+                                                                parent_module, &
+                                                                name)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: parent_module
+            character(len=*), intent(in) :: name
+        end function find_module_interface_procedure
+        module subroutine get_submodule_body_info(arena, &
+                                                  node_index, &
+                                                  name, &
+                                                  parent_module, &
+                                                  declaration_indices, &
+                                                  procedure_indices, &
+                                                  error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=:), allocatable, intent(out) :: name, parent_module
+            integer, allocatable, intent(out) :: declaration_indices(:)
+            integer, allocatable, intent(out) :: procedure_indices(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine get_submodule_body_info
+        module subroutine check_submodule_procedure_against_parent(arena, &
+                                                                   proc_index, &
+                                                                   parent_module, &
+                                                                   parent_info, &
+                                                                   context, &
+                                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: proc_index
+            character(len=*), intent(in) :: parent_module
+            type(module_info_t), intent(in) :: parent_info
+            type(lowering_context_t), intent(in) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_submodule_procedure_against_parent
+        module subroutine build_separate_module_procedure(arena, &
+                                                          proc_index, &
+                                                          parent_module, &
+                                                          found, &
+                                                          is_function, &
+                                                          merged_fn, &
+                                                          merged_sb, &
+                                                          body_source, &
+                                                          error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: proc_index
+            character(len=*), intent(in) :: parent_module
+            logical, intent(out) :: found
+            logical, intent(out) :: is_function
+            type(function_def_node), intent(out) :: merged_fn
+            type(subroutine_def_node), intent(out) :: merged_sb
+            integer, allocatable, intent(out) :: body_source(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine build_separate_module_procedure
+        module subroutine register_one_submodule_procedure(arena, &
+                                                           proc_index, &
+                                                           parent_module, &
+                                                           context, &
+                                                           error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: proc_index
+            character(len=*), intent(in) :: parent_module
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine register_one_submodule_procedure
+        module subroutine bind_submodule_parent(arena, &
+                                                submodule_index, &
+                                                parent_module, &
+                                                proc_indices, &
+                                                context, &
+                                                error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: submodule_index
+            character(len=*), intent(in) :: parent_module
+            integer, allocatable, intent(in) :: proc_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_submodule_parent
+        module subroutine lower_one_submodule_procedure(arena, &
+                                                        proc_index, &
+                                                        parent_module, &
+                                                        context, &
+                                                        error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: proc_index
+            character(len=*), intent(in) :: parent_module
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_one_submodule_procedure
+        module subroutine register_one_submodule_procedures(arena, &
+                                                            submodule_index, &
+                                                            context, &
+                                                            error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: submodule_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine register_one_submodule_procedures
+        module subroutine lower_one_submodule_procedures(arena, &
+                                                         submodule_index, &
+                                                         context, &
+                                                         error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: submodule_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_one_submodule_procedures
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)

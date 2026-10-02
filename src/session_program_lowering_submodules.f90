@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) submodules
+    !! `submodules` procedures, moved out of `session_program_lowering_submodules.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     logical function is_submodule_unit(node_type)
         ! Whether a stored node-type tag names a submodule unit.
         character(len=*), intent(in) :: node_type
@@ -595,3 +603,6 @@
             end select
         end do
     end function find_module_interface_procedure
+
+
+end submodule submodules
