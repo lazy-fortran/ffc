@@ -31,8 +31,9 @@ MODULE = "session_program_lowering_impl"
 # A procedure header at the canonical four-space indent, with the optional
 # prefixes Fortran allows before the keyword.
 HEADER = re.compile(
-    r"^    (?:(?P<prefix>recursive|pure|elemental) )*"
-    r"(?P<rettype>[A-Za-z_][A-Za-z0-9_]* )?"
+    r"^[ \t]{0,8}(?:(?P<prefix>recursive|pure|elemental) )*"
+    r"(?P<rettype>(?:(?!(?:subroutine|function)\b)"
+    r"[A-Za-z_][A-Za-z0-9_]*(?:\([^)\n]*\))?\s+)*)"
     r"(?P<kind>subroutine|function)\s+(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
     r"\s*(?P<args>\([^)]*\)?)?"
     r"(?P<result>\s+result\s*\(\s*[A-Za-z_][A-Za-z0-9_]*\s*\))?"
