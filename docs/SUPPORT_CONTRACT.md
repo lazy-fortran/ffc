@@ -483,6 +483,30 @@ the printf precision field:
   is `****`. A negative value is not inherently an overflow. Repeats, nested
   groups, and format reversion use the ordinary compound-format path.
 
+### Internal write: groups, repeats and implied-do
+
+`write (buf, fmt)` with a literal format expands the format at lowering time
+into a flat list of single-use edit descriptors — `r(...)` groups and `rX`
+repeats unrolled — and walks the value list once:
+
+- Leading repeat counts route to the compound walker (`4I0`, `2(A,I2)`);
+  previously `4I0` died in the single-descriptor parser.
+- Implied-do controls with constant bounds and step expand at lowering time
+  with the loop variable bound per iteration; objects may be expressions over
+  the loop variable, multiple (`(i, -i, i=2,1,-1)`) or nested
+  (`((a(i,j), i=1,2), j=1,2)`). Non-constant bounds and steps are refused
+  with a diagnostic naming the implied-do.
+- Format reversion writes a record-separating newline between records
+  (F2018 13.10.2.1) and restarts the descriptor list.
+- Expansion caps are explicit: at most 256 flattened descriptors and 64
+  emitted values; exceeding either is a refusal, never silent truncation.
+
+The surface is pinned by `tools/test_internal_write_implied_do_parity.py`
+against gfortran (`runs=21 match=21`, per-row md5 in
+`/var/tmp/ffc-goal/perf/iwido/report.tsv`). One named gap remains:
+`rev_records` — a lone data descriptor with surplus values (`'(I0)' 1, 2`)
+still dies in the pre-routing single-value guard.
+
 Parity is machine-checked by `tools/test_format_edit_descriptor_parity.py`,
 including default and narrow/wide integer kinds, negative patterns, overflow,
 zero fields, minimum digits, repeats, and stdout `write`. The report records

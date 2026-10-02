@@ -56,6 +56,22 @@ contains
         call set_empty(error_msg)
     end subroutine emit_blank_pad_string
 
+    logical function starts_with_repeat_count(format_body)
+        ! True when the format opens with a decimal repeat count (4I0,
+        ! 2(I0,1X)); the single-descriptor parser cannot read those.
+        character(len=*), intent(in) :: format_body
+        integer :: pos
+
+        starts_with_repeat_count = .false.
+        pos = 1
+        do while (pos <= len_trim(format_body))
+            if (format_body(pos:pos) < '0') exit
+            if (format_body(pos:pos) > '9') exit
+            pos = pos + 1
+        end do
+        starts_with_repeat_count = pos > 1 .and. pos <= len_trim(format_body)
+    end function starts_with_repeat_count
+
     logical function is_compound_only_descriptor(format_body)
         ! True when the format's single descriptor is one only the compound
         ! walker implements (E editing, X positioning).
@@ -196,8 +212,11 @@ contains
         call normalize_format_body(format_body, normalized_body)
         format_body = normalized_body
         ! The compound walker owns every descriptor kind beyond the I/A pair the
-        ! single-descriptor path handles, so a lone E or X goes there too.
+        ! single-descriptor path handles: comma lists, parenthesized groups,
+        ! leading repeat counts (4I0), and lone E/X descriptors.
         if (index(format_body, ',') > 0 .or. &
+            index(format_body, '(') > 0 .or. &
+            starts_with_repeat_count(format_body) .or. &
             is_compound_only_descriptor(format_body)) then
             call lower_compound_internal_write(arena, node, context, &
                                                format_body, error_msg)
