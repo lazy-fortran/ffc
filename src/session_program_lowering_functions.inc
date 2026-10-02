@@ -3863,4 +3863,3 @@
         call set_empty(error_msg)
     end subroutine lower_scalar_function
 
-    include 'session_program_lowering_functions_tail.inc'

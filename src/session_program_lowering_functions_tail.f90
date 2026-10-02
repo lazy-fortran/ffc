@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) functions_tail
+    !! `functions_tail` procedures, moved out of `session_program_lowering_functions_tail.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine lower_void_subroutine(arena, node, parent_context, error_msg, &
                                       emit_name_override, procedure_node_index)
         type(ast_arena_t), intent(in) :: arena
@@ -2277,3 +2285,6 @@
             code = ARG_INTENT_NONE
         end select
     end function arg_intent_code
+
+
+end submodule functions_tail

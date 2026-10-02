@@ -5752,6 +5752,433 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_i32_len_trim_intrinsic
     end interface
+    interface
+        logical module function dummy_is_character(arena, body_indices, param_name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: param_name
+        end function dummy_is_character
+        logical module function dummy_char_is_writable(arena, body_indices, param_name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: param_name
+        end function dummy_char_is_writable
+        logical module function dummy_is_class_star(arena, body_indices, param_name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: param_name
+        end function dummy_is_class_star
+        module subroutine dummy_declared_derived_type(arena, &
+                                                      body_indices, &
+                                                      param_name, &
+                                                      want_class, &
+                                                      type_name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: param_name
+            logical, intent(in) :: want_class
+            character(len=:), allocatable, intent(out) :: type_name
+        end subroutine dummy_declared_derived_type
+        logical module function dummy_is_assumed_rank(arena, body_indices, param_name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: param_name
+        end function dummy_is_assumed_rank
+        logical module function dummy_is_allocatable_array(arena, &
+                                                           body_indices, &
+                                                           param_name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: param_name
+        end function dummy_is_allocatable_array
+        logical module function fn_return_type_is_i64(node) result(is_i64)
+            type(function_def_node), intent(in) :: node
+        end function fn_return_type_is_i64
+        logical module function declaration_names_entity(decl, name) result(names_it)
+            type(declaration_node), intent(in) :: decl
+            character(len=*), intent(in) :: name
+        end function declaration_names_entity
+        integer module function parameter_entry_value_kind(arena, &
+                                                           param_index, &
+                                                           context) result(value_kind)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: param_index
+            type(lowering_context_t), intent(in), optional :: context
+        end function parameter_entry_value_kind
+        module function procedure_emit_name(fortran_name, bind_c_clause) result(emit_name)
+            character(len=*), intent(in) :: fortran_name
+            character(len=:), allocatable, intent(in) :: bind_c_clause
+            character(len=:), allocatable :: emit_name
+        end function procedure_emit_name
+        logical module function procedure_node_named(arena, node_index, fortran_name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: fortran_name
+        end function procedure_node_named
+        module subroutine procedure_node_bind_c_clause(arena, node_index, bind_c_clause)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=:), allocatable, intent(out) :: bind_c_clause
+        end subroutine procedure_node_bind_c_clause
+        module function module_procedure_mangled(module_name, proc_name) result(mangled)
+            character(len=*), intent(in) :: module_name, proc_name
+            character(len=:), allocatable :: mangled
+        end function module_procedure_mangled
+        logical module function procedure_scope_is(arena, &
+                                                   procedure_node_index, &
+                                                   scope_index) result(is_nested)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: procedure_node_index
+            integer, intent(in) :: scope_index
+        end function procedure_scope_is
+        integer module function containing_program_or_module(arena, &
+                                                             procedure_node_index) result(unit_index)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: procedure_node_index
+        end function containing_program_or_module
+        integer module function enclosing_procedure_node(arena, &
+                                                         procedure_node_index) result(scope_index)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: procedure_node_index
+        end function enclosing_procedure_node
+        integer module function containing_procedure_node(arena, &
+                                                          node_index) result(scope_index)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+        end function containing_procedure_node
+        logical module function procedure_is_internal(arena, &
+                                                      procedure_node_index) result(is_internal)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: procedure_node_index
+        end function procedure_is_internal
+        logical module function binding_scope_is_module(arena, &
+                                                        scope_index) result(is_module)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: scope_index
+        end function binding_scope_is_module
+        integer module function procedure_value_kind(context, &
+                                                     node_index) result(value_kind)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: node_index
+        end function procedure_value_kind
+        logical module function is_bind_c_scalar_result_kind(value_kind)
+            integer, intent(in) :: value_kind
+        end function is_bind_c_scalar_result_kind
+        module function bind_c_value_type(context, value_kind) result(value_type)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: value_kind
+            type(c_ptr) :: value_type
+        end function bind_c_value_type
+        module subroutine split_alt_return_args(arena, arg_indices, alt_labels)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(inout) :: arg_indices(:)
+            integer, allocatable, intent(out) :: alt_labels(:)
+        end subroutine split_alt_return_args
+        module subroutine emit_alt_return_call(arena, &
+                                               node_index, &
+                                               emit_name, &
+                                               args, &
+                                               alt_labels, &
+                                               copyback_indices, &
+                                               context, &
+                                               error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: emit_name
+            type(lr_operand_desc_t), intent(in) :: args(:)
+            integer, intent(in) :: alt_labels(:)
+            integer, intent(in) :: copyback_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_alt_return_call
+        module subroutine lower_alternate_return(arena, node_index, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_alternate_return
+        integer module function alt_return_slot_count(arena, param_indices) result(count)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: param_indices(:)
+        end function alt_return_slot_count
+        module subroutine parameter_name(arena, node_index, name, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=:), allocatable, intent(out) :: name
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine parameter_name
+        module subroutine ensure_function_names_capacity(context, required_index)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: required_index
+        end subroutine ensure_function_names_capacity
+        module subroutine ensure_derived_types_capacity(context, required_index)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: required_index
+        end subroutine ensure_derived_types_capacity
+        module subroutine ensure_all_context_arrays_allocated(context, &
+                                                              min_symbols, &
+                                                              min_derived_types, &
+                                                              min_module_exports, &
+                                                              min_functions)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: min_symbols
+            integer, intent(in) :: min_derived_types
+            integer, intent(in) :: min_module_exports
+            integer, intent(in) :: min_functions
+        end subroutine ensure_all_context_arrays_allocated
+        module subroutine external_dummy_names(context, callee_name, names, count)
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: callee_name
+            character(len=64), allocatable, intent(inout) :: names(:)
+            integer, intent(inout) :: count
+        end subroutine external_dummy_names
+        integer module function arg_intent_code(token) result(code)
+            character(len=*), intent(in) :: token
+        end function arg_intent_code
+        logical module function callee_dummy_char_writable(arena, callee_name, param_pos)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+        end function callee_dummy_char_writable
+        logical module function callee_dummy_is_class_star(arena, callee_name, param_pos)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+        end function callee_dummy_is_class_star
+        module subroutine callee_dummy_declared_derived_type(arena, &
+                                                             callee_name, &
+                                                             param_pos, &
+                                                             want_class, &
+                                                             type_name)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+            logical, intent(in) :: want_class
+            character(len=:), allocatable, intent(out) :: type_name
+        end subroutine callee_dummy_declared_derived_type
+        logical module function dummy_is_array(arena, body_indices, param_name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: param_name
+        end function dummy_is_array
+        logical module function callee_dummy_is_assumed_rank(arena, &
+                                                             callee_name, &
+                                                             param_pos)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+        end function callee_dummy_is_assumed_rank
+        logical module function callee_dummy_is_allocatable_array(arena, &
+                                                                  callee_name, &
+                                                                  param_pos)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+        end function callee_dummy_is_allocatable_array
+        logical module function param_at_is_character(arena, &
+                                                      param_indices, &
+                                                      body_indices, &
+                                                      param_pos) result(is_char)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: param_indices(:)
+            integer, allocatable, intent(in) :: body_indices(:)
+            integer, intent(in) :: param_pos
+        end function param_at_is_character
+        integer module function assumed_rank_dummy_value_kind(arena, &
+                                                              param_indices, &
+                                                              body_indices, &
+                                                              param_pos, &
+                                                              context) result(value_kind)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: param_indices(:)
+            integer, allocatable, intent(in) :: body_indices(:)
+            integer, intent(in) :: param_pos
+            type(lowering_context_t), intent(in) :: context
+        end function assumed_rank_dummy_value_kind
+        integer module function param_at_value_kind(arena, &
+                                                    param_indices, &
+                                                    body_indices, &
+                                                    param_pos, &
+                                                    context) result(value_kind)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: param_indices(:)
+            integer, allocatable, intent(in) :: body_indices(:)
+            integer, intent(in) :: param_pos
+            type(lowering_context_t), intent(in), optional :: context
+        end function param_at_value_kind
+        module function nested_procedure_emit_name(arena, &
+                                                   procedure_node_index, &
+                                                   fortran_name, &
+                                                   bind_c_clause) result(emit_name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: procedure_node_index
+            character(len=*), intent(in) :: fortran_name
+            character(len=:), allocatable, intent(in) :: bind_c_clause
+            character(len=:), allocatable :: emit_name, base_name
+        end function nested_procedure_emit_name
+        module function procedure_module(arena, &
+                                         fortran_name, &
+                                         bind_c_clause) result(module_name)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: fortran_name
+            character(len=:), allocatable, intent(out), optional :: bind_c_clause
+            character(len=:), allocatable :: module_name
+        end function procedure_module
+        integer module function visible_nested_procedure_node(context, name) result(index)
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: name
+        end function visible_nested_procedure_node
+        logical module function procedure_same_host_unit(arena, &
+                                                         procedure_node_index, &
+                                                         reference_node_index) result(same)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: procedure_node_index
+            integer, intent(in) :: reference_node_index
+        end function procedure_same_host_unit
+        logical module function procedure_is_internal_body(arena, &
+                                                           procedure_node_index) result(is_internal)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: procedure_node_index
+        end function procedure_is_internal_body
+        logical module function is_bind_c_direct_value_kind(value_kind)
+            integer, intent(in) :: value_kind
+        end function is_bind_c_direct_value_kind
+        module function bind_c_value_param(context, param_index, value_kind) result(value)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: param_index
+            integer, intent(in) :: value_kind
+            type(lr_operand_desc_t) :: value
+        end function bind_c_value_param
+        module subroutine collect_param_names(arena, param_indices, names, count)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: param_indices(:)
+            character(len=64), allocatable, intent(inout) :: names(:)
+            integer, intent(out) :: count
+        end subroutine collect_param_names
+        logical module function callee_dummy_is_array(arena, callee_name, param_pos)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+        end function callee_dummy_is_array
+        logical module function callee_dummy_is_character(arena, callee_name, param_pos)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+        end function callee_dummy_is_character
+        integer module function visible_same_unit_procedure_node(context, &
+                                                                 name) result(index)
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: name
+        end function visible_same_unit_procedure_node
+        logical module function begin_bind_c_procedure(arena, &
+                                                       name, &
+                                                       result_kind, &
+                                                       param_indices, &
+                                                       body_indices, &
+                                                       context, &
+                                                       error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: result_kind
+            integer, allocatable, intent(in) :: param_indices(:)
+            integer, allocatable, intent(in) :: body_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function begin_bind_c_procedure
+        module subroutine define_parameter_symbol(context, &
+                                                  name, &
+                                                  param_index, &
+                                                  value_kind, &
+                                                  error_msg, &
+                                                  parameter_node_index, &
+                                                  direct_value)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: param_index
+            integer, intent(in) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+            integer, intent(in), optional :: parameter_node_index
+            logical, intent(in), optional :: direct_value
+        end subroutine define_parameter_symbol
+        integer module function callee_dummy_value_kind(arena, &
+                                                        callee_name, &
+                                                        param_pos, &
+                                                        context) result(value_kind)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+            type(lowering_context_t), intent(in), optional :: context
+        end function callee_dummy_value_kind
+        integer module function callee_dummy_assumed_rank_value_kind(arena, &
+                                                                     callee_name, &
+                                                                     param_pos, &
+                                                                     context) result(value_kind)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+            type(lowering_context_t), intent(in) :: context
+        end function callee_dummy_assumed_rank_value_kind
+        module function call_emit_name(arena, &
+                                       fortran_name, &
+                                       current_context) result(emit_name)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: fortran_name
+            type(lowering_context_t), intent(in), optional :: current_context
+            character(len=:), allocatable :: emit_name, module_name, bind_c_clause
+        end function call_emit_name
+        module subroutine define_reference_parameters(arena, &
+                                                      param_indices, &
+                                                      context, &
+                                                      error_msg, &
+                                                      body_indices, &
+                                                      param_offset, &
+                                                      return_value_kind, &
+                                                      external_abi)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: param_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+            integer, allocatable, intent(in), optional :: body_indices(:)
+            integer, intent(in), optional :: param_offset
+            integer, intent(in), optional :: return_value_kind
+            logical, intent(in), optional :: external_abi
+        end subroutine define_reference_parameters
+        module subroutine callee_dummy_names(arena, context, callee_name, names, count)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: callee_name
+            character(len=64), allocatable, intent(out) :: names(:)
+            integer, intent(out) :: count
+        end subroutine callee_dummy_names
+        module subroutine callee_dummy_contracts(arena, &
+                                                 context, &
+                                                 callee_name, &
+                                                 param_pos, &
+                                                 is_optional, &
+                                                 is_value, &
+                                                 intent_code)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+            logical, intent(out) :: is_optional
+            logical, intent(out) :: is_value
+            integer, intent(out) :: intent_code
+        end subroutine callee_dummy_contracts
+        module subroutine lower_void_subroutine(arena, &
+                                                node, &
+                                                parent_context, &
+                                                error_msg, &
+                                                emit_name_override, &
+                                                procedure_node_index)
+            type(ast_arena_t), intent(in) :: arena
+            type(subroutine_def_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: parent_context
+            character(len=:), allocatable, intent(out) :: error_msg
+            character(len=*), intent(in), optional :: emit_name_override
+            integer, intent(in), optional :: procedure_node_index
+        end subroutine lower_void_subroutine
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)

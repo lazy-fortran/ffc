@@ -274,7 +274,7 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
             iface.append(prefix_part + p["args"][0] + ", &")
             for a in p["args"][1:-1]:
                 iface.append(cont + a + ", &")
-            iface.append(cont + p["args"][-1] + ")")
+            iface.append(cont + p["args"][-1] + ")" + res)
         else:
             iface.append(head)
         seen_decl: set[str] = set()
