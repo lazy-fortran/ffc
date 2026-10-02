@@ -246,10 +246,10 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
     region = "\n".join(lines[procedures[0]["start"]:procedures[-1]["end"]])
     # `end subroutine foo` must not count as a header: `end` fits the
     # optional return-type slot, which would report a false imbalance.
-    n_head = len(re.findall(r"^    (?!end\s)(?:recursive |pure |elemental |)*"
-                            r"(?:[A-Za-z_][A-Za-z0-9_]* )?"
+    n_head = len(re.findall(r"^[ \t]*(?!end\b)(?:(?:recursive|pure|elemental) )"
+                            r"*(?:[A-Za-z_][A-Za-z0-9_]*(?:\([^)\n]*\))? )*"
                             r"(?:subroutine|function)\s+[A-Za-z_]", region, re.M))
-    n_end = len(re.findall(r"^    end (?:subroutine|function)\b", region, re.M))
+    n_end = len(re.findall(r"^[ \t]*end\s+(?:subroutine|function)\b", region, re.M))
     if n_head != n_end:
         print(f"{path}: {n_head} procedure headers but {n_end} terminators in "
               "the captured region - this include holds a fragment of a "
@@ -268,10 +268,13 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
     body_last = max(p["end"] for p in procedures)
     iface_procs = order_by_dependency(procedures, lines)
     if iface_procs is None:
-        print(f"{path}: mutually recursive procedures in this include - the "
-              "interface block cannot order callees before callers, so it needs "
-              "explicit interfaces written by hand", file=sys.stderr)
-        return 7
+        # Cycles are fine: every folded procedure gets a parent-module
+        # interface, and submodule bodies see all parent interfaces
+        # regardless of order. Keep source order and mark callees recursive.
+        iface_procs = list(procedures)
+        print(f"{path}: cyclic call graph - keeping source order "
+              "(parent interfaces make bodies order-independent)",
+              file=sys.stderr)
 
     iface: list[str] = ["    interface"]
     for p in iface_procs:
