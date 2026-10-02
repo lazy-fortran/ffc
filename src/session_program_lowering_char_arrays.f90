@@ -1,18 +1,10 @@
-    ! Fixed-length character element arrays. Storage is one contiguous buffer of
-    ! array_size * character_length bytes in element_address, so element i sits
-    ! at base + i*character_length and the element stride is the declared length,
-    ! exactly as docs/ARRAY_DESCRIPTOR_ABI.md describes a contiguous array of
-    ! ARRAY_ELEMENT_CHARACTER with element_size = character_length.
-    !
-    ! An element is therefore a borrowed character view: character_length bytes
-    ! at its address, with no terminator of its own, since the next element
-    ! begins immediately after it. Reading one goes through the same view
-    ! machinery as a substring, and anything that needs a C string materialises
-    ! a terminated copy of exactly the element length.
-    !
-    ! Scope: local rank-1 through rank-4 arrays with a compile-time length and
-    ! extent; dummy character arrays stay unsupported. A character parameter
-    ! array may infer its element length from its folded constructor.
+submodule (session_program_lowering_impl) char_arrays
+    !! `char_arrays` procedures, moved out of `session_program_lowering_char_arrays.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     recursive logical function is_character_array_constructor_expression( &
             arena, node_index, context) result(is_array)
@@ -1110,3 +1102,6 @@
         read (expr, *, iostat=ios) length_const
         if (ios /= 0) length_const = -1_c_int64_t
     end function deferred_char_array_len_const
+
+
+end submodule char_arrays

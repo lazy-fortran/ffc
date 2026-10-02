@@ -9064,6 +9064,231 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_compound_internal_write
     end interface
+    interface
+        recursive logical module function is_character_array_constructor_expression(arena, &
+                                                                                    node_index, &
+                                                                                    context) result(is_array)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+        end function is_character_array_constructor_expression
+        module subroutine accept_assumed_shape_character_dummy(node, context, error_msg)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine accept_assumed_shape_character_dummy
+        module subroutine decline_character_array_initializer(node, &
+                                                              initial_texts, &
+                                                              error_msg)
+            type(declaration_node), intent(in) :: node
+            character(len=:), allocatable, intent(out) :: initial_texts(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine decline_character_array_initializer
+        logical module function character_array_is_dummy(context, node) result(is_dummy)
+            type(lowering_context_t), intent(in) :: context
+            type(declaration_node), intent(in) :: node
+        end function character_array_is_dummy
+        module subroutine infer_character_array_initializer_length(context, &
+                                                                   node, &
+                                                                   length, &
+                                                                   error_msg)
+            type(lowering_context_t), intent(in) :: context
+            type(declaration_node), intent(in) :: node
+            integer, intent(out) :: length
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine infer_character_array_initializer_length
+        module subroutine character_array_fold_dims(context, &
+                                                    node, &
+                                                    index, &
+                                                    dim_count, &
+                                                    error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: index
+            integer, intent(in) :: dim_count
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine character_array_fold_dims
+        module subroutine init_character_array_blanks(context, &
+                                                      symbol_index, &
+                                                      character_length, &
+                                                      array_size, &
+                                                      error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            integer, intent(in) :: character_length
+            integer, intent(in) :: array_size
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine init_character_array_blanks
+        module subroutine character_array_element_address(context, &
+                                                          symbol_index, &
+                                                          linear_index, &
+                                                          address, &
+                                                          error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(in) :: linear_index
+            type(lr_operand_desc_t), intent(out) :: address
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine character_array_element_address
+        module subroutine character_array_linear_index(arena, &
+                                                       node, &
+                                                       context, &
+                                                       symbol_index, &
+                                                       linear_index, &
+                                                       error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(out) :: linear_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine character_array_linear_index
+        module subroutine declare_deferred_char_allocatable_array(node, &
+                                                                  context, &
+                                                                  error_msg)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine declare_deferred_char_allocatable_array
+        module subroutine lower_allocate_deferred_char_array(arena, &
+                                                             node, &
+                                                             context, &
+                                                             handled, &
+                                                             error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(allocate_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_allocate_deferred_char_array
+        recursive integer module function character_array_constructor_size(arena, &
+                                                                           node_index, &
+                                                                           context) result(count)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+        end function character_array_constructor_size
+        module subroutine fold_character_array_initializer(context, &
+                                                           node, &
+                                                           character_length, &
+                                                           array_size, &
+                                                           initial_texts, &
+                                                           error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: character_length
+            integer, intent(in) :: array_size
+            character(len=:), allocatable, intent(out) :: initial_texts(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine fold_character_array_initializer
+        module subroutine store_character_array_initials(context, &
+                                                         symbol_index, &
+                                                         character_length, &
+                                                         array_size, &
+                                                         initial_texts, &
+                                                         error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            integer, intent(in) :: character_length
+            integer, intent(in) :: array_size
+            character(len=*), intent(in) :: initial_texts(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine store_character_array_initials
+        module subroutine lower_character_array_element_slot(arena, &
+                                                             node, &
+                                                             context, &
+                                                             symbol_index, &
+                                                             slot_addr, &
+                                                             error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(out) :: symbol_index
+            type(lr_operand_desc_t), intent(out) :: slot_addr
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_character_array_element_slot
+        module subroutine emit_character_array_print_items(context, &
+                                                           symbol_index, &
+                                                           suppress_leading_space, &
+                                                           handled, &
+                                                           error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            logical, intent(in) :: suppress_leading_space
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_character_array_print_items
+        module subroutine lower_character_array_whole_assignment(arena, &
+                                                                 node, &
+                                                                 symbol_index, &
+                                                                 context, &
+                                                                 handled, &
+                                                                 error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(assignment_node), intent(in) :: node
+            integer, intent(in) :: symbol_index
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_character_array_whole_assignment
+        recursive module subroutine character_array_constructor_element_operands(arena, &
+                                                                                 node_index, &
+                                                                                 element_index, &
+                                                                                 context, &
+                                                                                 data_ptr, &
+                                                                                 length, &
+                                                                                 error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index, element_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: data_ptr, length
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine character_array_constructor_element_operands
+        module subroutine define_character_array_symbol(context, &
+                                                        node, &
+                                                        name, &
+                                                        character_length, &
+                                                        array_lower_bound, &
+                                                        array_size, &
+                                                        initial_texts, &
+                                                        error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(declaration_node), intent(in) :: node
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: character_length
+            integer, intent(in) :: array_lower_bound
+            integer, intent(in) :: array_size
+            character(len=:), allocatable, intent(in) :: initial_texts(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine define_character_array_symbol
+        module subroutine lower_character_array_element_assignment(arena, &
+                                                                   node, &
+                                                                   target, &
+                                                                   context, &
+                                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(assignment_node), intent(in) :: node
+            type(call_or_subscript_node), intent(in) :: target
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_character_array_element_assignment
+        module subroutine lower_character_array_element_print(arena, &
+                                                              node, &
+                                                              context, &
+                                                              use_value, &
+                                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: use_value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_character_array_element_print
+        module subroutine lower_character_array_declaration(node, context, error_msg)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_character_array_declaration
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -9854,7 +10079,6 @@ contains
     ! Legacy MIN aliases reuse the typed scalar min/max engines.
     include 'session_program_lowering_arrays.inc'
     include 'session_program_lowering_array_elements.inc'
-    include 'session_program_lowering_char_arrays.inc'
     include 'session_program_lowering_allocatable.inc'
     include 'session_program_lowering_runtime_alloc.inc'
     subroutine define_symbol(context, name, value_kind, error_msg)

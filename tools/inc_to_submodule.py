@@ -42,7 +42,7 @@ HEADER = re.compile(
 END_HEADER = re.compile(r"^\s*end\s+(subroutine|function|procedure)\b", re.I)
 PAREN = r"(?:[^()]|\([^()]*\))*"
 DECL = re.compile(
-    r"^        (?P<spec>(?:type|class)\(" + PAREN + r"\)|"
+    r"^[ \t]{0,8}(?P<spec>(?:type|class)\(" + PAREN + r"\)|"
     r"(?:integer|logical|real|complex|character)(?:\(" + PAREN + r"\))?)"
     r"(?P<attrs>[^:]*)"
     r"::\s*(?P<names>[A-Za-z_][A-Za-z0-9_]*(?:\s*\(" + PAREN + r"\))?"
@@ -90,17 +90,38 @@ def parse_args(raw: str) -> list[str]:
     return [re.sub(r"\s*\(.*\)$", "", a) for a in out]
 
 
+DECLSECTION = re.compile(
+    r"^\s*(?:use\b|implicit\b|private\b|public\b|integer\b|real\b|"
+    r"double\b|complex\b|character\b|logical\b|type\s*\(|type\s+|"
+    r"class\s*\(|procedure\b|dimension\b|pointer\b|allocatable\b|"
+    r"contiguous\b|optional\b|target\b|value\b|parameter\b|external\b|"
+    r"intent\b|save\b|enum\b|common\b|equivalence\b|bind\s*\()",
+    re.I)
+
+
 def declarations(body: list[str]) -> dict[str, str]:
-    """Map dummy name -> full declaration line, from the body's own text."""
+    """Map dummy name -> declaration line from the body's DECLARATION
+    SECTION only. Scanning executables lets an internal procedure's dummy
+    (`type(x), intent(in) :: context`) overwrite the outer procedure's
+    (`intent(inout) :: context`), producing a corrupt interface body."""
     found: dict[str, str] = {}
+    skipped_header = False
     for _, line in join_continuations(body):
+        stripped = line.strip()
+        if not stripped or stripped.startswith("!"):
+            continue
+        if not skipped_header:
+            skipped_header = True  # the first logical line is the header
+            continue
+        if not DECLSECTION.match(line):
+            break  # first executable statement: declaration section is over
         m = DECL.match(line.rstrip())
         if not m:
             continue
         for name in re.findall(r"[A-Za-z_][A-Za-z0-9_]*(?:\s*\([^)]*\))?",
                                m.group("names")):
             name = re.sub(r"\s*\(.*\)$", "", name.strip())
-            if name:
+            if name and name not in found:
                 found[name] = line.rstrip()
     return found
 
