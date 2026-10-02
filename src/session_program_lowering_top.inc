@@ -1390,13 +1390,11 @@
                                            'support this AST node', error_msg)
         end select
     end subroutine unsupported_statement_node
-    include 'session_program_lowering_interface.inc'
     include 'session_program_lowering_derived_types.inc'
     include 'session_program_lowering_pdt.inc'
     include 'session_program_lowering_derived_type_ops.inc'
     include 'session_program_lowering_derived_module_ops.inc'
     include 'session_program_lowering_derived_ctor.inc'
-    include 'session_program_lowering_module_vars.inc'
     include 'session_program_lowering_namelist.inc'
     subroutine lower_statement_list(arena, node_indices, context, value, &
                                     terminated, error_msg)

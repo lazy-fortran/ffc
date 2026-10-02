@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) runtime_alloc
+    !! `runtime_alloc` procedures, moved out of `session_program_lowering_runtime_alloc.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine alloc_runtime_extent_i32(context, sym, extent_i32, error_msg)
         ! Runtime extent of a rank-1 allocatable read straight out of its
         ! canonical descriptor, truncated to i32. Used when the preceding
@@ -996,3 +1004,6 @@
                                                   error_msg)
         handled = len_trim(error_msg) == 0
     end subroutine lower_runtime_local_array_assignment
+
+
+end submodule runtime_alloc

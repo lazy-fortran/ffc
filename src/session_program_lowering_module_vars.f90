@@ -1,11 +1,10 @@
-    ! Module-level variable storage (#263). A scalar module variable becomes a
-    ! mutable LIRIC global named __<module>_MOD_<var> (gfortran convention),
-    ! carrying its declared initializer. Module procedures bind the same global
-    ! as an addressed reference symbol; a using program imports it via
-    ! import_module_variables. Supported scalar kinds are integer(4), real(4),
-    ! real(8), logical, and fixed-length character; fixed-size complex arrays use parallel real and
-    ! imaginary globals. Multi-declarations and other kinds stay xfail with a
-    ! clean diagnostic.
+submodule (session_program_lowering_impl) module_vars
+    !! `module_vars` procedures, moved out of `session_program_lowering_module_vars.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     subroutine module_variable_kind(arena, var_idx, value_kind, status, context, &
                                     error_msg)
@@ -1622,3 +1621,6 @@
             end do
         end do
     end subroutine bind_module_constants_in_context
+
+
+end submodule module_vars

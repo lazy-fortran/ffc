@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) session_program_lowering_interface
+    !! `session_program_lowering_interface` procedures, moved out of `session_program_lowering_interface.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine lower_interface_block(arena, node, context, error_msg)
         ! Register bind(c) external integer functions declared in an interface
         ! block (#192). Generic named interfaces (interface foo ... module
@@ -1605,3 +1613,6 @@
             ret_kind = 0
         end if
     end function generic_call_return_kind
+
+
+end submodule session_program_lowering_interface
