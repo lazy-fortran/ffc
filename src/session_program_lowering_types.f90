@@ -411,12 +411,6 @@ module session_program_lowering_types
     ! an active LIRIC function, so it deliberately carries no storage operand.
     type, public :: declaration_record_t
         integer :: declaration_node_index = 0
-        ! Arena index of the declaration STATEMENT this record was collected
-        ! from. FortFront canonicalizes duplicate declarations of one entity
-        ! to the same declaration_node_index, so distinguishing a benign
-        ! re-collection of one statement from two distinct statements naming
-        ! one entity in one scope needs the origin arena index (#3021).
-        integer :: origin_node_index = 0
         integer :: declaration_entity_index = 0
         integer :: scope_node_index = 0
         character(len=64) :: name = ''

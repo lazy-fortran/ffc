@@ -162,7 +162,6 @@ contains
             end block
         end if
         call make_declaration_record(node, name, binding, context, record)
-        record%origin_node_index = node_index
         call store_declaration_record(context, record, error_msg)
     end subroutine collect_one_declaration_entity
 
@@ -190,7 +189,6 @@ contains
             return
         end if
         call make_parameter_record(node, trim(node%name), binding, context, record)
-        record%origin_node_index = node_index
         call store_declaration_record(context, record, error_msg)
     end subroutine collect_parameter_declaration_node
 
@@ -218,7 +216,6 @@ contains
             result_binding = bindings(i)
             call make_function_result_record(arena, node, result_binding, &
                                               context, record)
-            record%origin_node_index = node_index
             call store_declaration_record(context, record, error_msg)
             if (len_trim(error_msg) > 0) return
         end do
@@ -468,21 +465,6 @@ contains
         call set_empty(error_msg)
         if (record%declaration_node_index <= 0 .or. &
             record%scope_node_index <= 0) return
-        ! Name-and-scope duplicate scan: two DISTINCT declaration statements
-        ! (different arena origins) naming one entity in one scoping unit
-        ! are invalid (gfortran: "already has basic type"; #3021 dup_decl).
-        ! Same-origin revisits are benign re-collection and still merge.
-        do i = 1, context%declaration_record_count
-            if (context%declaration_records(i)%scope_node_index /= &
-                record%scope_node_index) cycle
-            if (.not. same_name(context%declaration_records(i)%name, &
-                                record%name)) cycle
-            if (context%declaration_records(i)%origin_node_index == &
-                record%origin_node_index) cycle
-            error_msg = 'symbol '//trim(record%name)// &
-                        ' already declared in this scoping unit'
-            return
-        end do
         do i = 1, context%declaration_record_count
             if (.not. same_declaration_identity( &
                 context%declaration_records(i), record)) cycle
