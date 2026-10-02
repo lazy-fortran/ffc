@@ -378,9 +378,12 @@
     end subroutine char_compare
 
     subroutine lower_index_intrinsic(arena, node, context, value, error_msg)
-        ! index(s, sub): 1-based position of the first occurrence of sub in s,
-        ! or 0. Implemented as an outer position scan with an inner byte compare,
-        ! both driven by stack counters (no SSA phi).
+        ! index(s, sub [, back [, kind]]): 1-based position of the first
+        ! occurrence of sub in s, or the LAST one when back is true; 0 if
+        ! absent. Implemented as an outer position scan with an inner byte
+        ! compare, both driven by stack counters (no SSA phi). With BACK the
+        ! scan does not stop at a match: it keeps advancing and overwrites
+        ! the result, so the rightmost match survives at done (#764).
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
         type(lowering_context_t), intent(inout) :: context
@@ -389,8 +392,13 @@
         type(lr_operand_desc_t) :: s_data, s_len, sub_data, sub_len
         type(lr_operand_desc_t) :: i_addr, j_addr, res_addr, max_start
         type(lr_operand_desc_t) :: i_val, j_val, cond, sb, tb, sum_ij, tmp
+        type(lr_operand_desc_t) :: back_val
         integer(c_int32_t) :: outer_hdr, outer_body, inner_hdr, inner_body
         integer(c_int32_t) :: matched, advance, done
+        integer :: i, arg_value, back_index, kind_index
+        integer(c_int64_t) :: kind_value
+        character(len=:), allocatable :: keyword, kind_err
+        logical :: has_back
 
         if (.not. allocated(node%arg_indices)) then
             error_msg = 'index requires two character arguments'
@@ -406,6 +414,49 @@
         call char_expr_operands(arena, node%arg_indices(2), context, sub_data, &
                                 sub_len, error_msg)
         if (len_trim(error_msg) > 0) return
+        ! Resolve BACK/KIND actuals (positional 3/4 or BACK=/KIND=). An
+        ! unknown keyword is refused by name: silently dropping BACK=.true.
+        ! was the #764 wrong answer, and silently dropping a misspelled
+        ! keyword would reproduce it in the other direction.
+        back_index = 0
+        kind_index = 0
+        do i = 3, size(node%arg_indices)
+            call unwrap_intrinsic_arg(arena, node%arg_indices(i), keyword, &
+                                      arg_value)
+            if (len_trim(keyword) == 0) then
+                if (i == 3) then
+                    back_index = arg_value
+                else
+                    kind_index = arg_value
+                end if
+            else if (same_name(keyword, 'back')) then
+                back_index = arg_value
+            else if (same_name(keyword, 'kind')) then
+                kind_index = arg_value
+            else
+                error_msg = 'index unsupported keyword argument: ' // &
+                    trim(keyword)
+                return
+            end if
+        end do
+        if (kind_index > 0) then
+            call parse_i32_constant(arena, kind_index, kind_value, 'kind', &
+                                    kind_err)
+            if (len_trim(kind_err) > 0) then
+                error_msg = 'index KIND must be a constant'
+                return
+            end if
+            if (kind_value /= 4) then
+                error_msg = 'index supports only default INTEGER(4) results'
+                return
+            end if
+        end if
+        has_back = back_index > 0
+        if (has_back) then
+            call lower_i32_expression(arena, back_index, context, back_val, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         if (.not. emit_i32_alloca(context%session, i_addr, error_msg)) return
         if (.not. emit_i32_alloca(context%session, j_addr, error_msg)) return
@@ -482,7 +533,8 @@
             if (.not. emit_liric_br(context%session, inner_hdr, error_msg)) return
         end block
 
-        ! matched: result = i + 1; goto done
+        ! matched: result = i + 1. Forward: done. BACK: keep scanning from
+        ! advance so a later match overwrites res_addr (#764).
         if (.not. set_liric_block(context%session, matched, error_msg)) return
         context%current_block_id = matched
         if (.not. emit_i32_load(context%session, i_addr, i_val, error_msg)) return
@@ -491,7 +543,15 @@
             return
         if (.not. emit_i32_store(context%session, tmp, res_addr, error_msg)) &
             return
-        if (.not. emit_liric_br(context%session, done, error_msg)) return
+        if (has_back) then
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, back_val, &
+                    i32_immediate(context%session, 0_c_int64_t), cond, &
+                    error_msg)) return
+            if (.not. emit_liric_condbr(context%session, cond, advance, done, &
+                    error_msg)) return
+        else
+            if (.not. emit_liric_br(context%session, done, error_msg)) return
+        end if
 
         ! advance: i = i + 1; goto outer_hdr
         if (.not. set_liric_block(context%session, advance, error_msg)) return

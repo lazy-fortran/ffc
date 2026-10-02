@@ -1296,7 +1296,64 @@ contains
         end select
     end function locate_arg_value_node
 
-    ! scan(s, set [, back]): 1-based position of first char of s found in set; 0 if none.
+    ! Resolve optional BACK/KIND actuals of the string-search intrinsics
+    ! (positional args 3/4 or BACK=/KIND=). Indices are 0 when absent. An
+    ! unknown keyword is refused by name instead of being dropped: silently
+    ! ignoring BACK=.true. is the #764 wrong answer on valid code.
+    subroutine search_back_kind_actual(arena, node, back_index, kind_index, &
+                                       error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        integer, intent(out) :: back_index, kind_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, arg_index, value_index
+        character(len=:), allocatable :: keyword, name_err
+
+        back_index = 0
+        kind_index = 0
+        call set_empty(error_msg)
+        if (.not. allocated(node%arg_indices)) return
+        do i = 3, size(node%arg_indices)
+            arg_index = node%arg_indices(i)
+            keyword = ''
+            value_index = arg_index
+            if (node_exists(arena, arg_index)) then
+                select type (n => arena%entries(arg_index)%node)
+                    type is (assignment_node)
+                    if (.not. is_identifier(arena, n%target_index)) then
+                        error_msg = trim(node%name)// &
+                            ' keyword actual must be NAME=VALUE'
+                        return
+                    end if
+                    call get_identifier_name(arena, n%target_index, keyword, &
+                                             name_err)
+                    if (len_trim(name_err) > 0) then
+                        error_msg = name_err
+                        return
+                    end if
+                    value_index = n%value_index
+                end select
+            end if
+            if (len_trim(keyword) == 0) then
+                if (i == 3) then
+                    back_index = value_index
+                else
+                    kind_index = value_index
+                end if
+            else if (same_name(keyword, 'back')) then
+                back_index = value_index
+            else if (same_name(keyword, 'kind')) then
+                kind_index = value_index
+            else
+                error_msg = trim(node%name)// &
+                    ' unsupported keyword argument: '//trim(keyword)
+                return
+            end if
+        end do
+    end subroutine search_back_kind_actual
+
+    ! scan(s, set [, back [, kind]]): 1-based position of first char of s
+    ! found in set, or the LAST one when back is true; 0 if none.
     subroutine lower_scan_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
@@ -1306,8 +1363,13 @@ contains
         type(lr_operand_desc_t) :: s_data, s_len, set_data, set_len
         type(lr_operand_desc_t) :: i_addr, j_addr, res_addr
         type(lr_operand_desc_t) :: i_val, j_val, cond, sb, tb, tmp
+        type(lr_operand_desc_t) :: back_val
         integer(c_int32_t) :: outer_hdr, outer_body, inner_hdr, inner_body
         integer(c_int32_t) :: matched, advance_j, advance_i, done
+        integer :: back_index, kind_index
+        integer(c_int64_t) :: kind_value
+        character(len=:), allocatable :: kind_err
+        logical :: has_back
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 2) then
             error_msg = 'scan requires two character arguments'
@@ -1319,6 +1381,27 @@ contains
         call char_expr_operands(arena, node%arg_indices(2), context, set_data, &
             set_len, error_msg)
         if (len_trim(error_msg) > 0) return
+        call search_back_kind_actual(arena, node, back_index, kind_index, &
+            error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (kind_index > 0) then
+            call parse_i32_constant(arena, kind_index, kind_value, 'kind', &
+                kind_err)
+            if (len_trim(kind_err) > 0) then
+                error_msg = 'scan KIND must be a constant'
+                return
+            end if
+            if (kind_value /= 4) then
+                error_msg = 'scan supports only default INTEGER(4) results'
+                return
+            end if
+        end if
+        has_back = back_index > 0
+        if (has_back) then
+            call lower_i32_expression(arena, back_index, context, back_val, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         if (.not. emit_i32_alloca(context%session, i_addr, error_msg)) return
         if (.not. emit_i32_alloca(context%session, j_addr, error_msg)) return
@@ -1379,7 +1462,8 @@ contains
         if (.not. emit_liric_condbr(context%session, cond, matched, advance_j, &
             error_msg)) return
 
-        ! matched: result = i + 1; goto done.
+        ! matched: result = i + 1. Forward: done. BACK: keep scanning so a
+        ! later match overwrites res_addr (#764).
         if (.not. set_liric_block(context%session, matched, error_msg)) return
         context%current_block_id = matched
         if (.not. emit_i32_load(context%session, i_addr, i_val, error_msg)) return
@@ -1387,7 +1471,15 @@ contains
             i32_immediate(context%session, 1_c_int64_t), tmp, error_msg)) &
             return
         if (.not. emit_i32_store(context%session, tmp, res_addr, error_msg)) return
-        if (.not. emit_liric_br(context%session, done, error_msg)) return
+        if (has_back) then
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, back_val, &
+                i32_immediate(context%session, 0_c_int64_t), cond, error_msg)) &
+                return
+            if (.not. emit_liric_condbr(context%session, cond, advance_i, done, &
+                error_msg)) return
+        else
+            if (.not. emit_liric_br(context%session, done, error_msg)) return
+        end if
 
         ! advance_j: j = j + 1; goto inner_hdr.
         if (.not. set_liric_block(context%session, advance_j, error_msg)) return
@@ -1417,7 +1509,8 @@ contains
         call set_empty(error_msg)
     end subroutine lower_scan_intrinsic
 
-    ! verify(s, set [, back]): 1-based position of first char of s NOT in set; 0 if all in set.
+    ! verify(s, set [, back [, kind]]): 1-based position of first char of s
+    ! NOT in set, or the LAST such char when back is true; 0 if all in set.
     subroutine lower_verify_intrinsic(arena, node, context, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: node
@@ -1427,9 +1520,14 @@ contains
         type(lr_operand_desc_t) :: s_data, s_len, set_data, set_len
         type(lr_operand_desc_t) :: i_addr, j_addr, res_addr, found_addr
         type(lr_operand_desc_t) :: i_val, j_val, cond, sb, tb, found_val, tmp
+        type(lr_operand_desc_t) :: back_val
         integer(c_int32_t) :: outer_hdr, outer_body, inner_hdr, inner_body
         integer(c_int32_t) :: set_found, advance_j, check_found
         integer(c_int32_t) :: store_result, advance_i, done
+        integer :: back_index, kind_index
+        integer(c_int64_t) :: kind_value
+        character(len=:), allocatable :: kind_err
+        logical :: has_back
 
         if (.not. allocated(node%arg_indices) .or. size(node%arg_indices) < 2) then
             error_msg = 'verify requires two character arguments'
@@ -1441,6 +1539,27 @@ contains
         call char_expr_operands(arena, node%arg_indices(2), context, set_data, &
             set_len, error_msg)
         if (len_trim(error_msg) > 0) return
+        call search_back_kind_actual(arena, node, back_index, kind_index, &
+            error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (kind_index > 0) then
+            call parse_i32_constant(arena, kind_index, kind_value, 'kind', &
+                kind_err)
+            if (len_trim(kind_err) > 0) then
+                error_msg = 'verify KIND must be a constant'
+                return
+            end if
+            if (kind_value /= 4) then
+                error_msg = 'verify supports only default INTEGER(4) results'
+                return
+            end if
+        end if
+        has_back = back_index > 0
+        if (has_back) then
+            call lower_i32_expression(arena, back_index, context, back_val, &
+                error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         if (.not. emit_i32_alloca(context%session, i_addr, error_msg)) return
         if (.not. emit_i32_alloca(context%session, j_addr, error_msg)) return
@@ -1535,7 +1654,8 @@ contains
         if (.not. emit_liric_condbr(context%session, cond, store_result, &
             advance_i, error_msg)) return
 
-        ! store_result: result = i + 1; goto done.
+        ! store_result: result = i + 1. Forward: done. BACK: keep scanning so
+        ! the rightmost char outside the set survives in res_addr (#764).
         if (.not. set_liric_block(context%session, store_result, error_msg)) return
         context%current_block_id = store_result
         if (.not. emit_i32_load(context%session, i_addr, i_val, error_msg)) return
@@ -1543,7 +1663,15 @@ contains
             i32_immediate(context%session, 1_c_int64_t), tmp, error_msg)) &
             return
         if (.not. emit_i32_store(context%session, tmp, res_addr, error_msg)) return
-        if (.not. emit_liric_br(context%session, done, error_msg)) return
+        if (has_back) then
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_NE, back_val, &
+                i32_immediate(context%session, 0_c_int64_t), cond, error_msg)) &
+                return
+            if (.not. emit_liric_condbr(context%session, cond, advance_i, done, &
+                error_msg)) return
+        else
+            if (.not. emit_liric_br(context%session, done, error_msg)) return
+        end if
 
         ! advance_i: i = i + 1; go back to outer loop.
         if (.not. set_liric_block(context%session, advance_i, error_msg)) return

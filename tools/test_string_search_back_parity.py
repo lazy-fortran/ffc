@@ -1,18 +1,23 @@
 #!/usr/bin/env python3
-"""Byte-exact parity for string-search intrinsics; pins the ignored `back=` (#764).
+"""Byte-exact parity for string-search intrinsics; #764 `back=` honoured.
 
-`index(s, sub, back=.true.)` is lowered as a forward search: the third argument is
-dropped, so ffc reports the leftmost match where Fortran requires the rightmost.
-Without `back` the compilers agree, which is exactly why this hides - it misreports
-only when the caller explicitly asks for the rightmost match, and it returns a
-plausible integer with no diagnostic. This is a wrong answer on **valid** code, a
-more severe class than the over-acceptance rows in
-test_name_namespace_collision_parity.py, so it gets its own status label.
+`index(s, sub, back=.true.)` and `scan(s, set, back=.true.)` used to be
+lowered as forward searches - the third argument was dropped, so ffc
+reported the leftmost match where Fortran requires the rightmost. Fixed in
+this file's green set: BACK is now resolved (positional or keyword, literal
+or runtime expression) and turns the match block into scan-on - the result
+overwrites itself and the LAST match survives. `verify` ignored BACK too
+(the earlier claim that it honoured BACK came from a coincidental row where
+every character was in the set, making forward and backward agree at 0);
+`verify_back_real` below is the discriminating case for it.
 
-`KNOWN_WRONG_ANSWER` rows are named and counted, never deleted and never counted as
-passes; each flips to MATCH when #764 is honoured or made into an honest refusal
-(a refusal is a strict improvement over a silent wrong index, and this oracle treats
-a refusal as progress, not failure).
+A wrong answer on valid code is more severe than the over-acceptance rows in
+test_name_namespace_collision_parity.py, so the pre-fix rows carried their
+own status label; with the fix landed the wrong-answer list is empty and any
+mismatch on these rows is now a REGRESSION that fails the oracle.
+KNOWN_REFUSED pins the honest refusals kept by name: KIND=8 (results are
+INTEGER(4) only) and misspelled keywords - a dropped keyword is exactly how
+#764 hid, so refusing it loudly is part of the fix.
 
 Verified NOT defects and kept in the green set rather than assumed: `len(trim(s))`
 looks wrong (`0` vs `8`) only when `s` is undefined - every row here assigns its
@@ -32,10 +37,10 @@ FFC = ROOT / "build" / "fo" / "app" / "ffc"
 WORK = Path("/var/tmp/ffc-goal/perf/ssback")
 REPORT = Path("/var/tmp/ffc-goal/perf/ssback/report.tsv")
 
-KNOWN_WRONG_ANSWER = [
-    "index_back_literal_named", "index_back_literal_positional",
-    "index_back_multi", "index_back_dotted_arg", "scan_back",
-    "index_back_named", "index_back_positional",
+KNOWN_WRONG_ANSWER = []  # empty since the #764 fix; any wrong answer is a REGRESSION
+
+KNOWN_REFUSED = [
+    "index_kind8_refused", "index_bad_keyword_refused", "scan_kind8_refused",
 ]
 
 # Character variables are deliberately given the EXACT content length. Padding is
@@ -44,7 +49,8 @@ KNOWN_WRONG_ANSWER = [
 # needle never occurs. The first version of this file used padded dummies and so
 # scored the #764 defect as MATCH - the test neutralised the very bug it was
 # written to catch. Literal needles, or exactly-sized variables, are mandatory.
-DECL = 'character(len=6) :: s\n  character(len=2) :: t\n  s="abcabc"\n  t="ab"'
+DECL = ('character(len=6) :: s\n  character(len=2) :: t\n  logical :: bt\n'
+        '  s="abcabc"\n  t="ab"\n  bt=.true.')
 
 CASES = [
     # forward search - correct today, must stay correct
@@ -56,7 +62,7 @@ CASES = [
     ("index_single_char", 'print *, index("abc","c")'),
     ("index_whole", 'print *, index("abc","abc")'),
     ("index_empty_needle", 'print *, index("abc","")'),
-    # back=.true. - wrong today (#764)
+    # back=.true. - fixed (#764), pinned against regressions
     ("index_back_named", "print *, index(s,t,back=.true.)"),
     ("index_back_positional", "print *, index(s,t,.true.)"),
     ("index_back_literal_named", 'print *, index("abcabc","abc",back=.true.)'),
@@ -64,12 +70,28 @@ CASES = [
     ("index_back_multi", 'print *, index("zabzab","ab",back=.true.)'),
     ("index_back_absent", 'print *, index("abcabc","zzz",back=.true.)'),
     ("index_back_dotted_arg", 'print *, index("abcabc","bc",.true.)'),
+    ("index_back_false_pos", 'print *, index("abcabc","abc",.false.)'),
+    ("index_back_var", "print *, index(s,t,back=bt)"),
+    ("index_back_computed", "print *, index(s,t,back=len(s)>1)"),
+    ("index_back_overlap", 'print *, index("aaaa","aa",back=.true.)'),
+    ("index_pos_kind4", 'print *, index("abcabc","abc",.true.,4)'),
     # other search intrinsics - correct today
     ("scan_first", 'print *, scan("aabbc","ab")'),
     ("scan_absent", 'print *, scan("xyz","ab")'),
     ("scan_back", 'print *, scan("aabbc","ab",back=.true.)'),
+    ("scan_back_rightmost", 'print *, scan("ccbbaa","ab",back=.true.)'),
+    ("scan_back_absent", 'print *, scan("xyz","ab",back=.true.)'),
+    ("scan_back_var", "print *, scan(\"aabbc\",\"ab\",bt)"),
     ("verify_first", 'print *, verify("aabc","ab")'),
     ("verify_back", 'print *, verify("aabcc","abc",back=.true.)'),
+    # discriminating verify rows: the old verify_back agreed by coincidence
+    # (every char in the set -> both directions answer 0). These differ.
+    ("verify_back_real", 'print *, verify("aabcc","ab",back=.true.)'),
+    ("verify_back_var", "print *, verify(\"aabcc\",\"ab\",bt)"),
+    # honest refusals kept by name (part of the #764 fix)
+    ("index_kind8_refused", 'print *, index(s,t,kind=8)'),
+    ("index_bad_keyword_refused", 'print *, index(s,t,backet=.true.)'),
+    ("scan_kind8_refused", 'print *, scan("abc","ab",kind=8)'),
     ("index_len_interact", "print *, index(s,t), len(t)"),
     ("len_trim_assigned", 'print *, len(trim("ab      "))'),
     ("len_trim_blank", 'print *, len(trim("     "))'),
@@ -96,12 +118,25 @@ def main() -> int:
         src.write_text("program p\n  implicit none\n  " + DECL + "\n    " + stmt +
                        "\nend program p\n")
         grc, _ = run(["gfortran", str(src), "-o", str(WORK / f"{name}_r")])
+        frc_pre, ferr = run([str(FFC), str(src), "-o", str(WORK / f"{name}_f")])
         if grc != 0:
+            runs += 1
+            if name in KNOWN_REFUSED:
+                if frc_pre != 0:
+                    refused += 1
+                    lines.append(f"{name}\tKNOWN_REFUSED\tboth_refuse")
+                else:
+                    lines.append(f"{name}\tREGRESSION\tffc_accepts_invalid_ref_refuses")
+                continue
             lines.append(f"{name}\tBAD_CASE\tgfortran_refuses")
             continue
-        frc, ferr = run([str(FFC), str(src), "-o", str(WORK / f"{name}_f")])
+        frc, ferr = frc_pre, ferr
         if frc != 0:
             runs += 1
+            if name in KNOWN_REFUSED:
+                refused += 1
+                lines.append(f"{name}\tKNOWN_REFUSED\trefused_by_name")
+                continue
             if name in KNOWN_WRONG_ANSWER:
                 refused += 1
                 lines.append(f"{name}\tKNOWN_REFUSED\tprogress_over_wrong_answer")
