@@ -414,17 +414,40 @@ contains
 
     module procedure strip_literal_quotes
         integer :: text_len
+        character(len=:), allocatable :: raw
+        character :: q
+        integer :: i, n
 
         ! .and. does not short-circuit, so the length guard is a separate test:
         ! an empty text would otherwise index text(1:1) out of bounds.
         text_len = len_trim(text)
         value = trim(text)
         if (text_len < 2) return
+        raw = ''
+        q = ' '
         if (text(1:1) == '"' .and. text(text_len:text_len) == '"') then
-            value = text(2:text_len - 1)
+            raw = text(2:text_len - 1)
+            q = '"'
         else if (text(1:1) == "'" .and. text(text_len:text_len) == "'") then
-            value = text(2:text_len - 1)
+            raw = text(2:text_len - 1)
+            q = "'"
+        else
+            return
         end if
+        ! A doubled delimiter inside the literal is one literal delimiter
+        ! (F2018 6.31): 'I''m' is the value I'm.
+        n = len(raw)
+        value = ''
+        i = 1
+        do while (i <= n)
+            if (raw(i:i) == q .and. i < n .and. raw(i+1:i+1) == q) then
+                value = value//q
+                i = i + 2
+            else
+                value = value//raw(i:i)
+                i = i + 1
+            end if
+        end do
     end procedure strip_literal_quotes
 
     module procedure logical_i32_value
