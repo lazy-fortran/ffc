@@ -2186,7 +2186,9 @@
         ! A named-constant array must carry the flag on its symbol or an
         ! assignment to it (`a(2) = 9`, `a = [...]`) passes the assignment
         ! guards and mutates constant storage (#3021).
-        if (node%is_parameter) context%symbols(index)%is_parameter = .true.
+        if (node%is_parameter .and. .not. is_dummy) then
+            context%symbols(index)%is_parameter = .true.
+        end if
         context%symbols(index)%array_lower_bound = array_lower_bound
 
         if (is_assumed) then

@@ -7721,7 +7721,9 @@ contains
             call get_identifier_name(arena, node%target_index, name, error_msg)
             if (len_trim(error_msg) > 0) return
             symbol_index = find_symbol_compat(context, name)
-            if (symbol_index > 0 .and. context%symbols(symbol_index)%is_parameter) then
+            if (symbol_index > 0 .and. &
+                context%symbols(symbol_index)%is_parameter .and. &
+                .not. context%symbols(symbol_index)%is_dummy_argument) then
                 error_msg = 'cannot assign to named constant: '//trim(name)
                 return
             end if
@@ -7740,7 +7742,8 @@ contains
             if (target%base_expr_index == 0 .and. allocated(target%name)) then
                 symbol_index = find_symbol_compat(context, target%name)
                 if (symbol_index > 0 .and. &
-                    context%symbols(symbol_index)%is_parameter) then
+                    context%symbols(symbol_index)%is_parameter .and. &
+                    .not. context%symbols(symbol_index)%is_dummy_argument) then
                     error_msg = 'cannot assign to named constant: '// &
                                 trim(target%name)
                     return
