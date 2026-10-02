@@ -62,7 +62,7 @@ CASES = [
     ("wide_multi", DECL + "print '(I4,I4)', (1, -23)"),
 ]
 
-KNOWN_GAP: set[str] = {"wide_multi"}  # array-constructor print items: separate surface
+KNOWN_GAP: set[str] = set()
 
 
 def build_run(is_ffc: bool, src: Path, exe: Path) -> tuple[str | None, str]:

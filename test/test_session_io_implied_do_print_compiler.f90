@@ -64,34 +64,53 @@ contains
     end function test_nested_objects
 
     logical function test_formatted_objects_refused()
-        test_formatted_objects_refused = refuse_formatted( &
-            'print "(I0)", (i, -i, i=1,2)', 'multi')
-        if (.not. refuse_formatted('print "(I0)", ((i, i=1,2), j=1,2)', &
-            'nested')) then
+        ! Multi-object, nested and unit-* controls lowered byte-exactly by
+        ! the flattened walk (73e8a92): pinned as outputs. Empty formats and
+        ! implied-do beside other items stay refused, each named.
+        test_formatted_objects_refused = expect_output( &
+            'program main'//new_line('a')// &
+            'integer :: i, j'//new_line('a')// &
+            'print "(I0)", (i, -i, i=1,2)'//new_line('a')// &
+            'end program main', '1'//new_line('a')//'-1'//new_line('a')// &
+            '2'//new_line('a')//'-2'//new_line('a'), &
+            '/tmp/ffc_fmt_multi_objects')
+        if (.not. expect_output( &
+            'program main'//new_line('a')// &
+            'integer :: i, j'//new_line('a')// &
+            'print "(I0)", ((i, i=1,2), j=1,2)'//new_line('a')// &
+            'end program main', '1'//new_line('a')//'2'//new_line('a')// &
+            '1'//new_line('a')//'2'//new_line('a'), &
+            '/tmp/ffc_fmt_nested_objects')) then
             test_formatted_objects_refused = .false.
         end if
-        if (.not. refuse_formatted('print "()", (i, -i, i=1,2)', 'empty')) then
+        if (.not. refuse_formatted('print "()", (i, -i, i=1,2)', 'empty', &
+            'no data descriptor')) then
             test_formatted_objects_refused = .false.
         end if
         if (.not. refuse_formatted('print "(I0)", 9, (i, -i, i=1,2)', &
-            'mixed')) then
+            'mixed', 'formatted I/O implied-do')) then
             test_formatted_objects_refused = .false.
         end if
-        if (.not. refuse_formatted('write(*, "(I0)") (i, -i, i=1,2)', &
-            'write')) then
+        if (.not. expect_output( &
+            'program main'//new_line('a')// &
+            'integer :: i, j'//new_line('a')// &
+            'write(*, "(I0)") (i, -i, i=1,2)'//new_line('a')// &
+            'end program main', '1'//new_line('a')//'-1'//new_line('a')// &
+            '2'//new_line('a')//'-2'//new_line('a'), &
+            '/tmp/ffc_fmt_write_objects')) then
             test_formatted_objects_refused = .false.
         end if
     end function test_formatted_objects_refused
 
-    logical function refuse_formatted(statement, stem) result(refused)
-        character(len=*), intent(in) :: statement, stem
+    logical function refuse_formatted(statement, stem, message) result(refused)
+        character(len=*), intent(in) :: statement, stem, message
         character(len=:), allocatable :: source
 
         source = 'program main'//new_line('a')// &
             'integer :: i, j'//new_line('a')//statement//new_line('a')// &
             'end program main'
-        refused = expect_error_contains(source, 'formatted I/O implied-do', &
-            '/var/tmp/ffc_formatted_'//stem//'_objects')
+        refused = expect_error_contains(source, message, &
+            '/tmp/ffc_formatted_'//stem//'_objects')
     end function refuse_formatted
 
     logical function test_other_io_objects_refused()

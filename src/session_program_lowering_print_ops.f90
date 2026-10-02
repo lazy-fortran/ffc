@@ -108,7 +108,15 @@ contains
         if (len_trim(error_msg) > 0) return
         call normalize_format_body(node%format_spec, format_body)
         if (len_trim(format_body) == 0) then
-            ! An empty format still terminates one record.
+            ! An empty format with no items still terminates one record; an
+            ! empty format beside items leaves them without a data descriptor
+            ! (gfortran fails at runtime), so refuse with items present.
+            if (allocated(node%expression_indices) .and. &
+                size(node%expression_indices) > 0) then
+                call unsupported_feature_error('formatted print', node%line, &
+                    node%column, 'format has no data descriptor', error_msg)
+                return
+            end if
             if (.not. emit_liric_print_newline(context%session, error_msg)) return
             call set_empty(error_msg)
             return
@@ -187,6 +195,14 @@ contains
         logical :: implied_do_handled
 
         call set_empty(error_msg)
+        if (len_trim(format_body) == 0 .or. &
+            trim(format_body) == "()") then
+            ! An empty format has no data descriptor: gfortran fails at
+            ! runtime on any output item; refuse the statement instead.
+            call unsupported_feature_error('formatted print', node%line, &
+                node%column, 'format has no data descriptor', error_msg)
+            return
+        end if
         implied_do_handled = .false.
         if (allocated(node%expression_indices)) then
             if (size(node%expression_indices) == 1) then
@@ -199,6 +215,24 @@ contains
                     return
                 end if
             end if
+        end if
+        ! Any remaining implied-do sits beside other top-level items: the
+        ! flattened walk owns sole-control statements only. Refuse by name so
+        ! the diagnostic says what is unsupported.
+        if (allocated(node%expression_indices)) then
+            do item_index = 1, size(node%expression_indices)
+                if (node_exists(arena, node%expression_indices(item_index))) then
+                    select type (dn => arena%entries(node%expression_indices(item_index))%node)
+                    type is (io_implied_do_node)
+                        call unsupported_feature_error('formatted I/O implied-do', &
+                            node%line, node%column, &
+                            'implied-do beside other output items is not yet lowered', &
+                            error_msg)
+                        return
+                    class default
+                    end select
+                end if
+            end do
         end if
         item_index = 1
         exhausted = .false.
