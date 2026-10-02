@@ -483,6 +483,20 @@ the printf precision field:
   is `****`. A negative value is not inherently an overflow. Repeats, nested
   groups, and format reversion use the ordinary compound-format path.
 
+### Internal read: implied-do targets
+
+`read (buf, fmt)` and `read (buf, *)` with a sole implied-do control
+lower through a flattened target walk: loop variables bind per value,
+nesting unfolds (`((a(i,j), i=1,2), j=1,2)`), and one sscanf per
+statement carries one conversion per target with `%*[ ,]` separator
+skips; format reversion needs no cursor because `%d` skips newlines.
+Widths follow the existing single-value stance (`I0`/`Iw` -> `%[w]d`,
+exact for single-space separation). Targets are i32 array elements;
+A descriptors and implied-do beside other targets refuse by name.
+Oracle `tools/test_internal_read_implied_do_parity.py`: runs=20
+match=20 byte-exact vs gfortran (`/var/tmp/ffc-goal/perf/irido/report.tsv`),
+falsification shown by removing separator skips (3 rows fail).
+
 ### Internal write: groups, repeats and implied-do
 
 Formatted `print` with an implied-do now lowers through a flattened walk:

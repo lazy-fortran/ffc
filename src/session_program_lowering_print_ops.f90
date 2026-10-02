@@ -592,6 +592,8 @@ contains
                       (step < 0_c_int64_t .and. v >= hi))
                 context%symbols(vsym)%i32_constant = v
                 context%symbols(vsym)%value = i32_immediate(context%session, v)
+                context%symbols(vsym)%has_i32_constant = .true.
+                context%symbols(vsym)%is_transient_i32_constant = .true.
                 context%symbols(vsym)%has_address = .false.
                 context%symbols(vsym)%is_reference = .false.
                 do oi = 1, size(objs)
@@ -635,7 +637,7 @@ contains
         end select
     end subroutine flatten_implied_do
 
-    subroutine expand_format_groups(format_body, expanded, error_msg)
+    module subroutine expand_format_groups(format_body, expanded, error_msg)
         ! Expand r(...) groups to rep comma-separated copies of the expanded
         ! body and rX to rep bare X steps; other descriptor tokens are copied
         ! verbatim up to the next separator. A comma inside a quoted literal

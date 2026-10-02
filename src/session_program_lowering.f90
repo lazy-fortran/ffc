@@ -1095,6 +1095,12 @@ module session_program_lowering_impl
             logical :: is_decimal_digit
             character, intent(in) :: ch
         end function is_decimal_digit
+        module subroutine expand_format_groups(format_body, expanded, &
+                                               error_msg)
+            character(len=*), intent(in) :: format_body
+            character(len=:), allocatable, intent(out) :: expanded
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine expand_format_groups
         module subroutine skip_format_separators(text, pos)
             character(len=*), intent(in) :: text
             integer, intent(inout) :: pos
