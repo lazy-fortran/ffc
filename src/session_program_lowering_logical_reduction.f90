@@ -1,13 +1,11 @@
-    ! Reduce a comparison mask to a single accumulated i32 value: for all() the
-    ! accumulator starts at 1 and ANDs each element; for any() it starts at 0 and
-    ! ORs; for count (accumulate=='count') it starts at 0 and adds each 0/1
-    ! element. Returns handled=.false. (with no error) for any form it cannot
-    ! resolve at compile time so the caller keeps its existing behaviour.
-    !
-    ! Each comparison operand may be a whole stored/allocatable array, a rank-1
-    ! array section (integer/real), an array constructor of scalars, or a scalar
-    ! that broadcasts. Relational (==, /=, <, ...) and logical-equivalence
-    ! (.eqv., .neqv.) operators are supported.
+submodule (session_program_lowering_impl) logical_reduction
+    !! `logical_reduction` procedures, moved out of `session_program_lowering_logical_reduction.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine try_general_mask_reduction(arena, node, context, accumulate, &
                                           handled, value, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -1810,3 +1808,6 @@
             error_msg = 'unsupported reduction operand coercion'
         end select
     end subroutine coerce_reduction_operand
+
+
+end submodule logical_reduction

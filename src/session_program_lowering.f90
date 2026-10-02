@@ -7113,6 +7113,778 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_read_file_al
     end interface
+    interface
+        logical module function dummy_is_procedure(arena, &
+                                                   body_indices, &
+                                                   name) result(is_proc)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: name
+        end function dummy_is_procedure
+        module subroutine define_procedure_dummy_symbol(context, &
+                                                        name, &
+                                                        param_index, &
+                                                        error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: param_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine define_procedure_dummy_symbol
+        module subroutine procedure_symbol_operand(context, emit_name, operand, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: emit_name
+            type(lr_operand_desc_t), intent(out) :: operand
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine procedure_symbol_operand
+        recursive logical module function body_contains_proc_assignment(arena, &
+                                                                        indices, &
+                                                                        ptr_name) result(found)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: indices(:)
+            character(len=*), intent(in) :: ptr_name
+        end function body_contains_proc_assignment
+        module subroutine lower_f32_proc_ptr_call(arena, node, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_f32_proc_ptr_call
+        module function intrinsic_thunk_libm_name(name) result(libm_name)
+            character(len=*), intent(in) :: name
+            character(len=:), allocatable :: libm_name
+        end function intrinsic_thunk_libm_name
+        module subroutine procedure_call_actual_indices(arena, node_index, arg_indices)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, allocatable, intent(out) :: arg_indices(:)
+        end subroutine procedure_call_actual_indices
+        module subroutine emit_one_intrinsic_thunk(context, libm_name, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: libm_name
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_one_intrinsic_thunk
+        logical module function procedure_actual_name(arena, &
+                                                      node_index, &
+                                                      context, &
+                                                      name) result(is_proc)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            character(len=:), allocatable, intent(out) :: name
+        end function procedure_actual_name
+        logical module function proc_pointer_f64_target_is_stable(arena, &
+                                                                  ptr_name, &
+                                                                  context) result(is_stable)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: ptr_name
+            type(lowering_context_t), intent(in) :: context
+        end function proc_pointer_f64_target_is_stable
+        module function intrinsic_thunk_name(name) result(thunk_name)
+            character(len=*), intent(in) :: name
+            character(len=:), allocatable :: thunk_name
+        end function intrinsic_thunk_name
+        module subroutine emit_intrinsic_procedure_thunks(arena, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_intrinsic_procedure_thunks
+        module subroutine procedure_actual_operand(arena, &
+                                                   context, &
+                                                   name, &
+                                                   operand, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            type(lr_operand_desc_t), intent(out) :: operand
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine procedure_actual_operand
+        module subroutine lower_f64_proc_ptr_call(arena, node, context, value, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_f64_proc_ptr_call
+    end interface
+    interface
+        integer module function dummy_assumed_shape_rank(arena, &
+                                                         body_indices, &
+                                                         param_name) result(rank)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: param_name
+        end function dummy_assumed_shape_rank
+        logical module function dummy_declared_optional(arena, &
+                                                        body_indices, &
+                                                        param_name) result(is_optional)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: param_name
+        end function dummy_declared_optional
+        module subroutine dummy_assumed_shape_lowers(arena, &
+                                                     body_indices, &
+                                                     param_name, &
+                                                     context, &
+                                                     dim_count, &
+                                                     lowers, &
+                                                     found, &
+                                                     error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: param_name
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: dim_count
+            integer, intent(out) :: lowers(:)
+            logical, intent(out) :: found
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine dummy_assumed_shape_lowers
+        module subroutine callee_param_name_at(arena, &
+                                               callee_name, &
+                                               param_pos, &
+                                               name, &
+                                               error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+            character(len=:), allocatable, intent(out) :: name
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine callee_param_name_at
+        integer module function call_arg_param_pos(arg_pos, &
+                                                   self_position) result(param_pos)
+            integer, intent(in) :: arg_pos
+            integer, intent(in) :: self_position
+        end function call_arg_param_pos
+        module subroutine allocatable_array_actual_data_address(arena, &
+                                                                node_index, &
+                                                                context, &
+                                                                address, &
+                                                                error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: address
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine allocatable_array_actual_data_address
+        module subroutine actual_extent_i64(arena, &
+                                            node_index, &
+                                            context, &
+                                            dim, &
+                                            extent, &
+                                            error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: dim
+            type(lr_operand_desc_t), intent(out) :: extent
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine actual_extent_i64
+        module subroutine load_array_element_at_runtime_index(context, &
+                                                              symbol_index, &
+                                                              index_i32, &
+                                                              value, &
+                                                              error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(in) :: index_i32
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine load_array_element_at_runtime_index
+        module subroutine runtime_reduction_accumulator_slot(context, &
+                                                             value_kind, &
+                                                             reduction_name, &
+                                                             slot, &
+                                                             identity, &
+                                                             error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            character(len=*), intent(in) :: reduction_name
+            type(lr_operand_desc_t), intent(out) :: slot
+            type(lr_operand_desc_t), intent(out) :: identity
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine runtime_reduction_accumulator_slot
+        module subroutine runtime_reduction_accumulate(context, &
+                                                       value_kind, &
+                                                       reduction_name, &
+                                                       slot, &
+                                                       element, &
+                                                       error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            character(len=*), intent(in) :: reduction_name
+            type(lr_operand_desc_t), intent(in) :: slot
+            type(lr_operand_desc_t), intent(in) :: element
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine runtime_reduction_accumulate
+        module subroutine runtime_sum_result(context, &
+                                             value_kind, &
+                                             reduction_name, &
+                                             slot, &
+                                             value, &
+                                             error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            character(len=*), intent(in) :: reduction_name
+            type(lr_operand_desc_t), intent(in) :: slot
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine runtime_sum_result
+        logical module function callee_dummy_assumed_shape_optional(arena, &
+                                                                    callee_name, &
+                                                                    param_pos) result(is_optional)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+        end function callee_dummy_assumed_shape_optional
+        logical module function dummy_is_assumed_shape_rank1(arena, &
+                                                             body_indices, &
+                                                             param_name) result(is_match)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: body_indices(:)
+            character(len=*), intent(in) :: param_name
+        end function dummy_is_assumed_shape_rank1
+        integer module function callee_dummy_assumed_shape_dims(arena, &
+                                                                callee_name, &
+                                                                param_pos) result(rank)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+        end function callee_dummy_assumed_shape_dims
+        module subroutine callee_dummy_assumed_shape_lowers(arena, &
+                                                            callee_name, &
+                                                            param_pos, &
+                                                            context, &
+                                                            dim_count, &
+                                                            lowers, &
+                                                            found, &
+                                                            error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: dim_count
+            integer, intent(out) :: lowers(:)
+            logical, intent(out) :: found
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine callee_dummy_assumed_shape_lowers
+        module subroutine lower_runtime_reduction(context, &
+                                                  source_index, &
+                                                  reduction_name, &
+                                                  value, &
+                                                  error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: source_index
+            character(len=*), intent(in) :: reduction_name
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_runtime_reduction
+        logical module function callee_dummy_assumed_shape_rank1(arena, &
+                                                                 callee_name, &
+                                                                 param_pos) result(is_match)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+        end function callee_dummy_assumed_shape_rank1
+    end interface
+    interface
+        logical module function is_file_unit_read(node, context)
+            type(read_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+        end function is_file_unit_read
+        module function file_unit_pseudo_name(unit_number) result(name)
+            integer, intent(in) :: unit_number
+            character(len=24) :: name
+        end function file_unit_pseudo_name
+        module subroutine reload_i32_symbol(context, sym, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: sym
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine reload_i32_symbol
+        module function lower_ascii(s) result(t)
+            character(len=*), intent(in) :: s
+            character(len=len(s)) :: t
+        end function lower_ascii
+        module subroutine assign_i32_to_symbol(context, sym, value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: sym
+            type(lr_operand_desc_t), intent(in) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine assign_i32_to_symbol
+        module subroutine check_read_format_supported(format_spec, line, col, error_msg)
+            character(len=*), intent(in) :: format_spec
+            integer, intent(in) :: line, col
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine check_read_format_supported
+        module subroutine seed_read_slot(context, sym, previous, slot, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: sym
+            type(lr_operand_desc_t), intent(in) :: previous, slot
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine seed_read_slot
+        module subroutine set_read_slot(context, sym, slot)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: sym
+            type(lr_operand_desc_t), intent(in) :: slot
+        end subroutine set_read_slot
+        module subroutine lower_rewind(node, context, error_msg)
+            type(rewind_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_rewind
+        module subroutine emit_empty_token(context, buf, nbytes, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: buf
+            integer, intent(in) :: nbytes
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_empty_token
+        logical module function is_unformatted_file_read(node, context)
+            type(read_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+        end function is_unformatted_file_read
+        module subroutine io_control_value(control_list, keyword, value)
+            character(len=*), intent(in) :: control_list
+            character(len=*), intent(in) :: keyword
+            character(len=:), allocatable, intent(out) :: value
+        end subroutine io_control_value
+        module subroutine lower_read_file_char_item(context, &
+                                                    fp, &
+                                                    sym, &
+                                                    stmt_line, &
+                                                    stmt_col, &
+                                                    item_ok, &
+                                                    error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: fp
+            integer, intent(in) :: sym, stmt_line, stmt_col
+            type(lr_operand_desc_t), intent(out) :: item_ok
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_read_file_char_item
+        module subroutine file_read_slot_for_kind(context, &
+                                                  sym, &
+                                                  scanf_fmt, &
+                                                  slot, &
+                                                  error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: sym
+            character(len=:), allocatable, intent(out) :: scanf_fmt
+            type(lr_operand_desc_t), intent(out) :: slot
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine file_read_slot_for_kind
+        module subroutine emit_logical_token_buffer(context, buf, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: buf
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_logical_token_buffer
+        module subroutine assign_logical_from_token(context, buf, sym, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: buf
+            integer, intent(in) :: sym
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine assign_logical_from_token
+        module subroutine lower_read_file_unformatted_item(arena, &
+                                                           node_index, &
+                                                           fp, &
+                                                           context, &
+                                                           item_ok, &
+                                                           error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lr_operand_desc_t), intent(in) :: fp
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: item_ok
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_read_file_unformatted_item
+        module subroutine branch_on_eof_to_end_label(node, fp, context, error_msg)
+            type(read_statement_node), intent(in) :: node
+            type(lr_operand_desc_t), intent(in) :: fp
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine branch_on_eof_to_end_label
+        module subroutine store_read_iostat_success(node, context, error_msg)
+            type(read_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine store_read_iostat_success
+        module subroutine read_iostat_symbol(node, context, sym, error_msg)
+            type(read_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(out) :: sym
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine read_iostat_symbol
+        module subroutine lower_read_file_logical_item(context, &
+                                                       fp, &
+                                                       sym, &
+                                                       item_ok, &
+                                                       error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: fp
+            integer, intent(in) :: sym
+            type(lr_operand_desc_t), intent(out) :: item_ok
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_read_file_logical_item
+        module subroutine lower_read_file_unformatted(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(read_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_read_file_unformatted
+        module subroutine store_read_iostat_from_eof(node, &
+                                                     fp, &
+                                                     context, &
+                                                     error_msg, &
+                                                     ok_value)
+            type(read_statement_node), intent(in) :: node
+            type(lr_operand_desc_t), intent(in) :: fp
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+            type(lr_operand_desc_t), intent(in), optional :: ok_value
+        end subroutine store_read_iostat_from_eof
+        module subroutine lower_read_file_item(arena, &
+                                               node_index, &
+                                               fp, &
+                                               stmt_line, &
+                                               stmt_col, &
+                                               context, &
+                                               item_ok, &
+                                               error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(lr_operand_desc_t), intent(in) :: fp
+            integer, intent(in) :: stmt_line, stmt_col
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: item_ok
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_read_file_item
+        module subroutine lower_read_file(arena, node, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(read_statement_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_read_file
+    end interface
+    interface
+        logical module function is_equivalence_operator(op) result(is_eq)
+            character(len=*), intent(in) :: op
+        end function is_equivalence_operator
+        module subroutine equivalence_compare_predicate(op, predicate)
+            character(len=*), intent(in) :: op
+            integer(c_int), intent(out) :: predicate
+        end subroutine equivalence_compare_predicate
+        module subroutine mask_accumulator_seed(context, accumulate, acc)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: accumulate
+            type(lr_operand_desc_t), intent(out) :: acc
+        end subroutine mask_accumulator_seed
+        module subroutine mask_accumulator_step(context, &
+                                                accumulate, &
+                                                acc, &
+                                                cond, &
+                                                next_acc, &
+                                                error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: accumulate
+            type(lr_operand_desc_t), intent(in) :: acc, cond
+            type(lr_operand_desc_t), intent(out) :: next_acc
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine mask_accumulator_step
+        logical module function is_unhandled_call_operand(arena, idx) result(is_call)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+        end function is_unhandled_call_operand
+        module subroutine mask_reduction_extent(left, right, extent)
+            type(reduction_operand_t), intent(in) :: left, right
+            integer, intent(out) :: extent
+        end subroutine mask_reduction_extent
+        logical module function mask_side_is(side, vk) result(match)
+            type(reduction_operand_t), intent(in) :: side
+            integer, intent(in) :: vk
+        end function mask_side_is
+        logical module function mask_side_is_mode4(side, vk) result(match)
+            type(reduction_operand_t), intent(in) :: side
+            integer, intent(in) :: vk
+        end function mask_side_is_mode4
+        logical module function mask_side_unsupported_kind(side) result(bad)
+            type(reduction_operand_t), intent(in) :: side
+        end function mask_side_unsupported_kind
+        module subroutine mask_complex_array_element(arena, &
+                                                     idx, &
+                                                     linear_index, &
+                                                     context, &
+                                                     vk, &
+                                                     re_value, &
+                                                     im_value, &
+                                                     error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx, linear_index, vk
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: re_value, im_value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine mask_complex_array_element
+        module subroutine mask_real_abs(context, value_kind, value, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            type(lr_operand_desc_t), intent(inout) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine mask_real_abs
+        module subroutine mask_scalar_element(arena, &
+                                              expr_idx, &
+                                              context, &
+                                              compare_vk, &
+                                              is_equiv, &
+                                              value, &
+                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: expr_idx, compare_vk
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: is_equiv
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine mask_scalar_element
+        module subroutine try_alloc_component_constructor_mask_reduction(arena, &
+                                                                         node, &
+                                                                         context, &
+                                                                         is_all, &
+                                                                         handled, &
+                                                                         value, &
+                                                                         error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: is_all
+            logical, intent(out) :: handled
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine try_alloc_component_constructor_mask_reduction
+        integer module function context_complex_compare_kind(context, &
+                                                             lsym, &
+                                                             rsym) result(vk)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: lsym, rsym
+        end function context_complex_compare_kind
+        module subroutine reduction_complex_side_element(arena, &
+                                                         context, &
+                                                         sym, &
+                                                         flat, &
+                                                         scalar_idx, &
+                                                         i, &
+                                                         compare_vk, &
+                                                         re, &
+                                                         im, &
+                                                         error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: sym, scalar_idx, i, compare_vk
+            integer, allocatable, intent(in) :: flat(:)
+            type(lr_operand_desc_t), intent(out) :: re, im
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine reduction_complex_side_element
+        module subroutine emit_reduction_comparison(context, &
+                                                    value_kind, &
+                                                    predicate, &
+                                                    lhs, &
+                                                    rhs, &
+                                                    result, &
+                                                    error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            integer(c_int), intent(in) :: predicate
+            type(lr_operand_desc_t), intent(in) :: lhs, rhs
+            type(lr_operand_desc_t), intent(out) :: result
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_reduction_comparison
+        module subroutine classify_reduction_side(arena, &
+                                                  context, &
+                                                  idx, &
+                                                  sym, &
+                                                  flat, &
+                                                  scalar_idx, &
+                                                  ok)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: idx
+            integer, intent(out) :: sym, scalar_idx
+            integer, allocatable, intent(out) :: flat(:)
+            logical, intent(out) :: ok
+        end subroutine classify_reduction_side
+        integer module function array_symbol_extent(context, sym) result(extent)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: sym
+        end function array_symbol_extent
+        logical module function supported_reduction_kind(vk) result(ok)
+            integer, intent(in) :: vk
+        end function supported_reduction_kind
+        logical module function array_kind_is(context, sym, vk) result(match)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: sym, vk
+        end function array_kind_is
+        module subroutine coerce_reduction_operand(context, &
+                                                   raw, &
+                                                   native_vk, &
+                                                   compare_vk, &
+                                                   value, &
+                                                   error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: raw
+            integer, intent(in) :: native_vk, compare_vk
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine coerce_reduction_operand
+        recursive module subroutine classify_mask_side(arena, context, idx, side, ok)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: idx
+            type(reduction_operand_t), intent(out) :: side
+            logical, intent(out) :: ok
+        end subroutine classify_mask_side
+        module subroutine mask_reduction_compare_vk(left, right, is_equiv, compare_vk, ok)
+            type(reduction_operand_t), intent(in) :: left, right
+            logical, intent(in) :: is_equiv
+            integer, intent(out) :: compare_vk
+            logical, intent(out) :: ok
+        end subroutine mask_reduction_compare_vk
+        recursive module subroutine lower_mask_expression_element(arena, &
+                                                                  idx, &
+                                                                  compare_vk, &
+                                                                  linear_index, &
+                                                                  context, &
+                                                                  value, &
+                                                                  error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx, compare_vk, linear_index
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_mask_expression_element
+        module subroutine try_complex_array_mask_reduction(arena, &
+                                                           context, &
+                                                           op, &
+                                                           lsym, &
+                                                           rsym, &
+                                                           lflat, &
+                                                           rflat, &
+                                                           lscalar, &
+                                                           rscalar, &
+                                                           extent, &
+                                                           is_all, &
+                                                           handled, &
+                                                           value, &
+                                                           error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: op
+            integer, intent(in) :: lsym, rsym, lscalar, rscalar, extent
+            integer, allocatable, intent(in) :: lflat(:), rflat(:)
+            logical, intent(in) :: is_all
+            logical, intent(out) :: handled
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine try_complex_array_mask_reduction
+        module subroutine try_derived_array_component_mask_reduction(arena, &
+                                                                     node, &
+                                                                     context, &
+                                                                     is_all, &
+                                                                     handled, &
+                                                                     value, &
+                                                                     error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: is_all
+            logical, intent(out) :: handled
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine try_derived_array_component_mask_reduction
+        module subroutine reduction_extent(context, lsym, rsym, lflat, rflat, extent)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: lsym, rsym
+            integer, allocatable, intent(in) :: lflat(:), rflat(:)
+            integer, intent(out) :: extent
+        end subroutine reduction_extent
+        module subroutine reduction_compare_kind(context, lsym, rsym, compare_vk, ok)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: lsym, rsym
+            integer, intent(out) :: compare_vk
+            logical, intent(out) :: ok
+        end subroutine reduction_compare_kind
+        module subroutine reduction_side_element(arena, &
+                                                 context, &
+                                                 sym, &
+                                                 flat, &
+                                                 scalar_idx, &
+                                                 i, &
+                                                 compare_vk, &
+                                                 value, &
+                                                 error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: sym, scalar_idx, i, compare_vk
+            integer, allocatable, intent(in) :: flat(:)
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine reduction_side_element
+        module subroutine mask_side_element(arena, &
+                                            context, &
+                                            side, &
+                                            i, &
+                                            compare_vk, &
+                                            is_equiv, &
+                                            value, &
+                                            error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(inout) :: context
+            type(reduction_operand_t), intent(in) :: side
+            integer, intent(in) :: i, compare_vk
+            logical, intent(in) :: is_equiv
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine mask_side_element
+        module subroutine try_bare_mask_reduction(arena, &
+                                                  node, &
+                                                  context, &
+                                                  accumulate, &
+                                                  handled, &
+                                                  value, &
+                                                  error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: accumulate
+            logical, intent(out) :: handled
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine try_bare_mask_reduction
+        module subroutine try_general_mask_reduction(arena, &
+                                                     node, &
+                                                     context, &
+                                                     accumulate, &
+                                                     handled, &
+                                                     value, &
+                                                     error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: accumulate
+            logical, intent(out) :: handled
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine try_general_mask_reduction
+        module subroutine try_array_mask_reduction(arena, &
+                                                   node, &
+                                                   context, &
+                                                   is_all, &
+                                                   handled, &
+                                                   value, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            logical, intent(in) :: is_all
+            logical, intent(out) :: handled
+            type(lr_operand_desc_t), intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine try_array_mask_reduction
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -8600,7 +9372,6 @@ contains
         handled = len_trim(error_msg) == 0
     end subroutine try_lower_overloaded_assignment
     include 'session_program_lowering_arguments.inc'
-    include 'session_program_lowering_assumed_shape_extent.inc'
     include 'session_program_lowering_assumed_shape_descriptor.inc'
     ! Character lowering transitively includes its character-expression tail
     ! and several deferred-character fragments; keep the dependency visible in
@@ -8802,11 +9573,8 @@ contains
         end if
         call set_empty(error_msg)
     end subroutine emit_error_stop_banner
-    include 'session_program_lowering_read_ops.inc'
     include 'session_program_lowering_expr_lowering.inc'
     include 'session_program_lowering_intrinsics.inc'
-    include 'session_program_lowering_logical_reduction.inc'
-    include 'session_program_lowering_proc_dummy.inc'
     subroutine lower_subroutine_call(arena, node_index, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index

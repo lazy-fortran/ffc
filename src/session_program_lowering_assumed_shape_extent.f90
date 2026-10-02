@@ -1,6 +1,10 @@
-    ! Shape queries and runtime helpers shared by the assumed-shape descriptor
-    ! ABI (#334). The descriptor construction and binding themselves live in
-    ! session_program_lowering_assumed_shape_descriptor.inc.
+submodule (session_program_lowering_impl) assumed_shape_extent
+    !! `assumed_shape_extent` procedures, moved out of `session_program_lowering_assumed_shape_extent.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     integer function dummy_assumed_shape_rank(arena, body_indices, param_name) &
             result(rank)
@@ -830,3 +834,6 @@
         call runtime_sum_result(context, value_kind, reduction_name, accumulator, &
                                 value, error_msg)
     end subroutine lower_runtime_reduction
+
+
+end submodule assumed_shape_extent

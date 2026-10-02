@@ -1,8 +1,10 @@
-    ! File-unit READ and REWIND lowering (#247 file I/O).
-    !
-    ! A READ from an opened unit loads the unit's FILE* and emits one fscanf per
-    ! list-directed scalar target, mirroring the stdin scanf path in write_ops.
-    ! REWIND maps to the C runtime rewind(FILE*).
+submodule (session_program_lowering_impl) read_ops
+    !! `read_ops` procedures, moved out of `session_program_lowering_read_ops.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     logical function is_file_unit_read(node, context)
         type(read_statement_node), intent(in) :: node
@@ -847,3 +849,6 @@
                                   error_msg)) return
         call assign_i32_to_symbol(context, sym, value, error_msg)
     end subroutine assign_logical_from_token
+
+
+end submodule read_ops

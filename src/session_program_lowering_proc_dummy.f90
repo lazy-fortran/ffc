@@ -1,13 +1,10 @@
-    ! Procedure dummy arguments (#467, #606).
-    !
-    ! A dummy whose signature is declared by an interface body inside the
-    ! receiving procedure is a *procedure* dummy: the caller passes a callable
-    ! address, not data storage. FortFront #2950 stopped fabricating a scalar
-    ! data declaration for such a name, so the address now has to be lowered as
-    ! one. It reuses the procedure-pointer representation already in place for
-    ! `procedure(iface), pointer :: fp` (#245 B3d): the dummy owns a ptr slot
-    ! holding the callee address, and every call through it is an indirect call.
-    ! There is exactly one callable-address convention in the lowerer.
+submodule (session_program_lowering_impl) proc_dummy
+    !! `proc_dummy` procedures, moved out of `session_program_lowering_proc_dummy.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     logical function dummy_is_procedure(arena, body_indices, name) result(is_proc)
         ! True when `name` is declared by an interface body in this scope, by
@@ -611,3 +608,6 @@
         if (.not. finish_function(context%session, error_msg)) return
         call set_empty(error_msg)
     end subroutine emit_one_intrinsic_thunk
+
+
+end submodule proc_dummy
