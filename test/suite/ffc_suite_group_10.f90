@@ -1,4 +1,6 @@
 module ffc_suite_group_10
+    use ffc_case_test_session_multi_allocate_compiler, only: &
+        case_test_session_multi_allocate_compiler
     use ffc_case_test_session_multi_declaration_compiler, only: &
         case_test_session_multi_declaration_compiler
     use ffc_case_test_session_multi_value_print_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_10
         case_test_session_pointer_intent_in_target_arg_compiler
     use ffc_case_test_session_pointer_proc_compiler, only: &
         case_test_session_pointer_proc_compiler
-    use ffc_case_test_session_pointer_scalar_compiler, only: &
-        case_test_session_pointer_scalar_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_multi_allocate_compiler")
+            call case_test_session_multi_allocate_compiler()
         case ("test_session_multi_declaration_compiler")
             call case_test_session_multi_declaration_compiler()
         case ("test_session_multi_value_print_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_pointer_intent_in_target_arg_compiler()
         case ("test_session_pointer_proc_compiler")
             call case_test_session_pointer_proc_compiler()
-        case ("test_session_pointer_scalar_compiler")
-            call case_test_session_pointer_scalar_compiler()
         case default
             matched = .false.
         end select

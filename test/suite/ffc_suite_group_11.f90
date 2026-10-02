@@ -1,4 +1,6 @@
 module ffc_suite_group_11
+    use ffc_case_test_session_pointer_scalar_compiler, only: &
+        case_test_session_pointer_scalar_compiler
     use ffc_case_test_session_pointer_scalar_kinds_compiler, only: &
         case_test_session_pointer_scalar_kinds_compiler
     use ffc_case_test_session_pointer_section_rank4_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_11
         case_test_session_real_to_integer_literal_compiler
     use ffc_case_test_session_real_transcendental_compiler, only: &
         case_test_session_real_transcendental_compiler
-    use ffc_case_test_session_real_variable_compiler, only: &
-        case_test_session_real_variable_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_pointer_scalar_compiler")
+            call case_test_session_pointer_scalar_compiler()
         case ("test_session_pointer_scalar_kinds_compiler")
             call case_test_session_pointer_scalar_kinds_compiler()
         case ("test_session_pointer_section_rank4_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_real_to_integer_literal_compiler()
         case ("test_session_real_transcendental_compiler")
             call case_test_session_real_transcendental_compiler()
-        case ("test_session_real_variable_compiler")
-            call case_test_session_real_variable_compiler()
         case default
             matched = .false.
         end select

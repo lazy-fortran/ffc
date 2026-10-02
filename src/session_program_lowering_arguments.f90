@@ -257,6 +257,11 @@ contains
                 ! A scalar character actual travels as a {data,length} view; a
                 ! WHOLE character array actual of an assumed-shape dummy keeps
                 ! the canonical array descriptor path below (#348).
+                if (trim(dummy_intent) /= 'in') then
+                    call prepare_writable_character_actual(arena, arg_indices(i), &
+                        context, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end if
                 call char_actual_descriptor(arena, arg_indices(i), context, &
                                             args(i), error_msg)
                 if (len_trim(error_msg) > 0) return
@@ -2240,6 +2245,59 @@ contains
         descriptor = context%symbols(symbol_index)%deferred_data
         call set_empty(error_msg)
     end subroutine char_actual_inout_descriptor
+
+    subroutine prepare_writable_character_actual(arena, node_index, context, &
+                                                 error_msg)
+        ! Plain scalar values may still point at immutable literal storage.
+        ! Install a mutable copy before a nonallocatable dummy borrows them.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: node_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: name
+        integer :: index
+        type(lr_operand_desc_t) :: data, length, length64, bytes, buffer, terminator
+
+        call set_empty(error_msg)
+        if (.not. is_identifier(arena, node_index)) return
+        call get_identifier_name(arena, node_index, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        index = resolve_symbol_at_node(context, node_index, name)
+        if (index <= 0) return
+        if (context%symbols(index)%is_parameter) return
+        if (context%symbols(index)%is_target .or. &
+            context%symbols(index)%is_pointer) return
+        call char_length_operands(context, index, data, length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, length, length64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, length64, &
+                i64_immediate(context%session, 1_c_int64_t), bytes, &
+                error_msg)) return
+        if (context%symbols(index)%has_character_ownership) then
+            if (.not. emit_malloc(context%session, bytes, buffer, error_msg)) return
+        else
+            if (.not. emit_alloca_bytes(context%session, bytes, buffer, &
+                    error_msg)) return
+        end if
+        if (.not. emit_memcpy(context%session, buffer, data, length64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buffer, length64, &
+                terminator, error_msg)) return
+        if (.not. emit_liric_store_char_byte(context%session, terminator, &
+                i32_immediate(context%session, 0_c_int64_t), &
+                i32_immediate(context%session, 0_c_int64_t), error_msg)) return
+        if (context%symbols(index)%is_deferred_character) then
+            call release_owned_character_storage(context, index, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_ptr_store(context%session, buffer, &
+                    context%symbols(index)%deferred_data, error_msg)) return
+            call set_character_storage(context, index, length64, &
+                LOWERING_CHARACTER_STORAGE_OWNED, error_msg)
+        else
+            context%symbols(index)%value = buffer
+        end if
+    end subroutine prepare_writable_character_actual
 
     subroutine char_actual_descriptor(arena, node_index, context, descriptor, &
                                        error_msg)

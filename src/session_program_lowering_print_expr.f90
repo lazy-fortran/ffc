@@ -233,6 +233,15 @@ contains
                                             character_data, character_length, &
                                             error_msg)
                     if (len_trim(error_msg) > 0) return
+                    if (context%symbols(symbol_index)%is_dummy_argument) then
+                        block
+                            type(lr_operand_desc_t) :: view
+                            call materialize_character_print_view(context, &
+                                character_data, character_length, view, error_msg)
+                            if (len_trim(error_msg) > 0) return
+                            character_data = view
+                        end block
+                    end if
                     if (.not. emit_liric_print_string_operand( &
                         context%session, context%str_print_format_id, &
                         character_data, error_msg)) return
@@ -648,6 +657,15 @@ contains
                                             character_data, character_length, &
                                             error_msg)
                     if (len_trim(error_msg) > 0) return
+                    if (context%symbols(symbol_index)%is_dummy_argument) then
+                        block
+                            type(lr_operand_desc_t) :: view
+                            call materialize_character_print_view(context, &
+                                character_data, character_length, view, error_msg)
+                            if (len_trim(error_msg) > 0) return
+                            character_data = view
+                        end block
+                    end if
                     if (.not. emit_liric_print_string_operand_value( &
                         context%session, context%str_print_format_id, &
                         character_data, error_msg)) return

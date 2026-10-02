@@ -1,4 +1,6 @@
 module ffc_suite_group_03
+    use ffc_case_6e8d070f64b5971041a2c0b3, only: &
+        case_6e8d070f64b5971041a2c0b3
     use ffc_case_test_session_assumed_shape_module_compiler, only: &
         case_test_session_assumed_shape_module_compiler
     use ffc_case_test_session_assumed_shape_rank2_runtime_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_03
         case_test_session_character_locate_compiler
     use ffc_case_test_session_character_module_intrinsics_compiler, only: &
         case_test_session_character_module_intrinsics_compiler
-    use ffc_case_test_session_character_prefix_compiler, only: &
-        case_test_session_character_prefix_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_assumed_shape_derived_component_rank234_compiler")
+            call case_6e8d070f64b5971041a2c0b3()
         case ("test_session_assumed_shape_module_compiler")
             call case_test_session_assumed_shape_module_compiler()
         case ("test_session_assumed_shape_rank2_runtime_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_character_locate_compiler()
         case ("test_session_character_module_intrinsics_compiler")
             call case_test_session_character_module_intrinsics_compiler()
-        case ("test_session_character_prefix_compiler")
-            call case_test_session_character_prefix_compiler()
         case default
             matched = .false.
         end select

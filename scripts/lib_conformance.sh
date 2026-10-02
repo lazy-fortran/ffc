@@ -19,31 +19,12 @@ set -uo pipefail
 CONFORMANCE_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 ffc_source_sha256() {
-    local root="$1"
-    (
-        cd "$root" || exit 1
-        {
-            find src app -type f -print
-            printf '%s\n' fpm.toml
-        } | LC_ALL=C sort | while IFS= read -r path; do
-            printf '%s\0' "$path"
-            sha256sum "$path" | cut -d ' ' -f 1
-        done
-    ) | sha256sum | cut -d ' ' -f 1
+    python3 "$CONFORMANCE_LIB_DIR/conformance_source_hash.py" "$1"
 }
 
 ffc_revision_source_sha256() {
-    local root="$1" revision="$2"
-    (
-        cd "$root" || exit 1
-        {
-            git ls-tree -r --name-only "$revision" -- src app
-            printf '%s\n' fpm.toml
-        } | LC_ALL=C sort | while IFS= read -r path; do
-            printf '%s\0' "$path"
-            git show "$revision:$path" | sha256sum | cut -d ' ' -f 1
-        done
-    ) | sha256sum | cut -d ' ' -f 1
+    python3 "$CONFORMANCE_LIB_DIR/conformance_source_hash.py" "$1" \
+        --revision "$2"
 }
 
 parity_manifest_sha256() {
@@ -140,7 +121,7 @@ resolve_primary_checkout_root() {
 # reports the result as this checkout's. Any candidate outside PROJECT_DIR/build
 # is therefore rejected rather than used, and the emitted path is absolute.
 find_ffc() {
-    local project_dir build_dir candidate resolved
+    local project_dir build_dir candidate resolved path
     if [ -n "${FFC_BIN:-}" ]; then
         resolved=$(readlink -f "$FFC_BIN" 2>/dev/null) || resolved=""
         if [ -z "$resolved" ] || [ ! -x "$resolved" ]; then
@@ -163,8 +144,13 @@ find_ffc() {
     # Pick the most recently built ffc. Several may coexist (build/fo/bin/ffc
     # from the fo backend, build/gfortran_*/app/ffc from fpm); an arbitrary
     # head -1 can return a stale one whose lowering predates recent fixes.
-    candidate=$(find "$build_dir" -name ffc -type f -executable -printf '%T@ %p\n' \
-        2>/dev/null | sort -rn | head -1 | cut -d' ' -f2-) || true
+    candidate=""
+    while IFS= read -r -d '' path; do
+        [ -x "$path" ] || continue
+        if [ -z "$candidate" ] || [ "$path" -nt "$candidate" ]; then
+            candidate="$path"
+        fi
+    done < <(find "$build_dir" -name ffc -type f -print0 2>/dev/null)
     if [ -n "$candidate" ]; then
         resolved=$(readlink -f "$candidate" 2>/dev/null) || resolved=""
         case "$resolved" in
@@ -180,14 +166,30 @@ find_ffc() {
     return 1
 }
 
+# The corpus test and runner share this membership contract. Listing never
+# resolves a compiler or consumes manifests, and includes LF's .f90 fixtures.
+conformance_suite_files() {
+    local suite="$1" root="$2"
+    case "$suite" in
+        fortfront-lf)
+            find "$root" -maxdepth 1 -type f \
+                \( -name '*.lf' -o -name '*.f90' \) -print ;;
+        fortfront-f90|lfortran|gfortran-dg)
+            find "$root" -maxdepth 1 -type f -name '*.f90' -print ;;
+        *) printf 'ERROR: unknown conformance suite: %s\n' "$suite" >&2
+            return 1 ;;
+    esac | LC_ALL=C sort
+}
+
 # conformance_run_measured <label> <diagnostic_file> <command> [args...]
 # Run one compiler command while appending a stable timing/RSS record and its
 # diagnostics to the current case files. Outside the gauntlet the globals are
 # unset, so callers retain the historical quiet behavior.
 conformance_run_measured() {
     local label="$1" diagnostic_file="$2"
-    local metrics_file="${CONFORMANCE_METRICS_FILE:-}" metric_tmp status
+    local metrics_file="${CONFORMANCE_METRICS_FILE:-}" status
     local action_timeout metadata runner
+    local -a metric_args=()
     shift 2
     [ -n "$diagnostic_file" ] || diagnostic_file=/dev/null
     CONFORMANCE_ACTION_TERMINATION="exec-error"
@@ -200,27 +202,15 @@ conformance_run_measured() {
         action_timeout=86400
     fi
     metadata=$(mktemp "${TMPDIR:-/tmp}/ffc-action-XXXXXX") || return 126
-    if [ -n "$metrics_file" ] && [ -x /usr/bin/time ]; then
-        metric_tmp="${metrics_file}.${BASHPID}.${RANDOM}.tmp"
-        if /usr/bin/time -f "$label\t%e\t%M" -o "$metric_tmp" \
-                python3 "$runner" --cwd "$PWD" --timeout "$action_timeout" \
-                --output "$diagnostic_file" --metadata "$metadata" \
-                --append -- "$@"; then
-            status=0
-        else
-            status=$?
-        fi
-        awk -F '\t' -v label="$label" \
-            '$1 == label && NF == 3 { print }' "$metric_tmp" >> "$metrics_file"
-        rm -f "$metric_tmp"
+    if [ -n "$metrics_file" ]; then
+        metric_args=(--metrics "$metrics_file" --metric-label "$label")
+    fi
+    if python3 "$runner" --cwd "$PWD" --timeout "$action_timeout" \
+            --output "$diagnostic_file" --metadata "$metadata" \
+            ${metric_args[@]+"${metric_args[@]}"} --append -- "$@"; then
+        status=0
     else
-        if python3 "$runner" --cwd "$PWD" --timeout "$action_timeout" \
-                --output "$diagnostic_file" --metadata "$metadata" \
-                --append -- "$@"; then
-            status=0
-        else
-            status=$?
-        fi
+        status=$?
     fi
     if [ -s "$metadata" ]; then
         IFS=$'\t' read -r status CONFORMANCE_ACTION_TERMINATION \
@@ -485,7 +475,8 @@ run_capture() {
     local exe="$1" out_file="$2" timeout="$3"
     local metric_label="${4:-run}" metrics_file="${CONFORMANCE_METRICS_FILE:-}"
     local stdin_file="${5:-/dev/null}"
-    local sandbox status metric_tmp metadata runner
+    local sandbox status metadata runner
+    local -a metric_args=()
     RUN_CAPTURE_TERMINATION="exec-error"
     RUN_CAPTURE_SIGNAL=0
     runner="$CONFORMANCE_LIB_DIR/conformance_action.py"
@@ -495,22 +486,13 @@ run_capture() {
     # which is the ffc repository root.
     sandbox=$(mktemp -d "${TMPDIR:-/tmp}/ffc-run-XXXXXX") || return 126
     metadata="$sandbox/action.tsv"
-    if [ -n "$metrics_file" ] && [ -x /usr/bin/time ]; then
-        metric_tmp="${metrics_file}.${BASHPID}.${RANDOM}.tmp"
-        /usr/bin/time -f "$metric_label\t%e\t%M" -o "$metric_tmp" \
-            python3 "$runner" --cwd "$sandbox" --timeout "$timeout" \
-            --output "$out_file" --metadata "$metadata" \
-            --stdin "$stdin_file" -- "$exe"
-        status=$?
-        awk -F '\t' -v label="$metric_label" \
-            '$1 == label && NF == 3 { print }' "$metric_tmp" >> "$metrics_file"
-        rm -f "$metric_tmp"
-    else
-        python3 "$runner" --cwd "$sandbox" --timeout "$timeout" \
-            --output "$out_file" --metadata "$metadata" \
-            --stdin "$stdin_file" -- "$exe"
-        status=$?
+    if [ -n "$metrics_file" ]; then
+        metric_args=(--metrics "$metrics_file" --metric-label "$metric_label")
     fi
+    python3 "$runner" --cwd "$sandbox" --timeout "$timeout" \
+        --output "$out_file" --metadata "$metadata" \
+        ${metric_args[@]+"${metric_args[@]}"} --stdin "$stdin_file" -- "$exe"
+    status=$?
     if [ -s "$metadata" ]; then
         IFS=$'\t' read -r status RUN_CAPTURE_TERMINATION \
             RUN_CAPTURE_SIGNAL < "$metadata"

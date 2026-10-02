@@ -13,12 +13,15 @@ subroutine case_test_session_allocatable_function_result_rank34_compiler()
     ! Rank-3 and rank-4 allocatable function results through the descriptor-sret
     ! ABI. The source checks independent expected values, then the complete
     ! output is compared with gfortran.
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
     save
+
+    character(len=:), allocatable :: root
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -67,7 +70,9 @@ subroutine case_test_session_allocatable_function_result_rank34_compiler()
         '  end function make4'//new_line('a')// &
         'end program main'
 
+    root = make_temp_root('alloc_function_result_rank34')
     if (.not. matches_gfortran(source)) stop 1
+    call remove_temp_root(root)
     print *, 'PASS: rank-3 and rank-4 allocatable function results match gfortran'
 
 contains
@@ -81,7 +86,7 @@ contains
         integer :: unit, exit_stat, status
 
         matches_gfortran = .false.
-        base = '/var/tmp/ert/ffc_alloc_function_result_rank34'
+        base = root//'/function_result'
         src = base//'.f90'
         exe = base//'.ffc'
         ref = base//'.gf'

@@ -1,4 +1,6 @@
 module ffc_suite_group_01
+    use ffc_case_test_session_abstract_interface_compiler, only: &
+        case_test_session_abstract_interface_compiler
     use ffc_case_2b23d77d694bf09939b9d7c7, only: &
         case_test_session_abstract_interface_procedure_dummy_compiler
     use ffc_case_test_session_accept_reject_false_01_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_01
         case_test_session_ambiguous_interface_compiler
     use ffc_case_test_session_arg_count_mismatch_compiler, only: &
         case_test_session_arg_count_mismatch_compiler
-    use ffc_case_test_session_array_alias_assignment_compiler, only: &
-        case_test_session_array_alias_assignment_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_abstract_interface_compiler")
+            call case_test_session_abstract_interface_compiler()
         case ("test_session_abstract_interface_procedure_dummy_compiler")
             call case_test_session_abstract_interface_procedure_dummy_compiler()
         case ("test_session_accept_reject_false_01_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_ambiguous_interface_compiler()
         case ("test_session_arg_count_mismatch_compiler")
             call case_test_session_arg_count_mismatch_compiler()
-        case ("test_session_array_alias_assignment_compiler")
-            call case_test_session_array_alias_assignment_compiler()
         case default
             matched = .false.
         end select

@@ -1,4 +1,6 @@
 module ffc_suite_group_08
+    use ffc_case_test_session_integer_intrinsic_compiler, only: &
+        case_test_session_integer_intrinsic_compiler
     use ffc_case_test_session_integer_kind64_compiler, only: &
         case_test_session_integer_kind64_compiler
     use ffc_case_test_session_integer_kind_compare_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_08
         case_test_session_logical_array_compiler
     use ffc_case_test_session_logical_function_print_compiler, only: &
         case_test_session_logical_function_print_compiler
-    use ffc_case_test_session_logical_if_compiler, only: &
-        case_test_session_logical_if_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_integer_intrinsic_compiler")
+            call case_test_session_integer_intrinsic_compiler()
         case ("test_session_integer_kind64_compiler")
             call case_test_session_integer_kind64_compiler()
         case ("test_session_integer_kind_compare_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_logical_array_compiler()
         case ("test_session_logical_function_print_compiler")
             call case_test_session_logical_function_print_compiler()
-        case ("test_session_logical_if_compiler")
-            call case_test_session_logical_if_compiler()
         case default
             matched = .false.
         end select

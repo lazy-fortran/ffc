@@ -1,4 +1,6 @@
 module ffc_suite_group_05
+    use ffc_case_test_session_data_implied_do_zero_compiler, only: &
+        case_test_session_data_implied_do_zero_compiler
     use ffc_case_test_session_data_statement_compiler, only: &
         case_test_session_data_statement_compiler
     use ffc_case_test_session_declaration_collection_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_05
         case_test_session_dim_numeric_mask_compiler
     use ffc_case_test_session_dim_reduction_compiler, only: &
         case_test_session_dim_reduction_compiler
-    use ffc_case_test_session_dimension_statement_compiler, only: &
-        case_test_session_dimension_statement_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_data_implied_do_zero_compiler")
+            call case_test_session_data_implied_do_zero_compiler()
         case ("test_session_data_statement_compiler")
             call case_test_session_data_statement_compiler()
         case ("test_session_declaration_collection_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_dim_numeric_mask_compiler()
         case ("test_session_dim_reduction_compiler")
             call case_test_session_dim_reduction_compiler()
-        case ("test_session_dimension_statement_compiler")
-            call case_test_session_dimension_statement_compiler()
         case default
             matched = .false.
         end select

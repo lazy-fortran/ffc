@@ -395,6 +395,7 @@ module session_program_lowering_impl
     public :: bind_c_name, call_argument_kinds, call_argument_ranks
     public :: callee_dummy_is_array, callee_dummy_value_kind
     public :: char_expr_operands, collect_param_names
+    public :: materialize_character_print_view
     public :: component_element_access_kind, component_slot_width
     public :: declaration_declares_name, declaration_index_for_name
     public :: declaration_is_assumed_rank, declaration_is_assumed_shape
@@ -19832,6 +19833,13 @@ module session_program_lowering_impl
             type(lr_operand_desc_t), intent(out) :: buf
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine materialize_character_view
+        module subroutine materialize_character_print_view(context, data_ptr, &
+                                                           length, buffer, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: data_ptr, length
+            type(lr_operand_desc_t), intent(out) :: buffer
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine materialize_character_print_view
         logical module function is_character_array_element(arena, &
                                                            node_index, &
                                                            context) result(is_elem)

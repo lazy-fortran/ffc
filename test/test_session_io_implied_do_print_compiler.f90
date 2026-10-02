@@ -15,7 +15,8 @@ subroutine case_test_session_io_implied_do_print_compiler()
     ! item in the statement, so the element type and the list-directed
     ! separator rule are decided in exactly one place. Every expectation is
     ! gfortran's output.
-    use ffc_test_support, only: expect_output
+    use ffc_test_support, only: expect_output, expect_output_matches_gfortran, &
+        expect_error_contains
     implicit none
     save
 
@@ -29,11 +30,89 @@ subroutine case_test_session_io_implied_do_print_compiler()
     if (.not. test_implied_do_among_other_items()) all_passed = .false.
     if (.not. test_implied_do_with_step()) all_passed = .false.
     if (.not. test_array_constructor_implied_do()) all_passed = .false.
+    if (.not. test_multiple_objects()) all_passed = .false.
+    if (.not. test_nested_objects()) all_passed = .false.
+    if (.not. test_formatted_objects_refused()) all_passed = .false.
+    if (.not. test_other_io_objects_refused()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: I/O implied-do print lowers through one dispatch path'
 
 contains
+
+    logical function test_multiple_objects()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: i'//new_line('a')// &
+            'print *, (i, -i, i=2,1,-1)'//new_line('a')// &
+            'write(*, *) (i, -i, i=2,1,-1)'//new_line('a')// &
+            'end program main'
+
+        test_multiple_objects = expect_output_matches_gfortran(source, &
+            'io_multiple_objects')
+    end function test_multiple_objects
+
+    logical function test_nested_objects()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'integer :: i, j'//new_line('a')// &
+            'print *, ((i, -i, i=2,1,-1), j=1,2)'//new_line('a')// &
+            'end program main'
+
+        test_nested_objects = expect_output_matches_gfortran(source, &
+            'io_nested_objects')
+    end function test_nested_objects
+
+    logical function test_formatted_objects_refused()
+        test_formatted_objects_refused = refuse_formatted( &
+            'print "(I0)", (i, -i, i=1,2)', 'multi')
+        if (.not. refuse_formatted('print "(I0)", ((i, i=1,2), j=1,2)', &
+            'nested')) then
+            test_formatted_objects_refused = .false.
+        end if
+        if (.not. refuse_formatted('print "()", (i, -i, i=1,2)', 'empty')) then
+            test_formatted_objects_refused = .false.
+        end if
+        if (.not. refuse_formatted('print "(I0)", 9, (i, -i, i=1,2)', &
+            'mixed')) then
+            test_formatted_objects_refused = .false.
+        end if
+        if (.not. refuse_formatted('write(*, "(I0)") (i, -i, i=1,2)', &
+            'write')) then
+            test_formatted_objects_refused = .false.
+        end if
+    end function test_formatted_objects_refused
+
+    logical function refuse_formatted(statement, stem) result(refused)
+        character(len=*), intent(in) :: statement, stem
+        character(len=:), allocatable :: source
+
+        source = 'program main'//new_line('a')// &
+            'integer :: i, j'//new_line('a')//statement//new_line('a')// &
+            'end program main'
+        refused = expect_error_contains(source, 'formatted I/O implied-do', &
+            '/var/tmp/ffc_formatted_'//stem//'_objects')
+    end function refuse_formatted
+
+    logical function test_other_io_objects_refused()
+        character(len=*), parameter :: read_source = &
+            'program main'//new_line('a')// &
+            'integer :: i, a(2)'//new_line('a')// &
+            'read *, (a(i), i=1,2)'//new_line('a')// &
+            'end program main'
+        character(len=*), parameter :: write_source = &
+            'program main'//new_line('a')// &
+            'integer :: i'//new_line('a')// &
+            'write(10, *) (i, -i, i=1,2)'//new_line('a')// &
+            'end program main'
+
+        test_other_io_objects_refused = expect_error_contains(read_source, &
+            'expected identifier assignment target', '/var/tmp/ffc_read_io_objects')
+        if (.not. expect_error_contains(write_source, &
+            'only supports integer expressions', '/var/tmp/ffc_write_io_objects')) then
+            test_other_io_objects_refused = .false.
+        end if
+    end function test_other_io_objects_refused
 
     logical function test_character_elements_print_as_characters()
         ! A character array element is a character value, so consecutive

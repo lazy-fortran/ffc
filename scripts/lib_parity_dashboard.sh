@@ -13,7 +13,7 @@ snapshot_field() {
 }
 
 validate_snapshot_freshness() {
-    local path="$1" ffc_revision recorded_source
+    local path="$1" ffc_revision recorded_source recorded_epoch epoch_path
     ffc_revision=$(snapshot_field revision ffc "$path")
     recorded_source=$(snapshot_field digest ffc-source "$path")
     git -C "$PROJECT_DIR" merge-base --is-ancestor "$ffc_revision" HEAD \
@@ -22,6 +22,15 @@ validate_snapshot_freshness() {
         "$recorded_source" ] || fail "snapshot ffc revision source mismatch"
     [ "$(snapshot_field digest manifests "$path")" = \
         "$EXPECTED_MANIFEST_SHA256" ] || fail "stale snapshot manifest digest"
+    recorded_epoch=$(snapshot_field digest conformance-epoch "$path")
+    if [ -n "$recorded_epoch" ]; then
+        epoch_path=${EPOCH_LOCK:-$MANIFEST_DIR/parity_epoch.json}
+        [ -s "$epoch_path" ] || fail "missing snapshot conformance epoch"
+        [ "$(sha256sum "$epoch_path" | cut -d ' ' -f 1)" = \
+            "$recorded_epoch" ] || fail "stale snapshot conformance epoch"
+    elif [ -n "${EPOCH_LOCK:-}" ]; then
+        fail "snapshot lacks conformance epoch"
+    fi
     [ "$(snapshot_field revision FortFront "$path")" = \
         "$EXPECTED_FORTFRONT_REVISION" ] || fail "stale snapshot FortFront revision"
     [ "$(snapshot_field revision LIRIC "$path")" = \
@@ -128,7 +137,7 @@ validate_snapshot() {
             next
         }
         $1 == "digest" {
-            if (NF != 3 || $2 !~ /^(ffc-(source|binary)|manifests)$/ ||
+            if (NF != 3 || $2 !~ /^(ffc-(source|binary)|manifests|conformance-epoch)$/ ||
                     length($3) != 64 || $3 !~ /^[0-9A-Fa-f]+$/ ||
                     digest[$2]++) invalid("invalid digest")
             next

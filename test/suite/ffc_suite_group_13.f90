@@ -1,4 +1,6 @@
 module ffc_suite_group_13
+    use ffc_case_test_session_runtime_allocation_helpers_compiler, only: &
+        case_test_session_runtime_allocation_helpers_compiler
     use ffc_case_test_session_runtime_any_all_compiler, only: &
         case_test_session_runtime_any_all_compiler
     use ffc_case_test_session_runtime_archive_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_13
         case_test_session_scope_resolution_compiler
     use ffc_case_test_session_scratch_unit_compiler, only: &
         case_test_session_scratch_unit_compiler
-    use ffc_case_test_session_select_case_compiler, only: &
-        case_test_session_select_case_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_runtime_allocation_helpers_compiler")
+            call case_test_session_runtime_allocation_helpers_compiler()
         case ("test_session_runtime_any_all_compiler")
             call case_test_session_runtime_any_all_compiler()
         case ("test_session_runtime_archive_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_scope_resolution_compiler()
         case ("test_session_scratch_unit_compiler")
             call case_test_session_scratch_unit_compiler()
-        case ("test_session_select_case_compiler")
-            call case_test_session_select_case_compiler()
         case default
             matched = .false.
         end select

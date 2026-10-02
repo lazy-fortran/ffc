@@ -9,6 +9,8 @@ module ffc_suite_group_00
         case_test_concat_literal_and_deferred
     use ffc_case_test_concat_three_distinct_deferred_variables, only: &
         case_test_concat_three_distinct_deferred_variables
+    use ffc_case_test_conformance_epoch_lock, only: &
+        case_test_conformance_epoch_lock
     use ffc_case_test_conformance_execution_evidence, only: &
         case_test_conformance_execution_evidence
     use ffc_case_test_conformance_flake_detection, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_00
         case_test_self_concat_appends_literal
     use ffc_case_test_self_concat_three_times, only: &
         case_test_self_concat_three_times
-    use ffc_case_test_session_abstract_interface_compiler, only: &
-        case_test_session_abstract_interface_compiler
     implicit none
     private
     public :: run_group
@@ -83,6 +83,8 @@ contains
             call case_test_concat_literal_and_deferred()
         case ("test_concat_three_distinct_deferred_variables")
             call case_test_concat_three_distinct_deferred_variables()
+        case ("test_conformance_epoch_lock")
+            call case_test_conformance_epoch_lock()
         case ("test_conformance_execution_evidence")
             call case_test_conformance_execution_evidence()
         case ("test_conformance_flake_detection")
@@ -135,8 +137,6 @@ contains
             call case_test_self_concat_appends_literal()
         case ("test_self_concat_three_times")
             call case_test_self_concat_three_times()
-        case ("test_session_abstract_interface_compiler")
-            call case_test_session_abstract_interface_compiler()
         case default
             matched = .false.
         end select

@@ -1,4 +1,6 @@
 module ffc_suite_group_14
+    use ffc_case_test_session_select_case_compiler, only: &
+        case_test_session_select_case_compiler
     use ffc_case_test_session_select_rank_compiler, only: &
         case_test_session_select_rank_compiler
     use ffc_case_test_session_select_rank_trailing_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_14
         case_test_session_transfer_descriptor_compiler
     use ffc_case_test_session_type_bound_compiler, only: &
         case_test_session_type_bound_compiler
-    use ffc_case_test_session_type_extends_compiler, only: &
-        case_test_session_type_extends_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_select_case_compiler")
+            call case_test_session_select_case_compiler()
         case ("test_session_select_rank_compiler")
             call case_test_session_select_rank_compiler()
         case ("test_session_select_rank_trailing_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_transfer_descriptor_compiler()
         case ("test_session_type_bound_compiler")
             call case_test_session_type_bound_compiler()
-        case ("test_session_type_extends_compiler")
-            call case_test_session_type_extends_compiler()
         case default
             matched = .false.
         end select

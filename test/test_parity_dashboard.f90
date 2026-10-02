@@ -45,6 +45,7 @@ subroutine case_test_parity_dashboard()
     if (.not. stale_binary_check_works()) passed = .false.
     if (.not. dirty_git_tree_check_works()) passed = .false.
     if (.not. snapshot_negative_cases_fail()) passed = .false.
+    if (.not. epoch_snapshot_check_works()) passed = .false.
     if (.not. negative_cases_fail()) passed = .false.
 
     ! Keep the scratch directory when something failed: it holds the logs.
@@ -305,7 +306,8 @@ contains
         end if
         command = revision_environment()// &
             ' timeout 120 bash scripts/generate_parity_dashboard.sh'// &
-            reports//' --manifest-dir '//MANIFEST_DIR//' --output '//output
+            reports//' --manifest-dir '//MANIFEST_DIR//' --output '//output// &
+            ' --snapshot '//ROOT//'/valid.tsv'
         if (reverse_order) command = 'LC_ALL=de_AT.utf8 POSIXLY_CORRECT=1 '//command
         if (check) command = command//' --check'
     end function generator_command
@@ -388,7 +390,7 @@ contains
 
         call execute_command_line('cp '//trim(fixture_binary_path)//' '// &
             ROOT//'/stale-ffc')
-        call execute_command_line('touch -d 2000-01-01 '//ROOT//'/stale-ffc')
+        call execute_command_line('touch -t 200001010000 '//ROOT//'/stale-ffc')
         call execute_command_line("bash -c 'source scripts/lib_conformance.sh; "// &
             'parent=$(dirname "$(resolve_primary_checkout_root "$PWD")"); '// &
             'require_compiler_inputs_older_than_binary '//ROOT// &
@@ -418,45 +420,76 @@ contains
 
     logical function snapshot_negative_cases_fail() result(ok)
         ok = .true.
-        call copy_production_snapshot()
-        call execute_command_line("sed -i '/^revision[[:space:]]ffc/"// &
-            "s/[^[:space:]]*$/"//repeat('0', 40)//"/' "//ROOT//'/bad.tsv')
+        call copy_fixture_snapshot()
+        call replace_snapshot_field('revision', 'ffc', 3, repeat('0', 40))
         ok = expect_snapshot_failure('snapshot ffc revision is not an ancestor') .and. ok
-        call copy_production_snapshot()
-        call execute_command_line("sed -i '/^digest[[:space:]]ffc-source/"// &
-            "s/[^[:space:]]*$/"//repeat('9', 64)//"/' "//ROOT//'/bad.tsv')
+        call copy_fixture_snapshot()
+        call replace_snapshot_field('digest', 'ffc-source', 3, repeat('9', 64))
         ok = expect_snapshot_failure( &
             'snapshot ffc revision source mismatch') .and. ok
-        call copy_production_snapshot()
-        call execute_command_line("sed -i '/^digest[[:space:]]manifests/"// &
-            "s/[^[:space:]]*$/"//repeat('9', 64)//"/' "//ROOT//'/bad.tsv')
+        call copy_fixture_snapshot()
+        call replace_snapshot_field('digest', 'manifests', 3, repeat('9', 64))
         ok = expect_snapshot_failure('stale snapshot manifest digest') .and. ok
-        call copy_production_snapshot()
-        call execute_command_line("sed -i '/^suite[[:space:]]fortfront-f90/"// &
-            "{s/442/443/;s/342/343/;}' "//ROOT//'/bad.tsv')
+        call copy_fixture_snapshot()
+        call replace_snapshot_field('suite', 'fortfront-f90', 3, '5')
+        call replace_snapshot_field('suite', 'fortfront-f90', 4, '3')
         ok = expect_snapshot_failure('All totals do not equal suites') .and. ok
-        call copy_production_snapshot()
-        call execute_command_line("sed -i '/^view[[:space:]]Scoped/"// &
-            "{s/10399/10398/;s/2470/2469/;}' "//ROOT//'/bad.tsv')
+        call copy_fixture_snapshot()
+        call replace_snapshot_field('view', 'Scoped', 3, '7')
+        call replace_snapshot_field('view', 'Scoped', 4, '5')
         ok = expect_snapshot_failure('Scoped totals do not equal') .and. ok
-        call copy_production_snapshot()
-        call execute_command_line("sed -i '/owner=lazy-fortran.ffc#297/"// &
-            "s/2$/3/' "//ROOT//'/bad.tsv')
+        call copy_fixture_snapshot()
+        call replace_snapshot_field('owner', 'fortfront-f90', 6, '2')
         ok = expect_snapshot_failure('owner totals do not equal') .and. ok
     end function snapshot_negative_cases_fail
 
-    subroutine copy_production_snapshot()
-        call execute_command_line('cp test/conformance/parity_dashboard.tsv '// &
+    subroutine copy_fixture_snapshot()
+        call execute_command_line('cp '//ROOT//'/valid.tsv '//ROOT//'/bad.tsv')
+    end subroutine copy_fixture_snapshot
+
+    subroutine replace_snapshot_field(kind, name, field, value)
+        character(len=*), intent(in) :: kind, name, value
+        integer, intent(in) :: field
+        character(len=16) :: field_text
+
+        write(field_text, '(I0)') field
+        call execute_command_line("awk -F '\t' -v OFS='\t' -v kind='"// &
+            kind//"' -v name='"//name//"' -v field="//trim(field_text)// &
+            " -v value='"//value// &
+            "' '$1==kind && $2==name {$field=value} {print}' "// &
+            ROOT//'/bad.tsv > '//ROOT//'/bad.tmp && mv '// &
+            ROOT//'/bad.tmp '//ROOT//'/bad.tsv')
+    end subroutine replace_snapshot_field
+
+    logical function epoch_snapshot_check_works() result(ok)
+        integer :: exit_stat
+        character(len=:), allocatable :: epoch
+
+        epoch = MANIFEST_DIR//'/parity_epoch.json'
+        call copy_fixture_snapshot()
+        call execute_command_line('printf locked > '//epoch)
+        call execute_command_line("printf 'digest\tconformance-epoch\t%s\n' "// &
+            '"$(sha256sum '//epoch//' | cut -d '' '' -f 1)" >> '// &
             ROOT//'/bad.tsv')
-    end subroutine copy_production_snapshot
+        call execute_command_line(revision_environment()//' timeout 120 bash '// &
+            'scripts/generate_parity_dashboard.sh --from-snapshot '// &
+            ROOT//'/bad.tsv --manifest-dir '//MANIFEST_DIR//' --output '// &
+            ROOT//'/bad.md > '//LOG_PATH//' 2>&1', exitstat=exit_stat)
+        ok = exit_stat == 0
+        if (.not. ok) print *, 'FAIL: snapshot with a conformance epoch'
+        call execute_command_line('printf altered > '//epoch)
+        ok = expect_snapshot_failure('stale snapshot conformance epoch') .and. ok
+        call execute_command_line('rm -f '//epoch)
+        ok = expect_snapshot_failure('missing snapshot conformance epoch') .and. ok
+    end function epoch_snapshot_check_works
 
     logical function expect_snapshot_failure(diagnostic) result(ok)
         character(len=*), intent(in) :: diagnostic
         integer :: exit_stat
 
-        call execute_command_line('timeout 120 bash '// &
+        call execute_command_line(revision_environment()//' timeout 120 bash '// &
             'scripts/generate_parity_dashboard.sh --from-snapshot '// &
-            ROOT//'/bad.tsv --manifest-dir test/conformance --output '// &
+            ROOT//'/bad.tsv --manifest-dir '//MANIFEST_DIR//' --output '// &
             ROOT//'/bad.md > '//LOG_PATH//' 2>&1', exitstat=exit_stat)
         ok = exit_stat /= 0 .and. file_contains(LOG_PATH, diagnostic)
         if (.not. ok) then

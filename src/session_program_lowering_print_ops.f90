@@ -104,6 +104,8 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: format_body
 
+        call check_formatted_io_objects(arena, node, error_msg)
+        if (len_trim(error_msg) > 0) return
         call normalize_format_body(node%format_spec, format_body)
         if (len_trim(format_body) == 0) then
             ! An empty format still terminates one record.
@@ -308,6 +310,59 @@ contains
         class default
         end select
     end subroutine lower_formatted_io_implied_do
+
+    subroutine check_formatted_io_objects(arena, node, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(print_statement_node), intent(in) :: node
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, item, single_object(1)
+
+        call set_empty(error_msg)
+        if (.not. allocated(node%expression_indices)) return
+        do i = 1, size(node%expression_indices)
+            item = node%expression_indices(i)
+            if (.not. node_exists(arena, item)) cycle
+            select type (loop => arena%entries(item)%node)
+                type is (io_implied_do_node)
+                if (allocated(loop%object_indices)) then
+                    if (.not. formatted_io_objects_supported(arena, &
+                        loop%object_indices, loop%line, loop%column, &
+                        error_msg)) return
+                else if (loop%expr_index > 0) then
+                    single_object(1) = loop%expr_index
+                    if (.not. formatted_io_objects_supported(arena, &
+                        single_object, loop%line, loop%column, &
+                        error_msg)) return
+                end if
+            end select
+        end do
+    end subroutine check_formatted_io_objects
+
+    logical function formatted_io_objects_supported(arena, objects, line, column, &
+            error_msg) result(supported)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: objects(:), line, column
+        character(len=:), allocatable, intent(out) :: error_msg
+
+        supported = .false.
+        call set_empty(error_msg)
+        if (size(objects) /= 1) then
+            call unsupported_feature_error('formatted I/O implied-do', line, column, &
+                'multiple objects require format reversion across the iterator', &
+                error_msg)
+            return
+        end if
+        if (node_exists(arena, objects(1))) then
+            select type (object => arena%entries(objects(1))%node)
+                type is (io_implied_do_node)
+                call unsupported_feature_error('formatted I/O implied-do', line, &
+                    column, 'nested objects require format reversion across '// &
+                    'the iterator', error_msg)
+                return
+            end select
+        end if
+        supported = .true.
+    end function formatted_io_objects_supported
 
     recursive module subroutine lower_next_compound_descriptor(arena, node, context, &
                                                               format_body, pos, &
@@ -1097,9 +1152,20 @@ contains
             if (symbol_index > 0) then
                 if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER &
                     .and. context%symbols(symbol_index)%has_character_value) then
+                    call char_expr_operands(arena, node_index, context, &
+                                            data_ptr, length, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (context%symbols(symbol_index)%is_dummy_argument) then
+                        block
+                            type(lr_operand_desc_t) :: view
+                            call materialize_character_print_view(context, data_ptr, &
+                                length, view, error_msg)
+                            if (len_trim(error_msg) > 0) return
+                            data_ptr = view
+                        end block
+                    end if
                     if (.not. emit_liric_print_string_operand_value( &
-                        context%session, fmt_id, &
-                        context%symbols(symbol_index)%value, error_msg)) return
+                        context%session, fmt_id, data_ptr, error_msg)) return
                     return
                 end if
             end if

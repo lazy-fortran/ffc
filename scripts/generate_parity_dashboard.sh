@@ -3,14 +3,9 @@
 set -uo pipefail
 export LC_ALL=C
 
-if [ "${BASH_VERSINFO[0]:-0}" -lt 4 ] || \
-        { [ "${BASH_VERSINFO[0]:-0}" -eq 4 ] && \
-          [ "${BASH_VERSINFO[1]:-0}" -lt 3 ]; }; then
-    printf 'ERROR: Bash 4.3 or newer is required\n' >&2
-    exit 1
-fi
-
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib_shell.sh"
+ffc_require_bash "$@" || exit 1
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib_expected_manifest.sh"
 source "$SCRIPT_DIR/lib_conformance.sh"
@@ -21,6 +16,7 @@ MANIFEST_DIR="$PROJECT_DIR/test/conformance"
 OUTPUT="$PROJECT_DIR/docs/PARITY_STATUS.md"
 SNAPSHOT=""
 FROM_SNAPSHOT=""
+EPOCH_LOCK=""
 CHECK_ONLY=0
 
 fail() {
@@ -71,6 +67,11 @@ while [ "$#" -gt 0 ]; do
             FROM_SNAPSHOT="$2"
             shift 2
             ;;
+        --epoch-lock)
+            [ "$#" -ge 2 ] || fail "--epoch-lock requires a path"
+            EPOCH_LOCK="$2"
+            shift 2
+            ;;
         --check)
             CHECK_ONLY=1
             shift
@@ -79,7 +80,7 @@ while [ "$#" -gt 0 ]; do
             printf '%s\n' \
                 'usage: generate_parity_dashboard.sh [--report SUITE=PATH]...' \
                 '       [--manifest-dir PATH] [--output PATH] [--snapshot PATH]' \
-                '       [--from-snapshot PATH] [--check]'
+                '       [--from-snapshot PATH] [--epoch-lock PATH] [--check]'
             exit 0
             ;;
         *) fail "unknown argument: $1" ;;
@@ -120,7 +121,7 @@ if [ -n "$FROM_SNAPSHOT" ]; then
     [ "${#REPORTS[@]}" -eq 0 ] || fail "--from-snapshot cannot be combined with --report"
     [ -s "$FROM_SNAPSHOT" ] || fail "missing snapshot: $FROM_SNAPSHOT"
     validate_snapshot_freshness "$FROM_SNAPSHOT"
-    GENERATED=$(mktemp /tmp/ffc_parity_status_XXXXXX.md)
+    GENERATED=$(mktemp "${TMPDIR:-/var/tmp}/ffc_parity_status_XXXXXX.md")
     trap 'rm -f "$GENERATED"' EXIT
     render_snapshot "$FROM_SNAPSHOT" "$GENERATED"
     if [ "$CHECK_ONLY" -eq 1 ]; then
@@ -139,12 +140,20 @@ fi
 
 for suite in "${SUITES[@]}"; do
     if [[ ! -v "REPORTS[$suite]" ]]; then
-        REPORTS["$suite"]="/tmp/ffc_parity_${suite}.jsonl"
+        REPORTS["$suite"]="${TMPDIR:-/var/tmp}/ffc_parity_${suite}.jsonl"
     fi
     [ -s "${REPORTS[$suite]}" ] || \
         fail "missing report: ${REPORTS[$suite]}"
 done
-TMPDIR_WORK=$(mktemp -d /tmp/ffc_parity_dashboard_XXXXXX)
+if [ -n "$EPOCH_LOCK" ]; then
+    epoch_args=()
+    for suite in "${SUITES[@]}"; do
+        epoch_args+=(--report "$suite=${REPORTS[$suite]}")
+    done
+    python3 "$SCRIPT_DIR/lock_conformance_epoch.py" "${epoch_args[@]}" \
+        --check "$EPOCH_LOCK" || exit 1
+fi
+TMPDIR_WORK=$(mktemp -d "${TMPDIR:-/var/tmp}/ffc_parity_dashboard_XXXXXX")
 trap 'rm -rf "$TMPDIR_WORK"' EXIT
 ROWS="$TMPDIR_WORK/rows.tsv"
 SUMMARIES="$TMPDIR_WORK/summaries.tsv"
@@ -438,6 +447,10 @@ GENERATED_SNAPSHOT="$TMPDIR_WORK/parity_dashboard.tsv"
     printf 'digest\tffc-source\t%s\n' "$ffc_source_sha256"
     printf 'digest\tffc-binary\t%s\n' "$ffc_binary_sha256"
     printf 'digest\tmanifests\t%s\n' "$EXPECTED_MANIFEST_SHA256"
+    if [ -n "$EPOCH_LOCK" ]; then
+        printf 'digest\tconformance-epoch\t%s\n' \
+            "$(sha256sum "$EPOCH_LOCK" | cut -d ' ' -f 1)"
+    fi
     for suite in "${SUITES[@]}"; do emit_suite_row "$suite"; done
     emit_view_row All 0
     emit_view_row Scoped 1

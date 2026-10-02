@@ -43,8 +43,9 @@ subroutine case_test_fortfront_corpus_conformance()
 
     failed = 0
     call verify_xpass_rejection(failed)
-    call run_suite('fortfront-f90', F90_REPORT, F90_LOG, 517, failed)
-    call run_suite('fortfront-lf', LF_REPORT, LF_LOG, 264, failed)
+    call verify_selection_rejection(failed)
+    call run_suite('fortfront-f90', F90_REPORT, F90_LOG, failed)
+    call run_suite('fortfront-lf', LF_REPORT, LF_LOG, failed)
 
     ! Keep the scratch directory when something failed: it holds the logs.
     if (failed > 0) stop 1
@@ -54,18 +55,39 @@ subroutine case_test_fortfront_corpus_conformance()
 
 contains
 
-    subroutine run_suite(suite, report, log_path, expected_total, failed)
+    subroutine run_suite(suite, report, log_path, failed)
         character(len=*), intent(in) :: suite
         character(len=*), intent(in) :: report
         character(len=*), intent(in) :: log_path
-        integer, intent(in) :: expected_total
         integer, intent(inout) :: failed
-        character(len=:), allocatable :: cmd
+        character(len=:), allocatable :: cmd, selection
         character(len=32) :: timeout_text
-        integer :: exit_stat
+        integer :: exit_stat, expected_total, unit, io_stat
+        character(len=4096) :: line
 
         write (timeout_text, '(I0)') RUN_TIMEOUT_SECONDS
         call execute_command_line('rm -f '//report//' '//log_path)
+        selection = ROOT//'/'//suite//'.files'
+        cmd = 'bash '//SCRIPT//' --suite '//suite//' --list-files > '//selection
+        call execute_command_line(cmd, exitstat=exit_stat)
+        expected_total = 0
+        if (exit_stat == 0) then
+            open(newunit=unit, file=selection, status='old', action='read', &
+                iostat=io_stat)
+            if (io_stat == 0) then
+                do
+                    read(unit, '(A)', iostat=io_stat) line
+                    if (io_stat /= 0) exit
+                    expected_total = expected_total + 1
+                end do
+                close(unit)
+            end if
+        end if
+        if (expected_total == 0) then
+            failed = failed + 1
+            print *, 'FAIL[', suite, ']: no authoritative corpus selection'
+            return
+        end if
         ! Generous per-file timeout so a single slow compile under full-suite
         ! load is not a false failure (idle compiles are well under a second).
         cmd = 'TMPDIR='//ROOT//' timeout '//trim(timeout_text)//' bash '//SCRIPT// &
@@ -82,7 +104,80 @@ contains
         end if
 
         call validate_report(suite, report, expected_total, failed)
+        call validate_selection(suite, report, selection, failed)
     end subroutine run_suite
+
+    subroutine validate_selection(suite, report, selection, failed)
+        character(len=*), intent(in) :: suite, report, selection
+        integer, intent(inout) :: failed
+        integer :: report_unit, selection_unit, io_stat, start, finish
+        character(len=4096) :: line, expected
+        logical :: mismatch
+
+        open(newunit=report_unit, file=report, status='old', action='read', &
+            iostat=io_stat)
+        if (io_stat /= 0) then
+            failed = failed + 1
+            return
+        end if
+        open(newunit=selection_unit, file=selection, status='old', &
+            action='read', iostat=io_stat)
+        if (io_stat /= 0) then
+            close(report_unit)
+            failed = failed + 1
+            return
+        end if
+        mismatch = .false.
+        do
+            read(report_unit, '(A)', iostat=io_stat) line
+            if (io_stat /= 0) exit
+            start = index(line, '"file":"')
+            if (start == 0) cycle
+            start = start + len('"file":"')
+            finish = index(line(start:), '"')
+            if (finish == 0) then
+                mismatch = .true.
+                exit
+            end if
+            read(selection_unit, '(A)', iostat=io_stat) expected
+            if (io_stat /= 0) then
+                mismatch = .true.
+                exit
+            end if
+            if (line(start:start + finish - 2) /= trim(expected)) then
+                mismatch = .true.
+                exit
+            end if
+        end do
+        read(selection_unit, '(A)', iostat=io_stat) expected
+        if (io_stat == 0) mismatch = .true.
+        close(report_unit)
+        close(selection_unit)
+        if (.not. mismatch) return
+        failed = failed + 1
+        print *, 'FAIL[', suite, ']: report membership differs from selection'
+    end subroutine validate_selection
+
+    subroutine verify_selection_rejection(failed)
+        integer, intent(inout) :: failed
+        integer :: unit, synthetic_failures
+        character(len=:), allocatable :: selection
+
+        selection = ROOT//'/synthetic.files'
+        open(newunit=unit, file=selection, status='replace', action='write')
+        write(unit, '(A)') 'stale.f90'
+        close(unit)
+        synthetic_failures = 0
+        call validate_selection('synthetic', SYNTHETIC_XPASS_REPORT, &
+            selection, synthetic_failures)
+        if (synthetic_failures /= 0) failed = failed + 1
+        open(newunit=unit, file=selection, status='replace', action='write')
+        write(unit, '(A)') 'different.f90'
+        close(unit)
+        call validate_selection('synthetic', SYNTHETIC_XPASS_REPORT, &
+            selection, synthetic_failures)
+        if (synthetic_failures /= 1) failed = failed + 1
+    end subroutine verify_selection_rejection
 
     subroutine validate_report(suite, report, expected_total, failed)
         character(len=*), intent(in) :: suite

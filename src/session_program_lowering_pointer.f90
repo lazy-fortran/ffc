@@ -1183,8 +1183,17 @@ contains
         end if
         context%symbols(ptr_index)%has_runtime_array_stride = &
             context%symbols(target_index)%has_runtime_array_stride
-        context%symbols(ptr_index)%runtime_array_stride_bytes = &
-            context%symbols(target_index)%runtime_array_stride_bytes
+        if (context%symbols(target_index)%has_runtime_descriptor) then
+            if (.not. emit_i64_load_at(context%session, &
+                    context%symbols(target_index)%runtime_descriptor_address, &
+                    int(ARRAY_DESCRIPTOR_DIM_OFFSET + ARRAY_DIMENSION_STRIDE_OFFSET, &
+                        c_int64_t), &
+                    context%symbols(ptr_index)%runtime_array_stride_bytes, &
+                    error_msg)) return
+        else
+            context%symbols(ptr_index)%runtime_array_stride_bytes = &
+                context%symbols(target_index)%runtime_array_stride_bytes
+        end if
         call set_empty(error_msg)
     end subroutine alias_pointer_array
 

@@ -565,6 +565,7 @@ contains
                 return
             end if
             if (context%symbols(existing_index)%is_parameter) then
+                context%symbols(existing_index)%is_allocatable = node%is_allocatable
                 ! Both a fixed-length dummy (character(len=N)) and an
                 ! assumed-length one (character(len=*)) read their data
                 ! pointer from the caller's {data, length} descriptor; a
@@ -1076,6 +1077,13 @@ contains
             return
         end if
 
+        if (context%symbols(symbol_index)%is_dummy_argument .and. &
+            .not. context%symbols(symbol_index)%is_allocatable) then
+            call lower_borrowed_character_assignment(arena, node%value_index, &
+                context, symbol_index, error_msg)
+            return
+        end if
+
         if (context%symbols(symbol_index)%is_runtime_fixed_character) then
             call lower_runtime_fixed_char_assignment(arena, node%value_index, &
                 context, symbol_index, error_msg)
@@ -1270,6 +1278,43 @@ contains
         context%symbols(symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
     end subroutine lower_character_assignment
+
+    subroutine lower_borrowed_character_assignment(arena, value_index, context, &
+                                                   symbol_index, error_msg)
+        ! A nonallocatable dummy borrows storage, including an assumed-length
+        ! dummy. Assignment preserves its descriptor and declared length.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: value_index, symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: source, source_length, snapshot
+        type(lr_operand_desc_t) :: target, target_length, source_length64
+        type(lr_operand_desc_t) :: copy_length, copy_length64, source_fits
+
+        call char_expr_operands(arena, value_index, context, source, &
+                                source_length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, source_length, &
+                source_length64, error_msg)) return
+        if (.not. emit_alloca_bytes(context%session, source_length64, snapshot, &
+                error_msg)) return
+        if (.not. emit_memcpy(context%session, snapshot, source, source_length64, &
+                error_msg)) return
+        call char_length_operands(context, symbol_index, target, target_length, &
+                                  error_msg)
+        if (len_trim(error_msg) > 0) return
+        call fill_spaces(context, target, target_length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SLE, source_length, &
+                target_length, source_fits, error_msg)) return
+        call select_value(context, source_fits, source_length, target_length, &
+                          copy_length, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (.not. emit_liric_i32_to_i64(context%session, copy_length, &
+                copy_length64, error_msg)) return
+        if (.not. emit_memcpy(context%session, target, snapshot, copy_length64, &
+                error_msg)) return
+    end subroutine lower_borrowed_character_assignment
 
     subroutine lower_deferred_identifier_assignment(arena, value_index, context, &
                                                     symbol_index, error_msg)
@@ -1827,9 +1872,14 @@ contains
                 error_msg)) return
             ! Length lives in an i64 slot; load its low word as i32 (lengths
             ! never approach 2**31 here).
-            if (.not. emit_i32_load(context%session, &
-                context%symbols(symbol_index)%deferred_length, length, &
-                error_msg)) return
+            if (context%symbols(symbol_index)%character_length > 0) then
+                length = i32_immediate(context%session, &
+                    int(context%symbols(symbol_index)%character_length, c_int64_t))
+            else
+                if (.not. emit_i32_load(context%session, &
+                    context%symbols(symbol_index)%deferred_length, length, &
+                    error_msg)) return
+            end if
         else
             data_ptr = context%symbols(symbol_index)%value
             length = i32_immediate(context%session, &
@@ -2524,6 +2574,32 @@ contains
                 i32_immediate(context%session, 0_c_int64_t), error_msg)) return
         call set_empty(error_msg)
     end subroutine materialize_character_view
+
+    module subroutine materialize_character_print_view(context, data_ptr, &
+                                                       length, buffer, error_msg)
+        ! A borrowed dummy can end before its actual's terminator. Printing
+        ! needs exactly LEN bytes without changing the borrowed storage.
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(in) :: data_ptr, length
+        type(lr_operand_desc_t), intent(out) :: buffer
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: length64, bytes, terminator
+
+        if (.not. emit_liric_i32_to_i64(context%session, length, length64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, length64, &
+                i64_immediate(context%session, 1_c_int64_t), bytes, &
+                error_msg)) return
+        if (.not. emit_alloca_bytes(context%session, bytes, buffer, &
+                error_msg)) return
+        if (.not. emit_memcpy(context%session, buffer, data_ptr, length64, &
+                error_msg)) return
+        if (.not. emit_i64_binary(context%session, LR_OP_ADD, buffer, length64, &
+                terminator, error_msg)) return
+        if (.not. emit_liric_store_char_byte(context%session, terminator, &
+                i32_immediate(context%session, 0_c_int64_t), &
+                i32_immediate(context%session, 0_c_int64_t), error_msg)) return
+    end subroutine materialize_character_print_view
 
     logical function is_character_array_element(arena, node_index, context) &
             result(is_elem)

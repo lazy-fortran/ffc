@@ -4579,20 +4579,27 @@ contains
 
     subroutine lower_runtime_strided_array_element_address(context, symbol_index, &
             linear_index, element_address, error_msg)
-        ! Address one element of a rank-1 view whose byte stride came from the
-        ! canonical array descriptor. The linear index is zero based.
+        ! Address a rank-1 view using its live canonical descriptor stride when
+        ! available. The linear index is zero based.
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
         type(lr_operand_desc_t), intent(in) :: linear_index
         type(lr_operand_desc_t), intent(out) :: element_address
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: index_i64, byte_offset
+        type(lr_operand_desc_t) :: index_i64, byte_offset, stride_bytes
 
+        if (context%symbols(symbol_index)%has_runtime_descriptor) then
+            if (.not. emit_i64_load_at(context%session, &
+                    context%symbols(symbol_index)%runtime_descriptor_address, &
+                    int(ARRAY_DESCRIPTOR_DIM_OFFSET + ARRAY_DIMENSION_STRIDE_OFFSET, &
+                        c_int64_t), stride_bytes, error_msg)) return
+        else
+            stride_bytes = context%symbols(symbol_index)%runtime_array_stride_bytes
+        end if
         if (.not. emit_liric_i32_to_i64(context%session, linear_index, index_i64, &
                                        error_msg)) return
         if (.not. emit_i64_binary(context%session, LR_OP_MUL, index_i64, &
-                context%symbols(symbol_index)%runtime_array_stride_bytes, &
-                byte_offset, error_msg)) return
+                stride_bytes, byte_offset, error_msg)) return
         if (.not. emit_ptr_offset_dyn(context%session, &
                 context%symbols(symbol_index)%element_address, byte_offset, &
                 element_address, error_msg)) return

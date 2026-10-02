@@ -1,4 +1,6 @@
 module ffc_suite_group_07
+    use ffc_case_test_session_formatted_print_compiler, only: &
+        case_test_session_formatted_print_compiler
     use ffc_case_test_session_formatted_read_al_compiler, only: &
         case_test_session_formatted_read_al_compiler
     use ffc_case_test_session_formatted_read_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_07
         case_test_session_integer_character_width_compiler
     use ffc_case_test_session_integer_function_compiler, only: &
         case_test_session_integer_function_compiler
-    use ffc_case_test_session_integer_intrinsic_compiler, only: &
-        case_test_session_integer_intrinsic_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_formatted_print_compiler")
+            call case_test_session_formatted_print_compiler()
         case ("test_session_formatted_read_al_compiler")
             call case_test_session_formatted_read_al_compiler()
         case ("test_session_formatted_read_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_integer_character_width_compiler()
         case ("test_session_integer_function_compiler")
             call case_test_session_integer_function_compiler()
-        case ("test_session_integer_intrinsic_compiler")
-            call case_test_session_integer_intrinsic_compiler()
         case default
             matched = .false.
         end select

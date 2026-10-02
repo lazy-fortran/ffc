@@ -1,4 +1,6 @@
 module ffc_suite_group_06
+    use ffc_case_test_session_dimension_statement_compiler, only: &
+        case_test_session_dimension_statement_compiler
     use ffc_case_test_session_do_while_compiler, only: &
         case_test_session_do_while_compiler
     use ffc_case_test_session_do_while_conditional_stop_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_06
         case_test_session_forall_compiler
     use ffc_case_test_session_formatted_output_compiler, only: &
         case_test_session_formatted_output_compiler
-    use ffc_case_test_session_formatted_print_compiler, only: &
-        case_test_session_formatted_print_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_dimension_statement_compiler")
+            call case_test_session_dimension_statement_compiler()
         case ("test_session_do_while_compiler")
             call case_test_session_do_while_compiler()
         case ("test_session_do_while_conditional_stop_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_forall_compiler()
         case ("test_session_formatted_output_compiler")
             call case_test_session_formatted_output_compiler()
-        case ("test_session_formatted_print_compiler")
-            call case_test_session_formatted_print_compiler()
         case default
             matched = .false.
         end select

@@ -1,4 +1,6 @@
 module ffc_suite_group_12
+    use ffc_case_test_session_real_variable_compiler, only: &
+        case_test_session_real_variable_compiler
     use ffc_case_test_session_recursive_compiler, only: &
         case_test_session_recursive_compiler
     use ffc_case_test_session_recursive_function_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_12
         case_test_session_reshape_compiler
     use ffc_case_test_session_reshape_rank4_compiler, only: &
         case_test_session_reshape_rank4_compiler
-    use ffc_case_test_session_runtime_allocation_helpers_compiler, only: &
-        case_test_session_runtime_allocation_helpers_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_real_variable_compiler")
+            call case_test_session_real_variable_compiler()
         case ("test_session_recursive_compiler")
             call case_test_session_recursive_compiler()
         case ("test_session_recursive_function_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_reshape_compiler()
         case ("test_session_reshape_rank4_compiler")
             call case_test_session_reshape_rank4_compiler()
-        case ("test_session_runtime_allocation_helpers_compiler")
-            call case_test_session_runtime_allocation_helpers_compiler()
         case default
             matched = .false.
         end select

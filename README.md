@@ -24,6 +24,10 @@ Frontend validation rejects conflicting local declarations, derived-type/object
 collisions, writes to named constants, invalid character inquiry arity, and
 mismatched program or DO closing names while preserving legal shadowing.
 Refer to that document instead of this README for the feature list.
+Scalar fixed-length and assumed-length nonallocatable character dummies write
+through to whole scalar actuals, preserving the dummy's length and any longer
+actual's tail. Assignment copies the source before padding or truncation, so
+self-overlap and forwarding to another character dummy preserve the value.
 Current slices include compound formatted `print` with literal `I`, `B`, `O`, `Z`, `X`,
 `F`, and `A` descriptors on stdout, including a bare array among other print
 items and an inline array constructor as a print item
@@ -468,6 +472,10 @@ and general NAMELIST writing remain unsupported. Internal `read (buf, *)
 value` (list-directed) and `write (buf, fmt) value` with a compound literal
 format (`I`/`A` descriptors) are supported. `inquire` covers `exist=`,
 `size=`, and `iostat=` on `file=` and `unit=`, plus `opened=` on `unit=`.
+List-directed `print` and stdout `write` accept ordered multiple-object and
+nested I/O implied-do lists with compile-time bounds and strides. Formatted
+multiple-object or nested implied-do lists are explicitly refused until format
+reversion across their iterator is implemented.
 `FILE=` accepts character variables and expressions, trims trailing blanks,
 and preserves the source value. Invalid programs are
 rejected during lowering: an integer `SELECT CASE` with overlapping

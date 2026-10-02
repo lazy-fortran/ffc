@@ -363,6 +363,22 @@ character actuals (per-element pointer storage today), character sections,
 deferred or assumed lengths, and rank >= 2 character dummies are refused
 before any descriptor is emitted.
 
+## Rank-one stride reads (#337/#338)
+
+Rank-one descriptor-backed borrowed dummy element reads and writes load
+`stride_bytes` from the live descriptor's first dimension. The assumed-shape
+entry binder marks
+the stride path but stores no separate stride operand. Descriptorless pointer
+views and explicit-shape dummy/result buffers retain their own stride operand
+until their storage convention migrates; pointer association to a borrowed
+dummy loads its source stride from that dummy's descriptor. The independent
+gfortran differential
+case in `test_session_assumed_shape_section_compiler` covers positive and
+negative runtime strides, changing extents, shifted dummy bounds, a rank-two
+column actual, pointer association to a borrowed dummy, and writes visible in
+caller storage. This is a bounded #337/
+#338 retirement slice; it does not claim corpus-row conversions.
+
 ## Extent reads (#339)
 
 `read_runtime_dim_extent` is the single canonical entry point for a

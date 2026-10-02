@@ -1,4 +1,6 @@
 module ffc_suite_group_04
+    use ffc_case_test_session_character_prefix_compiler, only: &
+        case_test_session_character_prefix_compiler
     use ffc_case_test_session_character_variable_compiler, only: &
         case_test_session_character_variable_compiler
     use ffc_case_test_session_class_allocatable_source_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_04
         case_test_session_corpus_gaps_609_compiler
     use ffc_case_test_session_cycle_branch_values_compiler, only: &
         case_test_session_cycle_branch_values_compiler
-    use ffc_case_test_session_data_implied_do_zero_compiler, only: &
-        case_test_session_data_implied_do_zero_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_character_prefix_compiler")
+            call case_test_session_character_prefix_compiler()
         case ("test_session_character_variable_compiler")
             call case_test_session_character_variable_compiler()
         case ("test_session_class_allocatable_source_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_corpus_gaps_609_compiler()
         case ("test_session_cycle_branch_values_compiler")
             call case_test_session_cycle_branch_values_compiler()
-        case ("test_session_data_implied_do_zero_compiler")
-            call case_test_session_data_implied_do_zero_compiler()
         case default
             matched = .false.
         end select

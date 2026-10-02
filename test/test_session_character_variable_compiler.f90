@@ -27,6 +27,8 @@ subroutine case_test_session_character_variable_compiler()
     if (.not. test_character_concat_pads_short_result()) all_passed = .false.
     if (.not. test_character_concat_truncates_long_result()) all_passed = .false.
 
+    if (.not. test_borrowed_character_dummy_assignment()) all_passed = .false.
+
     if (.not. all_passed) stop 1
     print *, 'PASS: character variables lower through direct LIRIC session'
 
@@ -122,5 +124,35 @@ contains
             source, ' hello'//new_line('a'), &
             '/tmp/ffc_session_char_concat_trunc_test')
     end function test_character_concat_truncates_long_result
+
+    logical function test_borrowed_character_dummy_assignment()
+        character(len=*), parameter :: source = &
+            'program p'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  character(len=6) :: s'//new_line('a')// &
+            '  s = "abcdef"'//new_line('a')// &
+            '  call short(s)'//new_line('a')// &
+            '  print *, s'//new_line('a')// &
+            '  call whole(s)'//new_line('a')// &
+            '  print *, s'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine short(x)'//new_line('a')// &
+            '    character(len=3), intent(inout) :: x'//new_line('a')// &
+            '    x = "XY"'//new_line('a')// &
+            '    print *, x'//new_line('a')// &
+            '  end subroutine'//new_line('a')// &
+            '  subroutine whole(x)'//new_line('a')// &
+            '    character(len=*), intent(inout) :: x'//new_line('a')// &
+            '    x = x(2:)'//new_line('a')// &
+            '    print *, x'//new_line('a')// &
+            '    x = "Z"'//new_line('a')// &
+            '  end subroutine'//new_line('a')// &
+            'end program'
+
+        test_borrowed_character_dummy_assignment = expect_output( &
+            source, ' XY '//new_line('a')//' XY def'//new_line('a')// &
+            ' Y def '//new_line('a')//' Z     '//new_line('a'), &
+            '/var/tmp/ffc_character_dummy_assignment_test')
+    end function test_borrowed_character_dummy_assignment
 
 end subroutine case_test_session_character_variable_compiler

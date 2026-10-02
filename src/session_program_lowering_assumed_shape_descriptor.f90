@@ -1089,7 +1089,6 @@ contains
         integer :: i, sym_index, rank, dim
         character(len=:), allocatable :: name
         type(lr_operand_desc_t) :: descriptor, base, extent_i64, extent_i32
-        type(lr_operand_desc_t) :: stride_i64
 
         call set_empty(error_msg)
         if (.not. allocated(param_indices)) return
@@ -1125,12 +1124,7 @@ contains
             context%symbols(sym_index)%has_address = .true.
             context%symbols(sym_index)%is_reference = .true.
             if (rank == 1) then
-                if (.not. emit_i64_load_at(context%session, descriptor, &
-                        assumed_shape_dim_field_offset(1, &
-                            int(ARRAY_DIMENSION_STRIDE_OFFSET, c_int64_t)), &
-                        stride_i64, error_msg)) return
                 context%symbols(sym_index)%has_runtime_array_stride = .true.
-                context%symbols(sym_index)%runtime_array_stride_bytes = stride_i64
             end if
             call bind_polymorphic_array_element_stride(arena, context, &
                 callee_name, i, sym_index, descriptor, error_msg)

@@ -35,6 +35,16 @@ returns the former data pointer only for `CHARACTER_STORAGE_OWNED`. The caller
 passes that pointer to the runtime deallocator exactly once. Borrowed storage
 is never freed through this descriptor.
 
+A nonallocatable scalar dummy borrows the descriptor's data and declared
+length. Intrinsic assignment copies into those bytes, padding or truncating
+to that length without rebinding the descriptor or transferring ownership.
+An assumed-length dummy keeps the actual's runtime length; a fixed-length
+dummy modifies only its declared prefix of a longer actual. A source that
+overlaps the destination is evaluated and copied before any destination byte
+changes. A terminated print temporary never writes a terminator into borrowed
+storage, because the byte immediately after a fixed dummy may belong to the
+actual's remaining value.
+
 The null state has a null data pointer, zero length, zero capacity, and storage
 class zero. Failed initialization also leaves this state.
 

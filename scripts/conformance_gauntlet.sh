@@ -20,6 +20,7 @@
 #   --file PATH         select one suite-relative file (repeatable)
 #   --files-from PATH   read suite-relative files from PATH (repeatable)
 #   --max-files N       only test the first N files (for smoke runs)
+#   --list-files        list the full suite's relative paths without compiling
 #   --timeout N         per-file timeout in seconds (default: 5)
 #   --repeat N          run the selection N times and merge; a file whose
 #                       status differs between attempts is recorded FLAKY
@@ -48,6 +49,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib_shell.sh"
+ffc_require_bash "$@" || exit 1
 source "$SCRIPT_DIR/lib_conformance.sh"
 source "$SCRIPT_DIR/lib_conformance_oracles.sh"
 source "$SCRIPT_DIR/lib_expected_manifest.sh"
@@ -62,6 +65,7 @@ FFC_BIN=""
 REPORT=""
 OBSERVATIONS=""
 MAX_FILES=""
+LIST_FILES=0
 TIMEOUT=5
 # Parallel width for the per-case loop. 1 keeps the historical serial path
 # byte-for-byte; >1 splits the suite's file list into shards, runs each shard
@@ -105,6 +109,8 @@ while [ $# -gt 0 ]; do
             SUITE="$2"; shift 2 ;;
         --ffc)
             FFC_BIN="$2"; shift 2 ;;
+        --list-files)
+            LIST_FILES=1; shift ;;
         --report)
             REPORT="$2"; shift 2 ;;
         --observations)
@@ -179,31 +185,6 @@ case "$SUITE" in
     fortfront-f90|fortfront-lf|lfortran|gfortran-dg) ;;
     *) echo "ERROR: unknown suite '$SUITE'. Choose from: $SUITES" >&2; exit 1 ;;
 esac
-
-# Resolve report path
-if [ -z "$REPORT" ]; then
-    REPORT="${TMPDIR:-/tmp}/ffc_gauntlet_${SUITE}.jsonl"
-fi
-if [ -z "$OBSERVATIONS" ]; then
-    case "$REPORT" in
-        *.jsonl) OBSERVATIONS="${REPORT%.jsonl}.observations.jsonl" ;;
-        *) OBSERVATIONS="${REPORT}.observations.jsonl" ;;
-    esac
-fi
-REPORT_CANONICAL=$(python3 -c \
-    'import os, sys; print(os.path.realpath(sys.argv[1]))' "$REPORT") || \
-    fail "cannot resolve --report path"
-OBSERVATIONS_CANONICAL=$(python3 -c \
-    'import os, sys; print(os.path.realpath(sys.argv[1]))' "$OBSERVATIONS") || \
-    fail "cannot resolve --observations path"
-if [ "$REPORT_CANONICAL" = "$OBSERVATIONS_CANONICAL" ]; then
-    fail "--report and --observations must name different files"
-fi
-
-# Ensure output directories exist.
-mkdir -p "$(dirname "$REPORT")" || fail "cannot create report directory"
-mkdir -p "$(dirname "$OBSERVATIONS")" || \
-    fail "cannot create observation directory"
 
 # Resolve suite root
 resolve_suite_root() {
@@ -355,6 +336,41 @@ source_has_program_root() {
         END { exit !found }
     ' "$source"
 }
+
+if [ "$LIST_FILES" -eq 1 ]; then
+    [ "${#SELECTOR_KINDS[@]}" -eq 0 ] && [ -z "$MAX_FILES$SAMPLE_SIZE" ] || \
+        fail "--list-files lists the full suite and cannot use selection options"
+    listing_root=$(resolve_suite_root)
+    [ -d "$listing_root" ] || fail "$SUITE not found at $listing_root"
+    conformance_suite_files "$SUITE" "$listing_root" | \
+        while IFS= read -r path; do
+            printf '%s\n' "${path#"$listing_root/"}"
+        done || fail "cannot list $SUITE"
+    exit 0
+fi
+
+# Resolve report paths only for executions; listing has no output artifacts.
+if [ -z "$REPORT" ]; then
+    REPORT="${TMPDIR:-/tmp}/ffc_gauntlet_${SUITE}.jsonl"
+fi
+if [ -z "$OBSERVATIONS" ]; then
+    case "$REPORT" in
+        *.jsonl) OBSERVATIONS="${REPORT%.jsonl}.observations.jsonl" ;;
+        *) OBSERVATIONS="${REPORT}.observations.jsonl" ;;
+    esac
+fi
+REPORT_CANONICAL=$(python3 -c \
+    'import os, sys; print(os.path.realpath(sys.argv[1]))' "$REPORT") || \
+    fail "cannot resolve --report path"
+OBSERVATIONS_CANONICAL=$(python3 -c \
+    'import os, sys; print(os.path.realpath(sys.argv[1]))' "$OBSERVATIONS") || \
+    fail "cannot resolve --observations path"
+if [ "$REPORT_CANONICAL" = "$OBSERVATIONS_CANONICAL" ]; then
+    fail "--report and --observations must name different files"
+fi
+mkdir -p "$(dirname "$REPORT")" || fail "cannot create report directory"
+mkdir -p "$(dirname "$OBSERVATIONS")" || \
+    fail "cannot create observation directory"
 
 # Resolve ffc
 if [ "$REQUIRE_PROVENANCE" -eq 1 ]; then
@@ -818,11 +834,13 @@ TARGET_TRIPLE=$(gfortran -dumpmachine 2>/dev/null || printf unknown)
 ENVIRONMENT_SHA256=$(declared_environment_sha256)
 HARNESS_SHA256=$(digest_paths \
     "$SCRIPT_DIR/conformance_gauntlet.sh" \
+    "$SCRIPT_DIR/lib_shell.sh" \
     "$SCRIPT_DIR/lib_conformance.sh" \
     "$SCRIPT_DIR/lib_expected_manifest.sh" \
     "$SCRIPT_DIR/lib_conformance_observation.sh" \
     "$SCRIPT_DIR/conformance_action.py" \
     "$SCRIPT_DIR/conformance_source_snapshot.py" \
+    "$SCRIPT_DIR/conformance_source_hash.py" \
     "$SCRIPT_DIR/lib_conformance_oracles.sh" \
     "$PROJECT_DIR/test/conformance/oracles" \
     "$SCRIPT_DIR/conformance_observation.py")
@@ -1094,12 +1112,8 @@ FILE_LIST="$TMPDIR_WORK/files.txt"
 # Collate in C so the corpus order, and the digest taken over it below, do not
 # depend on the caller's locale. suite_files_sha256 in lib_parity_dashboard.sh
 # hashes the same list and must agree with it.
-case "$SUITE" in
-    fortfront-lf)
-        find "$SUITE_ROOT" -maxdepth 1 \( -name "*.lf" -o -name "*.f90" \) -type f | LC_ALL=C sort > "$ALL_FILE_LIST" ;;
-    *)
-        find "$SUITE_ROOT" -maxdepth 1 -name "*.$EXT" -type f | LC_ALL=C sort > "$ALL_FILE_LIST" ;;
-esac
+conformance_suite_files "$SUITE" "$SUITE_ROOT" > "$ALL_FILE_LIST" || \
+    fail "cannot list $SUITE"
 CORPUS_FILES_SHA256=$(sed "s#^$SUITE_ROOT/##" "$ALL_FILE_LIST" | \
     sha256sum | cut -d ' ' -f 1)
 
@@ -2016,8 +2030,9 @@ run_sharded() {
         fi
     done
 
-    sed -i -E "s#\"epoch_sha256\":\"[0-9a-f]+\"#\"epoch_sha256\":\"$EPOCH_SHA256\"#g" \
-        "$records"
+    sed -E "s#\"epoch_sha256\":\"[0-9a-f]+\"#\"epoch_sha256\":\"$EPOCH_SHA256\"#g" \
+        "$records" > "$records.restamped" || return 1
+    mv "$records.restamped" "$records" || return 1
     # The parent did no case work, so its own cache-hit counter is zero while
     # the merged records carry the children's hits. The observation validator
     # recomputes the total from the records and rejects a SUMMARY that

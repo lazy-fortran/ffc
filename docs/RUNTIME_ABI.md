@@ -270,7 +270,15 @@ contents; the next call through `fp` picks up the new address.
   length. A fixed-length dummy reads only the data pointer at binding time
   and keeps its own declared width N as a compile-time constant, so it sees
   exactly the first N bytes of a (possibly longer) actual, matching
-  gfortran's fixed-length dummy association. Character function results are
+  gfortran's fixed-length dummy association. Nonallocatable `intent(out)` and
+  `intent(inout)` dummies assign into these borrowed bytes without replacing
+  the data pointer or length. Short sources blank-pad to the dummy's width;
+  long sources truncate, and a fixed dummy leaves the actual's remaining
+  bytes untouched. The source is copied before modifying overlapping storage.
+  A writable whole scalar actual is materialized into mutable storage before
+  borrowing; an allocatable actual retains its length and ownership. Printing
+  uses a temporary terminated copy of exactly the dummy's width, including for
+  optional fixed-length dummies. Character function results are
   supported for the deferred-length (`character(len=:), allocatable`) case;
   see "Deferred-length character" below.
 - Separate compilation covers module subroutines and integer functions whose

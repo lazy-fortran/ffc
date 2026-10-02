@@ -1,4 +1,6 @@
 module ffc_suite_group_02
+    use ffc_case_test_session_array_alias_assignment_compiler, only: &
+        case_test_session_array_alias_assignment_compiler
     use ffc_case_test_session_array_constructor_compiler, only: &
         case_test_session_array_constructor_compiler
     use ffc_case_test_session_array_ctor_length_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_02
         case_test_session_assumed_shape_compiler
     use ffc_case_test_session_assumed_shape_derived_bounds_compiler, only: &
         case_test_session_assumed_shape_derived_bounds_compiler
-    use ffc_case_6e8d070f64b5971041a2c0b3, only: &
-        case_6e8d070f64b5971041a2c0b3
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_array_alias_assignment_compiler")
+            call case_test_session_array_alias_assignment_compiler()
         case ("test_session_array_constructor_compiler")
             call case_test_session_array_constructor_compiler()
         case ("test_session_array_ctor_length_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_assumed_shape_compiler()
         case ("test_session_assumed_shape_derived_bounds_compiler")
             call case_test_session_assumed_shape_derived_bounds_compiler()
-        case ("test_session_assumed_shape_derived_component_rank234_compiler")
-            call case_6e8d070f64b5971041a2c0b3()
         case default
             matched = .false.
         end select

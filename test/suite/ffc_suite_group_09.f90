@@ -1,4 +1,6 @@
 module ffc_suite_group_09
+    use ffc_case_test_session_logical_if_compiler, only: &
+        case_test_session_logical_if_compiler
     use ffc_case_test_session_logical_kind_compiler, only: &
         case_test_session_logical_kind_compiler
     use ffc_case_test_session_logical_literal_print_compiler, only: &
@@ -61,8 +63,6 @@ module ffc_suite_group_09
         case_test_session_module_variable_compiler
     use ffc_case_test_session_module_visibility_compiler, only: &
         case_test_session_module_visibility_compiler
-    use ffc_case_test_session_multi_allocate_compiler, only: &
-        case_test_session_multi_allocate_compiler
     implicit none
     private
     public :: run_group
@@ -73,6 +73,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_logical_if_compiler")
+            call case_test_session_logical_if_compiler()
         case ("test_session_logical_kind_compiler")
             call case_test_session_logical_kind_compiler()
         case ("test_session_logical_literal_print_compiler")
@@ -135,8 +137,6 @@ contains
             call case_test_session_module_variable_compiler()
         case ("test_session_module_visibility_compiler")
             call case_test_session_module_visibility_compiler()
-        case ("test_session_multi_allocate_compiler")
-            call case_test_session_multi_allocate_compiler()
         case default
             matched = .false.
         end select

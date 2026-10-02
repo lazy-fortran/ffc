@@ -1,4 +1,6 @@
 module ffc_suite_group_15
+    use ffc_case_test_session_type_extends_compiler, only: &
+        case_test_session_type_extends_compiler
     use ffc_case_test_session_type_info_compiler, only: &
         case_test_session_type_info_compiler
     use ffc_case_test_session_type_intrinsic_spec_compiler, only: &
@@ -59,6 +61,8 @@ contains
 
         matched = .true.
         select case (name)
+        case ("test_session_type_extends_compiler")
+            call case_test_session_type_extends_compiler()
         case ("test_session_type_info_compiler")
             call case_test_session_type_info_compiler()
         case ("test_session_type_intrinsic_spec_compiler")
