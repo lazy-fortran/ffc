@@ -1,31 +1,10 @@
-    ! COMMON blocks and BLOCK DATA (#1578, #1900, #2809). FortFront parses a
-    ! program COMMON statement into a common_block_node (block_names,
-    ! member_names, member_block) and a BLOCK DATA unit into a block_data_node
-    ! whose statement_indices point at its body nodes (a common_block_node for
-    ! the layout, data_statement_nodes for the initialisers). This pass reads
-    ! both from those structured nodes.
-    !
-    ! Each named or blank COMMON block gets one LIRIC global: a flat byte
-    ! buffer sized to the block's storage sequence. Every member is bound as
-    ! an addressed reference into that buffer at its own byte offset, keyed
-    ! by block name and byte offset (not variable spelling): different program
-    ! units may list different names, and different widths, at the same block,
-    ! and F2018 8.10.3 associates them by storage sequence, so a program and a
-    ! subroutine (or BLOCK DATA unit) sharing a block name alias the same
-    ! bytes even when their member names and orderings differ. A real(8)
-    ! therefore consumes eight bytes and the integers behind it start at byte
-    ! 8, whichever unit's ordering is read first (#351). Each unit's own
-    ! COMMON statement is re-resolved against this canonical layout when the
-    ! body walk reaches it, so binding never depends on which other unit's
-    ! node happens to share a member name. The BLOCK DATA unit's DATA values
-    ! are folded into the matching offset's static initialiser, the same
-    ! once-at-load model SAVE locals and module variables use.
-    !
-    ! Scope: scalar integer(4), real(4), real(8), logical, complex(4), and
-    ! complex(8) slots whose initialisers are plain literals, plus 1D arrays
-    ! of the numeric/logical kinds. Character members and EQUIVALENCE-linked
-    ! members leave the symbol a plain local and surface the usual
-    ! diagnostics, keeping the unit honest rather than miscompiling.
+submodule (session_program_lowering_impl) session_program_lowering_common
+    !! `session_program_lowering_common` procedures, moved out of `session_program_lowering_common.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     subroutine emit_common_block_globals(arena, context, error_msg)
         ! Pre-pass: build the COMMON layout from program declarations and the
@@ -1542,3 +1521,6 @@
             if (text(i:i) == ',') c = c + 1
         end do
     end function count_commas
+
+
+end submodule session_program_lowering_common

@@ -1,17 +1,10 @@
-    ! SAVE attribute for scalar locals (#1541). A saved local keeps its value
-    ! across procedure calls, so it is backed by a LIRIC global whose literal
-    ! initializer is applied once at load. The local symbol becomes an addressed
-    ! reference into that global, so ordinary reads and writes go through the
-    ! persistent storage.
-    !
-    ! The backing globals are emitted in a pre-pass before any function body, the
-    ! same ordering module variables rely on: a global created while a function
-    ! is being compiled gets its address patched directly into the code instead
-    ! of a symbolic relocation, which bypasses the data-section initializer. The
-    ! global name encodes the declaration's source line and column so the
-    ! pre-pass and the in-body binding agree on the same symbol. The arena node
-    ! index of the declaration keys the name, so two distinct `count` saved
-    ! locals get distinct static storage.
+submodule (session_program_lowering_impl) session_program_lowering_save
+    !! `session_program_lowering_save` procedures, moved out of `session_program_lowering_save.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     subroutine emit_saved_local_globals(arena, context, error_msg)
         type(ast_arena_t), intent(in) :: arena
@@ -463,3 +456,6 @@
             if (io_stat /= 0) error_msg = 'malformed real initializer: '//lit_value
         end select
     end subroutine fold_saved_initializer
+
+
+end submodule session_program_lowering_save

@@ -7885,6 +7885,1098 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine try_array_mask_reduction
     end interface
+    interface
+        module subroutine saved_array_info(arena, &
+                                           node, &
+                                           node_index, &
+                                           context, &
+                                           value_kind, &
+                                           array_size, &
+                                           array_lower, &
+                                           error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(out) :: value_kind
+            integer, intent(out) :: array_size
+            integer, intent(out) :: array_lower
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine saved_array_info
+        module subroutine saved_scope_body(arena, node_index, body)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, allocatable, intent(out) :: body(:)
+        end subroutine saved_scope_body
+        module subroutine declared_element_count(decl, context, count)
+            type(declaration_node), intent(in) :: decl
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(out) :: count
+        end subroutine declared_element_count
+        module subroutine fold_saved_data_element(arena, &
+                                                  vidx, &
+                                                  value_kind, &
+                                                  out_i32, &
+                                                  out_f32, &
+                                                  out_f64, &
+                                                  error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: vidx
+            integer, intent(in) :: value_kind
+            integer(c_int32_t), intent(inout) :: out_i32
+            real(c_float), intent(inout) :: out_f32
+            real(c_double), intent(inout) :: out_f64
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine fold_saved_data_element
+        module subroutine scope_object_element_count(arena, body, name, context, count)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: body(:)
+            character(len=*), intent(in) :: name
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(out) :: count
+        end subroutine scope_object_element_count
+        module subroutine data_values_for_name(arena, &
+                                               dnode, &
+                                               body, &
+                                               name, &
+                                               context, &
+                                               value_indices, &
+                                               error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(data_statement_node), intent(in) :: dnode
+            integer, intent(in) :: body(:)
+            character(len=*), intent(in) :: name
+            type(lowering_context_t), intent(in) :: context
+            integer, allocatable, intent(inout) :: value_indices(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine data_values_for_name
+        module subroutine saved_local_data_value_indices(arena, &
+                                                         node_index, &
+                                                         name, &
+                                                         context, &
+                                                         value_indices, &
+                                                         error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: name
+            type(lowering_context_t), intent(in) :: context
+            integer, allocatable, intent(out) :: value_indices(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine saved_local_data_value_indices
+        logical module function saved_local_has_data_values(arena, &
+                                                            node_index, &
+                                                            name, &
+                                                            context)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: name
+            type(lowering_context_t), intent(in) :: context
+        end function saved_local_has_data_values
+        module subroutine fold_saved_data_values(arena, &
+                                                 node_index, &
+                                                 name, &
+                                                 value_kind, &
+                                                 array_size, &
+                                                 context, &
+                                                 array_i32, &
+                                                 array_f32, &
+                                                 array_f64, &
+                                                 error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: value_kind
+            integer, intent(in) :: array_size
+            type(lowering_context_t), intent(in) :: context
+            integer(c_int32_t), intent(inout), allocatable :: array_i32(:)
+            real(c_float), intent(inout), allocatable :: array_f32(:)
+            real(c_double), intent(inout), allocatable :: array_f64(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine fold_saved_data_values
+        module subroutine fold_saved_scalar_data(arena, &
+                                                 node_index, &
+                                                 name, &
+                                                 context, &
+                                                 value_kind, &
+                                                 init_i32, &
+                                                 init_f32, &
+                                                 init_f64, &
+                                                 error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: name
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: value_kind
+            integer(c_int32_t), intent(inout) :: init_i32
+            real(c_float), intent(inout) :: init_f32
+            real(c_double), intent(inout) :: init_f64
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine fold_saved_scalar_data
+        module subroutine emit_one_saved_array_global(arena, &
+                                                      node, &
+                                                      node_index, &
+                                                      name, &
+                                                      context, &
+                                                      error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: name
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_one_saved_array_global
+        module subroutine bind_saved_array(arena, &
+                                           node, &
+                                           node_index, &
+                                           name, &
+                                           context, &
+                                           error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: name
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_saved_array
+        module subroutine emit_saved_array_globals(arena, &
+                                                   node, &
+                                                   node_index, &
+                                                   context, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_saved_array_globals
+        module subroutine lower_saved_array_declaration(arena, &
+                                                        node, &
+                                                        node_index, &
+                                                        context, &
+                                                        error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_saved_array_declaration
+    end interface
+    interface
+        logical module function is_equivalence_text(text)
+            character(len=*), intent(in) :: text
+        end function is_equivalence_text
+        module subroutine fold_equivalence_parameter_decl(arena, &
+                                                          context, &
+                                                          name, &
+                                                          value, &
+                                                          found)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: name
+            integer(c_int64_t), intent(out) :: value
+            logical, intent(out) :: found
+        end subroutine fold_equivalence_parameter_decl
+        module subroutine split_equivalence_designators(text, items, count)
+            character(len=*), intent(in) :: text
+            character(len=:), allocatable, intent(out) :: items(:)
+            integer, intent(out) :: count
+        end subroutine split_equivalence_designators
+        module subroutine parse_equivalence_group(text, group, error_msg)
+            character(len=*), intent(in) :: text
+            character(len=:), allocatable, intent(out) :: group
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine parse_equivalence_group
+        integer module function equivalence_kind_size(value_kind) result(sz)
+            integer, intent(in) :: value_kind
+        end function equivalence_kind_size
+        module function equivalence_global_name(group_index) result(gname)
+            integer, intent(in) :: group_index
+            character(len=:), allocatable :: gname
+        end function equivalence_global_name
+        module subroutine fold_equivalence_subscript(arena, &
+                                                     context, &
+                                                     node_index, &
+                                                     sub_text, &
+                                                     subscript, &
+                                                     error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: sub_text
+            integer, intent(out) :: subscript
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine fold_equivalence_subscript
+        integer module function equivalence_member_size(member) result(sz)
+            type(equiv_member_t), intent(in) :: member
+        end function equivalence_member_size
+        module subroutine rebind_equivalence_symbol(group_index, &
+                                                    member, &
+                                                    sym, &
+                                                    context, &
+                                                    error_msg)
+            integer, intent(in) :: group_index
+            type(equiv_member_t), intent(in) :: member
+            integer, intent(in) :: sym
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine rebind_equivalence_symbol
+        module subroutine parse_equivalence_member(arena, &
+                                                   context, &
+                                                   node_index, &
+                                                   item, &
+                                                   member, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: item
+            type(equiv_member_t), intent(out) :: member
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine parse_equivalence_member
+        module subroutine layout_equivalence_group(members, member_count, byte_size)
+            type(equiv_member_t), intent(inout) :: members(:)
+            integer, intent(in) :: member_count
+            integer, intent(out) :: byte_size
+        end subroutine layout_equivalence_group
+        module subroutine collect_equivalence_members(arena, &
+                                                      context, &
+                                                      node_index, &
+                                                      text, &
+                                                      members, &
+                                                      member_count, &
+                                                      byte_size, &
+                                                      error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: text
+            type(equiv_member_t), intent(out) :: members(:)
+            integer, intent(out) :: member_count
+            integer, intent(out) :: byte_size
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine collect_equivalence_members
+        module subroutine emit_equivalence_globals(arena, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_equivalence_globals
+        module subroutine bind_equivalence_symbols(arena, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_equivalence_symbols
+    end interface
+    interface
+        recursive logical module function derived_type_extends(context, &
+                                                               type_index, &
+                                                               ancestor_index) result(yes)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: type_index
+            integer, intent(in) :: ancestor_index
+        end function derived_type_extends
+        module subroutine class_dummy_declared_type_index(context, &
+                                                          arena, &
+                                                          callee_name, &
+                                                          param_pos, &
+                                                          type_index)
+            type(lowering_context_t), intent(in) :: context
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: callee_name
+            integer, intent(in) :: param_pos
+            integer, intent(out) :: type_index
+        end subroutine class_dummy_declared_type_index
+        module subroutine class_actual_dynamic_type(context, &
+                                                    symbol_index, &
+                                                    dynamic_id, &
+                                                    error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(out) :: dynamic_id
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine class_actual_dynamic_type
+        module subroutine emit_class_scalar_descriptor(context, &
+                                                       data_address, &
+                                                       declared_type_index, &
+                                                       dynamic_id, &
+                                                       descriptor, &
+                                                       error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(lr_operand_desc_t), intent(in) :: data_address
+            integer, intent(in) :: declared_type_index
+            type(lr_operand_desc_t), intent(in) :: dynamic_id
+            type(lr_operand_desc_t), intent(out) :: descriptor
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_class_scalar_descriptor
+        module subroutine select_type_component_selector(arena, &
+                                                         selector_index, &
+                                                         context, &
+                                                         sel_index, &
+                                                         handled, &
+                                                         error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: selector_index
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(out) :: sel_index
+            logical, intent(out) :: handled
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine select_type_component_selector
+        module subroutine bind_class_dummy_descriptor(context, &
+                                                      symbol_index, &
+                                                      declared_index, &
+                                                      error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            integer, intent(in) :: declared_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_class_dummy_descriptor
+        module subroutine type_vtable_symbol_name(context, type_index, name)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: type_index
+            character(len=:), allocatable, intent(out) :: name
+        end subroutine type_vtable_symbol_name
+        module subroutine emit_type_size_table(context, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_type_size_table
+        module subroutine bind_class_allocatable_descriptor(context, &
+                                                            symbol_index, &
+                                                            declared_index, &
+                                                            error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            integer, intent(in) :: declared_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_class_allocatable_descriptor
+        module subroutine record_class_allocation(context, &
+                                                  symbol_index, &
+                                                  data_ptr, &
+                                                  dynamic_id, &
+                                                  error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(in) :: data_ptr
+            type(lr_operand_desc_t), intent(in) :: dynamic_id
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine record_class_allocation
+        module subroutine release_class_allocation(context, symbol_index, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine release_class_allocation
+        module subroutine dynamic_type_size_bytes(context, &
+                                                  symbol_index, &
+                                                  dynamic_id, &
+                                                  static_type_index, &
+                                                  size_bytes, &
+                                                  error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(in) :: dynamic_id
+            integer, intent(in) :: static_type_index
+            type(lr_operand_desc_t), intent(out) :: size_bytes
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine dynamic_type_size_bytes
+        integer module function type_binding_slot(context, &
+                                                  type_index, &
+                                                  method_name) result(slot)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: type_index
+            character(len=*), intent(in) :: method_name
+        end function type_binding_slot
+        logical module function class_receiver_dispatches_dynamically(context, &
+                                                                      symbol_index)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: symbol_index
+        end function class_receiver_dispatches_dynamically
+        module subroutine class_dispatch_callee(context, &
+                                                symbol_index, &
+                                                slot, &
+                                                callee_ptr, &
+                                                error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            integer, intent(in) :: slot
+            type(lr_operand_desc_t), intent(out) :: callee_ptr
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine class_dispatch_callee
+        logical module function select_type_selector_is_runtime_polymorphic(context, &
+                                                                            sel_index)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: sel_index
+        end function select_type_selector_is_runtime_polymorphic
+        integer module function derived_type_depth(context, type_index) result(depth)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: type_index
+        end function derived_type_depth
+        module subroutine swap_ints(a, b)
+            integer, intent(inout) :: a, b
+        end subroutine swap_ints
+        module subroutine bind_runtime_guard_symbol(context, &
+                                                    sel_index, &
+                                                    assoc_name, &
+                                                    guard_type_index, &
+                                                    exact, &
+                                                    error_msg, &
+                                                    selector_element_address)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: sel_index
+            character(len=*), intent(in) :: assoc_name
+            integer, intent(in) :: guard_type_index
+            logical, intent(in) :: exact
+            character(len=:), allocatable, intent(out) :: error_msg
+            type(lr_operand_desc_t), intent(in), optional :: selector_element_address
+        end subroutine bind_runtime_guard_symbol
+        logical module function derived_type_has_extension(context, &
+                                                           base_index) result(ext)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: base_index
+        end function derived_type_has_extension
+        logical module function select_type_selector_is_monomorphic(context, sel_index)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: sel_index
+        end function select_type_selector_is_monomorphic
+        module subroutine select_type_guard_type_name(arena, &
+                                                      guard_index, &
+                                                      guard_kind, &
+                                                      type_name, &
+                                                      error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: guard_index
+            character(len=:), allocatable, intent(out) :: guard_kind
+            character(len=:), allocatable, intent(out) :: type_name
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine select_type_guard_type_name
+        module subroutine build_class_scalar_descriptor(context, &
+                                                        symbol_index, &
+                                                        declared_type_index, &
+                                                        descriptor, &
+                                                        error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: symbol_index
+            integer, intent(in) :: declared_type_index
+            type(lr_operand_desc_t), intent(out) :: descriptor
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine build_class_scalar_descriptor
+        module subroutine emit_type_vtables(arena, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_type_vtables
+        module subroutine lower_derived_allocate_source(arena, &
+                                                        node, &
+                                                        target_sym, &
+                                                        context, &
+                                                        error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(allocate_statement_node), intent(in) :: node
+            integer, intent(in) :: target_sym
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_derived_allocate_source
+        module subroutine reject_unsupported_runtime_binding(context, &
+                                                             type_index, &
+                                                             slot, &
+                                                             error_msg)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: type_index
+            integer, intent(in) :: slot
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine reject_unsupported_runtime_binding
+        module subroutine runtime_guard_type_index(arena, &
+                                                   guard_index, &
+                                                   context, &
+                                                   guard_kind, &
+                                                   type_index, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: guard_index
+            type(lowering_context_t), intent(in) :: context
+            character(len=:), allocatable, intent(out) :: guard_kind
+            integer, intent(out) :: type_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine runtime_guard_type_index
+        logical module function select_type_discriminates_subtypes(arena, &
+                                                                   guard_indices, &
+                                                                   context, &
+                                                                   declared_type, &
+                                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: guard_indices(:)
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: declared_type
+            character(len=:), allocatable, intent(out) :: error_msg
+        end function select_type_discriminates_subtypes
+        module subroutine choose_monomorphic_guard(arena, &
+                                                   guard_indices, &
+                                                   default_idx, &
+                                                   declared_type, &
+                                                   chosen_index, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: guard_indices(:)
+            integer, intent(in) :: default_idx
+            character(len=*), intent(in) :: declared_type
+            integer, intent(out) :: chosen_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine choose_monomorphic_guard
+        module subroutine class_receiver_argument(context, &
+                                                  arena, &
+                                                  impl_name, &
+                                                  position, &
+                                                  symbol_index, &
+                                                  argument, &
+                                                  error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: impl_name
+            integer, intent(in) :: position
+            integer, intent(in) :: symbol_index
+            type(lr_operand_desc_t), intent(out) :: argument
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine class_receiver_argument
+        module subroutine validate_runtime_guards(arena, &
+                                                  guard_indices, &
+                                                  context, &
+                                                  declared_index, &
+                                                  error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: guard_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: declared_index
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine validate_runtime_guards
+        module subroutine ordered_runtime_guards(arena, &
+                                                 guard_indices, &
+                                                 context, &
+                                                 ordered, &
+                                                 error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, allocatable, intent(in) :: guard_indices(:)
+            type(lowering_context_t), intent(inout) :: context
+            integer, allocatable, intent(out) :: ordered(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine ordered_runtime_guards
+        module subroutine runtime_guard_match_ids(arena, &
+                                                  guard_index, &
+                                                  context, &
+                                                  ids, &
+                                                  error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: guard_index
+            type(lowering_context_t), intent(inout) :: context
+            integer, allocatable, intent(out) :: ids(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine runtime_guard_match_ids
+        module subroutine lower_select_type_derived(arena, &
+                                                    node_index, &
+                                                    sel_index, &
+                                                    sel_name, &
+                                                    assoc_name, &
+                                                    context, &
+                                                    error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(in) :: sel_index
+            character(len=*), intent(in) :: sel_name, assoc_name
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_select_type_derived
+        module subroutine lower_select_type_runtime(arena, &
+                                                    node_index, &
+                                                    sel_index, &
+                                                    assoc_name, &
+                                                    context, &
+                                                    error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(in) :: sel_index
+            character(len=*), intent(in) :: assoc_name
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_select_type_runtime
+    end interface
+    interface
+        integer module function common_kind_bytes(value_kind) result(sz)
+            integer, intent(in) :: value_kind
+        end function common_kind_bytes
+        module subroutine put_common_i32(buffer, byte_offset, value)
+            character(kind=c_char, len=1), intent(inout) :: buffer(:)
+            integer, intent(in) :: byte_offset
+            integer(c_int32_t), intent(in) :: value
+        end subroutine put_common_i32
+        module subroutine put_common_i64(buffer, byte_offset, value)
+            character(kind=c_char, len=1), intent(inout) :: buffer(:)
+            integer, intent(in) :: byte_offset
+            integer(c_int64_t), intent(in) :: value
+        end subroutine put_common_i64
+        module subroutine merge_common_slot_init(dest, src)
+            type(common_slot_t), intent(inout) :: dest
+            type(common_slot_t), intent(in) :: src
+        end subroutine merge_common_slot_init
+        logical module function is_block_data_member(arena, idx)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+        end function is_block_data_member
+        module subroutine find_or_add_block_offset(block_names_seen, &
+                                                   block_offsets, &
+                                                   n_blocks_seen, &
+                                                   block_name, &
+                                                   b, &
+                                                   error_msg)
+            character(len=*), intent(inout) :: block_names_seen(:)
+            integer, intent(inout) :: block_offsets(:)
+            integer, intent(inout) :: n_blocks_seen
+            character(len=*), intent(in) :: block_name
+            integer, intent(out) :: b
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine find_or_add_block_offset
+        module function common_member_block_name(node, member) result(block_name)
+            type(common_block_node), intent(in) :: node
+            integer, intent(in) :: member
+            character(len=:), allocatable :: block_name
+        end function common_member_block_name
+        module subroutine validate_common_member_kind(var_name, &
+                                                      value_kind, &
+                                                      is_array, &
+                                                      error_msg)
+            character(len=*), intent(in) :: var_name
+            integer, intent(in) :: value_kind
+            logical, intent(in) :: is_array
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine validate_common_member_kind
+        module subroutine unit_body_indices_for(arena, &
+                                                unit_index, &
+                                                node_type, &
+                                                body_indices, &
+                                                error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: unit_index
+            character(len=*), intent(in) :: node_type
+            integer, allocatable, intent(out) :: body_indices(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine unit_body_indices_for
+        logical module function index_in_int_list(list, target) result(found)
+            integer, intent(in) :: list(:)
+            integer, intent(in) :: target
+        end function index_in_int_list
+        logical module function declaration_names_var(decl, var_name)
+            type(declaration_node), intent(in) :: decl
+            character(len=*), intent(in) :: var_name
+        end function declaration_names_var
+        module subroutine extract_dimension_size(arena, dim_idx, dim_size, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: dim_idx
+            integer, intent(out) :: dim_size
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine extract_dimension_size
+        module subroutine block_data_bound_const(arena, &
+                                                 node_index, &
+                                                 default_value, &
+                                                 value, &
+                                                 error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            integer, intent(in) :: default_value
+            integer, intent(out) :: value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine block_data_bound_const
+        module subroutine common_identifier_text(arena, idx, name)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            character(len=:), allocatable, intent(out) :: name
+        end subroutine common_identifier_text
+        module subroutine extract_literal_integer(arena, idx, int_str, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            character(len=:), allocatable, intent(out) :: int_str
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine extract_literal_integer
+        module subroutine add_array_element_init(slot, elem_idx, value_text, error_msg)
+            type(common_slot_t), intent(inout) :: slot
+            integer, intent(in) :: elem_idx
+            character(len=*), intent(in) :: value_text
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine add_array_element_init
+        module subroutine literal_text_at(arena, idx, text, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            character(len=:), allocatable, intent(out) :: text
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine literal_text_at
+        integer module function find_common_slot(slots, slot_count, var_name) result(s)
+            type(common_slot_t), intent(in) :: slots(:)
+            integer, intent(in) :: slot_count
+            character(len=*), intent(in) :: var_name
+        end function find_common_slot
+        module subroutine fold_complex_common_initializer(slot, &
+                                                          init_f32_re, &
+                                                          init_f32_im, &
+                                                          init_f64_re, &
+                                                          init_f64_im, &
+                                                          error_msg)
+            type(common_slot_t), intent(in) :: slot
+            real(c_float), intent(out) :: init_f32_re, init_f32_im
+            real(c_double), intent(out) :: init_f64_re, init_f64_im
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine fold_complex_common_initializer
+        module subroutine fold_array_element_i32(init_text, init_value, error_msg)
+            character(len=*), intent(in) :: init_text
+            integer(c_int32_t), intent(out) :: init_value
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine fold_array_element_i32
+        module subroutine fold_common_initializer(slot, &
+                                                  init_i32, &
+                                                  init_f32, &
+                                                  init_f64, &
+                                                  error_msg)
+            type(common_slot_t), intent(in) :: slot
+            integer(c_int32_t), intent(out) :: init_i32
+            real(c_float), intent(out) :: init_f32
+            real(c_double), intent(out) :: init_f64
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine fold_common_initializer
+        module function common_global_name(block_name) result(gname)
+            character(len=*), intent(in) :: block_name
+            character(len=:), allocatable :: gname
+        end function common_global_name
+        integer module function count_commas(text) result(c)
+            character(len=*), intent(in) :: text
+        end function count_commas
+        integer module function common_slot_bytes(slot) result(sz)
+            type(common_slot_t), intent(in) :: slot
+        end function common_slot_bytes
+        module subroutine put_common_f32(buffer, byte_offset, value)
+            character(kind=c_char, len=1), intent(inout) :: buffer(:)
+            integer, intent(in) :: byte_offset
+            real(c_float), intent(in) :: value
+        end subroutine put_common_f32
+        module subroutine put_common_f64(buffer, byte_offset, value)
+            character(kind=c_char, len=1), intent(inout) :: buffer(:)
+            integer, intent(in) :: byte_offset
+            real(c_double), intent(in) :: value
+        end subroutine put_common_f64
+        module subroutine canonicalize_common_slots(slots, slot_count, canon, canon_count)
+            type(common_slot_t), intent(in) :: slots(:)
+            integer, intent(in) :: slot_count
+            type(common_slot_t), intent(out) :: canon(:)
+            integer, intent(out) :: canon_count
+        end subroutine canonicalize_common_slots
+        module subroutine find_owning_unit_body_indices(arena, &
+                                                        root_index, &
+                                                        target_index, &
+                                                        body_indices, &
+                                                        found)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: root_index, target_index
+            integer, allocatable, intent(out) :: body_indices(:)
+            logical, intent(out) :: found
+        end subroutine find_owning_unit_body_indices
+        module subroutine extract_array_size(arena, decl, array_size, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(declaration_node), intent(in) :: decl
+            integer, intent(out) :: array_size
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine extract_array_size
+        module subroutine block_data_section_range(arena, &
+                                                   idx, &
+                                                   base_name, &
+                                                   lo, &
+                                                   hi, &
+                                                   st, &
+                                                   is_section, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            character(len=:), allocatable, intent(out) :: base_name
+            integer, intent(out) :: lo, hi, st
+            logical, intent(out) :: is_section
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine block_data_section_range
+        module subroutine extract_array_element_name(arena, arr_node, name, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(call_or_subscript_node), intent(in) :: arr_node
+            character(len=:), allocatable, intent(out) :: name
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine extract_array_element_name
+        module subroutine store_data_initialization(slots, &
+                                                    slot_count, &
+                                                    name, &
+                                                    value_text, &
+                                                    error_msg)
+            type(common_slot_t), intent(inout) :: slots(:)
+            integer, intent(in) :: slot_count
+            character(len=*), intent(in) :: name
+            character(len=*), intent(in) :: value_text
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine store_data_initialization
+        module subroutine complex_literal_text(arena, node, value_text, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(complex_literal_node), intent(in) :: node
+            character(len=:), allocatable, intent(out) :: value_text
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine complex_literal_text
+        module subroutine rebind_complex_common_symbol(slot, sym, context, error_msg)
+            type(common_slot_t), intent(in) :: slot
+            integer, intent(in) :: sym
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine rebind_complex_common_symbol
+        module subroutine split_csv(text, items, count)
+            character(len=*), intent(in) :: text
+            character(len=:), allocatable, intent(out) :: items(:)
+            integer, intent(out) :: count
+        end subroutine split_csv
+        module subroutine write_common_slot_init(slot, buffer, error_msg)
+            type(common_slot_t), intent(in) :: slot
+            character(kind=c_char, len=1), intent(inout) :: buffer(:)
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine write_common_slot_init
+        module subroutine program_declaration_kind_full(arena, &
+                                                        var_name, &
+                                                        value_kind, &
+                                                        is_array, &
+                                                        array_size, &
+                                                        error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: var_name
+            integer, intent(out) :: value_kind
+            logical, intent(out) :: is_array
+            integer, intent(out) :: array_size
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine program_declaration_kind_full
+        module subroutine data_object_name_and_index(arena, idx, name, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            character(len=:), allocatable, intent(out) :: name
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine data_object_name_and_index
+        module subroutine data_value_literal_text(arena, idx, value_text, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            character(len=:), allocatable, intent(out) :: value_text
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine data_value_literal_text
+        module subroutine rebind_common_symbol(slot, sym, context, error_msg)
+            type(common_slot_t), intent(in) :: slot
+            integer, intent(in) :: sym
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine rebind_common_symbol
+        module subroutine emit_common_storage_globals(canon, &
+                                                      canon_count, &
+                                                      context, &
+                                                      error_msg)
+            type(common_slot_t), intent(in) :: canon(:)
+            integer, intent(in) :: canon_count
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_common_storage_globals
+        module subroutine program_declaration_kind_in_scope(arena, &
+                                                            scope_indices, &
+                                                            var_name, &
+                                                            value_kind, &
+                                                            is_array, &
+                                                            array_size, &
+                                                            error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: scope_indices(:)
+            character(len=*), intent(in) :: var_name
+            integer, intent(out) :: value_kind
+            logical, intent(out) :: is_array
+            integer, intent(out) :: array_size
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine program_declaration_kind_in_scope
+        module subroutine program_declaration_kind(arena, var_name, value_kind, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            character(len=*), intent(in) :: var_name
+            integer, intent(out) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine program_declaration_kind
+        module subroutine apply_block_data_statement(arena, &
+                                                     idx, &
+                                                     slots, &
+                                                     slot_count, &
+                                                     error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: idx
+            type(common_slot_t), intent(inout) :: slots(:)
+            integer, intent(in) :: slot_count
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine apply_block_data_statement
+        module subroutine declare_pending_common_symbol(context, name, sym)
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            integer, intent(out) :: sym
+        end subroutine declare_pending_common_symbol
+        module subroutine program_declaration_kind_for_common(arena, &
+                                                              root_index, &
+                                                              node_index, &
+                                                              var_name, &
+                                                              value_kind, &
+                                                              is_array, &
+                                                              array_size, &
+                                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: root_index, node_index
+            character(len=*), intent(in) :: var_name
+            integer, intent(out) :: value_kind
+            logical, intent(out) :: is_array
+            integer, intent(out) :: array_size
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine program_declaration_kind_for_common
+        module subroutine apply_block_data_initializers(arena, &
+                                                        slots, &
+                                                        slot_count, &
+                                                        error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(common_slot_t), intent(inout) :: slots(:)
+            integer, intent(in) :: slot_count
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine apply_block_data_initializers
+        module subroutine add_common_node_slots(arena, &
+                                                root_index, &
+                                                node_index, &
+                                                node, &
+                                                slots, &
+                                                slot_count, &
+                                                error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: root_index, node_index
+            type(common_block_node), intent(in) :: node
+            type(common_slot_t), intent(inout) :: slots(:)
+            integer, intent(inout) :: slot_count
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine add_common_node_slots
+        module subroutine collect_common_slots(arena, &
+                                               root_index, &
+                                               slots, &
+                                               slot_count, &
+                                               error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: root_index
+            type(common_slot_t), intent(inout) :: slots(:)
+            integer, intent(inout) :: slot_count
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine collect_common_slots
+        module subroutine bind_common_block_symbols(arena, &
+                                                    node, &
+                                                    node_index, &
+                                                    context, &
+                                                    error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(common_block_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_common_block_symbols
+        module subroutine emit_common_block_globals(arena, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_common_block_globals
+    end interface
+    interface
+        module subroutine saved_scalar_value_kind(node, value_kind, error_msg, context)
+            type(declaration_node), intent(in) :: node
+            integer, intent(out) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+            type(lowering_context_t), intent(in), optional :: context
+        end subroutine saved_scalar_value_kind
+        module function saved_local_global_name(node_index, name) result(gname)
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: name
+            character(len=:), allocatable :: gname
+        end function saved_local_global_name
+        module subroutine fold_saved_initializer(node, &
+                                                 node_index, &
+                                                 name, &
+                                                 context, &
+                                                 value_kind, &
+                                                 take_initializer, &
+                                                 init_i32, &
+                                                 init_f32, &
+                                                 init_f64, &
+                                                 error_msg)
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            character(len=*), intent(in) :: name
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            logical, intent(in) :: take_initializer
+            integer(c_int32_t), intent(out) :: init_i32
+            real(c_float), intent(out) :: init_f32
+            real(c_double), intent(out) :: init_f64
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine fold_saved_initializer
+        module subroutine emit_saved_derived_global(arena, &
+                                                    node, &
+                                                    node_index, &
+                                                    context, &
+                                                    error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_saved_derived_global
+        module subroutine emit_one_saved_global(node, &
+                                                node_index, &
+                                                context, &
+                                                name, &
+                                                value_kind, &
+                                                take_initializer, &
+                                                error_msg)
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: value_kind
+            logical, intent(in) :: take_initializer
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_one_saved_global
+        module subroutine lower_saved_derived_declaration(node, &
+                                                          node_index, &
+                                                          context, &
+                                                          error_msg)
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_saved_derived_declaration
+        module subroutine bind_saved_scalar(node_index, &
+                                            context, &
+                                            name, &
+                                            value_kind, &
+                                            error_msg)
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            integer, intent(in) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine bind_saved_scalar
+        module subroutine emit_saved_decl_globals(node, node_index, context, error_msg)
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_saved_decl_globals
+        module subroutine lower_saved_scalar_declaration(node, &
+                                                         node_index, &
+                                                         context, &
+                                                         value_kind, &
+                                                         error_msg)
+            type(declaration_node), intent(in) :: node
+            integer, intent(in) :: node_index
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine lower_saved_scalar_declaration
+        module subroutine emit_saved_local_globals(arena, context, error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine emit_saved_local_globals
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)

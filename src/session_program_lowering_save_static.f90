@@ -1,9 +1,10 @@
-    ! Static storage for saved locals beyond the scalar case (#466). A saved
-    ! array is one [extent x elem] LIRIC global, exactly like a fixed-size
-    ! module array, so every element keeps its value across calls. A DATA
-    ! initializer for a saved local folds into that global's static bytes and
-    ! its runtime stores are suppressed, so the value is applied once before
-    ! the first executable use instead of on every call.
+submodule (session_program_lowering_impl) save_static
+    !! `save_static` procedures, moved out of `session_program_lowering_save_static.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     subroutine emit_saved_array_globals(arena, node, node_index, context, &
                                         error_msg)
@@ -489,3 +490,6 @@
         call fold_saved_data_element(arena, value_indices(1), value_kind, &
                                      init_i32, init_f32, init_f64, error_msg)
     end subroutine fold_saved_scalar_data
+
+
+end submodule save_static

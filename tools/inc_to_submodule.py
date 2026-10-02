@@ -202,7 +202,9 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
                   "or the captured region duplicates its procedures",
                   file=sys.stderr)
             return 6
-    out = pathlib.Path("src") / f"session_program_lowering_{stem}.f90"
+    fname = stem if stem.startswith("session_program_lowering_") \
+        else f"session_program_lowering_{stem}"
+    out = pathlib.Path("src") / f"{fname}.f90"
     for p_ in procedures:
         for other in sorted(pathlib.Path("src").glob("*.f90")):
             # Never collide with this tool's own destination: a stray left by

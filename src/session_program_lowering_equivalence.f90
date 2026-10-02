@@ -1,24 +1,10 @@
-    ! EQUIVALENCE storage overlay (#280, issue_1745). FortFront leaves an
-    ! EQUIVALENCE statement as a comment_node ("equivalence (i, r)"), the same as
-    ! COMMON. The members of one EQUIVALENCE group name the same storage, so a
-    ! write through one member is observable, bit-for-bit, through another.
-    !
-    ! Model: emit one zero-initialised global per group, sized to hold every
-    ! member, and bind every member as an addressed reference into it. Each
-    ! member keeps its own value_kind, so a load/store uses that member's type at
-    ! the shared address - reading an integer back as a real reinterprets the
-    ! bits exactly as gfortran does.
-    !
-    ! An array-element designator ("a(3)", "a(np)") associates that element with
-    ! the group's association point, so the member's own storage starts that many
-    ! bytes earlier in the group global (#370). The subscript is a constant
-    ! expression: a named constant resolves through its FortFront binding before
-    ! the byte offset is computed, and a nonconstant subscript is diagnosed.
-    !
-    ! Scope: integer(4)/integer(8)/real(4)/real(8)/logical members of a single
-    ! (a, b, ...) group, scalars or 1D arrays. Character members and substring
-    ! designators leave the symbols plain locals and surface the usual
-    ! diagnostics rather than miscompiling.
+submodule (session_program_lowering_impl) session_program_lowering_equivalence
+    !! `session_program_lowering_equivalence` procedures, moved out of `session_program_lowering_equivalence.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
 
     logical function is_equivalence_text(text)
         ! An EQUIVALENCE statement begins with the keyword after blanks.
@@ -421,3 +407,6 @@
         write (idx_text, '(I0)') group_index
         gname = '.ffc.equiv.'//trim(idx_text)
     end function equivalence_global_name
+
+
+end submodule session_program_lowering_equivalence

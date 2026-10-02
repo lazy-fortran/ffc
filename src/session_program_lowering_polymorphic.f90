@@ -1,20 +1,10 @@
-    ! Monomorphic-subset polymorphism (#141). A class(t) scalar dummy or local
-    ! whose dynamic type is only ever its declared type t lowers exactly like
-    ! type(t): the derived-type declaration path already routes both spellings
-    ! (extracted_derived_type_name treats type(t) and class(t) alike). This file
-    ! adds SELECT TYPE dispatch for such a declared-type selector: the dynamic
-    ! type equals the declared type, so exactly one arm is ever live and is
-    ! chosen statically. Full dynamic dispatch on an extensible allocatable /
-    ! pointer class object (a runtime vtable / type-id) stays out of scope and
-    ! declines gracefully.
+submodule (session_program_lowering_impl) polymorphic
+    !! `polymorphic` procedures, moved out of `session_program_lowering_polymorphic.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
 
-    ! Runtime type identity for class scalars (#417). A class(t) scalar dummy is
-    ! passed as the canonical scalar class descriptor of docs/RUNTIME_ABI.md
-    ! (data, declared_type, dynamic_type, ownership), built by the caller and
-    ! borrowed by the callee. The declared type is fixed by the dummy's
-    ! declaration; the dynamic type travels with the value, so re-passing a
-    ! class dummy onwards preserves the identity of the original actual instead
-    ! of collapsing it to the declared type.
+contains
 
     recursive logical function derived_type_extends(context, type_index, &
                                                     ancestor_index) result(yes)
@@ -1554,3 +1544,6 @@
         call lower_statement_list(arena, body, context, value, terminated, &
                                   error_msg)
     end subroutine lower_select_type_derived
+
+
+end submodule polymorphic
