@@ -25,6 +25,19 @@ behavioral oracle:
   opposite failure mode from the one the plan recorded, and the more serious one:
   the rejection gate exists to keep this set from shrinking by accident.
 
+  A second probing pass found five more of the same kind (recorded on #3021), the
+  worst being a `parameter` that ffc happily reassigns and prints:
+
+      outer: do ... / end do inner   gfortran: Expected label 'outer'
+      integer :: x  (twice)          gfortran: already has basic type of INTEGER
+      integer, parameter :: k=3;k=4  gfortran: Named constant in variable
+                                       definition context; ffc RUNS, prints 4
+      len("ab",3,4)                  gfortran: Too many arguments
+      program p / end program q      gfortran: Expected label 'p'
+
+  Nine distinct invalid-program shapes ffc accepts, all cheaply detectable, none
+  needing new lowering.
+
 Oracle shape: for each case both compilers' DECISIONS must agree (accept/refuse),
 and when both accept, outputs must match byte for byte. The four over-accepted
 programs are `KNOWN_OVERACCEPT`, counted and named in the report so the guard stays
@@ -99,6 +112,18 @@ CASES = [
      '  implicit none\n  type(bucket) :: o\n  o%count = 0\n'
      '  do shared = 1, 2\n    o%count = o%count + 1\n  end do\n'
      '  print *, o%count\nend program p\n'),
+    # Invalid programs gfortran rejects; ffc compiles, runs, prints a plausible
+    # value. Second probing pass, recorded on fortfront#3021.
+    ("enddo_label_mismatch", "refuse", 'program p\n  implicit none\n'
+     '  integer :: i\n  outer: do i = 1, 3\n  end do inner\nend program p\n'),
+    ("dup_decl", "refuse", 'program p\n  implicit none\n  integer :: x\n'
+     '  integer :: x\n  x = 1\n  print *, x\nend program p\n'),
+    ("assign_parameter", "refuse", 'program p\n  implicit none\n'
+     '  integer, parameter :: k = 3\n  k = 4\n  print *, k\nend program p\n'),
+    ("intrinsic_bad_arity", "refuse", 'program p\n  implicit none\n'
+     '  print *, len("ab", 3, 4)\nend program p\n'),
+    ("endprog_name_mismatch", "refuse", 'program p\n  implicit none\n'
+     '  print *, 1\nend program q\n'),
     # plain valid programs, unrelated namespaces, must agree on output
     ("scalar_arith", "accept", 'program p\n  implicit none\n'
      '  print *, 2+3, 7-1, 3*4, 8/2\nend program p\n'),
@@ -136,7 +161,9 @@ CASES = [
 #   loopvar_collides_type            gfortran: "Derived type 'X' cannot be used as
 #     a variable" - ffc happily makes it a loop variable
 KNOWN_OVERACCEPT = ["var_collides_type", "var_collides_bucket",
-                    "common_member_collides_type", "loopvar_collides_type"]
+                    "common_member_collides_type", "loopvar_collides_type",
+                    "enddo_label_mismatch", "dup_decl", "assign_parameter",
+                    "intrinsic_bad_arity", "endprog_name_mismatch"]
 
 
 def run(cmd: list[str]) -> tuple[int, str]:
