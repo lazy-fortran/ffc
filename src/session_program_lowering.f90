@@ -381,6 +381,16 @@ module session_program_lowering_impl
     ! private ancestor procedure local linkage even when a submodule calls it.
     ! Keep this implementation API explicit; session_program_lowering is the
     ! public facade and exports only the two compiler entry points above.
+    public :: declaration_names_procedure, define_declared_class_star_symbol
+    public :: emit_call_with_optional_padding
+    public :: emit_error_stop_banner, emit_stop_banner
+    public :: grow_derived_types, grow_function_names, grow_module_exports
+    public :: is_logical_connective, lower_assignment
+    public :: lower_character_initializer, lower_declaration
+    public :: lower_error_stop, lower_function_return
+    public :: lower_parameter_declaration, lower_scalar_initializer
+    public :: lower_stop, lower_subroutine_call
+    public :: register_declaration_bindings, unwrap_intrinsic_arg
     public :: alloc_array_result_call_info, array_access_value_kind
     public :: bind_c_name, call_argument_kinds, call_argument_ranks
     public :: callee_dummy_is_array, callee_dummy_value_kind
