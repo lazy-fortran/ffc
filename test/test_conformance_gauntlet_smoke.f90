@@ -27,6 +27,7 @@ program test_conformance_gauntlet_smoke
     character(len=:), allocatable :: NOREF_NEGATIVE_REPORT
 
     logical :: all_passed
+    integer :: n_issued
 
     print *, '=== conformance gauntlet smoke test ==='
 
@@ -51,71 +52,117 @@ program test_conformance_gauntlet_smoke
     NOREF_NEGATIVE_REPORT = ROOT//'/ffc_gauntlet_noref_negative.jsonl'
 
     all_passed = .true.
-    if (.not. run_smoke('timeout 120 bash '//SCRIPT// &
-        ' --suite fortfront-f90 --max-files 20 --report '// &
-        ROOT_REPORT, ROOT_REPORT, 20)) all_passed = .false.
-    if (.not. run_smoke('repo="$PWD"; cd '//ROOT//' && timeout 120 bash '// &
-        '"$repo/'//SCRIPT//'" --suite fortfront-f90 --max-files 20 '// &
-        '--report '//TMP_CWD_REPORT, &
-        TMP_CWD_REPORT, 20)) all_passed = .false.
-
-    if (.not. run_smoke('timeout 120 bash '//SCRIPT// &
-        ' --suite fortfront-f90 --file ast_coverage_control_flow.f90'// &
-        ' --report '//NAMED_REPORT, NAMED_REPORT, 1)) all_passed = .false.
-    if (.not. file_contains(NAMED_REPORT, &
-        '"file":"ast_coverage_control_flow.f90","status":"XFAIL"')) &
-        all_passed = .false.
-
+    ! Walk blocks run concurrently - this test is the suite-wall critical
+    ! path (148.5 s of ~20 serial invocations, w04o). Every block writes
+    ! its own report; fixtures are written up front; the barrier waits for
+    ! all captured rc files before ANY report or rejection log is read.
+    ! Each background block exports its own TMPDIR (issue/issue_failure):
+    ! the gauntlet keeps scratch and skip_lookup state under TMPDIR, and
+    ! concurrent same-suite runs sharing it pollute each other's manifest
+    ! validation - the parallel attempt that lacked this got SKIP=1 where
+    ! a rejection was required.
+    n_issued = 0
     call write_selection_list()
-    if (.not. run_smoke('timeout 120 bash '//SCRIPT// &
+    call write_dg_fixtures()
+    call write_noref_fixture_tree()
+
+    call issue('timeout 120 bash '//SCRIPT// &
+        ' --suite fortfront-f90 --max-files 20 --report '// &
+        ROOT_REPORT, ROOT_REPORT)
+    n_issued = n_issued + 1
+    call issue('repo="$PWD"; cd '//ROOT//' && timeout 120 bash '// &
+        '"$repo/'//SCRIPT//'" --suite fortfront-f90 --max-files 20 '// &
+        '--report '//TMP_CWD_REPORT, TMP_CWD_REPORT)
+    n_issued = n_issued + 1
+    call issue('timeout 120 bash '//SCRIPT// &
+        ' --suite fortfront-f90 --file ast_coverage_control_flow.f90'// &
+        ' --report '//NAMED_REPORT, NAMED_REPORT)
+    n_issued = n_issued + 1
+    call issue('timeout 120 bash '//SCRIPT// &
         ' --suite fortfront-f90 --files-from '//SELECTION_LIST// &
-        ' --report '//LIST_REPORT, LIST_REPORT, 2)) all_passed = .false.
-    if (.not. report_has_file_order(LIST_REPORT, &
-        'ast_coverage_control_flow.f90', &
-        'ast_coverage_io_statements.f90')) all_passed = .false.
-    if (.not. run_smoke('timeout 120 bash '//SCRIPT// &
+        ' --report '//LIST_REPORT, LIST_REPORT)
+    n_issued = n_issued + 1
+    call issue('timeout 120 bash '//SCRIPT// &
         ' --suite fortfront-f90 --files-from '//SELECTION_LIST// &
-        ' --max-files 1 --report '//LIMITED_REPORT, LIMITED_REPORT, 1)) &
-        all_passed = .false.
-    if (.not. file_contains(LIMITED_REPORT, &
-        '"file":"ast_coverage_control_flow.f90"')) all_passed = .false.
+        ' --max-files 1 --report '//LIMITED_REPORT, LIMITED_REPORT)
+    n_issued = n_issued + 1
 
     ! conformance_check.sh writes its default report under TMPDIR, so the
     ! forwarded run stays inside this run's scratch directory.
-    if (.not. run_smoke('repo="$PWD"; cd '//ROOT//' && TMPDIR='//ROOT// &
+    call issue('repo="$PWD"; cd '//ROOT//' && TMPDIR='//ROOT// &
         ' timeout 120 bash'// &
         ' "$repo/scripts/conformance_check.sh"'// &
         ' --no-build --suite fortfront-f90'// &
         ' --file ast_coverage_control_flow.f90'// &
         ' --files-from ffc_gauntlet_smoke_forward_files.txt', &
-        FORWARDED_REPORT, 2)) &
+        FORWARDED_REPORT)
+    n_issued = n_issued + 1
+
+    call issue_failure('bash '//SCRIPT// &
+        ' --suite fortfront-f90 --file missing_named_file.f90', 'f1')
+    n_issued = n_issued + 1
+    call issue_failure('bash '//SCRIPT// &
+        ' --suite fortfront-f90 --file ast_coverage_control_flow.f90'// &
+        ' --file ast_coverage_control_flow.f90', 'f2')
+    n_issued = n_issued + 1
+    call issue_failure('bash '//SCRIPT// &
+        ' --suite fortfront-f90 --file /tmp/absolute.f90', 'f3')
+    n_issued = n_issued + 1
+    call issue_failure('bash '//SCRIPT// &
+        ' --suite fortfront-f90 --file ../ast_coverage_control_flow.f90', &
+        'f4')
+    n_issued = n_issued + 1
+    call issue_failure('bash scripts/conformance_check.sh --no-build'// &
+        ' --file ast_coverage_control_flow.f90', 'f5')
+    n_issued = n_issued + 1
+    call issue_failure('bash scripts/conformance_check.sh --no-build'// &
+        ' --suite fortfront-f90 --file missing_named_file.f90', 'f6')
+    n_issued = n_issued + 1
+
+    call issue_dg()
+    n_issued = n_issued + 1
+    call issue_undefined()
+    n_issued = n_issued + 1
+    call issue_unlinked()
+    n_issued = n_issued + 1
+
+    call barrier(n_issued)
+
+    if (.not. rc_ok(ROOT_REPORT)) all_passed = .false.
+    if (.not. report_matches(ROOT_REPORT, 20)) all_passed = .false.
+    if (.not. rc_ok(TMP_CWD_REPORT)) all_passed = .false.
+    if (.not. report_matches(TMP_CWD_REPORT, 20)) all_passed = .false.
+    if (.not. rc_ok(NAMED_REPORT)) all_passed = .false.
+    if (.not. report_matches(NAMED_REPORT, 1)) all_passed = .false.
+    if (.not. file_contains(NAMED_REPORT, &
+        '"file":"ast_coverage_control_flow.f90","status":"XFAIL"')) &
         all_passed = .false.
+    if (.not. rc_ok(LIST_REPORT)) all_passed = .false.
+    if (.not. report_matches(LIST_REPORT, 2)) all_passed = .false.
+    if (.not. report_has_file_order(LIST_REPORT, &
+        'ast_coverage_control_flow.f90', &
+        'ast_coverage_io_statements.f90')) all_passed = .false.
+    if (.not. rc_ok(LIMITED_REPORT)) all_passed = .false.
+    if (.not. report_matches(LIMITED_REPORT, 1)) all_passed = .false.
+    if (.not. file_contains(LIMITED_REPORT, &
+        '"file":"ast_coverage_control_flow.f90"')) all_passed = .false.
+    if (.not. rc_ok(FORWARDED_REPORT)) all_passed = .false.
     if (.not. report_has_file_order(FORWARDED_REPORT, &
         'ast_coverage_control_flow.f90', &
         'ast_coverage_io_statements.f90')) all_passed = .false.
 
-    if (.not. run_failure('bash '//SCRIPT// &
-        ' --suite fortfront-f90 --file missing_named_file.f90', &
-        'unknown selected file')) all_passed = .false.
-    if (.not. run_failure('bash '//SCRIPT// &
-        ' --suite fortfront-f90 --file ast_coverage_control_flow.f90'// &
-        ' --file ast_coverage_control_flow.f90', &
-        'duplicate selected file')) all_passed = .false.
-    if (.not. run_failure('bash '//SCRIPT// &
-        ' --suite fortfront-f90 --file /tmp/absolute.f90', &
-        'suite-relative')) all_passed = .false.
-    if (.not. run_failure('bash '//SCRIPT// &
-        ' --suite fortfront-f90 --file ../ast_coverage_control_flow.f90', &
-        'parent traversal')) all_passed = .false.
-    if (.not. run_failure('bash scripts/conformance_check.sh --no-build'// &
-        ' --file ast_coverage_control_flow.f90', &
-        'require --suite')) all_passed = .false.
-    if (.not. run_failure('bash scripts/conformance_check.sh --no-build'// &
-        ' --suite fortfront-f90 --file missing_named_file.f90', &
-        'unknown selected file')) all_passed = .false.
+    if (.not. failure_ok('f1', 'unknown selected file')) &
+        all_passed = .false.
+    if (.not. failure_ok('f2', 'duplicate selected file')) &
+        all_passed = .false.
+    if (.not. failure_ok('f3', 'suite-relative')) all_passed = .false.
+    if (.not. failure_ok('f4', 'parent traversal')) all_passed = .false.
+    if (.not. failure_ok('f5', 'require --suite')) all_passed = .false.
+    if (.not. failure_ok('f6', 'unknown selected file')) &
+        all_passed = .false.
 
-    call run_dg_directive_smoke(all_passed)
-    call run_noref_smoke(all_passed)
+    call check_dg_directive_smoke(all_passed)
+    call check_noref_smoke(all_passed)
 
     ! Keep the scratch directory when something failed: it holds the logs.
     if (.not. all_passed) stop 1
@@ -153,6 +200,115 @@ contains
 
         ok = report_matches(report, expected_total)
     end function run_smoke
+
+    subroutine issue(cmd, report)
+        !! Launch one gauntlet block in the background. Each block exports
+        !! its own TMPDIR so concurrent same-suite runs cannot share the
+        !! scratch skip_lookup state; the rc lands in REPORT//'.rc'.
+        character(len=*), intent(in) :: cmd
+        character(len=*), intent(in) :: report
+        character(len=:), allocatable :: wrapped
+
+        call execute_command_line('rm -f '//report//' '//report//'.rc')
+        wrapped = '{ export TMPDIR=' // ROOT // '; ( ' // cmd // &
+            ' ) > /dev/null 2>&1; echo $? > ' // report // '.rc; } &'
+        call execute_command_line(wrapped)
+    end subroutine issue
+
+    subroutine issue_failure(cmd, tag)
+        !! Background rejection block: must exit nonzero, log to its own
+        !! tagged file, needle checked by failure_ok() after barrier().
+        character(len=*), intent(in) :: cmd
+        character(len=*), intent(in) :: tag
+        character(len=:), allocatable :: wrapped
+
+        call execute_command_line('rm -f '//fail_log(tag)//' '// &
+            fail_rc(tag))
+        wrapped = '{ export TMPDIR=' // ROOT // '; ( ' // cmd // &
+            ' ) > ' // fail_log(tag) // ' 2>&1; echo $? > ' // &
+            fail_rc(tag) // '; } &'
+        call execute_command_line(wrapped)
+    end subroutine issue_failure
+
+    function fail_log(tag) result(path)
+        character(len=*), intent(in) :: tag
+        character(len=:), allocatable :: path
+        path = ROOT//'/ffc_gauntlet_smoke_failure_'//tag//'.log'
+    end function fail_log
+
+    function fail_rc(tag) result(path)
+        character(len=*), intent(in) :: tag
+        character(len=:), allocatable :: path
+        path = ROOT//'/ffc_gauntlet_smoke_failure_'//tag//'.rc'
+    end function fail_rc
+
+    subroutine barrier(expected)
+        !! Block until EXPECTED background blocks have written their rc.
+        integer, intent(in) :: expected
+        character(len=:), allocatable :: poll
+        character(len=16) :: cnt
+
+        write(cnt, '(I0)') expected
+        poll = 'for i in $(seq 1 1200); do n=$(ls ' // ROOT // &
+            '/*.rc 2>/dev/null | wc -l); [ "$n" -ge ' // cnt // &
+            ' ] && break; sleep 0.25; done'
+        call execute_command_line(poll)
+    end subroutine barrier
+
+    logical function rc_ok(report) result(ok)
+        !! rc 0 = pass; 1 = reported failure (report checks decide);
+        !! >126 = timeout/killed.
+        character(len=*), intent(in) :: report
+        integer :: unit, io_stat, rc
+
+        ok = .false.
+        open(newunit=unit, file=report//'.rc', status='old', action='read', &
+            iostat=io_stat)
+        if (io_stat /= 0) then
+            print *, 'FAIL: no rc for ', trim(report)
+            return
+        end if
+        read(unit, *, iostat=io_stat) rc
+        close(unit)
+        if (io_stat /= 0) return
+        if (rc > 126) then
+            print *, 'FAIL: gauntlet timed out or killed: ', trim(report)
+            return
+        end if
+        ok = rc == 0
+        if (.not. ok) print *, 'FAIL: gauntlet exited with ', rc, &
+            ' for ', trim(report)
+    end function rc_ok
+
+    logical function failure_ok(tag, needle) result(ok)
+        !! Rejection blocks must exit nonzero and name the reason.
+        character(len=*), intent(in) :: tag
+        character(len=*), intent(in) :: needle
+        integer :: unit, io_stat, rc
+
+        ok = .false.
+        open(newunit=unit, file=fail_rc(tag), status='old', action='read', &
+            iostat=io_stat)
+        if (io_stat /= 0) then
+            print *, 'FAIL: no rc for rejection ', trim(tag)
+            return
+        end if
+        read(unit, *, iostat=io_stat) rc
+        close(unit)
+        if (io_stat /= 0 .or. rc > 126) then
+            print *, 'FAIL: rejection timed out: ', trim(tag)
+            return
+        end if
+        if (rc == 0) then
+            print *, 'FAIL: rejection accepted (rc=0): ', trim(tag)
+            return
+        end if
+        if (.not. file_contains(fail_log(tag), needle)) then
+            print *, 'FAIL: rejection message missing for ', trim(tag)
+            return
+        end if
+        ok = .true.
+    end function failure_ok
 
     logical function report_matches(report, expected_total) result(ok)
         character(len=*), intent(in) :: report
@@ -279,18 +435,23 @@ contains
         close(unit)
     end subroutine write_selection_list
 
-    subroutine run_dg_directive_smoke(passed)
-        logical, intent(inout) :: passed
-
-        call write_dg_fixtures()
-        if (.not. run_smoke('FFC_GFORTRAN_DG_DIR='//DG_FIXTURE_DIR// &
+    subroutine issue_dg()
+        !! Launch the dg walk in the background; fixtures are written by
+        !! the caller before any block is issued.
+        call issue('FFC_GFORTRAN_DG_DIR='//DG_FIXTURE_DIR// &
             ' timeout 120 bash '//SCRIPT//' --suite gfortran-dg'// &
             ' --file warning_compile.f90 --file warning_run.f90'// &
             ' --file true_error.f90 --file empty_options.f90'// &
             ' --file blank_options.f90 --file omitted_options.f90'// &
             ' --file empty_add_options.f90 --file spaced_run.f90'// &
-            ' --report '//DG_REPORT, DG_REPORT, 8)) &
-            passed = .false.
+            ' --report '//DG_REPORT, DG_REPORT)
+    end subroutine issue_dg
+
+    subroutine check_dg_directive_smoke(passed)
+        logical, intent(inout) :: passed
+
+        if (.not. rc_ok(DG_REPORT)) passed = .false.
+        if (.not. report_matches(DG_REPORT, 8)) passed = .false.
         if (.not. file_contains(DG_REPORT, &
             '"file":"warning_compile.f90","status":"PASS","ffc_exit":0,'// &
             '"ref_exit":-1,"note":"ffc -c succeeded",'// &
@@ -322,7 +483,7 @@ contains
             '"file":"no_main_accepted.f90","status":"FAIL",'// &
             '"ffc_exit":0')) &
             passed = .false.
-    end subroutine run_dg_directive_smoke
+    end subroutine check_dg_directive_smoke
 
     subroutine write_dg_fixtures()
         integer :: unit
@@ -400,24 +561,38 @@ contains
         close(unit)
     end subroutine write_options_fixture
 
-    subroutine run_noref_smoke(passed)
-        logical, intent(inout) :: passed
-
-        call run_undefined_runtime_value_smoke(passed)
-        call run_unlinked_reference_smoke(passed)
-        call run_noref_manifest_rejection_smoke(passed)
-    end subroutine run_noref_smoke
-
-    subroutine run_undefined_runtime_value_smoke(passed)
-        logical, intent(inout) :: passed
-
-        if (.not. run_smoke('timeout 120 bash '//SCRIPT// &
+    subroutine issue_undefined()
+        !! Launch the undefined-runtime-value walk in the background.
+        call issue('timeout 120 bash '//SCRIPT// &
             ' --suite fortfront-f90'// &
             ' --file issue_104_if_condition_identifiers.f90'// &
             ' --file undefined_var_segfault.f90'// &
             ' --file issue_2349_data_implied_do.f90'// &
-            ' --report '//UNDEFINED_REPORT, UNDEFINED_REPORT, 3)) &
-            passed = .false.
+            ' --report '//UNDEFINED_REPORT, UNDEFINED_REPORT)
+    end subroutine issue_undefined
+
+    subroutine issue_unlinked()
+        !! Launch the missing-external-definition walk in the background.
+        call issue('timeout 120 bash '//SCRIPT// &
+            ' --suite fortfront-f90'// &
+            ' --file external_tool_example.f90'// &
+            ' --file library_usage_ast_node_position.f90'// &
+            ' --report '//UNLINKED_REPORT, UNLINKED_REPORT)
+    end subroutine issue_unlinked
+
+    subroutine check_noref_smoke(passed)
+        logical, intent(inout) :: passed
+
+        call check_undefined_runtime_value_smoke(passed)
+        call check_unlinked_reference_smoke(passed)
+        call run_noref_manifest_rejection_smoke(passed)
+    end subroutine check_noref_smoke
+
+    subroutine check_undefined_runtime_value_smoke(passed)
+        logical, intent(inout) :: passed
+
+        if (.not. rc_ok(UNDEFINED_REPORT)) passed = .false.
+        if (.not. report_matches(UNDEFINED_REPORT, 3)) passed = .false.
         if (count_lines_with(UNDEFINED_REPORT, '"status":"PASS"', &
             '"noref":true,"noref_reason":"undefined-runtime-value"') /= 3) &
             passed = .false.
@@ -437,17 +612,13 @@ contains
             '"file":"undefined_nonzero.f90","status":"FAIL",'// &
             '"ffc_exit":1,"ref_exit":1')) &
             passed = .false.
-    end subroutine run_undefined_runtime_value_smoke
+    end subroutine check_undefined_runtime_value_smoke
 
-    subroutine run_unlinked_reference_smoke(passed)
+    subroutine check_unlinked_reference_smoke(passed)
         logical, intent(inout) :: passed
 
-        if (.not. run_smoke('timeout 120 bash '//SCRIPT// &
-            ' --suite fortfront-f90'// &
-            ' --file external_tool_example.f90'// &
-            ' --file library_usage_ast_node_position.f90'// &
-            ' --report '//UNLINKED_REPORT, UNLINKED_REPORT, 2)) &
-            passed = .false.
+        if (.not. rc_ok(UNLINKED_REPORT)) passed = .false.
+        if (.not. report_matches(UNLINKED_REPORT, 2)) passed = .false.
         if (count_lines_with(UNLINKED_REPORT, '"status":"PASS"', &
             '"noref":true,"noref_reason":"missing-external-definition"') &
             /= 2) passed = .false.
@@ -474,7 +645,7 @@ contains
             'noref category not applicable')) passed = .false.
         if (.not. file_contains(NOREF_NEGATIVE_REPORT, &
             '"file":"stable_valid.f90","status":"FAIL"')) passed = .false.
-    end subroutine run_unlinked_reference_smoke
+    end subroutine check_unlinked_reference_smoke
 
     subroutine run_noref_manifest_rejection_smoke(passed)
         logical, intent(inout) :: passed
