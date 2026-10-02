@@ -344,6 +344,10 @@ def migrate(path: pathlib.Path, apply: bool) -> int:
         root_text = ROOT.read_text()
     else:
         root_text = inc_text
+    if includer == ROOT:
+        root_text = re.sub(
+            rf"^\s*include\s+'{re.escape(path.name)}'\s*\n", "",
+            root_text, count=1)
     nl = "\n" + "contains" + "\n"
     if root_text.count(nl) != 1:
         print(f"{ROOT}: cannot locate `contains`", file=sys.stderr)

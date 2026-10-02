@@ -5367,6 +5367,273 @@ module session_program_lowering_impl
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine lower_one_submodule_procedures
     end interface
+    interface
+        logical module function declaration_is_collectable(arena, &
+                                                           node_index, &
+                                                           node)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(declaration_node), intent(in) :: node
+        end function declaration_is_collectable
+        integer module function value_kind_type_kind(value_kind) result(type_kind)
+            integer, intent(in) :: value_kind
+        end function value_kind_type_kind
+        module subroutine grow_declaration_records(context)
+            type(lowering_context_t), intent(inout) :: context
+        end subroutine grow_declaration_records
+        logical module function same_declaration_identity(lhs, rhs) result(same)
+            type(declaration_record_t), intent(in) :: lhs
+            type(declaration_record_t), intent(in) :: rhs
+        end function same_declaration_identity
+        logical module function same_declaration_metadata(lhs, rhs) result(same)
+            type(declaration_record_t), intent(in) :: lhs
+            type(declaration_record_t), intent(in) :: rhs
+        end function same_declaration_metadata
+        module subroutine merge_declaration_metadata(destination, source)
+            type(declaration_record_t), intent(inout) :: destination
+            type(declaration_record_t), intent(in) :: source
+        end subroutine merge_declaration_metadata
+        integer module function find_declaration_record(context, binding) result(index)
+            type(lowering_context_t), intent(in) :: context
+            type(declaration_binding_t), intent(in) :: binding
+        end function find_declaration_record
+        recursive module subroutine fold_char_constant_expr(context, &
+                                                            node_index, &
+                                                            accumulated, &
+                                                            ok, &
+                                                            reference_index)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: node_index
+            character(len=:), allocatable, intent(out) :: accumulated
+            logical, intent(out) :: ok
+            integer, intent(in), optional :: reference_index
+        end subroutine fold_char_constant_expr
+        logical module function is_intrinsic_type_spec(text)
+            character(len=*), intent(in) :: text
+        end function is_intrinsic_type_spec
+        module subroutine resolve_kind_parameter_value(context, &
+                                                       kind_spec, &
+                                                       resolved, &
+                                                       value, &
+                                                       reference_index)
+            type(lowering_context_t), intent(in) :: context
+            character(len=*), intent(in) :: kind_spec
+            logical, intent(out) :: resolved
+            integer(c_int64_t), intent(out) :: value
+            integer, intent(in), optional :: reference_index
+        end subroutine resolve_kind_parameter_value
+        logical module function is_integer_literal_text(text) result(is_literal)
+            character(len=*), intent(in) :: text
+        end function is_integer_literal_text
+        module subroutine apply_lazy_real_kind(context, type_kind, has_kind, kind_value)
+            type(lowering_context_t), intent(in) :: context
+            integer, intent(in) :: type_kind
+            logical, intent(in) :: has_kind
+            integer, intent(inout) :: kind_value
+        end subroutine apply_lazy_real_kind
+        logical module function lazy_defaults_active(context) result(active)
+            type(lowering_context_t), intent(in), optional :: context
+        end function lazy_defaults_active
+        logical module function resolve_selected_real_kind_spec(kind_spec, kind_value)
+            character(len=*), intent(in) :: kind_spec
+            integer(c_int64_t), intent(out) :: kind_value
+        end function resolve_selected_real_kind_spec
+        module subroutine make_function_result_record(arena, &
+                                                      node, &
+                                                      binding, &
+                                                      context, &
+                                                      record)
+            type(ast_arena_t), intent(in) :: arena
+            type(function_def_node), intent(in) :: node
+            type(declaration_binding_t), intent(in) :: binding
+            type(lowering_context_t), intent(in) :: context
+            type(declaration_record_t), intent(out) :: record
+        end subroutine make_function_result_record
+        module subroutine store_declaration_record(context, record, error_msg)
+            type(lowering_context_t), intent(inout) :: context
+            type(declaration_record_t), intent(in) :: record
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine store_declaration_record
+        module subroutine lower_character_constant_declaration(node, &
+                                                               context, &
+                                                               name, &
+                                                               error_msg, &
+                                                               reference_index)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=*), intent(in) :: name
+            character(len=:), allocatable, intent(out) :: error_msg
+            integer, intent(in), optional :: reference_index
+        end subroutine lower_character_constant_declaration
+        module subroutine integer_kind_to_value_kind(kind_spec, &
+                                                     line, &
+                                                     column, &
+                                                     value_kind, &
+                                                     error_msg, &
+                                                     context, &
+                                                     reference_index)
+            character(len=*), intent(in) :: kind_spec
+            integer, intent(in) :: line, column
+            integer, intent(out) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+            type(lowering_context_t), intent(in), optional :: context
+            integer, intent(in), optional :: reference_index
+        end subroutine integer_kind_to_value_kind
+        module subroutine check_float_kind_supported(base, &
+                                                     kind_spec, &
+                                                     line, &
+                                                     column, &
+                                                     error_msg, &
+                                                     context, &
+                                                     reference_index)
+            character(len=*), intent(in) :: base
+            character(len=*), intent(in) :: kind_spec
+            integer, intent(in) :: line, column
+            character(len=:), allocatable, intent(out) :: error_msg
+            type(lowering_context_t), intent(in), optional :: context
+            integer, intent(in), optional :: reference_index
+        end subroutine check_float_kind_supported
+        logical module function real_kind_is_f64(kind_spec, context, reference_index)
+            character(len=*), intent(in) :: kind_spec
+            type(lowering_context_t), intent(in), optional :: context
+            integer, intent(in), optional :: reference_index
+        end function real_kind_is_f64
+        module subroutine collect_function_result_declaration(arena, &
+                                                              node_index, &
+                                                              node, &
+                                                              context, &
+                                                              error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(function_def_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine collect_function_result_declaration
+        module subroutine lower_nonint_constant_declaration(node, &
+                                                            context, &
+                                                            value_kind, &
+                                                            error_msg, &
+                                                            reference_index)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+            integer, intent(in), optional :: reference_index
+        end subroutine lower_nonint_constant_declaration
+        logical module function complex_kind_is_c8(kind_spec, context, reference_index)
+            character(len=*), intent(in) :: kind_spec
+            type(lowering_context_t), intent(in), optional :: context
+            integer, intent(in), optional :: reference_index
+        end function complex_kind_is_c8
+        module subroutine lower_constant_declaration(node, &
+                                                     context, &
+                                                     value_kind, &
+                                                     error_msg, &
+                                                     reference_index)
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            integer, intent(in) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+            integer, intent(in), optional :: reference_index
+        end subroutine lower_constant_declaration
+        recursive module subroutine type_name_value_kind(type_name, &
+                                                         line, &
+                                                         column, &
+                                                         value_kind, &
+                                                         error_msg, &
+                                                         context, &
+                                                         reference_index)
+            character(len=*), intent(in) :: type_name
+            integer, intent(in) :: line, column
+            integer, intent(out) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+            type(lowering_context_t), intent(in), optional :: context
+            integer, intent(in), optional :: reference_index
+        end subroutine type_name_value_kind
+        integer module function declaration_metadata_value_kind(type_kind, &
+                                                                kind_value, &
+                                                                type_name, &
+                                                                context, &
+                                                                line, &
+                                                                column, &
+                                                                derived_name)
+            integer, intent(in) :: type_kind
+            integer, intent(in) :: kind_value
+            character(len=*), intent(in) :: type_name
+            type(lowering_context_t), intent(in), optional :: context
+            integer, intent(in), optional :: line, column
+            character(len=*), intent(in), optional :: derived_name
+        end function declaration_metadata_value_kind
+        module subroutine declaration_value_kind(node, &
+                                                 value_kind, &
+                                                 error_msg, &
+                                                 context, &
+                                                 reference_index)
+            type(declaration_node), intent(in) :: node
+            integer, intent(out) :: value_kind
+            character(len=:), allocatable, intent(out) :: error_msg
+            type(lowering_context_t), intent(in), optional :: context
+            integer, intent(in), optional :: reference_index
+        end subroutine declaration_value_kind
+        module subroutine make_declaration_record(node, name, binding, context, record)
+            type(declaration_node), intent(in) :: node
+            character(len=*), intent(in) :: name
+            type(declaration_binding_t), intent(in) :: binding
+            type(lowering_context_t), intent(in) :: context
+            type(declaration_record_t), intent(out) :: record
+        end subroutine make_declaration_record
+        module subroutine make_parameter_record(node, name, binding, context, record)
+            type(parameter_declaration_node), intent(in) :: node
+            character(len=*), intent(in) :: name
+            type(declaration_binding_t), intent(in) :: binding
+            type(lowering_context_t), intent(in) :: context
+            type(declaration_record_t), intent(out) :: record
+        end subroutine make_parameter_record
+        module subroutine collect_one_declaration_entity(arena, &
+                                                         node_index, &
+                                                         node, &
+                                                         name, &
+                                                         context, &
+                                                         error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(declaration_node), intent(in) :: node
+            character(len=*), intent(in) :: name
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine collect_one_declaration_entity
+        module subroutine collect_parameter_declaration_node(arena, &
+                                                             node_index, &
+                                                             node, &
+                                                             context, &
+                                                             error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(parameter_declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine collect_parameter_declaration_node
+        module subroutine collect_declaration_node(arena, &
+                                                   node_index, &
+                                                   node, &
+                                                   context, &
+                                                   error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: node_index
+            type(declaration_node), intent(in) :: node
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine collect_declaration_node
+        module subroutine collect_resolved_declarations(arena, &
+                                                        root_index, &
+                                                        context, &
+                                                        error_msg)
+            type(ast_arena_t), intent(in) :: arena
+            integer, intent(in) :: root_index
+            type(lowering_context_t), intent(inout) :: context
+            character(len=:), allocatable, intent(out) :: error_msg
+        end subroutine collect_resolved_declarations
+    end interface
 contains
     include 'session_program_lowering_top.inc'
     subroutine lower_declaration(node_in, node_index, context, error_msg)
@@ -5966,7 +6233,6 @@ contains
     end subroutine lower_character_initializer
 
     include 'session_program_lowering_data.inc'
-    include 'session_program_lowering_declarations.inc'
     subroutine define_declared_symbol(context, node, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context
         type(declaration_node), intent(in) :: node

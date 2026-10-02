@@ -1,3 +1,11 @@
+submodule (session_program_lowering_impl) declarations
+    !! `declarations` procedures, moved out of `session_program_lowering_declarations.inc` so that this
+    !! unit has a name, a checked interface, and can be compiled, edited
+    !! and pointed at on its own instead of only inside its includer.
+    implicit none
+
+contains
+
     subroutine collect_resolved_declarations(arena, root_index, context, &
                                              error_msg)
         ! Build the declaration registry before any executable body is emitted.
@@ -1310,3 +1318,6 @@
         call type_name_value_kind(node%type_name, node%line, node%column, &
                                   value_kind, error_msg, context, reference_index)
     end subroutine declaration_value_kind
+
+
+end submodule declarations
