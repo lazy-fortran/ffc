@@ -3844,6 +3844,16 @@
             if (trim(reduction_name) == 'norm2') then
                 error_msg = 'norm2 supports exactly one real array argument; '// &
                             'DIM and KIND forms are not supported'
+            else if (allocated(node%arg_indices) .and. &
+                     size(node%arg_indices) > 1) then
+                ! More arguments than expected means the caller supplied MASK= or
+                ! DIM= (or extra positional arguments), not that the array argument
+                ! is missing. Blaming the arity is actively misleading here: a user
+                ! who obeys it deletes the mask, the call then compiles, and the
+                ! result changes silently (sum(a, mask=a>2) is 12, sum(a) is 15)
+                ! with no diagnostic left to investigate. Name the unsupported thing.
+                error_msg = trim(reduction_name)//' accepts one array argument; '// &
+                            'MASK= and DIM= arguments are not supported'
             else
                 error_msg = trim(reduction_name)//' requires exactly one array argument'
             end if

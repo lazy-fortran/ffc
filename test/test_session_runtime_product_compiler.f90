@@ -129,7 +129,7 @@ program test_session_runtime_product_compiler
             'product over runtime-extent arrays supports default integer, real, and real(8) elements only', &
             '/var/tmp/ert/ffc_runtime_product_kind')) all_passed = .false.
     if (.not. test_refusal(dim_source, &
-            'product requires exactly one array argument', &
+            'product accepts one array argument; MASK= and DIM= arguments are not supported', &
             '/var/tmp/ert/ffc_runtime_product_dim')) all_passed = .false.
     if (.not. all_passed) stop 1
     print *, 'PASS: runtime PRODUCT matches gfortran; unsupported rank/kind/DIM refused'

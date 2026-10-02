@@ -316,13 +316,16 @@ program test_session_runtime_extreme_compiler
         'minval over runtime-extent arrays supports default integer, real, and real(8) elements only')) &
         all_passed = .false.
     if (.not. test_runtime_refusal(rank3_form_source, 'sum_form', &
-        'sum requires exactly one array argument')) &
+        'sum accepts one array argument; MASK= and DIM= arguments are not '// &
+        'supported')) &
         all_passed = .false.
     if (.not. test_runtime_refusal(rank4_max_dim_source, 'maxval_dim', &
-        'maxval requires exactly one array argument')) &
+        'maxval accepts one array argument; MASK= and DIM= arguments are not '// &
+        'supported')) &
         all_passed = .false.
     if (.not. test_runtime_refusal(rank4_min_dim_source, 'minval_dim', &
-        'minval requires exactly one array argument')) &
+        'minval accepts one array argument; MASK= and DIM= arguments are not '// &
+        'supported')) &
         all_passed = .false.
     if (.not. matches_gfortran(rank3_assumed_count_source, 'count_rank3')) &
         all_passed = .false.
