@@ -213,6 +213,27 @@ contains
             do
                 call skip_format_separators(format_body, pos)
                 if (pos > len_trim(format_body)) exit
+                ! A trailing nX prints blanks the record would omit; once no
+                ! values remain, skip X steps instead of padding (13.10.2).
+                if (item_index > item_total) then
+                    block
+                        character :: kc
+                        integer :: p2
+                        p2 = pos
+                        do while (p2 <= len_trim(format_body) .and. &
+                                 format_body(p2:p2) >= '0' .and. &
+                                 format_body(p2:p2) <= '9')
+                            p2 = p2 + 1
+                        end do
+                        kc = ' '
+                        if (p2 <= len_trim(format_body)) &
+                            kc = format_body(p2:p2)
+                        if (kc == 'X' .or. kc == 'x') then
+                            pos = p2 + 1
+                            cycle
+                        end if
+                    end block
+                end if
                 call lower_next_compound_descriptor(arena, node, context, &
                                                     format_body, pos, item_index, &
                                                     exhausted, error_msg)
@@ -266,6 +287,16 @@ contains
                 return
             end if
             if (size(objects) == 0) return
+            if (.true.) then
+                ! Multi-object and nested implied-dos: flatten the value list
+                ! with loop variables recorded per value, expand the format
+                ! into single-descriptor steps, then walk both in step.
+                call lower_flattened_implied_do_print(arena, node, context, &
+                                                      format_body, error_msg)
+                if (len_trim(error_msg) > 0) return
+                handled = .true.
+                return
+            end if
             call eval_i32_constant(arena, idn%start_expr_index, context, lo, &
                                    error_msg)
             if (len_trim(error_msg) > 0) return
@@ -311,6 +342,394 @@ contains
         end select
     end subroutine lower_formatted_io_implied_do
 
+    subroutine lower_flattened_implied_do_print(arena, node, context, &
+                                                  format_body, error_msg)
+        ! Multi-object / nested implied-do print: flatten the value list with
+        ! loop variables bound per value, expand the format (groups and repeat
+        ! counts) into single-descriptor steps, then walk descriptor and
+        ! value in step. Format reversion terminates the record with a
+        ! newline and restarts (F2018 13.4).
+        type(ast_arena_t), intent(in) :: arena
+        type(print_statement_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=*), intent(in) :: format_body
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: items(64), isym(64, 8), ibcnt(64), nitems
+        integer(c_int64_t) :: ival(64, 8)
+        integer :: bsym(8), bd, k, pos, item_index, rc, i
+        logical :: btemp(8), exhausted
+        type(symbol_t) :: bsaved(8)
+        character(len=:), allocatable :: expanded
+        type(print_statement_node) :: one_node
+
+        call set_empty(error_msg)
+        items = 0
+        isym = 0
+        ibcnt = 0
+        ival = 0
+        nitems = 0
+        bd = 0
+        call flatten_implied_do(arena, node%expression_indices(1), context, &
+                                items, nitems, isym, ival, ibcnt, bd, bsym, &
+                                btemp, bsaved, 0, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unbind_implied_do_stack(context, bd, bsym, btemp, bsaved)
+            return
+        end if
+        if (nitems > 64) then
+            call unbind_implied_do_stack(context, bd, bsym, btemp, bsaved)
+            call unsupported_feature_error('formatted I/O implied-do', &
+                node%line, node%column, &
+                'implied-do expands beyond 64 values', error_msg)
+            return
+        end if
+        if (nitems == 0) then
+            ! Zero iterations: the print statement still terminates its
+            ! record; the caller emits the newline.
+            call unbind_implied_do_stack(context, bd, bsym, btemp, bsaved)
+            return
+        end if
+        call expand_format_groups(format_body, expanded, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unbind_implied_do_stack(context, bd, bsym, btemp, bsaved)
+            return
+        end if
+        ! A record omits its trailing blanks (F2018 13.10.2): X steps that
+        ! trail the last data descriptor of every pass are dropped up front,
+        ! which trims every reversion record the same way.
+        do
+            if (len_trim(expanded) >= 2 .and. &
+                expanded(len_trim(expanded) - 1:) == ',X') then
+                expanded = expanded(:len_trim(expanded) - 2)
+                cycle
+            end if
+            if (trim(expanded) == 'X') expanded = ''
+            exit
+        end do
+        if (len_trim(expanded) == 0) then
+            call unbind_implied_do_stack(context, bd, bsym, btemp, bsaved)
+            call unsupported_feature_error('formatted I/O implied-do', &
+                node%line, node%column, &
+                'format has no data descriptor for implied-do values', &
+                error_msg)
+            return
+        end if
+
+        allocate (one_node%expression_indices(nitems))
+        one_node%expression_indices(1:nitems) = items(1:nitems)
+        pos = 1
+        item_index = 1
+        do
+            call skip_format_separators(expanded, pos)
+            if (pos > len_trim(expanded)) then
+                ! Record boundary: the caller emits the terminating newline,
+                ! so only inter-record separators are written here.
+                if (item_index > nitems) exit
+                if (.not. emit_liric_print_newline(context%session, &
+                                                    error_msg)) exit
+                pos = 1
+                cycle
+            end if
+            do i = 1, ibcnt(item_index)
+                context%symbols(isym(item_index, i))%i32_constant = &
+                    ival(item_index, i)
+                context%symbols(isym(item_index, i))%value = &
+                    i32_immediate(context%session, ival(item_index, i))
+                context%symbols(isym(item_index, i))%has_address = .false.
+                context%symbols(isym(item_index, i))%is_reference = .false.
+            end do
+            if (item_index > nitems) then
+                ! All values emitted: the record ends here. Trailing X steps
+                ! would print blanks, and a formatted print record omits its
+                ! trailing blanks (F2018 13.10.2), so stop, do not pad.
+                exit
+            end if
+            call lower_next_compound_descriptor(arena, one_node, context, &
+                                                expanded, pos, item_index, &
+                                                exhausted, error_msg)
+            if (len_trim(error_msg) > 0) exit
+            if (exhausted) exit
+        end do
+        call unbind_implied_do_stack(context, bd, bsym, btemp, bsaved)
+    end subroutine lower_flattened_implied_do_print
+
+    subroutine unbind_implied_do_stack(context, bd, bsym, btemp, bsaved)
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: bd, bsym(8)
+        logical, intent(in) :: btemp(8)
+        type(symbol_t), intent(in) :: bsaved(8)
+        integer :: d
+
+        do d = bd, 1, -1
+            call release_io_implied_do_var(context, bsym(d), btemp(d), &
+                                            bsaved(d))
+        end do
+    end subroutine unbind_implied_do_stack
+
+    recursive subroutine flatten_implied_do(arena, idx, context, items, &
+                                             nitems, isym, ival, ibcnt, bd, &
+                                             bsym, btemp, bsaved, depth, &
+                                             error_msg)
+        ! Expand one implied-do at a time: bind its loop variable, iterate the
+        ! constant bounds, and recurse into nested implied-dos. Every plain
+        ! value records a snapshot of the active loop-variable bindings.
+        ! Explicit shapes everywhere: call sites use identically sized arrays,
+        ! implicit interfaces carry no descriptors.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: idx
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(inout) :: items(64), nitems
+        integer, intent(inout) :: isym(64, 8), ibcnt(64)
+        integer(c_int64_t), intent(inout) :: ival(64, 8)
+        integer, intent(inout) :: bd
+        integer, intent(inout) :: bsym(8)
+        logical, intent(inout) :: btemp(8)
+        type(symbol_t), intent(inout) :: bsaved(8)
+        integer, intent(in) :: depth
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t) :: lo, hi, step, v
+        integer :: vsym, i, oi, d
+        logical :: created
+        type(symbol_t) :: saved
+        integer, allocatable :: objs(:)
+
+        call set_empty(error_msg)
+        if (depth > 8) then
+            error_msg = 'implied-do nesting beyond depth 8'
+            return
+        end if
+        if (idx <= 0 .or. .not. node_exists(arena, idx)) then
+            error_msg = 'implied-do node missing from arena'
+            return
+        end if
+        select type (idn => arena%entries(idx)%node)
+        type is (io_implied_do_node)
+            if (.not. allocated(idn%var_name)) then
+                error_msg = 'implied-do without loop variable'
+                return
+            end if
+            call eval_i32_constant(arena, idn%start_expr_index, context, lo, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) then
+                error_msg = 'implied-do bounds must be compile-time constants'
+                return
+            end if
+            call eval_i32_constant(arena, idn%end_expr_index, context, hi, &
+                                   error_msg)
+            if (len_trim(error_msg) > 0) then
+                error_msg = 'implied-do bounds must be compile-time constants'
+                return
+            end if
+            step = 1_c_int64_t
+            if (idn%step_expr_index > 0) then
+                call eval_i32_constant(arena, idn%step_expr_index, context, &
+                                       step, error_msg)
+                if (len_trim(error_msg) > 0) then
+                    error_msg = 'implied-do step must be a constant'
+                    return
+                end if
+            end if
+            if (step == 0_c_int64_t) then
+                error_msg = 'io implied-do step is zero'
+                return
+            end if
+            if (allocated(idn%object_indices)) then
+                objs = idn%object_indices
+            else if (idn%expr_index > 0) then
+                allocate (objs(1))
+                objs(1) = idn%expr_index
+            else
+                error_msg = 'implied-do without objects'
+                return
+            end if
+            bd = bd + 1
+            if (bd > size(bsym)) then
+                bd = bd - 1
+                error_msg = 'implied-do binding stack overflow'
+                return
+            end if
+            call bind_io_implied_do_var(context, idn%var_name, vsym, created, &
+                                         saved)
+            bsym(bd) = vsym
+            btemp(bd) = created
+            bsaved(bd) = saved
+            v = lo
+            do while ((step > 0_c_int64_t .and. v <= hi) .or. &
+                      (step < 0_c_int64_t .and. v >= hi))
+                context%symbols(vsym)%i32_constant = v
+                context%symbols(vsym)%value = i32_immediate(context%session, v)
+                context%symbols(vsym)%has_address = .false.
+                context%symbols(vsym)%is_reference = .false.
+                do oi = 1, size(objs)
+                    if (objs(oi) <= 0 .or. .not. node_exists(arena, &
+                        objs(oi))) then
+                        error_msg = 'implied-do object missing from arena'
+                        exit
+                    end if
+                    select type (ob => arena%entries(objs(oi))%node)
+                    type is (io_implied_do_node)
+                        call flatten_implied_do(arena, objs(oi), context, &
+                                                items, nitems, isym, ival, &
+                                                ibcnt, bd, bsym, btemp, bsaved, &
+                                                depth + 1, error_msg)
+                    class default
+                        nitems = nitems + 1
+                        if (nitems > size(items)) then
+                            error_msg = 'implied-do expansion overflow'
+                            exit
+                        end if
+                        items(nitems) = objs(oi)
+                        ibcnt(nitems) = bd
+                        do d = 1, bd
+                            isym(nitems, d) = bsym(d)
+                            ival(nitems, d) = context%symbols(bsym(d))%&
+                                              i32_constant
+                        end do
+                    end select
+                    if (len_trim(error_msg) > 0) exit
+                end do
+                if (len_trim(error_msg) > 0) exit
+                v = v + step
+            end do
+            if (len_trim(error_msg) > 0) then
+                bd = bd - 1
+                return
+            end if
+            bd = bd - 1
+        class default
+            error_msg = 'flatten target is not an implied-do'
+        end select
+    end subroutine flatten_implied_do
+
+    subroutine expand_format_groups(format_body, expanded, error_msg)
+        ! Expand r(...) groups to rep comma-separated copies of the expanded
+        ! body and rX to rep bare X steps; other descriptor tokens are copied
+        ! verbatim up to the next separator. A comma inside a quoted literal
+        ! is refused so the flattener never splits a string in half.
+        character(len=*), intent(in) :: format_body
+        character(len=:), allocatable, intent(out) :: expanded
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=512) :: out, body
+        integer :: pos, rep, r, start
+        logical :: quoted
+
+        call set_empty(error_msg)
+        out = ''
+        pos = 1
+        call expand_fmt_into(format_body, pos, out, quoted, error_msg)
+        if (len_trim(error_msg) > 0) then
+            expanded = ''
+            return
+        end if
+        expanded = trim(out)
+    end subroutine expand_format_groups
+
+    recursive subroutine expand_fmt_into(text, pos, out, quoted, error_msg)
+        character(len=*), intent(in) :: text
+        integer, intent(inout) :: pos
+        character(len=512), intent(inout) :: out
+        logical, intent(inout) :: quoted
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: digits, body
+        character(len=512) :: local_out
+        integer :: rep, r, start
+        character :: q
+
+        call set_empty(error_msg)
+        do while (pos <= len_trim(text))
+            if (text(pos:pos) == ',') then
+                pos = pos + 1
+                cycle
+            end if
+            if (text(pos:pos) == ')') return
+            call parse_decimal_digits(text, pos, digits)
+            rep = 1
+            if (len(digits) > 0) call read_decimal_value(digits, rep, &
+                                                          error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (pos > len_trim(text)) then
+                error_msg = 'dangling repeat count in format'
+                return
+            end if
+            if (text(pos:pos) == '(') then
+                pos = pos + 1
+                local_out = ''
+                call expand_fmt_into(text, pos, local_out, quoted, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (pos > len_trim(text) .or. text(pos:pos) /= ')') then
+                    error_msg = 'unterminated format group'
+                    return
+                end if
+                pos = pos + 1
+                do r = 1, rep
+                    if (len_trim(out) > 0) out = trim(out)//','
+                    out = trim(out)//trim(local_out)
+                end do
+                cycle
+            end if
+            ! Plain descriptor: copy the token up to the next separator,
+            ! respecting quoted literals (a comma inside quotes is refused).
+            start = pos
+            quoted = .false.
+            q = ' '
+            do while (pos <= len_trim(text))
+                if (quoted) then
+                    if (text(pos:pos) == q) quoted = .false.
+                    pos = pos + 1
+                    cycle
+                end if
+                if (text(pos:pos) == '"' .or. text(pos:pos) == "'") then
+                    quoted = .true.
+                    q = text(pos:pos)
+                    pos = pos + 1
+                    cycle
+                end if
+                if (text(pos:pos) == ',') exit
+                if (text(pos:pos) == ')') exit
+                pos = pos + 1
+            end do
+            if (quoted) then
+                error_msg = 'unterminated quoted literal in format'
+                return
+            end if
+            body = text(start:pos - 1)
+            if (body(1:1) == 'X' .or. body(1:1) == 'x') then
+                ! nX becomes n bare X steps, unless the token carried letters
+                ! beyond X (then it is not a plain skip).
+                if (len_trim(body) /= 1) then
+                    error_msg = 'cannot expand descriptor token: '// &
+                                trim(body)
+                    return
+                end if
+                do r = 1, rep
+                    if (len_trim(out) > 0) out = trim(out)//','
+                    out = trim(out)//'X'
+                end do
+            else
+                do r = 1, rep
+                    if (len_trim(out) > 0) out = trim(out)//','
+                    out = trim(out)//trim(body)
+                end do
+            end if
+        end do
+    end subroutine expand_fmt_into
+
+    logical function multi_or_nested_objects(arena, objects) result(flag)
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: objects(:)
+        integer :: i
+
+        flag = size(objects) /= 1
+        if (flag) return
+        if (node_exists(arena, objects(1))) then
+            select type (object => arena%entries(objects(1))%node)
+            type is (io_implied_do_node)
+                flag = .true.
+            class default
+            end select
+        end if
+    end function multi_or_nested_objects
+
     subroutine check_formatted_io_objects(arena, node, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(print_statement_node), intent(in) :: node
@@ -343,25 +762,21 @@ contains
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: objects(:), line, column
         character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i
 
         supported = .false.
         call set_empty(error_msg)
-        if (size(objects) /= 1) then
-            call unsupported_feature_error('formatted I/O implied-do', line, column, &
-                'multiple objects require format reversion across the iterator', &
-                error_msg)
-            return
-        end if
-        if (node_exists(arena, objects(1))) then
-            select type (object => arena%entries(objects(1))%node)
-                type is (io_implied_do_node)
-                call unsupported_feature_error('formatted I/O implied-do', line, &
-                    column, 'nested objects require format reversion across '// &
-                    'the iterator', error_msg)
-                return
-            end select
-        end if
         supported = .true.
+        ! Multiple and nested implied-do objects lower through the flattened
+        ! walk (multi_or_nested_objects route); every object must exist.
+        do i = 1, size(objects)
+            if (.not. node_exists(arena, objects(i))) then
+                call unsupported_feature_error('formatted I/O implied-do', &
+                    line, column, 'implied-do object missing from arena', &
+                    error_msg)
+                return
+            end if
+        end do
     end function formatted_io_objects_supported
 
     recursive module subroutine lower_next_compound_descriptor(arena, node, context, &
