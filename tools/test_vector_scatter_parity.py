@@ -23,6 +23,13 @@ def P(b): return f"program p\n  implicit none\n  {b}\nend program p\n"
 
 PRE = "integer :: A(4)\n  integer :: X(3)\n  A = 0\n  X = [1,3,4]\n  "
 CASES = [
+ ("of_plus1",   P("integer :: A(3), X(2)\n  A = 0\n  X = [1,2]\n  A(X + 1) = [7,8]\n  print '(3I0)', A(1),A(2),A(3)")),
+ ("of_minus1",  P("integer :: A(3), X(2)\n  A = 0\n  X = [2,3]\n  A(X - 1) = [5,6]\n  print '(3I0)', A(1),A(2),A(3)")),
+ ("of_plus0",   P("integer :: A(3), X(2)\n  A = 0\n  X = [1,3]\n  A(X + 0) = [4,9]\n  print '(3I0)', A(1),A(2),A(3)")),
+ ("of_ident_rhs",P("integer :: A(4), X(3), V(3)\n  A = 0\n  X = [1,2,3]\n  V = [11,22,33]\n  A(X + 1) = V\n  print '(4I0)', A(1),A(2),A(3),A(4)")),
+ ("of_64",      P("integer :: X(2)\n  X = [0,1]\n  X(X + 1) = 11235\n  print '(2I0)', X(1),X(2)")),
+ ("of_scalar_lit",P("integer :: A(4), X(2)\n  A = 0\n  X = [1,3]\n  A(X + 1) = 42\n  print '(4I0)', A(1),A(2),A(3),A(4)")),
+ ("of_minus_lit_idx",P("integer :: A(3), X(2)\n  A = 0\n  X = [3,2]\n  A(X - 2) = [8,9]\n  print '(3I0)', A(1),A(2),A(3)")),
  ("sc_scalar",  P(PRE+"A(X(:)) = 7\n  print '(4I0)', A(1),A(2),A(3),A(4)")),
  ("sc_lit",     P(PRE+"A(X(:)) = [9,8,7]\n  print '(4I0)', A(1),A(2),A(3),A(4)")),
  ("sc_ident",   P("integer :: A(4), X(3), V(3)\n  A = 0\n  X = [1,3,4]\n  V = [5,6,7]\n  A(X(:)) = V\n  print '(4I0)', A(1),A(2),A(3),A(4)")),

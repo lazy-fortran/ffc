@@ -8,7 +8,7 @@ contains
 
     subroutine describe_vector_subscript(arena, target, context, base_index, &
                                          vector_index, literal_index, extent, &
-                                         handled, error_msg)
+                                         handled, error_msg, index_offset)
         type(ast_arena_t), intent(in) :: arena
         type(call_or_subscript_node), intent(in) :: target
         type(lowering_context_t), intent(in) :: context
@@ -18,7 +18,9 @@ contains
         integer, intent(out) :: extent
         logical, intent(out) :: handled
         character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int64_t), intent(out), optional :: index_offset
         character(len=:), allocatable :: id_name
+        integer(c_int64_t) :: cval
         integer :: subscript_index
         integer :: sym
 
@@ -27,6 +29,7 @@ contains
         vector_index = 0
         literal_index = 0
         extent = 0
+        if (present(index_offset)) index_offset = 0_c_int64_t
         call set_empty(error_msg)
 
         if (.not. allocated(target%name)) return
@@ -149,6 +152,58 @@ contains
             extent = context%symbols(sym)%array_size
             handled = .true.
             return
+        type is (binary_op_node)
+            ! A(X + k) = ...: a vector index shifted by a foldable constant.
+            if (.not. same_name(subscript%operator, '+') .and. &
+                .not. same_name(subscript%operator, '-')) then
+                base_index = 0
+                return
+            end if
+            if (.not. is_identifier(arena, subscript%left_index)) then
+                base_index = 0
+                return
+            end if
+            call get_identifier_name(arena, subscript%left_index, id_name, &
+                                     error_msg)
+            if (len_trim(error_msg) > 0) then
+                call set_empty(error_msg)
+                base_index = 0
+                return
+            end if
+            sym = find_symbol_compat(context, id_name)
+            if (sym <= 0) then
+                base_index = 0
+                return
+            end if
+            if (.not. context%symbols(sym)%is_array) then
+                base_index = 0
+                return
+            end if
+            if (context%symbols(sym)%is_allocatable) then
+                base_index = 0
+                return
+            end if
+            if (context%symbols(sym)%array_rank /= 1) then
+                base_index = 0
+                return
+            end if
+            if (context%symbols(sym)%value_kind /= VALUE_I32) then
+                base_index = 0
+                return
+            end if
+            call eval_i32_constant(arena, subscript%right_index, context, &
+                                   cval, error_msg)
+            if (len_trim(error_msg) > 0) then
+                call set_empty(error_msg)
+                base_index = 0
+                return
+            end if
+            if (same_name(subscript%operator, '-')) cval = -cval
+            vector_index = sym
+            extent = context%symbols(sym)%array_size
+            if (present(index_offset)) index_offset = cval
+            handled = .true.
+            return
         type is (array_literal_node)
             if (.not. allocated(subscript%element_indices)) then
                 base_index = 0
@@ -173,10 +228,11 @@ contains
         type(lr_operand_desc_t), allocatable :: indices(:)
         integer :: base_index, vector_index, literal_index, extent
         integer :: vk, k
+        integer(c_int64_t) :: idx_offset
 
         call describe_vector_subscript(arena, target, context, base_index, &
                                        vector_index, literal_index, extent, &
-                                       handled, error_msg)
+                                       handled, error_msg, idx_offset)
         if (len_trim(error_msg) > 0) return
         if (.not. handled) return
 
@@ -199,7 +255,8 @@ contains
         if (len_trim(error_msg) > 0) return
         call materialise_vector_subscript_indices(arena, context, base_index, &
                                                   vector_index, literal_index, &
-                                                  extent, indices, error_msg)
+                                                  extent, indices, error_msg, &
+                                                  idx_offset)
         if (len_trim(error_msg) > 0) return
 
         ! Phase 2: scatter in array element order.
@@ -216,7 +273,8 @@ contains
 
     subroutine materialise_vector_subscript_indices(arena, context, base_index, &
                                                     vector_index, literal_index, &
-                                                    extent, indices, error_msg)
+                                                    extent, indices, error_msg, &
+                                                    index_offset)
         ! Produce the zero-based linear offsets of the scatter targets. A named
         ! index vector is read element by element at run time; a constructor
         ! subscript folds to constants, which lets bounds be checked here.
@@ -228,17 +286,29 @@ contains
         integer, intent(in) :: extent
         type(lr_operand_desc_t), intent(inout) :: indices(:)
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: raw
-        integer(c_int64_t) :: lower_bound, index_value
+        integer(c_int64_t), intent(in), optional :: index_offset
+        type(lr_operand_desc_t) :: raw, shifted
+        integer(c_int64_t) :: lower_bound, index_value, off
         integer :: k
 
         lower_bound = int(context%symbols(base_index)%array_lower_bound, c_int64_t)
+        off = 0_c_int64_t
+        if (present(index_offset)) off = index_offset
         if (vector_index > 0) then
             do k = 1, extent
                 call load_array_linear_element(context, vector_index, &
                                                int(k - 1, c_int64_t), raw, &
                                                error_msg)
                 if (len_trim(error_msg) > 0) return
+                if (off /= 0_c_int64_t) then
+                    if (.not. emit_i32_binary(context%session, LR_OP_ADD, &
+                            raw, i32_immediate(context%session, off), shifted, &
+                            error_msg)) then
+                        error_msg = 'vector_subscript_index: '//error_msg
+                        return
+                    end if
+                    raw = shifted
+                end if
                 if (.not. emit_i32_binary(context%session, LR_OP_SUB, raw, &
                         i32_immediate(context%session, lower_bound), indices(k), &
                         error_msg)) then

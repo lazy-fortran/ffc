@@ -6760,7 +6760,8 @@ module session_program_lowering_impl
                                                     literal_index, &
                                                     extent, &
                                                     handled, &
-                                                    error_msg)
+                                                    error_msg, &
+                                                    index_offset)
             type(ast_arena_t), intent(in) :: arena
             type(call_or_subscript_node), intent(in) :: target
             type(lowering_context_t), intent(in) :: context
@@ -6770,6 +6771,7 @@ module session_program_lowering_impl
             integer, intent(out) :: extent
             logical, intent(out) :: handled
             character(len=:), allocatable, intent(out) :: error_msg
+            integer(c_int64_t), intent(out), optional :: index_offset
         end subroutine describe_vector_subscript
         module subroutine materialise_vector_subscript_indices(arena, &
                                                                context, &
@@ -6778,7 +6780,8 @@ module session_program_lowering_impl
                                                                literal_index, &
                                                                extent, &
                                                                indices, &
-                                                               error_msg)
+                                                               error_msg, &
+                                                               index_offset)
             type(ast_arena_t), intent(in) :: arena
             type(lowering_context_t), intent(inout) :: context
             integer, intent(in) :: base_index
@@ -6787,6 +6790,7 @@ module session_program_lowering_impl
             integer, intent(in) :: extent
             type(lr_operand_desc_t), intent(inout) :: indices(:)
             character(len=:), allocatable, intent(out) :: error_msg
+            integer(c_int64_t), intent(in), optional :: index_offset
         end subroutine materialise_vector_subscript_indices
         module subroutine lower_vector_subscript_scalar(arena, &
                                                         expr_index, &
