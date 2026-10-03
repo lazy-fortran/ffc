@@ -1997,4 +1997,4 @@ zero_sized_4.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 zero_sized_5.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 zero_sized_7.f90 # owner=lazy-fortran/ffc#337; reason=reallocate allocatables from runtime expressions
 zero_sized_9.f90 # owner=lazy-fortran/ffc#453; reason=lower NORM2 over descriptor arrays
-alloc_comp_class_2.f90 # owner=lazy-fortran/ffc#478; reason=load-dependent flaky run under shard parallelism, manual reruns byte-exact
+alloc_comp_class_2.f90 # owner=lazy-fortran/ffc#478; reason=load-dependent flaky under shard parallelism, manual reruns byte-exact

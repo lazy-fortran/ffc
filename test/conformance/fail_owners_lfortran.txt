@@ -1,7 +1,6 @@
 # Current full-epoch FAIL owners for lfortran.
 # Untriaged failures remain FAIL; ownership does not reclassify them as XFAIL.
 # Format: path # owner=ORG/REPO#N; reason=text
-allocatable_component_struct_array_01.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 allocate_31.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 any_01.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 associate_14.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
