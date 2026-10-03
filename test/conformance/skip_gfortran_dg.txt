@@ -2,6 +2,7 @@
 # Format: path # owner=ORG/REPO#N; reason=text or path # scope=TAG; reason=text
 20231103-1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 20231103-2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+EXformat_2.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
 ISO_Fortran_binding_1.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
 ISO_Fortran_binding_10.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
 ISO_Fortran_binding_11.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
@@ -342,6 +343,10 @@ c_f_pointer_shape_tests_9.f90 # scope=compiler-flags; reason=requires unmodeled 
 c_f_pointer_tests.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
 c_f_pointer_tests_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 c_f_pointer_tests_8.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+c_f_strpointer-1.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+c_f_strpointer-10.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+c_f_strpointer-2.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+c_f_strpointer-7.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
 c_funloc_tests_6.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 c_funloc_tests_7.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 c_funloc_tests_9.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -613,6 +618,7 @@ cray_pointers_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.d
 cray_pointers_10.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 cray_pointers_11.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 cray_pointers_12.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+cray_pointers_13.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
 cray_pointers_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 cray_pointers_4.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 cray_pointers_5.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -1427,6 +1433,7 @@ openmp-define-3.f90 # scope=OpenMP; reason=excluded OpenMP syntax or runtime dep
 operator_5.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 optional_absent_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 optional_absent_7.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
+out_of_range_2.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
 out_of_range_3.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semantics
 output_exponents_1.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 overload_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -1555,6 +1562,8 @@ pr119136.f90 # scope=harness; reason=requires unmodeled DejaGNU directive semant
 pr119273.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pr120049_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pr120049_a.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
+pr120153.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+pr120158.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
 pr121743.f90 # scope=coarray; reason=excluded coarray or image-control semantics
 pr122957.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 pr123947_2.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
@@ -2063,6 +2072,7 @@ string_length_3.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.d
 string_length_4.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 structure_constructor_11.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 structure_constructor_9.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
+submodule_35.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
 submodule_35_aux.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling
 submodule_37.f90 # scope=compiler-flags; reason=requires unmodeled gfortran.dg compiler-option semantics
 submodule_host_assoc_1.f90 # scope=harness; reason=requires unmodeled DejaGNU additional-source handling

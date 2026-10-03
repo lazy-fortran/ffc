@@ -1,80 +1,65 @@
 # Current full-epoch FAIL owners for gfortran-dg.
 # Untriaged failures remain FAIL; ownership does not reclassify them as XFAIL.
 # Format: path # owner=ORG/REPO#N; reason=text
-EXformat_2.f90 # owner=lazy-fortran/ffc#628; reason=implement internal E and X formatting
+achar_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
+aliasing_dummy_5.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 alloc_comp_assign_3.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-allocate_alloc_opt_14.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-argument_checking_22.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-arithmetic_overflow_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-array_4.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 arrayio_4.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-associate_52.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 associate_79.f90 # owner=lazy-fortran/ffc#455; reason=preserve kind constants in ASSOCIATE
-bind_c_module.f90 # owner=lazy-fortran/fortfront#2951; reason=reject duplicate global BIND(C) labels
-bind_c_module_proc.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-c_f_strpointer-1.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-c_f_strpointer-10.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-c_f_strpointer-2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-c_f_strpointer-7.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-c_loc_tests_17.f90 # owner=lazy-fortran/fortfront#2951; reason=reject unresolved and use-before-definition symbols
+bind_c_usage_21.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
+bind_c_usage_29.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
+binding_label_tests_38.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 character_assign_1.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-charlen_07.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-charlen_08.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-common_11.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-common_30.f90 # owner=lazy-fortran/fortfront#2951; reason=reject unresolved and use-before-definition symbols
-contiguous_12.f90 # owner=lazy-fortran/fortfront#2951; reason=reject duplicate or incompatible declaration attributes
 deferred_character_20.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-deferred_type_param_8.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-derived_function_interface_1.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
+directive_unroll_5.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
+do_check_13.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
+do_check_6.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
+dtio_11.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 dummy_derived_typed.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-dummy_optional_arg.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
 dummy_procedure_10.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 dummy_procedure_6.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-elemental_dependency_7.f90 # owner=lazy-fortran/ffc#579; reason=owns elemental subroutine application to array actuals; vector gather is dependency #399
-elemental_result_1.f90 # owner=lazy-fortran/fortfront#2951; reason=enforce PURE ELEMENTAL and RECURSIVE restrictions
 empty_derived_type_2.f90 # owner=lazy-fortran/ffc#581; reason=enforce derived-type definition constraints
-empty_label_typedecl.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 entry_18.f90 # owner=lazy-fortran/ffc#456; reason=owns preregistration and lowering of ENTRY names and shared bodies
 hollerith.f90 # scope=legacy; reason=deleted Hollerith storage and FORMAT extension
 hollerith2.f90 # scope=legacy; reason=deleted Hollerith named-constant extension
 hollerith_to_char_parameter_2.f90 # scope=legacy; reason=deleted Hollerith named-constant extension
 host_assoc_call_3.f90 # owner=lazy-fortran/ffc#584; reason=owns host references and local shadowing of USE-associated procedures
-implicit_4.f90 # owner=lazy-fortran/fortfront#2951; reason=reject duplicate or incompatible declaration attributes
 inline_sum_2.f90 # owner=lazy-fortran/ffc#337; reason=capture dummy-bound extents on entry
-interface_39.f90 # owner=lazy-fortran/fortfront#2883; reason=enforce explicit-interface declaration rules
-interface_56.f90 # owner=lazy-fortran/ffc#467; reason=lower scalar procedure dummy arguments
-interface_derived_type_1.f90 # owner=lazy-fortran/fortfront#2951; reason=reject unresolved and use-before-definition symbols
-internal_pack_4.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
+intent_used_1.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 iomsg_1.f90 # owner=lazy-fortran/ffc#628; reason=owns stable IOSTAT/IOMSG results for EOF, invalid unit, OPEN, and CLOSE
-iostat_2.f90 # owner=lazy-fortran/ffc#628; reason=owns nonzero status for invalid CLOSE controls
+linked_list_1.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 logical_comp.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 module_equivalence_6.f90 # owner=lazy-fortran/ffc#540; reason=fold named constants in EQUIVALENCE
 module_procedure_4.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 move_alloc_9.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 mvbits_8.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-namelist_use.f90 # owner=lazy-fortran/ffc#628; reason=owns scalar NAMELIST groups and omitted/order-independent member conversion
+namelist_46.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 oldstyle_1.f90 # owner=lazy-fortran/ffc#540; reason=lower structured DATA initialization
 open_access_append_1.f90 # scope=vendor; reason=GNU ACCESS=APPEND extension
 operator_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pointer_array_6.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pointer_array_8.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pointer_intent_8.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
+pr102332.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 pr106946.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
+pr107821.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 pr109512.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pr115260.f90 # owner=lazy-fortran/ffc#422; reason=deduplicate derived array declaration collection
 pr122513-2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-pr19936_1.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pr36192.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pr45337_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pr64925.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
+pr66107.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 pr66979.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-pr67884.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pr67939.f90 # owner=lazy-fortran/ffc#540; reason=lower structured DATA initialization
 pr69398.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-pr70673.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-pr70673_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-pr89646.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
+pr77506.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
+pr79524.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
+pr80752.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
+pr85877.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
+pr93497.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 pr94030_1.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
+pr95342.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 pr95708.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 proc_decl_10.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 proc_decl_30.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
@@ -83,28 +68,17 @@ proc_ptr_comp_22.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failu
 proc_ptr_comp_8.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 protected_10.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pure_initializer_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-real_do_1.f90 # scope=legacy; reason=deleted real-valued DO control
-real_index_1.f90 # scope=vendor; reason=GNU real array-subscript extension
-realloc_on_assign_25.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-realloc_on_assign_29.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-recursive_check_3.f90 # owner=lazy-fortran/fortfront#2951; reason=enforce PURE ELEMENTAL and RECURSIVE restrictions
-repeat_7.f90 # owner=lazy-fortran/ffc#453; reason=owns scalar intrinsic validation, HUGE, and REPEAT argument evaluation
+select_6.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 select_type_32.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 select_type_40.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-string_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-submodule_35.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 subroutine_as_type.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
+typebound_call_25.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 typebound_deferred_1.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 typebound_generic_11.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 typebound_generic_16.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 typebound_proc_22.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-unformatted_recl_1.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 unlimited_polymorphic_14.f90 # owner=lazy-fortran/ffc#419; reason=owns scalar SELECT TYPE guard dispatch and CLASS DEFAULT
 use_rename_11.f90 # owner=lazy-fortran/fortfront#2951; reason=validate USE exports renames and operator imports
 used_types_17.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 used_types_21.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 used_types_23.f90 # owner=lazy-fortran/fortfront#2951; reason=reject unresolved and use-before-definition symbols
-userdef_operator_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-write_check2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-directive_unroll_5.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-select_6.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence

@@ -1,5 +1,520 @@
 # Current full-epoch skipped cases for lfortran.
 # Format: path # owner=ORG/REPO#N; reason=text or path # scope=TAG; reason=text
+allocate_61_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+allocate_61_mod2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+array_of_strings_01.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+array_section_18.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+array_section_18b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+array_section_27.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+array_section_27_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+array_section_27_sub.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+arrays_50_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+associate_06_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+associate_18_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+associate_21_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+assumed_type_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+assumed_type_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+assumed_type_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc6.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_01b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+bindc_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_02b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+bindc_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_05.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_07.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_15.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_17.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_35.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_38.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_39.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_43.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_45.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_47.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_48_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+bindc_iso_fb_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_iso_fb_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_iso_fb_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_iso_fb_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_iso_fb_05.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_iso_fb_06.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_iso_fb_07.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+bindc_iso_fb_08.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+block_15_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+boz_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+c_f_proc_ptr_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+c_ptr_16_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+c_ptr_17_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+character_10.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+character_11.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+class_106a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+class_106b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+class_110_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+class_63_module_1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+class_63_module_2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+class_88.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+coarray_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+common_24.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+common_24a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+common_24b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+cpp_pre_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+cpp_pre_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+cpp_pre_06.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+cpp_pre_08.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+cpp_pre_12.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+cpp_pre_14.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+cpp_pre_15.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+cpu_time_02_wasm.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+crlf_fixed_form.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+data_14.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+derived_types_09b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_09c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_114_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_115_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_121_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_134_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_14_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_19_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_20_module1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_20_module2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_84_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_97_mod1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+derived_types_97_mod2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+dict_test_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+dict_test_01_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+dict_test_02_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+dict_test_03_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+dict_test_04_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+dict_test_07_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+dict_test_13_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+do_concurrent_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+do_concurrent_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+do_concurrent_05.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+do_concurrent_06.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+do_concurrent_07.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+do_concurrent_08.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+do_concurrent_09.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+do_concurrent_10.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+enum_02_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+enum_06_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+enum_07_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+enum_07_submodule.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+external_12_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+external_14_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+external_string_arg_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+fixed_form_blank_line_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+fixed_form_comment_01.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+fixed_form_goto.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+fixed_form_select_case_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+fixed_form_select_rank_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+format_56.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+functions_52.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+functions_56_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+goto_06.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+gpu_metal_134_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+gpu_metal_135_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+gpu_metal_136_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+gpu_metal_140_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+gpu_metal_142_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+gpu_metal_144_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+gpu_metal_147_activation.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+gpu_metal_147_neural_network.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+gpu_metal_151_dep.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+gpu_metal_151_net.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+gpu_metal_161_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
 gpu_metal_51.f90 # scope=GPU; reason=excluded GPU or device-backend case
+implicit_argument_casting_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+implicit_argument_casting_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+implicit_interface_15.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+implicit_interface_15b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+implicit_interface_16.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+implicit_interface_16b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+implicit_interface_17.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+implicit_interface_17b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+implicit_interface_19.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+implicit_interface_19b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+implicit_interface_27.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+implicit_interface_27b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+implicit_interface_29.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+implicit_interface_29b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+implicit_interface_38.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+implicit_interface_38b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+infer_walrus_shadow_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+infer_walrus_shadow_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+infer_walrus_struct_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+inquire_14.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+interface_08.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+interface_12b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+interface_32_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+interface_33_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+intrinsics_171.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+intrinsics_315.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+intrinsics_422.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+intrinsics_423.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+intrinsics_424.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+intrinsics_425.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+iso_fortran_env_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+lapack_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+lcompilers_test_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+legacy_array_sections_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+legacy_array_sections_04b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+legacy_array_sections_10.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+legacy_array_sections_10_foo.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+legacy_array_sections_11.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+legacy_array_sections_14.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+legacy_array_sections_14_foo.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+lfortran_intrinsic_sin.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+list_of_lists_test.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+list_of_tuples_test.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+list_test_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+list_test_01_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+list_test_02_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+list_test_03_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+list_test_04_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+list_test_06_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+list_test_08_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+list_test_09_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+minpack_01_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_07_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_08_a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_08_b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_09_a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_09_b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_14_a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_15.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+modules_16b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_18.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+modules_18b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_19b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_20b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_21b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_22_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_23_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_25.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+modules_27_module1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_27_module2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_28_module1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_28_module2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_29_module1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_29_module2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_29_module3.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_30_module1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_30_module2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_30_module3.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_30_module4.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_31_module1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_31_module2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_33_module1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_33_module2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_33_module3.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_34_module1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_34_module1a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_34_module2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_34_module3.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_39_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_44_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_52.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_52_module1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_52_module2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_52_module3.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_58_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_62_parser.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_62_terminal.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_63_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_65_base.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_65_child.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_65_worker.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_66_base.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_66_worker.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_67_consumer.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_67_origin.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_67_reexport.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_72_otypemod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+modules_72_stypemod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+multi_file_member_access_01_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+multi_file_member_access_02_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+namelist_12.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+namelist_13_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+openmp_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_05.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_06.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_07.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_08.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_09.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_10.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_11.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_12.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_13.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_14.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_15.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_16.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_17.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_18.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_19.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_20.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_21.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_22.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_23.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_24.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_25.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_26.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_27.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_30.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_32.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_33.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_34.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_35.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_44.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_46.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_47.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_48.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_49.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_50.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_51.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_53.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_54.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_55.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_56.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_59.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_60.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_62.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_63.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_64.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_65.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_67.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_68.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_69.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_73.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_bindc_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_bindc_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_bindc_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+openmp_bindc_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+operator_overloading_05_module1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+operator_overloading_05_module2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+operator_overloading_34_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+operator_overloading_35_mod.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+operator_overloading_36_mod_base.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+operator_overloading_36_mod_base_sub.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+pdt_02_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+pdt_06_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+pdt_11_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+pdt_12.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+pdt_14.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+pdt_16.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+print_arr_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+procedure_09_a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+procedure_22_a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+procedure_43_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+procedure_decl_01_a.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+procedure_decl_01_b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+program_04.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+read_49.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+read_94.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+select_type_03.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+select_type_03_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+select_type_46.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_01b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_02b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_03a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_03b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_04a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_04b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_05a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_05b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_06a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_06b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_07.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+separate_compilation_07a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_07b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_08a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_08b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_09a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_09b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_10a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_11a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_12a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_13a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_14a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_15.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+separate_compilation_15a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_16a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_16b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_17a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_17b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_18a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_18b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_19a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_19b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_20a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_20b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_21a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_21b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_22a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_22b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_23a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_23b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_24a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_24b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_25.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+separate_compilation_25a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_25b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_26a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_26b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_27.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+separate_compilation_27a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_27b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_28.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+separate_compilation_28a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_28b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_29a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_29b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_30a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_30b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_31a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_31b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_32a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_32b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_33a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_34a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_35a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_36a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_37a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_37b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_38a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_39a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_39b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_41a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_41b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_41c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_42.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+separate_compilation_43a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_43b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_44a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_44b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_45a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_46a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_47a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_48a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_49.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+separate_compilation_49a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_class_star_01a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_class_star_02a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_class_star_03a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_class_star_04a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_external_symbol_01a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+separate_compilation_external_symbol_02a.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+set_test_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+string_118.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+string_17.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+string_30.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+string_62b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_18a.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+submodule_18b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_18c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_19a.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+submodule_19b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_19c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_20b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_20c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_21b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_21c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_23b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_23c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_25b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_25c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_27b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_27c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_29b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_29c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_29d.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_30b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_30c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_30d.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_34b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_37b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_37c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_37d.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_38b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_38c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_39b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_39c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_40b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_40c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_44b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_50b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_50c.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_51b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+submodule_53b.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
 sync_all_01.f90 # scope=coarray; reason=excluded coarray or image-control semantics
+sync_all_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
 sync_memory_01.f90 # scope=coarray; reason=excluded coarray or image-control semantics
+template_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_03b.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_05.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_06.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_07.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_add_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_add_01b.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_add_01c.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_add_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_add_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_add_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_array_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_array_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_array_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_array_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_array_04b.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_array_05.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_commutative.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_field.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+template_interface_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_intrinsic_func_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_intrinsic_op_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_lapack_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_matrix.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+template_matrix_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_matrix_test.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_monoid.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+template_nested.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_semigroup.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+template_semiring.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+template_simple_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_simple_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_simple_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_simple_04.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_sort_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_sort_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_struct_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_travel_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_travel_01b.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_travel_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_triple.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+template_unitring.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+template_vector.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+test_ieee_int.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+test_ieee_next_down.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+test_ieee_next_up.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+test_ieee_real.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+test_ord.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+test_rep.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+test_str.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+test_unsigned.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+tuple_test_01_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+tuple_test_02_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+tuple_test_03_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+tuple_test_04_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+tuple_test_concat_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+tuple_test_nested_.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+union_test_01.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+union_test_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+union_test_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+utf8_bom_01.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+value_attribute_02.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+value_attribute_03.f90 # scope=harness; reason=ffc and gfortran reject; no positive executable oracle
+verify_intent_external_01_mod1.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+verify_intent_external_01_mod2.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable
+write_19_module.f90 # scope=harness; reason=no PROGRAM or BLOCK DATA root; standalone executable is not applicable

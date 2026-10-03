@@ -62,7 +62,6 @@ alloc_comp_basics_3.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable
 alloc_comp_basics_5.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 alloc_comp_bounds_1.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 alloc_comp_class_1.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-alloc_comp_class_2.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 alloc_comp_constraint_6.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 alloc_comp_constructor_2.f90 # owner=lazy-fortran/ffc#422; reason=deep-copy allocatable derived components
 alloc_comp_constructor_3.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
@@ -480,7 +479,6 @@ continuation_12.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted o
 convert_2.f90 # scope=vendor; reason=GNU CONVERT unformatted I/O extension
 count_mask_1.f90 # owner=lazy-fortran/ffc#540; reason=lower structured DATA initialization
 coverage.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
-cray_pointers_13.f90 # scope=vendor; reason=nonstandard Cray pointer extension
 cshift_1.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 cshift_2.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 cshift_nan_1.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
@@ -1246,7 +1244,6 @@ optional_dim_2.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 optional_dim_3.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 optional_mask.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 out_of_range_1.f90 # owner=lazy-fortran/ffc#419; reason=lower runtime SELECT TYPE guards
-out_of_range_2.f90 # scope=vendor; reason=nonstandard UNSIGNED extension
 overload_1.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 overload_4.f90 # owner=lazy-fortran/ffc#579; reason=register PROCEDURE declarations in the generic
 overload_5.f90 # owner=lazy-fortran/ffc#540; reason=fold typed scalar and array named constants
@@ -1367,8 +1364,6 @@ pr119856.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG
 pr119948.f90 # owner=lazy-fortran/ffc#337; reason=provide descriptor-backed runtime allocation helpers
 pr120152_1.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 pr120152_2.f90 # owner=lazy-fortran/ffc#581; reason=diagnose unsupported numeric kinds without narrowing
-pr120153.f90 # scope=vendor; reason=nonstandard UNSIGNED extension
-pr120158.f90 # scope=vendor; reason=nonstandard UNSIGNED extension
 pr120191_1.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 pr120191_2.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 pr120191_3.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
@@ -2002,3 +1997,4 @@ zero_sized_4.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 zero_sized_5.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 zero_sized_7.f90 # owner=lazy-fortran/ffc#337; reason=reallocate allocatables from runtime expressions
 zero_sized_9.f90 # owner=lazy-fortran/ffc#453; reason=lower NORM2 over descriptor arrays
+alloc_comp_class_2.f90 # owner=lazy-fortran/ffc#532; reason=epoch XPASS pending promotion

@@ -1,44 +1,32 @@
 schema	1
-revision	ffc	0639933ed5cc8feb7408940c6da32d47f2174133
-revision	FortFront	f95c1fa8ab6aaae991c98f07635aaad464193f0e
-revision	LIRIC	3296763d2eaad08475feb65e34bc68ba34a0ae92
+revision	ffc	d93849fe99e65ea44cf1eb7fc2c563998bc683b4
+revision	FortFront	42e6303e4b94d9c3cc7210acf6982f11b65a4850
+revision	LIRIC	9eff0961b7d1740764f83ce260918451344d8a1a
 revision	LFortran	caf87b660f803148f000046392a5da803f9fc630
 revision	GCC	395e3d8131c189cd58e8c8061cdc77d1c44e3822
-tree	FortFront	c1e348e04a7b66bd1d972a33c8e9d5555c586b7a
-tree	LIRIC	cb2d5df8a7b2bd1a29f1d17a731e13c61142c3d0
+tree	FortFront	5da51cf8be7a85a5cab4a545c03e88c8f8d17efc
+tree	LIRIC	62b9407b8a22091187b2d367d7194b4213ef0275
 tree	LFortran	e897890bb477aa1b7d0ef895485171ee040004ac
 tree	GCC	43ca6c437d1e7063fdb7425cc3ebc3462a0a476f
-corpus-files	fortfront-f90	4cbddd27365cdb38c717fd9e237c4cbf00b90f24b86d79bd444dc03effee5d15
+corpus-files	fortfront-f90	fd1ce622e76b49595215d82cbe93790bfc8927cf156208334053262c04a3cf60
 corpus-files	fortfront-lf	32f7031dd54a18c36a4b063b5cee20f2dc0d88775d63fee01763bd9109319e35
 corpus-files	lfortran	3ade5f5dff08cf108011fa147ef345a7e970076f76d63dba155eb7c0718ca388
 corpus-files	gfortran-dg	92c68be4f4fedb223725a1676066bd80f78e5b3b2d6766b26ddaeb1ec7faf75d
-digest	ffc-source	ad11a847029d1aa5767743fb7867505085440837a6ebace1ae27e6f837823a8b
-digest	ffc-binary	8ebf76ea533abf82421f372b528009c2de4dc8c153e3539319f42bc04b62b679
-digest	manifests	209b2341e615f42bc6eff6fcbc214c314d0ca735cee31f104c52fdaef478d3d9
-suite	fortfront-f90	640	408	84	0	146	112	2
-suite	fortfront-lf	267	193	48	0	26	0	0
-suite	lfortran	4280	1183	3007	0	87	160	3
-suite	gfortran-dg	5938	1465	2066	0	107	2	2300
-view	All	11125	3249	5205	0	366	274	2305
-view	Scoped	10600	3114	5026	0	366	265	2094
-excluded	Scoped	525	135	179	0	0	9	211
-owner	fortfront-f90	FAIL	corpus	owner=lazy-fortran/ffc#540	146
-owner	fortfront-f90	SKIP	corpus	scope=harness	2
-owner	fortfront-f90	XFAIL	arrays	owner=lazy-fortran/ffc#337	9
-owner	fortfront-f90	XFAIL	characters	owner=lazy-fortran/ffc#348	3
-owner	fortfront-f90	XFAIL	derived-oop	owner=lazy-fortran/ffc#419	1
-owner	fortfront-f90	XFAIL	derived-oop	owner=lazy-fortran/ffc#422	3
-owner	fortfront-f90	XFAIL	derived-oop	owner=lazy-fortran/ffc#449	2
-owner	fortfront-f90	XFAIL	intrinsics	owner=lazy-fortran/ffc#453	5
-owner	fortfront-f90	XFAIL	arrays	owner=lazy-fortran/ffc#458	1
-owner	fortfront-f90	XFAIL	corpus	owner=lazy-fortran/ffc#540	23
-owner	fortfront-f90	XFAIL	procedures	owner=lazy-fortran/ffc#579	5
-owner	fortfront-f90	XFAIL	modules-scope	owner=lazy-fortran/ffc#584	12
-owner	fortfront-f90	XFAIL	io-runtime	owner=lazy-fortran/ffc#628	8
-owner	fortfront-f90	XFAIL	corpus	scope=harness	6
-owner	fortfront-f90	XFAIL	corpus	scope=legacy	1
-owner	fortfront-f90	XFAIL	corpus	scope=vendor	5
-owner	fortfront-lf	FAIL	corpus	owner=lazy-fortran/ffc#540	26
+digest	ffc-source	4c0f3c9fd703e2b402a16dc8e0a49074deaee8d211df56094a43fd5f3f9ddfd1
+digest	ffc-binary	ccdd4fa78b231e350a1ddbc528ff0e3ddb90fe2d9cf9929801ce0622431c6c54
+digest	manifests	d24d45ccaf65f35d9a6e29c72eca6aa1ee88d44781ef5a85d340d6b1c701018d
+digest	conformance-epoch	7e6e3fa2681d909f06eb57b8609fb5b8013d362d07efb6268d398804f836897a
+suite	fortfront-f90	647	377	0	0	1	36	269
+suite	fortfront-lf	267	220	47	0	0	0	0
+suite	lfortran	4280	1176	2554	0	32	31	518
+suite	gfortran-dg	5938	1549	1997	1	81	1	2310
+view	All	11132	3322	4598	1	114	68	3097
+view	Scoped	10607	3182	4505	1	114	68	2805
+excluded	Scoped	525	140	93	0	0	0	292
+owner	fortfront-f90	FAIL	corpus	owner=lazy-fortran/ffc#540	1
+owner	fortfront-f90	SKIP	corpus	scope=harness	263
+owner	fortfront-f90	SKIP	corpus	scope=legacy	1
+owner	fortfront-f90	SKIP	corpus	scope=vendor	5
 owner	fortfront-lf	XFAIL	arrays	owner=lazy-fortran/ffc#337	11
 owner	fortfront-lf	XFAIL	characters	owner=lazy-fortran/ffc#348	3
 owner	fortfront-lf	XFAIL	procedures	owner=lazy-fortran/ffc#437	8
@@ -46,82 +34,80 @@ owner	fortfront-lf	XFAIL	intrinsics	owner=lazy-fortran/ffc#453	1
 owner	fortfront-lf	XFAIL	arrays	owner=lazy-fortran/ffc#459	1
 owner	fortfront-lf	XFAIL	corpus	owner=lazy-fortran/ffc#540	10
 owner	fortfront-lf	XFAIL	procedures	owner=lazy-fortran/ffc#579	6
-owner	fortfront-lf	XFAIL	modules-scope	owner=lazy-fortran/ffc#584	7
+owner	fortfront-lf	XFAIL	modules-scope	owner=lazy-fortran/ffc#584	6
 owner	fortfront-lf	XFAIL	corpus	scope=harness	1
 owner	gfortran-dg	FAIL	arrays	owner=lazy-fortran/ffc#337	1
 owner	gfortran-dg	FAIL	derived-oop	owner=lazy-fortran/ffc#419	1
 owner	gfortran-dg	FAIL	derived-oop	owner=lazy-fortran/ffc#422	1
-owner	gfortran-dg	FAIL	intrinsics	owner=lazy-fortran/ffc#453	1
 owner	gfortran-dg	FAIL	control-flow	owner=lazy-fortran/ffc#455	1
 owner	gfortran-dg	FAIL	procedures	owner=lazy-fortran/ffc#456	1
-owner	gfortran-dg	FAIL	procedures	owner=lazy-fortran/ffc#467	1
-owner	gfortran-dg	FAIL	corpus	owner=lazy-fortran/ffc#540	73
-owner	gfortran-dg	FAIL	procedures	owner=lazy-fortran/ffc#579	2
+owner	gfortran-dg	FAIL	corpus	owner=lazy-fortran/ffc#540	66
+owner	gfortran-dg	FAIL	procedures	owner=lazy-fortran/ffc#579	1
 owner	gfortran-dg	FAIL	diagnostics	owner=lazy-fortran/ffc#581	1
 owner	gfortran-dg	FAIL	modules-scope	owner=lazy-fortran/ffc#584	1
-owner	gfortran-dg	FAIL	io-runtime	owner=lazy-fortran/ffc#628	4
-owner	gfortran-dg	FAIL	diagnostics	owner=lazy-fortran/fortfront#2883	3
-owner	gfortran-dg	FAIL	diagnostics	owner=lazy-fortran/fortfront#2951	10
-owner	gfortran-dg	FAIL	corpus	scope=legacy	4
-owner	gfortran-dg	FAIL	corpus	scope=vendor	2
+owner	gfortran-dg	FAIL	io-runtime	owner=lazy-fortran/ffc#628	1
+owner	gfortran-dg	FAIL	diagnostics	owner=lazy-fortran/fortfront#2951	2
+owner	gfortran-dg	FAIL	corpus	scope=legacy	3
+owner	gfortran-dg	FAIL	corpus	scope=vendor	1
 owner	gfortran-dg	SKIP	corpus	scope=OpenACC	3
 owner	gfortran-dg	SKIP	corpus	scope=OpenMP	5
 owner	gfortran-dg	SKIP	corpus	scope=coarray	200
 owner	gfortran-dg	SKIP	corpus	scope=compiler-flags	1737
-owner	gfortran-dg	SKIP	corpus	scope=harness	355
-owner	gfortran-dg	XFAIL	arrays	owner=lazy-fortran/ffc#337	334
+owner	gfortran-dg	SKIP	corpus	scope=harness	365
+owner	gfortran-dg	XFAIL	arrays	owner=lazy-fortran/ffc#337	322
 owner	gfortran-dg	XFAIL	arrays	owner=lazy-fortran/ffc#339	1
-owner	gfortran-dg	XFAIL	characters	owner=lazy-fortran/ffc#348	229
+owner	gfortran-dg	XFAIL	characters	owner=lazy-fortran/ffc#348	223
 owner	gfortran-dg	XFAIL	modules-scope	owner=lazy-fortran/ffc#415	2
 owner	gfortran-dg	XFAIL	derived-oop	owner=lazy-fortran/ffc#419	35
-owner	gfortran-dg	XFAIL	derived-oop	owner=lazy-fortran/ffc#422	182
+owner	gfortran-dg	XFAIL	derived-oop	owner=lazy-fortran/ffc#422	179
 owner	gfortran-dg	XFAIL	intrinsics	owner=lazy-fortran/ffc#435	4
-owner	gfortran-dg	XFAIL	derived-oop	owner=lazy-fortran/ffc#449	54
-owner	gfortran-dg	XFAIL	intrinsics	owner=lazy-fortran/ffc#453	154
+owner	gfortran-dg	XFAIL	derived-oop	owner=lazy-fortran/ffc#449	53
+owner	gfortran-dg	XFAIL	intrinsics	owner=lazy-fortran/ffc#453	148
 owner	gfortran-dg	XFAIL	control-flow	owner=lazy-fortran/ffc#455	9
 owner	gfortran-dg	XFAIL	procedures	owner=lazy-fortran/ffc#456	7
-owner	gfortran-dg	XFAIL	arrays	owner=lazy-fortran/ffc#458	42
+owner	gfortran-dg	XFAIL	arrays	owner=lazy-fortran/ffc#458	41
 owner	gfortran-dg	XFAIL	arrays	owner=lazy-fortran/ffc#459	8
 owner	gfortran-dg	XFAIL	io-runtime	owner=lazy-fortran/ffc#460	1
 owner	gfortran-dg	XFAIL	procedures	owner=lazy-fortran/ffc#461	2
 owner	gfortran-dg	XFAIL	derived-oop	owner=lazy-fortran/ffc#462	4
 owner	gfortran-dg	XFAIL	procedures	owner=lazy-fortran/ffc#465	1
-owner	gfortran-dg	XFAIL	procedures	owner=lazy-fortran/ffc#467	3
-owner	gfortran-dg	XFAIL	corpus	owner=lazy-fortran/ffc#540	425
-owner	gfortran-dg	XFAIL	procedures	owner=lazy-fortran/ffc#579	94
-owner	gfortran-dg	XFAIL	diagnostics	owner=lazy-fortran/ffc#581	30
-owner	gfortran-dg	XFAIL	modules-scope	owner=lazy-fortran/ffc#584	196
-owner	gfortran-dg	XFAIL	io-runtime	owner=lazy-fortran/ffc#628	190
+owner	gfortran-dg	XFAIL	procedures	owner=lazy-fortran/ffc#467	2
+owner	gfortran-dg	XFAIL	corpus	owner=lazy-fortran/ffc#540	399
+owner	gfortran-dg	XFAIL	procedures	owner=lazy-fortran/ffc#579	93
+owner	gfortran-dg	XFAIL	diagnostics	owner=lazy-fortran/ffc#581	29
+owner	gfortran-dg	XFAIL	modules-scope	owner=lazy-fortran/ffc#584	194
+owner	gfortran-dg	XFAIL	io-runtime	owner=lazy-fortran/ffc#628	188
 owner	gfortran-dg	XFAIL	diagnostics	owner=lazy-fortran/fortfront#2883	3
 owner	gfortran-dg	XFAIL	diagnostics	owner=lazy-fortran/fortfront#2897	1
-owner	gfortran-dg	XFAIL	diagnostics	owner=lazy-fortran/fortfront#2951	34
+owner	gfortran-dg	XFAIL	diagnostics	owner=lazy-fortran/fortfront#2951	31
 owner	gfortran-dg	XFAIL	corpus	scope=coarray	2
 owner	gfortran-dg	XFAIL	corpus	scope=compiler-flags	2
 owner	gfortran-dg	XFAIL	corpus	scope=harness	3
 owner	gfortran-dg	XFAIL	corpus	scope=legacy	5
-owner	gfortran-dg	XFAIL	corpus	scope=vendor	9
-owner	lfortran	FAIL	corpus	owner=lazy-fortran/ffc#540	87
+owner	gfortran-dg	XFAIL	corpus	scope=vendor	5
+owner	gfortran-dg	XPASS	corpus	owner=lazy-fortran/ffc#532	1
+owner	lfortran	FAIL	corpus	owner=lazy-fortran/ffc#540	32
 owner	lfortran	SKIP	corpus	scope=GPU	1
 owner	lfortran	SKIP	corpus	scope=coarray	2
-owner	lfortran	XFAIL	arrays	owner=lazy-fortran/ffc#337	524
-owner	lfortran	XFAIL	characters	owner=lazy-fortran/ffc#348	208
-owner	lfortran	XFAIL	derived-oop	owner=lazy-fortran/ffc#419	99
-owner	lfortran	XFAIL	derived-oop	owner=lazy-fortran/ffc#422	180
+owner	lfortran	SKIP	corpus	scope=harness	515
+owner	lfortran	XFAIL	arrays	owner=lazy-fortran/ffc#337	476
+owner	lfortran	XFAIL	characters	owner=lazy-fortran/ffc#348	190
+owner	lfortran	XFAIL	derived-oop	owner=lazy-fortran/ffc#419	88
+owner	lfortran	XFAIL	derived-oop	owner=lazy-fortran/ffc#422	163
 owner	lfortran	XFAIL	intrinsics	owner=lazy-fortran/ffc#435	5
-owner	lfortran	XFAIL	derived-oop	owner=lazy-fortran/ffc#449	86
-owner	lfortran	XFAIL	intrinsics	owner=lazy-fortran/ffc#453	195
-owner	lfortran	XFAIL	control-flow	owner=lazy-fortran/ffc#455	40
+owner	lfortran	XFAIL	derived-oop	owner=lazy-fortran/ffc#449	82
+owner	lfortran	XFAIL	intrinsics	owner=lazy-fortran/ffc#453	176
+owner	lfortran	XFAIL	control-flow	owner=lazy-fortran/ffc#455	34
 owner	lfortran	XFAIL	procedures	owner=lazy-fortran/ffc#456	7
-owner	lfortran	XFAIL	arrays	owner=lazy-fortran/ffc#458	75
-owner	lfortran	XFAIL	arrays	owner=lazy-fortran/ffc#459	16
+owner	lfortran	XFAIL	arrays	owner=lazy-fortran/ffc#458	65
+owner	lfortran	XFAIL	arrays	owner=lazy-fortran/ffc#459	15
 owner	lfortran	XFAIL	io-runtime	owner=lazy-fortran/ffc#460	1
-owner	lfortran	XFAIL	corpus	owner=lazy-fortran/ffc#540	607
-owner	lfortran	XFAIL	procedures	owner=lazy-fortran/ffc#579	151
-owner	lfortran	XFAIL	diagnostics	owner=lazy-fortran/ffc#581	11
-owner	lfortran	XFAIL	modules-scope	owner=lazy-fortran/ffc#584	320
-owner	lfortran	XFAIL	io-runtime	owner=lazy-fortran/ffc#628	293
-owner	lfortran	XFAIL	corpus	scope=GPU	99
-owner	lfortran	XFAIL	corpus	scope=OpenMP	69
-owner	lfortran	XFAIL	corpus	scope=coarray	9
-owner	lfortran	XFAIL	corpus	scope=legacy	8
-owner	lfortran	XFAIL	corpus	scope=vendor	4
+owner	lfortran	XFAIL	corpus	owner=lazy-fortran/ffc#540	500
+owner	lfortran	XFAIL	procedures	owner=lazy-fortran/ffc#579	135
+owner	lfortran	XFAIL	diagnostics	owner=lazy-fortran/ffc#581	10
+owner	lfortran	XFAIL	modules-scope	owner=lazy-fortran/ffc#584	238
+owner	lfortran	XFAIL	io-runtime	owner=lazy-fortran/ffc#628	274
+owner	lfortran	XFAIL	corpus	scope=GPU	83
+owner	lfortran	XFAIL	corpus	scope=OpenMP	6
+owner	lfortran	XFAIL	corpus	scope=coarray	2
+owner	lfortran	XFAIL	corpus	scope=legacy	4

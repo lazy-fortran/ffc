@@ -26,3 +26,4 @@ owner=lazy-fortran/ffc#628 io-runtime
 owner=lazy-fortran/fortfront#2883 diagnostics
 owner=lazy-fortran/fortfront#2897 diagnostics
 owner=lazy-fortran/fortfront#2951 diagnostics
+owner=lazy-fortran/ffc#532 corpus
