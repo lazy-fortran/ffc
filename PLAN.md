@@ -624,9 +624,13 @@ as a substitute for independent behavior. Pure planning changes need prose/link
 validation, not compiler tests that cannot observe them.
 
 Iteration promotion needs a coherent build, targeted oracles on the combined
-candidate and inspection of already completed background regressions. It does
-not wait for the full random campaign or CI drain. A current reproducible
-regression gets repair/revert priority. Never weaken/delete tests, widen XFAIL,
+candidate and inspection of already completed background regressions. Once the
+exact integrated generation is `local_gate_green` with no known current
+regression, the controller commits and pushes it to `main` immediately. It does
+not wait for the full random campaign, GitHub CI or unrelated review. CI audits
+the latest main asynchronously and may cancel superseded runs. A current
+reproducible regression gets immediate repair/revert priority; unrelated workers
+may continue, but unrelated main promotions normally pause. Never weaken/delete tests, widen XFAIL,
 drop negative cases or change scope to manufacture green. Contract updates and
 original test identities remain mandatory. Cross-repo ABI changes get producer,
 consumer and combined interaction evidence before promotion; a full exact-version
