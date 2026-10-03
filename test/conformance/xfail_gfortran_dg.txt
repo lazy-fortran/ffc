@@ -62,6 +62,7 @@ alloc_comp_basics_3.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable
 alloc_comp_basics_5.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 alloc_comp_bounds_1.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 alloc_comp_class_1.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
+alloc_comp_class_2.f90 # owner=lazy-fortran/ffc#532; reason=epoch XPASS pending promotion
 alloc_comp_constraint_6.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 alloc_comp_constructor_2.f90 # owner=lazy-fortran/ffc#422; reason=deep-copy allocatable derived components
 alloc_comp_constructor_3.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
@@ -1997,4 +1998,3 @@ zero_sized_4.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 zero_sized_5.f90 # owner=lazy-fortran/ffc#453; reason=lower CSHIFT and EOSHIFT
 zero_sized_7.f90 # owner=lazy-fortran/ffc#337; reason=reallocate allocatables from runtime expressions
 zero_sized_9.f90 # owner=lazy-fortran/ffc#453; reason=lower NORM2 over descriptor arrays
-alloc_comp_class_2.f90 # owner=lazy-fortran/ffc#532; reason=epoch XPASS pending promotion

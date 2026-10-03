@@ -1,5 +1,5 @@
 schema	1
-revision	ffc	d93849fe99e65ea44cf1eb7fc2c563998bc683b4
+revision	ffc	f2b598db3501bb8f76ff585167c0fa7eb66fb651
 revision	FortFront	42e6303e4b94d9c3cc7210acf6982f11b65a4850
 revision	LIRIC	9eff0961b7d1740764f83ce260918451344d8a1a
 revision	LFortran	caf87b660f803148f000046392a5da803f9fc630
@@ -12,16 +12,16 @@ corpus-files	fortfront-f90	fd1ce622e76b49595215d82cbe93790bfc8927cf1562083340532
 corpus-files	fortfront-lf	32f7031dd54a18c36a4b063b5cee20f2dc0d88775d63fee01763bd9109319e35
 corpus-files	lfortran	3ade5f5dff08cf108011fa147ef345a7e970076f76d63dba155eb7c0718ca388
 corpus-files	gfortran-dg	92c68be4f4fedb223725a1676066bd80f78e5b3b2d6766b26ddaeb1ec7faf75d
-digest	ffc-source	4c0f3c9fd703e2b402a16dc8e0a49074deaee8d211df56094a43fd5f3f9ddfd1
-digest	ffc-binary	ccdd4fa78b231e350a1ddbc528ff0e3ddb90fe2d9cf9929801ce0622431c6c54
-digest	manifests	d24d45ccaf65f35d9a6e29c72eca6aa1ee88d44781ef5a85d340d6b1c701018d
-digest	conformance-epoch	7e6e3fa2681d909f06eb57b8609fb5b8013d362d07efb6268d398804f836897a
+digest	ffc-source	f7704d51d2a60606d4ab1913db647a3f2901f368a629efb1f029136b1db1c776
+digest	ffc-binary	36892b0f2b53198ccb07f014582948c3091d51ce9af0e26f3e4e414c227f4ebe
+digest	manifests	d93ff2de3e18b11c5be5582d1f70ae823ae952426463dc4943a9ff3e62a7e462
+digest	conformance-epoch	8cfed32d63a53c5c103e3b039b8c5f1ba5de140975a76525d6c8f6f161d9a5dd
 suite	fortfront-f90	647	377	0	0	1	36	269
 suite	fortfront-lf	267	220	47	0	0	0	0
 suite	lfortran	4280	1176	2554	0	32	31	518
-suite	gfortran-dg	5938	1549	1997	1	81	1	2310
-view	All	11132	3322	4598	1	114	68	3097
-view	Scoped	10607	3182	4505	1	114	68	2805
+suite	gfortran-dg	5938	1549	1998	0	81	1	2310
+view	All	11132	3322	4599	0	114	68	3097
+view	Scoped	10607	3182	4506	0	114	68	2805
 excluded	Scoped	525	140	93	0	0	0	292
 owner	fortfront-f90	FAIL	corpus	owner=lazy-fortran/ffc#540	1
 owner	fortfront-f90	SKIP	corpus	scope=harness	263
@@ -72,6 +72,7 @@ owner	gfortran-dg	XFAIL	procedures	owner=lazy-fortran/ffc#461	2
 owner	gfortran-dg	XFAIL	derived-oop	owner=lazy-fortran/ffc#462	4
 owner	gfortran-dg	XFAIL	procedures	owner=lazy-fortran/ffc#465	1
 owner	gfortran-dg	XFAIL	procedures	owner=lazy-fortran/ffc#467	2
+owner	gfortran-dg	XFAIL	corpus	owner=lazy-fortran/ffc#532	1
 owner	gfortran-dg	XFAIL	corpus	owner=lazy-fortran/ffc#540	399
 owner	gfortran-dg	XFAIL	procedures	owner=lazy-fortran/ffc#579	93
 owner	gfortran-dg	XFAIL	diagnostics	owner=lazy-fortran/ffc#581	29
@@ -85,7 +86,6 @@ owner	gfortran-dg	XFAIL	corpus	scope=compiler-flags	2
 owner	gfortran-dg	XFAIL	corpus	scope=harness	3
 owner	gfortran-dg	XFAIL	corpus	scope=legacy	5
 owner	gfortran-dg	XFAIL	corpus	scope=vendor	5
-owner	gfortran-dg	XPASS	corpus	owner=lazy-fortran/ffc#532	1
 owner	lfortran	FAIL	corpus	owner=lazy-fortran/ffc#540	32
 owner	lfortran	SKIP	corpus	scope=GPU	1
 owner	lfortran	SKIP	corpus	scope=coarray	2
