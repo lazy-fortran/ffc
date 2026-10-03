@@ -735,7 +735,15 @@ corpus TIMEOUT (#754).
       fortfront-lf 220P/47X/0F/267, lfortran 1303P/2554X/31XPASS/
       535F/774S/5197, gfortran-dg 1547P/1998X/12XPASS/139F/2321S/6017
       (`/var/tmp/ffc-goal/epoch/chain.status`); provenance_verified=true
-      all four.
+      all four. SECOND epoch at canonical corpus pins (lfortran caf87b6,
+      gcc 395e3d81) ffc `b67df8e`: lock at
+      `test/conformance/parity_epoch.json`, `parity_dashboard.tsv` +
+      `docs/PARITY_STATUS.md` regenerated (orphaned pin 0639933 retired),
+      owner metadata derived by `scripts/refresh_conformance_metadata.py`;
+      suite `508 passed / 1 failed` (sole FAIL structural: issue_2455
+      pending #417) `/var/tmp/ffc-goal/perf/suite-dash.log`;
+      gauntlet_smoke + parity_dashboard tests green (ffc `e98a404`,
+      `b67df8e`).
       (corpora now present: lfortran 4356, dg 5938; dashboard pin
       `0639933` predates history re-root — stale by construction).
       Schedule AFTER W0.2 parallel runner so it costs minutes.
