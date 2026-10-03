@@ -3198,6 +3198,39 @@ contains
                                                     error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (reduction_handled) return
+                ! abs(identifier) over whole arrays must be computed elementwise:
+                ! the scalar i32 path folds the array operand to a garbage
+                ! scalar and silently stores it across the target.
+                if (same_name(rhs%name, 'abs')) then
+                    ! abs(reduce(src, dim)) first reduces into this target,
+                    ! then takes abs in place; both halves are the two
+                    ! elementwise paths already implemented.
+                    if (allocated(rhs%arg_indices) .and. &
+                        size(rhs%arg_indices) == 1) then
+                        if (node_exists(arena, rhs%arg_indices(1))) then
+                            select type (inner => &
+                                arena%entries(rhs%arg_indices(1))%node)
+                            type is (call_or_subscript_node)
+                                call lower_dim_reduction_assignment(arena, &
+                                    inner, symbol_index, context, &
+                                    reduction_handled, error_msg)
+                                if (len_trim(error_msg) > 0) return
+                                if (reduction_handled) then
+                                    call lower_elementwise_abs_assignment(&
+                                        arena, rhs, symbol_index, context, &
+                                        reduction_handled, error_msg)
+                                    if (len_trim(error_msg) > 0) return
+                                    if (reduction_handled) return
+                                end if
+                            class default
+                            end select
+                        end if
+                    end if
+                    call lower_elementwise_abs_assignment(arena, rhs, &
+                        symbol_index, context, reduction_handled, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (reduction_handled) return
+                end if
                 if (allocated(rhs%name)) then
                     ! Array-valued TRANSFER runs before the shared kind gate
                     ! below: it reinterprets bits and so also serves integer(8)
@@ -7248,5 +7281,62 @@ contains
         call set_empty(error_msg)
     end subroutine resolve_reshape_identifier_source
 
+
+    subroutine lower_elementwise_abs_assignment(arena, rhs, symbol_index, &
+        context, handled, error_msg)
+        ! target = abs(source): elementwise over contiguous static rank-1
+        ! i32 arrays; source may equal the target (in-place). Declines
+        ! (handled=.false.) for every other form.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: rhs
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        logical, intent(out) :: handled
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: elem, zero, cond, neg, out
+        character(len=:), allocatable :: name
+        integer :: src, i, n
+        integer(c_int64_t) :: idx
+
+        handled = .false.
+        call set_empty(error_msg)
+        if (.not. allocated(rhs%arg_indices)) return
+        if (size(rhs%arg_indices) /= 1) return
+        if (.not. is_identifier(arena, rhs%arg_indices(1))) return
+        call get_identifier_name(arena, rhs%arg_indices(1), name, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call set_empty(error_msg)
+            return
+        end if
+        src = find_symbol_compat(context, name)
+        if (src <= 0) return
+        if (.not. context%symbols(src)%is_array) return
+        if (context%symbols(src)%array_rank /= 1) return
+        if (context%symbols(src)%value_kind /= VALUE_I32) return
+        if (context%symbols(src)%is_allocatable) return
+        if (any(context%symbols(src)%has_runtime_dim_size)) return
+        if (context%symbols(symbol_index)%array_rank /= 1) return
+        if (context%symbols(symbol_index)%value_kind /= VALUE_I32) return
+        if (context%symbols(symbol_index)%is_allocatable) return
+        if (any(context%symbols(symbol_index)%has_runtime_dim_size)) return
+        n = context%symbols(src)%array_size
+        if (n /= context%symbols(symbol_index)%array_size .or. n <= 0) return
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        do i = 0, n - 1
+            idx = int(i, c_int64_t)
+            call load_array_linear_element(context, src, idx, elem, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGE, &
+                elem, zero, cond, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, zero, &
+                elem, neg, error_msg)) return
+            call select_value(context, cond, elem, neg, out, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call store_array_linear_element(context, symbol_index, idx, out, &
+                                            error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+        handled = .true.
+    end subroutine lower_elementwise_abs_assignment
 
 end submodule arrays
