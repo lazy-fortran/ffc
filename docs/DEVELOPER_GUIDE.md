@@ -41,8 +41,8 @@ LIBRARY_PATH=/path/to/liric/build fo test
   descendant service with explicit interfaces; changes require both accepted
   and rejected executable/compiler oracles in
   `test_session_reject_const_01_compiler`.
-- Add focused behavioural tests under `test/`. Each file is a standalone
-  `program test_*` picked up by fpm auto-discovery.
+- Add focused behavioral cases under `test/` using the shared dispatcher
+  registration procedure in AGENTS.md. Preserve original public test names.
 - Treat a need for private FortFront AST layout as a FortFront API issue
   (see #58 / #173) rather than an `ffc` workaround.
 - Before claiming support for a feature, update
@@ -85,28 +85,10 @@ This is a ceiling, not a floor. It does not approve the 90 fields it records;
 `#337`/`#338`/`#339`/`#348` and the descriptor work in Phase 3 exist to reduce
 them, and each reduction should land with a smaller allowlist.
 
-## Feature order
+## Execution plan
 
-The supported surface is in `docs/SUPPORT_CONTRACT.md`. Broadly the order
-in which features have been added (and the order new slices should
-follow) is:
-
-1. Empty programs and integer `stop`.
-2. Scalar integer declarations and assignments.
-3. Integer arithmetic and comparisons.
-4. Minimal `print *, expr`.
-5. Block `if`, fallthrough integer merges, counted `do`.
-6. Real and logical scalars; minimal character output.
-7. Contained integer / real / logical functions and subroutines.
-8. Fixed-size 1-D integer arrays.
-9. Simple derived types with scalar integer components.
-10. Deferred-length character (assignment, concatenation, self-aliasing).
-11. `SELECT CASE` with terminating arms (single, multi, multi-label).
-12. Early `return` inside contained subroutines and functions.
-13. CLI `-I <dir>` accepted (storage only; consumption is future work).
-
-The remaining work is the self-hosting tracker (#167) plus open
-issues for individual slices.
+[PLAN.md](../PLAN.md) owns feature order and fo Gremlin work modes;
+[AGENTS.md](../AGENTS.md) owns the current case-registration and delivery rules.
 
 ## Verification
 

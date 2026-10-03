@@ -31,7 +31,7 @@ program must be refused.
 
 The [F2023 delta inventory](F2023_DELTA.md) maps the additions in the
 J3/24-007 Introduction to constrained support, atomic implementation issues,
-or the standing coarray/image exclusions. It corrects the former Annex B.1
+or required coarray/image implementation gaps under [PLAN.md](../PLAN.md). It corrects the former Annex B.1
 source pointer and enumerates the resulting
 [FortFront issues](F2023_DELTA.md#atomic-issue-index) and
 [ffc issues](F2023_DELTA.md#atomic-issue-index).

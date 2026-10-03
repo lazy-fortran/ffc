@@ -192,8 +192,8 @@ whose `total` is the number of entries run.
 
 ## Single-command conformance gate
 
-`scripts/conformance_check.sh` is the documented routine contributors run
-before pushing and after dependency (fortfront, liric) updates. It builds
+[PLAN.md](../PLAN.md) defines continuous Gremlin scheduling and milestone gates.
+`scripts/conformance_check.sh` is the comprehensive milestone command. It builds
 ffc, runs every available suite, fails on any FAIL or XPASS, and prints
 the promotable XPASS list.
 
@@ -237,8 +237,8 @@ Sampling is a safety and progress instrument, not permission to widen the
 work queue. Each cycle selects one owned in-scope XFAIL tranche, fixes the
 implementation or its independent behavioral oracle, and removes the manifest
 entry only after the named case passes with `XFAIL=0`, `XPASS=0`, and `FAIL=0`.
-Do not move to another corpus area or increase the sample count while that
-tranche is nonzero. XFAIL is an expectation classification; NOREF and SKIP are
+Select implementation work and parallel ownership according to PLAN.md; keep
+current-generation regressions ahead of feature work. XFAIL is an expectation classification; NOREF and SKIP are
 operational dispositions rather than behavioral passes. A clean sample with
 any of them does not claim full parity.
 
@@ -390,8 +390,8 @@ The aggregate manifest inventory is `XFAIL=5214`, `FAIL=365`, `NOREF=12`, and
 `SKIP=2305`. `FAIL` counts FAIL-owner rows. These are inventory facts, not fresh
 compiler outcomes.
 
-Use `docs/PARITY_PLAN.md` and issue #299 for the latest full-suite pass-rate
-snapshot. The seed baselines below are historical starting points, not current
+Use `PLAN.md` for the complete roadmap and `docs/PARITY_STATUS.md` for the
+generated, revision-tagged measurement snapshot. The seed baselines below are historical starting points, not current
 scoreboard values.
 
 ## JSONL output

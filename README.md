@@ -556,7 +556,7 @@ scripts/fetch_corpora.sh
 - `docs/` - `SUPPORT_CONTRACT.md`, `RUNTIME_ABI.md`, `DEVELOPER_GUIDE.md`,
   `API_REFERENCE.md`, `C_API_USAGE.md`, `MIGRATION_GUIDE.md`,
   `CONFORMANCE.md`.
-- `BACKLOG.md`, `DESIGN.md` - planning docs.
+- `PLAN.md` - complete roadmap; `AGENTS.md` - development rules.
 
 ## Conventions
 

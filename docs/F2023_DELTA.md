@@ -12,7 +12,7 @@ features and is not the F2018-to-F2023 addition inventory.
 The reader is a compiler maintainer selecting one implementable feature slice.
 A supported row claims only its stated subset. An issue row stays unsupported
 until its producer contract and consumer behavior pass their tests. Coarray,
-image and team additions follow the standing exclusions in ROADMAP.md. This
+image and team additions are mandatory future work in [PLAN.md](../PLAN.md). This
 audit completes scope enumeration and issue splitting; it makes no F2023
 compliance or completion-percentage claim.
 
@@ -55,7 +55,7 @@ observed constant SELECTED_LOGICAL_KIND folding subset.
 
 | Addition | Disposition | Evidence and boundary | J3 clause |
 | --- | --- | --- | --- |
-| Arrays/allocatables with coarray components | out of scope (coarrays/images/teams) | Standing coarray exclusion applies at every component depth. | 7.5; 9.7 |
+| Arrays/allocatables with coarray components | issue [ffc#799](https://github.com/lazy-fortran/ffc/issues/799), [ffc#800](https://github.com/lazy-fortran/ffc/issues/800) | Single-image foundation followed by full component/multi-image runtime work. | 7.5; 9.7 |
 | Existing ENUM,BIND(C) terminology | supported (stated subset) | The former enumeration construct is called an interoperable enumeration; existing anonymous integer-enumerator support keeps its published restrictions. | 7.6.1 |
 | Named interoperable enum types | issue [fortfront#3025](https://github.com/lazy-fortran/fortfront/issues/3025), [ffc#794](https://github.com/lazy-fortran/ffc/issues/794) | Parser consumes ENUM headers without a distinct named enum identity; scalar enum declarations are refused downstream. | 7.6.1 |
 | Noninteroperable enumeration types | issue [fortfront#3026](https://github.com/lazy-fortran/fortfront/issues/3026), [ffc#795](https://github.com/lazy-fortran/ffc/issues/795) | Dedicated ordered identity, ordinal construction and enum operations are absent. | 7.6.2 |
@@ -94,9 +94,9 @@ observed constant SELECTED_LOGICAL_KIND folding subset.
 | Addition | Disposition | Evidence and boundary | J3 clause |
 | --- | --- | --- | --- |
 | DO CONCURRENT REDUCE locality | issue [fortfront#3033](https://github.com/lazy-fortran/fortfront/issues/3033) | A scalar serial sum matches; the parser drops REDUCE metadata and accepts a forbidden VOLATILE variable, so full support is not claimed. | 11.1.7 |
-| NOTIFY WAIT | out of scope (coarrays/images/teams) | Image synchronization is excluded. | 11.7 |
-| NOTIFY= image selector | out of scope (coarrays/images/teams) | Coindexed update notification is excluded. | 9.6 |
-| ISO_FORTRAN_ENV NOTIFY_TYPE | out of scope (coarrays/images/teams) | Notification state belongs to the excluded image model. | 16.10 |
+| NOTIFY WAIT | issue [ffc#801](https://github.com/lazy-fortran/ffc/issues/801) | Notification synchronization requires the multi-image runtime. | 11.7 |
+| NOTIFY= image selector | issue [ffc#801](https://github.com/lazy-fortran/ffc/issues/801) | Coindexed notification selectors require producer and runtime support. | 9.6 |
+| ISO_FORTRAN_ENV NOTIFY_TYPE | issue [ffc#801](https://github.com/lazy-fortran/ffc/issues/801) | Notification state requires the standard image runtime. | 16.10 |
 
 ## Intrinsic procedures
 
@@ -110,7 +110,7 @@ observed constant SELECTED_LOGICAL_KIND folding subset.
 | SYSTEM_CLOCK selection and kind rules | issue [ffc#783](https://github.com/lazy-fortran/ffc/issues/783) | One default-kind seconds clock is present; multiple clocks are permitted rather than required. Long integer and valid real-rate calls need coverage and documented policy. | 16.9.202; 4.3.3 |
 | TOKENIZE | issue [ffc#782](https://github.com/lazy-fortran/ffc/issues/782) | Neither token-owner nor integer-position output overload is implemented. | 16.9.210 |
 | Deferred character intrinsic outputs | issue [ffc#773](https://github.com/lazy-fortran/ffc/issues/773) | GET_ENVIRONMENT_VARIABLE/GET_COMMAND output allocation is missing. | 16.9 |
-| Collective error results can differ by image | out of scope (coarrays/images/teams) | Collective execution and image-local errors are excluded. | 16.9 collective subroutines |
+| Collective error results can differ by image | issue [ffc#802](https://github.com/lazy-fortran/ffc/issues/802) | Image-local error behavior follows basic multi-image collective support. | 16.9 collective subroutines |
 
 ## Intrinsic modules
 
@@ -165,4 +165,11 @@ FortFront: [3022](https://github.com/lazy-fortran/fortfront/issues/3022), [3023]
 
 ffc: [767](https://github.com/lazy-fortran/ffc/issues/767), [768](https://github.com/lazy-fortran/ffc/issues/768), [769](https://github.com/lazy-fortran/ffc/issues/769), [770](https://github.com/lazy-fortran/ffc/issues/770), [771](https://github.com/lazy-fortran/ffc/issues/771), [772](https://github.com/lazy-fortran/ffc/issues/772), [773](https://github.com/lazy-fortran/ffc/issues/773), [774](https://github.com/lazy-fortran/ffc/issues/774), [775](https://github.com/lazy-fortran/ffc/issues/775), [776](https://github.com/lazy-fortran/ffc/issues/776), [777](https://github.com/lazy-fortran/ffc/issues/777), [778](https://github.com/lazy-fortran/ffc/issues/778), [779](https://github.com/lazy-fortran/ffc/issues/779), [780](https://github.com/lazy-fortran/ffc/issues/780), [781](https://github.com/lazy-fortran/ffc/issues/781), [782](https://github.com/lazy-fortran/ffc/issues/782), [783](https://github.com/lazy-fortran/ffc/issues/783), [784](https://github.com/lazy-fortran/ffc/issues/784), [785](https://github.com/lazy-fortran/ffc/issues/785), [786](https://github.com/lazy-fortran/ffc/issues/786), [787](https://github.com/lazy-fortran/ffc/issues/787), [788](https://github.com/lazy-fortran/ffc/issues/788), [789](https://github.com/lazy-fortran/ffc/issues/789), [790](https://github.com/lazy-fortran/ffc/issues/790), [791](https://github.com/lazy-fortran/ffc/issues/791), [792](https://github.com/lazy-fortran/ffc/issues/792), [793](https://github.com/lazy-fortran/ffc/issues/793), [794](https://github.com/lazy-fortran/ffc/issues/794), [795](https://github.com/lazy-fortran/ffc/issues/795), [796](https://github.com/lazy-fortran/ffc/issues/796), [797](https://github.com/lazy-fortran/ffc/issues/797).
 
-The tables contain 51 entries: 4 constrained supported entries, 42 issue-backed entries and 5 coarray/image exclusions. Family rows enumerate every procedure name in the Introduction. These counts describe this inventory and do not measure total language coverage.
+Expanded ISO-parallel ownership: [fortfront#3036](https://github.com/lazy-fortran/fortfront/issues/3036),
+[ffc#799](https://github.com/lazy-fortran/ffc/issues/799),
+[ffc#800](https://github.com/lazy-fortran/ffc/issues/800),
+[ffc#801](https://github.com/lazy-fortran/ffc/issues/801) and
+[ffc#802](https://github.com/lazy-fortran/ffc/issues/802). These are required
+future work; no parallel implementation is claimed by this planning update.
+
+The tables contain 51 entries: 4 constrained supported entries and 47 issue-backed required entries. Family rows enumerate every procedure name in the Introduction. These counts describe this inventory and do not measure total language coverage.
