@@ -92,7 +92,6 @@ array_indices_array_item_assignment_2.f90 # owner=lazy-fortran/ffc#584; reason=m
 array_indices_array_item_assignment_3.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
 array_indices_array_item_assignment_4.f90 # owner=lazy-fortran/ffc#337; reason=reallocate allocatables from runtime expressions
 array_indices_array_section.f90 # owner=lazy-fortran/ffc#453; reason=lower descriptor-backed RESHAPE
-array_indices_array_section_assignment.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 array_init.f90 # owner=lazy-fortran/ffc#422; reason=deduplicate derived array declaration collection
 array_neg_extent_01.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 array_op_04.f90 # owner=lazy-fortran/ffc#628; reason=select and load the matching runtime archive
@@ -193,7 +192,6 @@ arrays_60.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expr
 arrays_61.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 arrays_62.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 arrays_63.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
-arrays_64.f90 # owner=lazy-fortran/ffc#337; reason=lower vector-subscript assignment as alias-safe scatter
 arrays_65.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 arrays_66.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape arrays by descriptor
 arrays_69.f90 # owner=lazy-fortran/ffc#453; reason=lower descriptor-backed RESHAPE
