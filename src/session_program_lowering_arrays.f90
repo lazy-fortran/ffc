@@ -3216,11 +3216,12 @@ contains
                                     reduction_handled, error_msg)
                                 if (len_trim(error_msg) > 0) return
                                 if (reduction_handled) then
-                                    call lower_elementwise_abs_assignment(&
-                                        arena, rhs, symbol_index, context, &
-                                        reduction_handled, error_msg)
+                                    ! X already holds the reduced values; take
+                                    ! abs in place over the target storage.
+                                    call lower_inplace_abs_target(symbol_index, &
+                                        context, error_msg)
                                     if (len_trim(error_msg) > 0) return
-                                    if (reduction_handled) return
+                                    return
                                 end if
                             class default
                             end select
@@ -7338,5 +7339,47 @@ contains
         end do
         handled = .true.
     end subroutine lower_elementwise_abs_assignment
+
+
+    subroutine lower_inplace_abs_target(symbol_index, context, error_msg)
+        ! abs(X) computed elementwise back into X: static rank-1 i32.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: elem, zero, cond, neg, out
+        integer(c_int64_t) :: idx
+        integer :: i, n
+
+        call set_empty(error_msg)
+        if (context%symbols(symbol_index)%array_rank /= 1) then
+            error_msg = 'in-place abs supports rank-1 arrays only'
+            return
+        end if
+        if (context%symbols(symbol_index)%value_kind /= VALUE_I32) then
+            error_msg = 'in-place abs supports integer arrays only'
+            return
+        end if
+        n = context%symbols(symbol_index)%array_size
+        if (n <= 0) then
+            error_msg = 'in-place abs needs a static extent'
+            return
+        end if
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        do i = 0, n - 1
+            idx = int(i, c_int64_t)
+            call load_array_linear_element(context, symbol_index, idx, elem, &
+                                           error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGE, &
+                elem, zero, cond, error_msg)) return
+            if (.not. emit_i32_binary(context%session, LR_OP_SUB, zero, &
+                elem, neg, error_msg)) return
+            call select_value(context, cond, elem, neg, out, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call store_array_linear_element(context, symbol_index, idx, out, &
+                                            error_msg)
+            if (len_trim(error_msg) > 0) return
+        end do
+    end subroutine lower_inplace_abs_target
 
 end submodule arrays

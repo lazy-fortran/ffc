@@ -99,7 +99,6 @@ array_op_05.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarati
 array_op_06.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 array_op_07.f90 # owner=lazy-fortran/ffc#337; reason=route WHERE and FORALL through array expressions
 array_op_08.f90 # owner=lazy-fortran/ffc#337; reason=route WHERE and FORALL through array expressions
-array_op_09.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 array_op_12.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape arrays by descriptor
 array_op_13.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 array_section_02.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
