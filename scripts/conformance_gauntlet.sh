@@ -399,7 +399,9 @@ classify_nonrunnable_noref() {
         record_note="reference builds a runnable executable; $category not applicable"
         FAIL_COUNT=$((FAIL_COUNT + 1))
         HAS_FAIL=1
-        write_result_record "$rel" "FAIL" "$ffc_status" 0 "$record_note" ""
+        # ffc never compiled in this branch; the record must project
+        # not-run evidence (-1), not a fabricated exit code.
+        write_result_record "$rel" "FAIL" -1 0 "$record_note" ""
         echo "  FAIL: $rel (noref category not applicable: $category)"
         return
     else
@@ -809,7 +811,14 @@ validate_noref_manifest "$NOREF_MANIFEST" "$NOREF_LOOKUP" || exit 1
 cut -f 1 "$NOREF_LOOKUP" > "$NOREF_PATHS"
 manifest_overlap=$(grep -Fxf "$SKIP_LOOKUP" "$NOREF_PATHS" || true)
 if [ -n "$manifest_overlap" ]; then
-    fail "files cannot be both skip and noref: $manifest_overlap"
+    # Fortfront corpus manifests register expected failures (xfail); the
+    # gfortran dg suite registers { skip } directives. Reject the overlap in
+    # the vocabulary of the suite whose manifests collide.
+    case "$SUITE" in
+        fortfront-*) overlap_marker='xfail' ;;
+        *) overlap_marker='skip' ;;
+    esac
+    fail "files cannot be both $overlap_marker and noref: $manifest_overlap"
 fi
 
 # Counters
@@ -1281,6 +1290,17 @@ run_case_loop() {
         continue
     fi
 
+    noref_kind=$(noref_category "$rel_path") || noref_kind=""
+    NOREF_MANIFEST_CATEGORY="$noref_kind"
+    if [ -n "$noref_kind" ] && [ "$noref_kind" != "undefined-runtime-value" ] && \
+        [ "$noref_kind" != "nondeterministic-runtime-value" ]; then
+        classify_nonrunnable_noref "$rel_path" "$full_path" "$noref_kind"
+        continue
+    fi
+
+    # A file without an executable root skips runtime classification only
+    # when no noref claim covers it; an explicit compile-only claim must
+    # reach classify_nonrunnable_noref above, not land in SKIP.
     if { [ "$SUITE" = "lfortran" ] || [ "$SUITE" = "fortfront-f90" ]; } && \
         ! source_has_program_root "$full_path"; then
         CASE_ACTION="exclude"
@@ -1288,14 +1308,6 @@ run_case_loop() {
         write_result_record "$rel_path" "SKIP" -1 -1 \
             "no PROGRAM or BLOCK DATA root; standalone executable is not applicable" ""
         echo "  SKIP: $rel_path (no PROGRAM or BLOCK DATA root; standalone executable is not applicable)"
-        continue
-    fi
-
-    noref_kind=$(noref_category "$rel_path") || noref_kind=""
-    NOREF_MANIFEST_CATEGORY="$noref_kind"
-    if [ -n "$noref_kind" ] && [ "$noref_kind" != "undefined-runtime-value" ] && \
-        [ "$noref_kind" != "nondeterministic-runtime-value" ]; then
-        classify_nonrunnable_noref "$rel_path" "$full_path" "$noref_kind"
         continue
     fi
 

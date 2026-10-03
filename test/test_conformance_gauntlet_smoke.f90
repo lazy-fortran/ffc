@@ -147,7 +147,7 @@ subroutine case_test_conformance_gauntlet_smoke()
     if (.not. rc_ok(NAMED_REPORT)) all_passed = .false.
     if (.not. report_matches(NAMED_REPORT, 1)) all_passed = .false.
     if (.not. file_contains(NAMED_REPORT, &
-        '"file":"ast_coverage_control_flow.f90","status":"XFAIL"')) &
+        '"file":"ast_coverage_control_flow.f90","status":"SKIP"')) &
         all_passed = .false.
     if (.not. rc_ok(LIST_REPORT)) all_passed = .false.
     if (.not. report_matches(LIST_REPORT, 2)) all_passed = .false.
