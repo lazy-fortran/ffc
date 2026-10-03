@@ -473,10 +473,27 @@ contains
                 context%symbols(isym(item_index, i))%is_reference = .false.
             end do
             if (item_index > nitems) then
-                ! All values emitted: the record ends here. Trailing X steps
-                ! would print blanks, and a formatted print record omits its
-                ! trailing blanks (F2018 13.10.2), so stop, do not pad.
-                exit
+                ! All values emitted: only a DATA descriptor ends the record
+                ! (F2018 13.4). Quoted literals still print their text; X
+                ! steps are dropped because the record omits trailing blanks
+                ! (13.10.2).
+                block
+                    character :: kc
+                    integer :: p2
+                    p2 = pos
+                    do while (p2 <= len_trim(expanded) .and. &
+                             expanded(p2:p2) >= '0' .and. &
+                             expanded(p2:p2) <= '9')
+                        p2 = p2 + 1
+                    end do
+                    kc = ' '
+                    if (p2 <= len_trim(expanded)) kc = expanded(p2:p2)
+                    if (index('IAEFGLOZB', kc) > 0) exit
+                    if (kc == 'X' .or. kc == 'x') then
+                        pos = p2 + 1
+                        cycle
+                    end if
+                end block
             end if
             call lower_next_compound_descriptor(arena, one_node, context, &
                                                 expanded, pos, item_index, &
