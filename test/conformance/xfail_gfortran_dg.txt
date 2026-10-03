@@ -91,7 +91,6 @@ allocatable_scalar_12.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtim
 allocatable_scalar_14.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 allocatable_scalar_4.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable arrays to descriptors
 allocatable_scalar_7.f90 # owner=lazy-fortran/ffc#337; reason=provide descriptor-backed runtime allocation helpers
-allocatable_scalar_8.f90 # owner=lazy-fortran/ffc#337; reason=provide descriptor-backed runtime allocation helpers
 allocate_alloc_opt_10.f90 # owner=lazy-fortran/ffc#337; reason=lower multi-object ALLOCATE
 allocate_alloc_opt_12.f90 # owner=lazy-fortran/ffc#422; reason=fold typed component default initializers
 allocate_alloc_opt_13.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
@@ -1722,7 +1721,6 @@ ret_array_1.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarati
 ret_pointer_1.f90 # owner=lazy-fortran/ffc#540; reason=lower scalar data-pointer association
 ret_pointer_2.f90 # owner=lazy-fortran/ffc#540; reason=lower scalar data-pointer association
 rrspacing_1.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
-save_8.f90 # owner=lazy-fortran/ffc#584; reason=map procedure and host bindings to storage
 save_alloc_character_1.f90 # owner=lazy-fortran/ffc#584; reason=map procedure and host bindings to storage
 scalar_mask_1.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 scalar_mask_2.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once

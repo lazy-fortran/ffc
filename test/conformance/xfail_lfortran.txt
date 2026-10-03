@@ -418,7 +418,6 @@ character_14.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length 
 character_16.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
 character_17.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
 character_18.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
-character_20.f90 # owner=lazy-fortran/ffc#337; reason=provide descriptor-backed runtime allocation helpers
 character_21.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 character_22.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
 character_23.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
