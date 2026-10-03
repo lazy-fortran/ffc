@@ -88,6 +88,67 @@ contains
         end if
 
         select type (subscript => arena%entries(subscript_index)%node)
+        type is (array_slice_node)
+            ! A(X(:)) = ... scatters through the same index vector as A(X).
+            ! Accept only the bare full-range colon on a static rank-1 i32
+            ! identifier; any bounds or stride stays declined.
+            if (subscript%num_dimensions /= 1) then
+                base_index = 0
+                return
+            end if
+            if (subscript%bounds_indices(1) <= 0) then
+                base_index = 0
+                return
+            end if
+            select type (bnd => arena%entries(subscript%bounds_indices(1))%node)
+            type is (range_expression_node)
+                ! Bare colon: implicit (0) start, end, and stride.
+                if (bnd%start_index /= 0 .or. &
+                    bnd%end_index /= 0 .or. bnd%stride_index /= 0) then
+                    base_index = 0
+                    return
+                end if
+            class default
+                base_index = 0
+                return
+            end select
+            if (.not. is_identifier(arena, subscript%array_index)) then
+                base_index = 0
+                return
+            end if
+            call get_identifier_name(arena, subscript%array_index, id_name, &
+                                     error_msg)
+            if (len_trim(error_msg) > 0) then
+                call set_empty(error_msg)
+                base_index = 0
+                return
+            end if
+            sym = find_symbol_compat(context, id_name)
+            if (sym <= 0) then
+                base_index = 0
+                return
+            end if
+            if (.not. context%symbols(sym)%is_array) then
+                base_index = 0
+                return
+            end if
+            if (context%symbols(sym)%is_allocatable) then
+                base_index = 0
+                return
+            end if
+            if (context%symbols(sym)%array_rank /= 1) then
+                base_index = 0
+                return
+            end if
+            if (context%symbols(sym)%value_kind /= VALUE_I32) then
+                error_msg = 'vector subscript requires an integer index vector: '// &
+                            trim(id_name)
+                return
+            end if
+            vector_index = sym
+            extent = context%symbols(sym)%array_size
+            handled = .true.
+            return
         type is (array_literal_node)
             if (.not. allocated(subscript%element_indices)) then
                 base_index = 0
