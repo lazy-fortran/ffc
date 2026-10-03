@@ -483,6 +483,22 @@ the printf precision field:
   is `****`. A negative value is not inherently an overflow. Repeats, nested
   groups, and format reversion use the ordinary compound-format path.
 
+### reshape in expression masks
+
+`reshape(constant-list, constant-shape)` inside `any`/`all`/`count`
+comparison masks folds to a literal mask side: Fortran fills reshape
+column-major, which is linear storage order, so the reshaped constant
+array is the literal's flat sequence with the new shape and the existing
+literal-mask machinery compares it elementwise. Non-constant shapes and
+`order=`/`pad=` keep today's refusal; arithmetic chains whose operand is
+a reshape (`a + reshape(..) > reshape(..)`) and mask-of-masks
+(`.. .and. ..` of two reshape comparisons) decline with
+`not an identifier` (named refusals in
+`tools/test_reshape_expr_parity.py`: runs=20 match=20 byte-exact,
+`/var/tmp/ffc-goal/perf/rsx/report.tsv`, falsification recorded).
+This closes the last gap in fortfront example
+`io_implied_do_objects.f90`, now byte-exact end to end.
+
 ### Internal read: implied-do targets
 
 `read (buf, fmt)` and `read (buf, *)` with a sole implied-do control

@@ -438,6 +438,73 @@ contains
             end if
         end if
 
+        ! reshape(constant-list, constant-shape): Fortran fills column-major,
+        ! which is exactly linear storage order, so the reshaped array IS the
+        ! literal's flat sequence with a new shape. Present it as a literal
+        ! mask side (mode 3) instead of declining the call.
+        if (node_exists(arena, idx)) then
+            select type (rn => arena%entries(idx)%node)
+            type is (call_or_subscript_node)
+                if (rn%is_intrinsic .and. allocated(rn%name) .and. &
+                    same_name(rn%name, 'reshape') .and. &
+                    allocated(rn%arg_indices) .and. &
+                    size(rn%arg_indices) == 2) then
+                    if (node_exists(arena, rn%arg_indices(1)) .and. &
+                        node_exists(arena, rn%arg_indices(2))) then
+                        select type (lit => &
+                            arena%entries(rn%arg_indices(1))%node)
+                        type is (array_literal_node)
+                            if (allocated(lit%element_indices)) then
+                                allocate (side%flat(0))
+                                call flatten_constructor_elements(arena, &
+                                    lit%element_indices, side%flat, flat_err)
+                                if (len_trim(flat_err) > 0) then
+                                    deallocate (side%flat)
+                                else
+                                    block
+                                        integer :: si
+                                        integer(c_int64_t) :: shp, prod
+                                        prod = 1
+                                        select type (sh => &
+                                            arena%entries(rn%arg_indices(2))%node)
+                                        type is (array_literal_node)
+                                            if (allocated(sh%element_indices)) then
+                                                do si = 1, size(sh%element_indices)
+                                                    call eval_i32_constant(&
+                                                        arena, &
+                                                        sh%element_indices(si), &
+                                                        context, shp, flat_err)
+                                                    if (len_trim(flat_err) > 0) then
+                                                        prod = -1
+                                                        exit
+                                                    end if
+                                                    prod = prod * shp
+                                                end do
+                                            else
+                                                prod = -1
+                                            end if
+                                        class default
+                                            prod = -1
+                                        end select
+                                        if (prod == int(size(side%flat), &
+                                            c_int64_t) .and. &
+                                            size(side%flat) > 0) then
+                                            side%mode = 3
+                                            side%extent = size(side%flat)
+                                            ok = .true.
+                                            return
+                                        end if
+                                    end block
+                                end if
+                            end if
+                        class default
+                        end select
+                    end if
+                end if
+            class default
+            end select
+        end if
+
         ! Another bare function/intrinsic call may return an array that this
         ! path cannot evaluate elementwise. Decline it
         ! rather than misread it as a broadcast scalar, which would compare a
