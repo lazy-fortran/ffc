@@ -20602,10 +20602,12 @@ contains
         end if
         call declaration_value_kind(node, value_kind, error_msg, context, node_index)
         if (len_trim(error_msg) > 0) return
-        if (node%is_allocatable) then
+        if (node%is_allocatable .and. .not. node%has_intent) then
             ! Allocatable scalars of every supported kind, CHARACTER included:
             ! fixed-length allocatable characters take the deferred descriptor
-            ! ABI with their declared width recorded (#348).
+            ! ABI with their declared width recorded (#348). Dummies keep the
+            ! caller-binding paths below; an allocatable dummy must not mint
+            ! its own storage.
             call lower_scalar_allocatable_declaration(node, context, value_kind, &
                 error_msg)
             return

@@ -86,9 +86,21 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: symbol_index, character_length
 
-        call define_deferred_character_symbol(context, name, error_msg)
-        if (len_trim(error_msg) > 0) return
         symbol_index = find_symbol_compat(context, name)
+        if (symbol_index > 0) then
+            ! A pre-pass may already have installed a slot (function result,
+            ! module host, or restated declaration); move that slot onto the
+            ! deferred descriptor ABI instead of declaring it twice.
+            if (.not. context%symbols(symbol_index)%is_deferred_character) then
+                call upgrade_existing_deferred_character_symbol(context, &
+                    symbol_index, error_msg)
+                if (len_trim(error_msg) > 0) return
+            end if
+        else
+            call define_deferred_character_symbol(context, name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol_compat(context, name)
+        end if
         call declaration_character_length(context, node, character_length, &
                                           error_msg)
         if (len_trim(error_msg) > 0) then

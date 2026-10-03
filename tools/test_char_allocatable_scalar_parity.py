@@ -41,6 +41,7 @@ CASES = [
  ("realloc_same_len",P("character(len=2), allocatable :: s\n  allocate(character(len=2) :: s)\n  s = 'ab'\n  deallocate(s)\n  allocate(character(len=2) :: s)\n  s = 'cd'\n  print '(a)', s\n")),
  ("concat_len",      P("character(len=2), allocatable :: a\n  allocate(character(len=2) :: a)\n  a = 'ab'\n  print '(i0)', len(a//'cd')\n")),
  ("trim_empty",      P("character(len=3), allocatable :: s\n  allocate(character(len=3) :: s)\n  s = ''\n  print '(a)', '['//trim(s)//']'\n")),
+ ("allocatable_func_result", P("character(len=3) :: r\n  r = mk()\n  print '(a)', r\ncontains\n  function mk()\n    character(len=3), allocatable :: mk\n    allocate(character(len=3) :: mk)\n    mk = 'fn'\n  end function\n")),
  ("len_ge",            P("character(len=3), allocatable :: s\n  allocate(character(len=3) :: s)\n  s = 'ab'\n  if (len(s) >= 3) print '(i0)', len(trim(s))\n")),
  ("realloc_after_reassign", P("character(len=2), allocatable :: s\n  allocate(character(len=2) :: s)\n  s = 'ab'\n  s = 'cd'\n  deallocate(s)\n  allocate(character(len=2) :: s)\n  s = 'ef'\n  print '(a)', trim(s)//'z'\n")),
  ("write_item_pad",  P("character(len=4), allocatable :: s\n  allocate(character(len=4) :: s)\n  s = 'ab'\n  write(*,'(a,a)') '<', trim(s)//'>'\n")),
@@ -49,7 +50,6 @@ CASES = [
 
 REFUSE_CASES = [
  ("refuse_substring_fmt",    P("character(len=4), allocatable :: s\n  allocate(character(len=4) :: s)\n  s = 'abcd'\n  print '(a)', s(2:3)\n")),
- ("refuse_allocatable_func", P("character(len=3) :: r\n  r = mk()\n  print '(a)', r\ncontains\n  function mk()\n    character(len=3), allocatable :: mk\n    allocate(character(len=3) :: mk)\n    mk = 'fn'\n  end function\n")),
  ("refuse_len_mismatch", P("character(len=2), allocatable :: s\n  allocate(character(len=3) :: s)\n  s = 'abc'\n  print '(a)', s\n")),
  ("refuse_char_array",   P("character(len=2), allocatable :: a(:)\n  allocate(character(len=2) :: a(2))\n  a = 'ab'\n  print '(a)', a(1)\n")),
 ]
