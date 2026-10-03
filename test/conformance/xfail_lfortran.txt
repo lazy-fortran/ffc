@@ -2321,7 +2321,6 @@ string_24.f90 # owner=lazy-fortran/ffc#348; reason=lower allocatable character c
 string_29.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 string_31.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 string_37.f90 # owner=lazy-fortran/ffc#540; reason=register POINTER-statement entities
-string_42.f90 # owner=lazy-fortran/ffc#348; reason=migrate deferred scalar character storage
 string_43.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable arrays to descriptors
 string_46.f90 # owner=lazy-fortran/ffc#348; reason=lower allocatable character components
 string_47.f90 # owner=lazy-fortran/ffc#348; reason=lower allocatable character components

@@ -36,6 +36,25 @@ contains
             return
         end if
 
+        if (value_kind == VALUE_CHARACTER) then
+            ! character(len=N), allocatable :: s takes the canonical deferred
+            ! descriptor; the declared width N is restated on the symbol so
+            ! assignments pad like the fixed type they alias.
+            if (node%is_multi_declaration .and. allocated(node%var_names)) then
+                do i = 1, size(node%var_names)
+                    call declare_character_allocatable(context, node, &
+                        node%var_names(i), error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end do
+            else if (allocated(node%var_name)) then
+                call declare_character_allocatable(context, node, &
+                    node%var_name, error_msg)
+            else
+                error_msg = 'allocatable declaration did not expose a variable name'
+            end if
+            return
+        end if
+
         if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
             value_kind /= VALUE_F64 .and. value_kind /= VALUE_LOGICAL) then
             call unsupported_feature_error('allocatable declaration', &
@@ -58,6 +77,30 @@ contains
             error_msg = 'allocatable declaration did not expose a variable name'
         end if
     end subroutine lower_scalar_allocatable_declaration
+    subroutine declare_character_allocatable(context, node, name, error_msg)
+        ! One allocatable CHARACTER scalar slot: deferred descriptor plus the
+        ! declared fixed width (0 stays deferred-length).
+        type(lowering_context_t), intent(inout) :: context
+        type(declaration_node), intent(in) :: node
+        character(len=*), intent(in) :: name
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: symbol_index, character_length
+
+        call define_deferred_character_symbol(context, name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        symbol_index = find_symbol_compat(context, name)
+        call declaration_character_length(context, node, character_length, &
+                                          error_msg)
+        if (len_trim(error_msg) > 0) then
+            call set_empty(error_msg)
+            character_length = 0
+        end if
+        if (symbol_index > 0) then
+            context%symbols(symbol_index)%character_length = character_length
+            context%symbols(symbol_index)%is_allocatable = .true.
+        end if
+    end subroutine declare_character_allocatable
+
 
     subroutine declare_scalar_allocatable(context, name, value_kind, error_msg)
         type(lowering_context_t), intent(inout) :: context

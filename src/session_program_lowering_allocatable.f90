@@ -736,6 +736,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: len_i32, len_i64, bytes_i64, data_ptr
         character(len=:), allocatable :: len_expr
+        integer :: io_stat, spec_len
 
         if (.not. context%symbols(symbol_index)%is_deferred_character) then
             call unsupported_feature_error('allocate statement', node%line, &
@@ -756,6 +757,18 @@ contains
             call unsupported_feature_error('allocate statement', node%line, &
                 node%column, trim(error_msg), error_msg)
             return
+        end if
+        if (context%symbols(symbol_index)%character_length > 0) then
+            ! A fixed-declared allocatable scalar keeps its declared width:
+            ! the type-spec must restate it, not a different length.
+            spec_len = parse_unsigned_integer_text(trim(len_expr), io_stat)
+            if (io_stat /= 0 .or. spec_len /= &
+                context%symbols(symbol_index)%character_length) then
+                call unsupported_feature_error('allocate statement', node%line, &
+                    node%column, 'character type-spec allocate length must '// &
+                    'match the declared length of: '//trim(name), error_msg)
+                return
+            end if
         end if
 
         ! bytes = len + 1 (trailing NUL), computed in i64.
@@ -4654,5 +4667,26 @@ contains
         end select
     end subroutine lower_deallocate_scalar_component
 
+
+
+    integer function parse_unsigned_integer_text(text, io_stat) result(value)
+        ! Self-host-safe digit parser: decimal text to integer without an
+        ! internal READ. io_stat 0 on success, 1 on empty or stray character.
+        character(len=*), intent(in) :: text
+        integer, intent(out) :: io_stat
+        integer :: i, digit
+        value = 0
+        io_stat = 1
+        if (len(text) == 0) return
+        do i = 1, len(text)
+            digit = index('0123456789', text(i:i)) - 1
+            if (digit < 0) then
+                io_stat = 1
+                return
+            end if
+            value = value*10 + digit
+        end do
+        io_stat = 0
+    end function parse_unsigned_integer_text
 
 end submodule allocatable

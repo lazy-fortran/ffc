@@ -20602,7 +20602,10 @@ contains
         end if
         call declaration_value_kind(node, value_kind, error_msg, context, node_index)
         if (len_trim(error_msg) > 0) return
-        if (node%is_allocatable .and. value_kind /= VALUE_CHARACTER) then
+        if (node%is_allocatable) then
+            ! Allocatable scalars of every supported kind, CHARACTER included:
+            ! fixed-length allocatable characters take the deferred descriptor
+            ! ABI with their declared width recorded (#348).
             call lower_scalar_allocatable_declaration(node, context, value_kind, &
                 error_msg)
             return
