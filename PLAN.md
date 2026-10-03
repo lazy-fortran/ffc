@@ -119,11 +119,12 @@ invented results. Keep exact source/artifact identities for every new receipt.
 the earliest unblocked provider issue in the sequence below. Read-only review
 and independent fo provider slices may run in parallel; ffc feature workers
 start only after the integrated fo control layer passes its behavioral oracles
-and ffc's project adapter is verified. **Current delivery is planning/issue maintenance only. Implementation and test
-execution are stopped until a later explicit go instruction.** Earlier worker
-candidates are unintegrated evidence. Interfaces labeled proposed still require
-verified implementation before they can be claimed. The workspace master
-PLAN/AGENTS govern authorization and explicit serial/parallel mode.
+and ffc's project adapter is verified. **Current execution is authorized for the
+fo enabling stage only; ffc feature implementation remains stopped.** Gremlin
+core and work modes are published as draft fo PRs #146 and #147. Before ffc
+starts, fo must complete the event-driven capture, supervisor/JSON consolidation,
+driver-identity, CI and work-mode modularization gates in fo #148--#152. The
+workspace master PLAN/AGENTS govern authorization and explicit mode.
 
 The controller records active issue(s), dependencies, declared file/API ownership,
 worker/model capacity, source generation and targeted verifier in the fo task
