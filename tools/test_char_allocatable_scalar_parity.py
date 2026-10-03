@@ -42,6 +42,11 @@ CASES = [
  ("concat_len",      P("character(len=2), allocatable :: a\n  allocate(character(len=2) :: a)\n  a = 'ab'\n  print '(i0)', len(a//'cd')\n")),
  ("trim_empty",      P("character(len=3), allocatable :: s\n  allocate(character(len=3) :: s)\n  s = ''\n  print '(a)', '['//trim(s)//']'\n")),
  ("allocatable_func_result", P("character(len=3) :: r\n  r = mk()\n  print '(a)', r\ncontains\n  function mk()\n    character(len=3), allocatable :: mk\n    allocate(character(len=3) :: mk)\n    mk = 'fn'\n  end function\n")),
+ ("ctor_deferred",     P("character(len=:), allocatable :: c(:)\n  c = ['assem', 'mehat', 'fathy']\n  print '(a)', trim(c(1))\n  print '(a)', trim(c(3))\n  print '(i0)', len(c)\n")),
+ ("ctor_fixed",        P("character(len=2), allocatable :: a(:)\n  a = ['ab', 'cd']\n  print *, trim(a(1))\n  print *, trim(a(2))\n")),
+ ("ctor_alloc_then",   P("character(len=3), allocatable :: a(:)\n  allocate(a(3))\n  a = ['abc', 'def', 'ghi']\n  print *, trim(a(2))\n  print '(i0)', len(a)\n")),
+ ("ctor_dealloc_rec", P("character(len=:), allocatable :: c(:)\n  c = ['ab', 'cd']\n  deallocate(c)\n  c = ['ef', 'gh']\n  print *, trim(c(1))\n")),
+ ("ctor_single",       P("character(len=:), allocatable :: c(:)\n  c = ['solo']\n  print *, trim(c(1))\n  print '(i0)', len(c)\n")),
  ("len_ge",            P("character(len=3), allocatable :: s\n  allocate(character(len=3) :: s)\n  s = 'ab'\n  if (len(s) >= 3) print '(i0)', len(trim(s))\n")),
  ("realloc_after_reassign", P("character(len=2), allocatable :: s\n  allocate(character(len=2) :: s)\n  s = 'ab'\n  s = 'cd'\n  deallocate(s)\n  allocate(character(len=2) :: s)\n  s = 'ef'\n  print '(a)', trim(s)//'z'\n")),
  ("write_item_pad",  P("character(len=4), allocatable :: s\n  allocate(character(len=4) :: s)\n  s = 'ab'\n  write(*,'(a,a)') '<', trim(s)//'>'\n")),
@@ -52,6 +57,8 @@ REFUSE_CASES = [
  ("refuse_substring_fmt",    P("character(len=4), allocatable :: s\n  allocate(character(len=4) :: s)\n  s = 'abcd'\n  print '(a)', s(2:3)\n")),
  ("refuse_len_mismatch", P("character(len=2), allocatable :: s\n  allocate(character(len=3) :: s)\n  s = 'abc'\n  print '(a)', s\n")),
  ("refuse_char_array",   P("character(len=2), allocatable :: a(:)\n  allocate(character(len=2) :: a(2))\n  a = 'ab'\n  print '(a)', a(1)\n")),
+ ("refuse_ctor_mixed_width", P("character(len=:), allocatable :: c(:)\n  integer :: k\n  k = 4\n  c = ['ab', repeat('z',k)]\n  print *, trim(c(2))\n")),
+ ("refuse_ctor_nonliteral",  P("character(len=:), allocatable :: c(:)\n  character(len=2) :: t\n  t = 'ab'\n  c = [t, t]\n  print *, trim(c(1))\n")),
 ]
 
 def build_run(is_ffc, src, exe):

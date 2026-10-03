@@ -2001,8 +2001,8 @@ contains
         type(lr_operand_desc_t), allocatable :: values(:), re_values(:), im_values(:)
 
         if (context%symbols(symbol_index)%value_kind == VALUE_CHARACTER) then
-            error_msg = 'array constructor assignment to a character '// &
-                        'allocatable is not supported'
+            call lower_character_allocatable_constructor(arena, ctor, &
+                symbol_index, context, error_msg)
             return
         end if
         if (.not. allocated(ctor%element_indices)) then
@@ -4688,5 +4688,124 @@ contains
         end do
         io_stat = 0
     end function parse_unsigned_integer_text
+
+
+    subroutine lower_character_allocatable_constructor(arena, ctor, &
+                                                       symbol_index, context, &
+                                                       error_msg)
+        ! c = [lit1, lit2, ...] for a rank-1 allocatable CHARACTER target:
+        ! fold every element to literal text, take the element width as the
+        ! declared length when fixed, else the widest literal (deferred
+        ! arrays adopt the constructor's width), allocate the pointer-slot
+        ! block, and store one padded literal per slot. Non-literal elements
+        ! keep the named refusal; partial stores are never emitted.
+        use, intrinsic :: iso_c_binding, only: c_int64_t
+        type(ast_arena_t), intent(in) :: arena
+        type(array_literal_node), intent(in) :: ctor
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: folded_text, element_text
+        character(len=64) :: string_name
+        type(lr_operand_desc_t) :: descriptor, data_ptr, slot_addr, string_ptr
+        type(lr_operand_desc_t) :: extents_i64(1)
+        integer, allocatable :: flat(:)
+        character(len=256), allocatable :: texts(:)
+        logical :: ok
+        integer :: i, n, clen
+
+        call set_empty(error_msg)
+        if (.not. allocated(ctor%element_indices)) then
+            error_msg = 'character array constructor has no elements'
+            return
+        end if
+        if (context%symbols(symbol_index)%array_rank /= 1) then
+            call unsupported_feature_error('array constructor assignment', 0, 0, &
+                'character constructor assignment supports rank-1 targets only', &
+                error_msg)
+            return
+        end if
+        allocate (flat(0))
+        call flatten_constructor_elements(arena, ctor%element_indices, flat, &
+                                           error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unsupported_feature_error('array constructor assignment', &
+                ctor%line, ctor%column, trim(error_msg), error_msg)
+            return
+        end if
+        n = size(flat)
+        if (n <= 0) then
+            error_msg = 'character array constructor has no elements'
+            return
+        end if
+        allocate (texts(n))
+        clen = 0
+        do i = 1, n
+            call concat_character_literals(arena, flat(i), folded_text, ok)
+            if (.not. ok) then
+                call unsupported_feature_error('array constructor assignment', &
+                    ctor%line, ctor%column, 'character allocatable constructor '// &
+                    'supports literal elements only', error_msg)
+                return
+            end if
+            texts(i) = folded_text
+            ! Standard Fortran demands uniform element widths in a
+            ! constructor; gfortran rejects mixed widths at the constructor,
+            ! so refuse rather than silently padding to the widest.
+            if (clen == 0) then
+                clen = len(folded_text)
+            else if (len(folded_text) /= clen) then
+                call unsupported_feature_error('array constructor assignment', &
+                    ctor%line, ctor%column, 'different CHARACTER lengths in '// &
+                    'array constructor', error_msg)
+                return
+            end if
+        end do
+        if (context%symbols(symbol_index)%character_length > 0 .and. &
+            clen /= context%symbols(symbol_index)%character_length) then
+            call unsupported_feature_error('array constructor assignment', &
+                ctor%line, ctor%column, 'constructor width does not match '// &
+                'the declared length of: '// &
+                trim(context%symbols(symbol_index)%name), error_msg)
+            return
+        end if
+
+        descriptor = context%symbols(symbol_index)%allocatable_descriptor_address
+        if (.not. emit_malloc(context%session, &
+                i64_immediate(context%session, &
+                    int(n, c_int64_t)* &
+                    int(allocatable_elem_size(VALUE_CHARACTER), c_int64_t)), &
+                data_ptr, error_msg)) return
+        if (.not. emit_ptr_store(context%session, data_ptr, descriptor, &
+                                  error_msg)) return
+        extents_i64(1) = i64_immediate(context%session, int(n, c_int64_t))
+        call emit_alloc_desc_allocate_shape(context, descriptor, &
+            VALUE_CHARACTER, 1, extents_i64, error_msg)
+        if (len_trim(error_msg) > 0) then
+            call unsupported_feature_error('array constructor assignment', &
+                ctor%line, ctor%column, trim(error_msg), error_msg)
+            return
+        end if
+
+        do i = 1, n
+            element_text = texts(i)
+            call normalize_character_literal(element_text, clen)
+            context%string_literal_count = context%string_literal_count + 1
+            string_name = ffc_unit_global_name( &
+                context, 'char.', context%string_literal_count)
+            call materialize_liric_string(context%session, trim(string_name), &
+                                           element_text, string_ptr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_ptr_offset(context%session, data_ptr, &
+                    int(i - 1, c_int64_t)* &
+                    int(allocatable_elem_size(VALUE_CHARACTER), c_int64_t), &
+                    slot_addr, error_msg)) return
+            if (.not. emit_ptr_store(context%session, string_ptr, slot_addr, &
+                                      error_msg)) return
+        end do
+        context%symbols(symbol_index)%character_length = clen
+        context%symbols(symbol_index)%allocatable_static_size = n
+        call set_empty(error_msg)
+    end subroutine lower_character_allocatable_constructor
 
 end submodule allocatable

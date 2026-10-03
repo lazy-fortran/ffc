@@ -158,7 +158,6 @@ arrays_119.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as 
 arrays_12.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 arrays_120.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 arrays_123.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived values
-arrays_125.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 arrays_126.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 arrays_12_size.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 arrays_14.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
