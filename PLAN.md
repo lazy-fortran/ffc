@@ -776,8 +776,8 @@ corpus TIMEOUT (#754).
 - [ ] fo #117 formatter oracle, #119 unbounded JSON, #103 diagnostics;
       fo/format gates blocking. Closed since epoch6: fo#133
       (self-build refreshes ~/.local/bin/fo atomically, fo main
-      08:13-build push), fo#136 (\`clean --help\` prints usage,
-      verified scratch-canary rc=0), fo#137 (\`fo test <unknown>\`
+      08:13-build push), fo#136 (`clean --help` prints usage,
+      verified scratch-canary rc=0), fo#137 (`fo test <unknown>`
       exits 1 via graph+fpm-name validation; /var/tmp/ffc-goal/perf/
       fo-suite-137.log Tests: 42 passed). **Extend fo issue set with W0.2/W0.3
       work**: `clean --stale`, `FO_JOBS` runner parallelism, consolidated
