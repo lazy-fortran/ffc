@@ -690,6 +690,13 @@ corpus TIMEOUT (#754).
       falsification recorded). Remaining named gaps: array-constructor
       print items (`wide_multi`), implied-do beside other items,
       fixed-width exact-field stance, stdin implied-do unit.
+      Reshape-in-mask fold `9043ff7` (oracle
+      `tools/test_reshape_expr_parity.py` runs=20 match=20,
+      `/var/tmp/ffc-goal/perf/rsx/report.tsv`, falsification recorded)
+      closed the last example gap: fortfront corpus FAIL 3->1 at suite
+      `506 passed / 3 failed` (`/var/tmp/ffc-goal/perf/suite-rsx.log`);
+      sole remaining corpus FAIL `issue_2455_array_constructor_arg.f90`
+      is the correct-posture refusal pending #417 go-ahead.
 - [ ] Assumed-shape derived-type dummies (8 live files: no
       compile-time-size whole-array actuals required). rank-1 + rank≥2
       runtime strides landed (`ce89457`, `04a50c4`, nested-write oracle
