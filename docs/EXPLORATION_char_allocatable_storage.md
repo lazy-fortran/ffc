@@ -41,3 +41,19 @@ read_78, string_42 refuse signatures).
 - Compiler sources must not use `read(str, '(i10)')` or even
   `read(str, fmt_var)`; parse digits manually.
 - `print '(A,L1,...)'` debug prints are viable in compiler sources.
+
+## Negative results (2nd probe, same day)
+
+- Instrumenting the character.f90 existing_index branch (:611) and the
+  allocatable.f90 rank-0 char declare tail (:191) produced NO output
+  for `character(len=2), allocatable :: s`: neither handler owns this
+  declaration in the current lowering order.
+- The allocate-time guard symbol has `character_length=2,
+  is_allocatable=.false., is_deferred=.false.` and `sum`-style
+  debugging shows the slot exists before allocate.
+- Next probe should start from the generic declaration dispatcher
+  (who calls define_declared_symbol / which handler claims
+  allocatable-character scalars) with a single print at each
+  candidate owner, or dump the declaration_node attributes as seen by
+  fortfront (`is_allocatable` on the node itself was never confirmed
+  true at any instrumented site).
