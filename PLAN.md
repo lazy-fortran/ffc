@@ -4,7 +4,7 @@ Updated 2026-10-03. This is the sole execution roadmap for ffc and its
 compiler dependencies. Give an implementing agent `AGENTS.md` and this file.
 The detailed provider contract is [fo Gremlin PLAN](https://github.com/lazy-fortran/fo/blob/main/PLAN.md).
 Read the project map, active task, and verifier below first; follow the ordered
-queue using fo serial or parallel work mode and Gremlin background testing.
+queue using an external serial or parallel controller and Gremlin background testing.
 GitHub issues define individual changes; they do not define a competing roadmap.
 
 ## Goal and completion contract
@@ -121,9 +121,10 @@ and independent fo provider slices may run in parallel; ffc feature workers
 start only after the integrated fo control layer passes its behavioral oracles
 and ffc's project adapter is verified. **Current execution is authorized for the
 fo enabling stage only; ffc feature implementation remains stopped.** Gremlin
-core and work modes are published as draft fo PRs #146 and #147. Before ffc
-starts, fo must complete the event-driven capture, supervisor/JSON consolidation,
-driver-identity, CI and work-mode modularization gates in fo #148--#152. The
+core is published as draft fo PR #146. Experimental agent scheduler PR #147 is
+closed without merge. Before ffc starts, fo must complete event-driven capture,
+supervisor/JSON consolidation, driver identity, finite coverage, readiness and
+quiescence gates in fo #148--#155. The
 workspace master PLAN/AGENTS govern authorization and explicit mode.
 
 The controller records active issue(s), dependencies, declared file/API ownership,
@@ -142,11 +143,10 @@ Speed work must serve that sequence rather than postpone language support.
 | 3 | [fo #140](https://github.com/lazy-fortran/fo/issues/140): durable per-case verdict journal | Completed pass/fail survives cancellation/restart; unfinished work stays unknown. |
 | 4 | [fo #141](https://github.com/lazy-fortran/fo/issues/141): continuous latest-built-generation supervisor | Frozen inputs match artifacts; last compilable generation continues through failed builds; replacement preempts only its lane. |
 | 5 | [fo #142](https://github.com/lazy-fortran/fo/issues/142): MCP/CLI/background lifecycle parity | Autonomous progress, reconnectable run/event IDs, bounded wait-for-failure, reproduction and stop. |
-| 6 | [fo #143](https://github.com/lazy-fortran/fo/issues/143): serial/parallel worker dispatch and global capacity | Independent ready workers reach configured capacity; ownership conflicts serialize; nested build/test pools obey aggregate leases. |
-| 7 | [ffc #798](https://github.com/lazy-fortran/ffc/issues/798): ffc project adapter | Targeted dispatcher and corpus adapters use fo's engine, correct generations and identical mode policies. |
+| 6 | [ffc #798](https://github.com/lazy-fortran/ffc/issues/798): ffc project adapter | Targeted dispatcher and corpus adapters use fo's engine and correct generations. |
 
 Orders 1–3 can be independent PRs if ownership is disjoint; 4 consumes them,
-5 exposes the common engine, and 6 consumes the lifecycle. Existing [fo #119](https://github.com/lazy-fortran/fo/issues/119)
+5 exposes the common engine, and the ffc adapter consumes that lifecycle. Existing [fo #119](https://github.com/lazy-fortran/fo/issues/119)
 lossless JSON, [#130](https://github.com/lazy-fortran/fo/issues/130) visibility/log
 retention, [#134](https://github.com/lazy-fortran/fo/issues/134) timeout diagnostics,
 [#135](https://github.com/lazy-fortran/fo/issues/135) dependency freshness and
@@ -195,13 +195,9 @@ patches plus frozen receipts; they never merge or push main themselves.
   Use max reasoning effort for luna implementation workers where available and
   record runtime-resolved model/effort per task.
 
-fo's proposed `fo work --mode serial` registers the main-session editor and
-native test campaign, spawning zero coding workers. In parallel,
-`fo work --mode parallel --max-workers N` and equivalent MCP/background actions
-use configurable argv-based worker adapters. Model choice is an
-explicit configuration, not embedded credentials or a fixed provider. The fo
-engine schedules mechanical work; the controller makes semantic scope and
-integration decisions. Serial task escalation uses the GPT skill with Sol; parallel escalation uses a
+Agent dispatch, task DAGs, worktrees, model choice and integration belong to the
+external controller. fo provides build, test and Gremlin feedback only. Serial
+task escalation uses the GPT skill with Sol; parallel escalation uses a
 native Sol worker for only the repeatedly failing task. Stop the previous writer
 and transfer frozen evidence after two substantive failed repair attempts.
 Workers receive this PLAN, their exact issue/base,
@@ -241,7 +237,8 @@ regression repair instead of saturating the host with nested test pools.
 **Gremlin mode** is the project name for **continuous randomized testing**:
 continuous speculative regression testing with randomized scheduling and
 latest-version preemption. Speculation means the editor proceeds while a
-background campaign checks the last compilable snapshot; the configured work mode determines implementation worker concurrency. Random sampling selects existing tests; a distinct shuffle policy randomizes
+background campaign checks the last compilable snapshot; the external controller
+determines implementation worker concurrency. Random sampling selects existing tests; a distinct shuffle policy randomizes
 their dispatch order. Record actual starts/completions when workers run in parallel. This is not
 fuzzing unless a separate task generates or mutates inputs.
 
