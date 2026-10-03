@@ -57,3 +57,18 @@ read_78, string_42 refuse signatures).
   candidate owner, or dump the declaration_node attributes as seen by
   fortfront (`is_allocatable` on the node itself was never confirmed
   true at any instrumented site).
+
+## RESOLVED (same day, 57135ef)
+
+Owner found: `lower_declaration_entities` @ session_program_lowering
+.f90:20605 routed allocatable non-CHARACTER scalars to
+`lower_scalar_allocatable_declaration` and excluded CHARACTER; allocatable
+CHARACTER fell into `define_character_symbol` (static slot). Fix:
+route allocatable+non-dummy CHARACTER there too; new
+`declare_character_allocatable` mints/upgrades the deferred descriptor
+(idempotent via `upgrade_existing_deferred_character_symbol` for
+pre-created slots: function results, module hosts), records the
+declared width, sets is_allocatable. INTENT-carrying dummies keep the
+caller-binding paths. Length-mismatch in type-spec allocate refused via
+self-host-safe digit parser. string_42 + allocatable-function results
+byte-exact; oracle runs=22 match=22 + 3 pinned refusals.
