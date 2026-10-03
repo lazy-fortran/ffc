@@ -27,7 +27,6 @@ allocate_18.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable arrays 
 allocate_19.f90 # owner=lazy-fortran/ffc#337; reason=provide descriptor-backed runtime allocation helpers
 allocate_20.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 allocate_21.f90 # owner=lazy-fortran/ffc#337; reason=provide descriptor-backed runtime allocation helpers
-allocate_22.f90 # owner=lazy-fortran/ffc#337; reason=provide descriptor-backed runtime allocation helpers
 allocate_24.f90 # owner=lazy-fortran/ffc#337; reason=provide descriptor-backed runtime allocation helpers
 allocate_26.f90 # owner=lazy-fortran/ffc#337; reason=provide descriptor-backed runtime allocation helpers
 allocate_27.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable arrays to descriptors
@@ -75,7 +74,6 @@ array_02_pack.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE a
 array_02_transfer.f90 # owner=lazy-fortran/ffc#435; reason=lower sized and array-valued TRANSFER
 array_03.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape arrays by descriptor
 array_03_pack.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
-array_04_all.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 array_04_pack.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 array_04_transfer.f90 # owner=lazy-fortran/ffc#435; reason=lower sized and array-valued TRANSFER
 array_05_transfer.f90 # owner=lazy-fortran/ffc#337; reason=reallocate allocatables from runtime expressions
@@ -141,10 +139,7 @@ array_slice_02.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape array
 array_slice_04.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 array_unbounded_02.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 arrays_01_complex.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
-arrays_01_logical.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 arrays_03_size.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
-arrays_04_func.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
-arrays_04_func_pass_arr_dims.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 arrays_04_size.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 arrays_06.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 arrays_07.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
@@ -225,7 +220,6 @@ arrays_85.f90 # owner=lazy-fortran/ffc#337; reason=migrate runtime automatic arr
 arrays_86.f90 # owner=lazy-fortran/ffc#337; reason=migrate runtime automatic arrays to descriptors
 arrays_87.f90 # owner=lazy-fortran/ffc#337; reason=reallocate allocatables from runtime expressions
 arrays_88.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape arrays by descriptor
-arrays_89.f90 # owner=lazy-fortran/ffc#453; reason=lower descriptor-backed RESHAPE
 arrays_91.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 arrays_92.f90 # owner=lazy-fortran/ffc#337; reason=migrate runtime automatic arrays to descriptors
 arrays_94.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
@@ -521,7 +515,6 @@ class_13.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar derived val
 class_130.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
 class_131.f90 # owner=lazy-fortran/ffc#422; reason=track runtime type identity for class scalars
 class_132.f90 # owner=lazy-fortran/ffc#422; reason=track runtime type identity for class scalars
-class_133.f90 # owner=lazy-fortran/ffc#422; reason=pass and allocate polymorphic arrays
 class_134.f90 # owner=lazy-fortran/ffc#422; reason=track runtime type identity for class scalars
 class_135.f90 # owner=lazy-fortran/ffc#458; reason=migrate core array declarations
 class_137.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
@@ -688,10 +681,8 @@ custom_operator_15.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar d
 custom_operator_16.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 custom_operator_17.f90 # owner=lazy-fortran/ffc#422; reason=track runtime type identity for class scalars
 custom_operator_18.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape arrays by descriptor
-custom_unary_operator_01.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 custom_unary_operator_02.f90 # owner=lazy-fortran/ffc#422; reason=deduplicate derived array declaration collection
 cycle_and_exit1.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
-cycle_and_exit2.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 cycle_and_exit3.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 cycle_and_exit4.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 dabs_01.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
@@ -873,7 +864,6 @@ do_loop_08.f90 # owner=lazy-fortran/ffc#348; reason=lower allocatable character 
 do_loop_09.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 doloop_04.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 doloop_13.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
-doloop_18.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 doloop_19.f90 # owner=lazy-fortran/ffc#455; reason=lower structured branch targets
 elemental_01.f90 # owner=lazy-fortran/ffc#540; reason=fold typed scalar and array named constants
 elemental_02.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
@@ -1085,7 +1075,6 @@ format_18.f90 # scope=coarray; reason=excluded coarray or image-control semantic
 format_19.f90 # owner=lazy-fortran/ffc#628; reason=implement internal E and X formatting
 format_20.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 format_21.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
-format_22.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
 format_23.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
 format_24.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
 format_25.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
@@ -1171,7 +1160,6 @@ func_call_in_decl_01.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shape
 functions_03.f90 # owner=lazy-fortran/ffc#540; reason=fold typed scalar and array named constants
 functions_06.f90 # owner=lazy-fortran/ffc#584; reason=resolve specification expressions by binding identity
 functions_09.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
-functions_13.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 functions_15.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 functions_16.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 functions_18.f90 # owner=lazy-fortran/ffc#337; reason=migrate runtime automatic arrays to descriptors
@@ -1237,7 +1225,6 @@ gpu_metal_118.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_119.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_120.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_121.f90 # scope=GPU; reason=excluded GPU or device-backend case
-gpu_metal_122.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_124.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_127.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_128.f90 # scope=GPU; reason=excluded GPU or device-backend case
@@ -1269,7 +1256,6 @@ gpu_metal_168.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_170.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_171.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_172.f90 # scope=GPU; reason=excluded GPU or device-backend case
-gpu_metal_174.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_175.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_176.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_177.f90 # scope=GPU; reason=excluded GPU or device-backend case
@@ -1285,7 +1271,6 @@ gpu_metal_191.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_192.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_193.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_194.f90 # scope=GPU; reason=excluded GPU or device-backend case
-gpu_metal_195.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_26.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_27.f90 # scope=GPU; reason=excluded GPU or device-backend case
 gpu_metal_33.f90 # scope=GPU; reason=excluded GPU or device-backend case
@@ -1335,9 +1320,6 @@ implicit_interface_15b.f90 # owner=lazy-fortran/ffc#337; reason=migrate runtime 
 implicit_interface_16.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 implicit_interface_17.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 implicit_interface_19.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
-implicit_interface_23.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
-implicit_interface_25.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
-implicit_interface_26.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 implicit_interface_27.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 implicit_interface_28.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 implicit_interface_29.f90 # owner=lazy-fortran/ffc#628; reason=select and load the matching runtime archive
@@ -1348,7 +1330,6 @@ implicit_interface_32.f90 # owner=lazy-fortran/ffc#458; reason=migrate core arra
 implicit_interface_34.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 implicit_interface_35.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 implicit_interface_36.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
-implicit_interface_37.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 implicit_interface_38.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 implicit_interface_40.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 implicit_interface_41.f90 # owner=lazy-fortran/ffc#584; reason=resolve specification expressions by binding identity
@@ -1378,9 +1359,7 @@ implied_do_loops26.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed sca
 implied_do_loops27.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 implied_do_loops28.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 implied_do_loops29.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-implied_do_loops3.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 implied_do_loops30.f90 # owner=lazy-fortran/ffc#584; reason=resolve specification expressions by binding identity
-implied_do_loops31.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
 implied_do_loops32.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
 implied_do_loops33.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 implied_do_loops34.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
@@ -1426,7 +1405,6 @@ intent_02.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expre
 intent_03.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 intent_out_allocatable_component_dealloc.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable arrays to descriptors
 intent_out_allocatable_struct_with_components.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable arrays to descriptors
-intent_out_array_01.f90 # owner=lazy-fortran/ffc#422; reason=deduplicate derived array declaration collection
 intent_out_array_of_struct_dealloc.f90 # owner=lazy-fortran/ffc#422; reason=deduplicate derived array declaration collection
 intent_out_finalize_01.f90 # owner=lazy-fortran/ffc#422; reason=invoke scalar final procedures once
 intent_out_finalize_02.f90 # owner=lazy-fortran/ffc#422; reason=invoke scalar final procedures once
@@ -1537,7 +1515,6 @@ intrinsics_176.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar p
 intrinsics_177.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 intrinsics_178.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 intrinsics_179.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
-intrinsics_180.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 intrinsics_181.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 intrinsics_182.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 intrinsics_183.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
@@ -1713,7 +1690,6 @@ intrinsics_350.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE 
 intrinsics_351.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 intrinsics_352.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 intrinsics_353.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-intrinsics_354.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 intrinsics_355.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 intrinsics_356.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 intrinsics_357.f90 # owner=lazy-fortran/ffc#584; reason=resolve specification expressions by binding identity
@@ -1770,7 +1746,6 @@ intrinsics_409.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and
 intrinsics_411.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 intrinsics_412.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 intrinsics_414.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-intrinsics_415.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 intrinsics_416.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 intrinsics_417.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic calls
 intrinsics_418.f90 # owner=lazy-fortran/ffc#337; reason=reallocate allocatables from runtime expressions
@@ -1807,7 +1782,6 @@ intrinsics_450.f90 # owner=lazy-fortran/ffc#449; reason=lower plain scalar deriv
 intrinsics_451.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
 intrinsics_452.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 intrinsics_453.f90 # owner=lazy-fortran/ffc#422; reason=deduplicate derived array declaration collection
-intrinsics_454.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 intrinsics_456.f90 # owner=lazy-fortran/ffc#337; reason=migrate allocatable arrays to descriptors
 intrinsics_459.f90 # owner=lazy-fortran/ffc#337; reason=migrate runtime automatic arrays to descriptors
 intrinsics_46.f90 # owner=lazy-fortran/ffc#584; reason=resolve specification expressions by binding identity
@@ -1894,7 +1868,6 @@ legacy_array_sections_21.f90 # owner=lazy-fortran/ffc#584; reason=resolve specif
 lfortran_intrinsic_sin.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 line_continuation_02.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 line_continuation_03.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-line_continuation_04.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 line_continuation_05.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 list_directed_stdin_eof_01.f90 # owner=lazy-fortran/ffc#628; reason=return stable IOSTAT and IOMSG values
 list_of_lists_test.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
@@ -2126,7 +2099,6 @@ parameter_05.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar ex
 parameter_06.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 parameter_08.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 parameter_09.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
-parameter_10.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 parameter_11.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 parameter_12.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 parameter_13.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
@@ -2142,7 +2114,6 @@ pass_array_by_data_14.f90 # owner=lazy-fortran/ffc#337; reason=pass assumed-shap
 pass_array_by_data_extname_01.f90 # owner=lazy-fortran/ffc#337; reason=centralize array element-expression lowering
 passing_array_01.f90 # owner=lazy-fortran/ffc#584; reason=resolve specification expressions by binding identity
 passing_array_02.f90 # owner=lazy-fortran/ffc#584; reason=resolve specification expressions by binding identity
-passing_array_04.f90 # owner=lazy-fortran/ffc#584; reason=resolve specification expressions by binding identity
 passing_array_05.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 pdt_01.f90 # owner=lazy-fortran/ffc#581; reason=diagnose unsupported numeric kinds without narrowing
 pdt_02.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
@@ -2184,7 +2155,6 @@ present_02.f90 # owner=lazy-fortran/ffc#453; reason=centralize scalar intrinsic 
 present_03.f90 # owner=lazy-fortran/ffc#540; reason=lower scalar data-pointer association
 present_04.f90 # owner=lazy-fortran/ffc#584; reason=register resolved declarations once
 present_05.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
-present_06.f90 # owner=lazy-fortran/ffc#579; reason=lower same-unit scalar procedure calls
 present_08.f90 # owner=lazy-fortran/ffc#337; reason=migrate pointer arrays to descriptors
 print_02.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
 print_04.f90 # owner=lazy-fortran/ffc#628; reason=move scalar formatted output behind runtime calls
@@ -2582,7 +2552,6 @@ string_08.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length cha
 string_100.f90 # owner=lazy-fortran/ffc#453; reason=lower PACK UNPACK MERGE and SPREAD
 string_101.f90 # owner=lazy-fortran/ffc#348; reason=centralize runtime-length character operations
 string_102.f90 # owner=lazy-fortran/ffc#348; reason=migrate character arrays to contiguous descriptors
-string_103.f90 # owner=lazy-fortran/ffc#337; reason=represent array sections as descriptor views
 string_104.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering
 string_105.f90 # owner=lazy-fortran/ffc#337; reason=provide descriptor-backed runtime allocation helpers
 string_106.f90 # owner=lazy-fortran/ffc#540; reason=centralize typed scalar expression lowering

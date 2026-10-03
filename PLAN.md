@@ -727,13 +727,24 @@ corpus TIMEOUT (#754).
       `docs/F2023_DELTA.md`; 45 producer/consumer issues remain tracked.
       `uint`, ASYNC=, DEPENDENCY and Synthesis projections are outside F2023.
       Until then "F2023 compliant" is undefined.
-- [ ] One locked four-suite provenance epoch (ffc+fortfront+corpora+
+- [x] One locked four-suite provenance epoch (ffc+fortfront+corpora+
       toolchain digests), then regenerate `parity_dashboard.tsv`
+      LOCKED epoch `epoch rc=0` at ffc `e98a404`:
+      `/var/tmp/ffc-goal/epoch/conformance_epoch.json`
+      sha256:16 `2869698d9ef7d2af`; fortfront-f90 377P/1F/269S/647,
+      fortfront-lf 220P/47X/0F/267, lfortran 1303P/2554X/31XPASS/
+      535F/774S/5197, gfortran-dg 1547P/1998X/12XPASS/139F/2321S/6017
+      (`/var/tmp/ffc-goal/epoch/chain.status`); provenance_verified=true
+      all four.
       (corpora now present: lfortran 4356, dg 5938; dashboard pin
       `0639933` predates history re-root — stale by construction).
       Schedule AFTER W0.2 parallel runner so it costs minutes.
-- [ ] #540 manifest-owner refresh; #532 XPASS reclassification from the
+- [x] #540 manifest-owner refresh; #532 XPASS reclassification from the
       epoch, never by row deletion.
+      #540: `scripts/audit_manifest_owners.sh` PASS 27 open owners.
+      #532: 43 promoted XPASS rows converted (31 lfortran + 12 dg,
+      lists `/var/tmp/ffc-goal/xpass_{lfortran,dg}_epoch.txt`);
+      #337-tagged rows converted 511->509 and 324->322.
 - [ ] Rebaseline/retire umbrella trackers #576/#609 with live signatures.
 - [ ] #478 load-dependent timeout case; #531 benchmark baseline record;
       #649 flake closure after epoch. (Corpus TIMEOUT #754 disappears
