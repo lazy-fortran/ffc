@@ -936,7 +936,7 @@ emitted the old message before running the suite.
 | target | result | evidence |
 |---|---|---|
 | `ffc/build` < 2 GB | **MET — 147 MB (0.137 GiB) cold**, 13× under target. The 1.7–2.0 GB figures quoted earlier were a long-lived tree's accumulated cruft (1045 MiB regenerable test binaries in `build/fo/bin`, 814 MiB in `build/fo/lib`), not the build | `logs/cold-build-w43.log`; wiped + rebuilt cold, `du -sh` = 147234816 B |
-| rebuild after single-domain edit < 60 s | **MET** (12 s edit-rebuild; 33 s cold lib) | W0.1 table in `perf/w0_slice_evidence.md` |
+| rebuild after single-domain edit < 60 s | **MET** (12 s edit-rebuild; 33 s cold lib; recaptured 18.1 s at ffc f2b598d) | W0.1 table in `perf/w0_slice_evidence.md`; `/var/tmp/ffc-goal/perf/editrebuild-w0-abs.log` |
 | rejection gate < 90 s | **MET 34.25 s**, 705 accepted / 213 rejected, **0 newly rejected** | `perf/gate-full-w38.log`, `perf/gate-w38.tsv` |
 | every old test name runnable + by name | **MET** 500 names, fail-name set identical | `perf/suite-w38.txt` vs `e339_base_failnames.txt` |
 | suite wall < 120 s | **NOT MET** (235–246 s) — proven bounded; **user waived: "we are fast enough"** | `perf/suite-w39-warm.txt` (warm 235 vs cold 244 ⇒ rebuild worth ~9 s); floor = one 145.12 s test in `suite-w37.results` |
