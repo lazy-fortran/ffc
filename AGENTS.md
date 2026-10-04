@@ -2,9 +2,12 @@
 
 ## Destination and first reads
 
-Current delivery is planning/issue maintenance only; do not execute implementation
-or tests until a later explicit user instruction. Read the workspace master
-PLAN.md/AGENTS.md when available; the repository plan is independently readable.
+Implementation and focused verification are authorized under the workspace
+master plan. Queue ffc compiler feature work behind the fo enabling stage and
+the ffc project adapter in PLAN.md. Once those dependencies pass, take the
+earliest unblocked ffc roadmap item without waiting for another permission
+request. Read the workspace master PLAN.md/AGENTS.md when available; the
+repository plan is independently readable.
 
 Make ffc compile, link and correctly execute all modern standard Fortran through
 Fortran 2023, including ISO parallel facilities. Read [PLAN.md](PLAN.md) for the
