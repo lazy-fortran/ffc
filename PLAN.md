@@ -115,17 +115,17 @@ invented results. Keep exact source/artifact identities for every new receipt.
 
 ## Active task and work selection
 
-**Deliver the fo enabling stage before any further compiler work.** First take
-the earliest unblocked provider issue in the sequence below. Read-only review
-and independent fo provider slices may run in parallel; ffc feature workers
-start only after the integrated fo control layer passes its behavioral oracles
-and ffc's project adapter is verified. **Current execution is authorized for the
-fo enabling stage only; ffc feature implementation remains stopped.** Gremlin
-core is published as draft fo PR #146. Experimental agent scheduler PR #147 is
-closed without merge. Before ffc starts, fo must complete event-driven capture,
+**Deliver the fo enabling stage before compiler feature work.** First take the
+earliest unblocked provider issue in the sequence below. Read-only review and
+independent fo provider slices may run in parallel. Queue ffc feature work until
+the integrated fo control layer passes its behavioral oracles and ffc's project
+adapter is verified; then take the earliest unblocked modern-Fortran substrate
+slice without another permission request. The fo Gremlin discussion PR #146 is
+merged. Experimental agent scheduler PR #147 was abandoned and closed without
+merge. Before ffc feature work starts, fo must complete event-driven capture,
 supervisor/JSON consolidation, driver identity, finite coverage, readiness and
-quiescence gates in fo #148--#155. The
-workspace master PLAN/AGENTS govern authorization and explicit mode.
+quiescence gates in fo #148--#155. The workspace master PLAN/AGENTS govern
+execution order and mode.
 
 The controller records active issue(s), dependencies, declared file/API ownership,
 worker/model capacity, source generation and targeted verifier in the fo task
