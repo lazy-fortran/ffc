@@ -115,26 +115,41 @@ invented results. Keep exact source/artifact identities for every new receipt.
 
 ## Active task and work selection
 
-**Deliver the fo enabling stage before compiler feature work.** First take the
-earliest unblocked provider issue in the sequence below. Read-only review and
-independent fo provider slices may run in parallel. Queue ffc feature work until
-the integrated fo control layer passes its behavioral oracles and ffc's project
-adapter is verified; then take the earliest unblocked modern-Fortran substrate
-slice without another permission request. The fo Gremlin discussion PR #146 is
-merged. Experimental agent scheduler PR #147 was abandoned and closed without
-merge. Before ffc feature work starts, fo must complete event-driven capture,
-supervisor/JSON consolidation, driver identity, finite coverage, readiness and
-quiescence gates in fo #148--#155. The workspace master PLAN/AGENTS govern
-execution order and mode.
+**Execution order:** (1) make resident Fo Gremlin usable with named focused
+gates, build the exact candidate B, and verify its actual public behavior before
+adopting it; (2) use dogfooding to remove measured Fo cruft, duplication, dead
+code, metadata tests and stale docs; (3) deliver the Fo capabilities required
+for FFC's FPM-only Gremlin route under [Fo #200](https://github.com/lazy-fortran/fo/issues/200);
+(4) reproduce and repair the three current FFC failures; (5) implement
+standalone Fo-native FPM semantics, using a generic TOML library if useful but
+no imported FPM-specific modules; and (6) implement native CMake/CTest support
+for the required ITpPlasma profiles. Do not make full Fo architecture/store/test
+migration, CI, or benchmarks prerequisites for dogfooding or the FPM-only FFC
+route. Fo's focused provider targets identify named scope, not complete impact
+or proof of public candidate-B behavior.
+
+After the FPM-only route and its public gates pass, reproduce and repair the
+three current FFC failures to battle-test the integration. Then take the earliest
+unblocked compiler substrate slice. Read-only review and independent Fo source
+slices may continue in parallel. The Fo Gremlin discussion PR #146 is merged.
+Experimental agent scheduler PR #147 was abandoned and closed without merge.
+The workspace master PLAN/AGENTS govern execution mode; this paragraph orders
+the Fo-to-FFC handoff without replacing the full compiler roadmap.
 
 The controller records active issue(s), dependencies, declared file/API ownership,
 worker/model capacity, source generation and targeted verifier in the fo task
-state. The authoritative next-stage order lives here. Stop creating alternative
-backlogs. After enabling, reproduce the six known checks, fix confirmed current
-regressions, then take the earliest unblocked modern-Fortran substrate slice.
-Speed work must serve that sequence rather than postpone language support.
+state. The authoritative compiler roadmap remains below; the six failures in
+the dated checkpoint are historical evidence, while the three current failures
+are the immediate FFC repair target. Speed work must serve this sequence rather
+than postpone language support.
 
-### fo enabling stage
+### Earlier Fo provider issue map (reference, not an FFC gate)
+
+These provider issues describe the earlier shared-engine plan. Their open
+acceptance remains useful when a current Fo task needs it, but completing this
+entire table is not a prerequisite for the FPM-only FFC route or compiler work.
+Use the execution order above and Fo's current plan/issue state for active
+priorities.
 
 | Order | Atomic provider task | Observable acceptance |
 | --- | --- | --- |
@@ -145,8 +160,8 @@ Speed work must serve that sequence rather than postpone language support.
 | 5 | [fo #142](https://github.com/lazy-fortran/fo/issues/142): MCP/CLI/background lifecycle parity | Autonomous progress, reconnectable run/event IDs, bounded wait-for-failure, reproduction and stop. |
 | 6 | [ffc #798](https://github.com/lazy-fortran/ffc/issues/798): ffc project adapter | Targeted dispatcher and corpus adapters use fo's engine and correct generations. |
 
-Orders 1–3 can be independent PRs if ownership is disjoint; 4 consumes them,
-5 exposes the common engine, and the ffc adapter consumes that lifecycle. Existing [fo #119](https://github.com/lazy-fortran/fo/issues/119)
+In this earlier map, orders 1–3 were independent provider slices; later rows
+consume those foundations. Existing [fo #119](https://github.com/lazy-fortran/fo/issues/119)
 lossless JSON, [#130](https://github.com/lazy-fortran/fo/issues/130) visibility/log
 retention, [#134](https://github.com/lazy-fortran/fo/issues/134) timeout diagnostics,
 [#135](https://github.com/lazy-fortran/fo/issues/135) dependency freshness and
@@ -155,6 +170,9 @@ dispatcher identity are prerequisites wherever a reproduced defect blocks these
 acceptance cases. Verify existing fixes before closing them; do not duplicate
 their obligations in another subsystem. Pure global output/configuration changes
 are assigned before workers depending on their contract, never raced against them.
+
+The following CLI and primitive notes belong to the earlier provider map; use
+Fo #200 and current Fo public help for active scope and implemented behavior.
 
 The current fo CLI already provides `fo test --random N --seed S`,
 `--only-changed`, `FO_JOBS`, caches and project locks. Its MCP has async check
@@ -426,8 +444,10 @@ an unreliable driver. Required corpora must exist and have nonempty inventories.
 
 ## Ordered compiler roadmap
 
-Complete the fo enabling stage first. Then follow the phases below; independent
-ready slices may run in parallel in disjoint worktrees. Respect provider/consumer
+After the Fo resident/FPM-only route passes its named focused checks and actual
+candidate-B public behavior—including Fo #200—reproduce and repair the three
+current FFC failures. Then follow the phases below; independent ready slices may
+run in parallel in disjoint worktrees. Respect provider/consumer
 and ABI dependencies rather than treating every open issue as simultaneously
 ready. Every phase ends with updated contracts, owned issue dispositions and a
 current integrated-generation test campaign; full final verification runs on a
@@ -655,9 +675,11 @@ Use isolated `/var/tmp` scratch and explicit frozen artifact paths. Verify both
 positive acceptance and invalid-program rejection, compare names/signatures
 rather than only counts, and classify missing or empty corpora as unavailable
 coverage. The descriptor guard and context ceiling are architecture verifiers,
-not substitutes for behavioral oracles. Run the normal bare `fo` delivery
-pipeline and report baseline findings precisely; fix fo workflow defects first,
-using the CLI if attached MCP is stale. Do not route around the driver.
+not substitutes for behavioral oracles. Use current Fo public commands and
+report baseline findings precisely; fix fo workflow defects first, using the
+CLI if attached MCP is stale. Bare `fo` resident start/attach and the legacy
+pipeline under `fo verify` are planned transitions, not current command claims.
+Do not route around the driver.
 
 For a final comprehensive epoch, use one clean fixed ffc/dependency bundle and
 all four nonempty pinned suites, then lock and generate the dashboard. Run the
