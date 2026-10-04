@@ -119,8 +119,9 @@ invented results. Keep exact source/artifact identities for every new receipt.
 gates, build the exact candidate B, and verify its actual public behavior before
 adopting it; (2) use dogfooding to remove measured Fo cruft, duplication, dead
 code, metadata tests and stale docs; (3) deliver the Fo capabilities required
-for FFC's FPM-only Gremlin route under [Fo #200](https://github.com/lazy-fortran/fo/issues/200);
-(4) reproduce and repair the three current FFC failures; (5) implement
+for FFC's FPM-only Gremlin route, after the Fo lane in
+[Fo #200](https://github.com/lazy-fortran/fo/issues/200);
+(4) reproduce and repair up to three confirmed current FFC failures; (5) implement
 standalone Fo-native FPM semantics, using a generic TOML library if useful but
 no imported FPM-specific modules; and (6) implement native CMake/CTest support
 for the required ITpPlasma profiles. Do not make full Fo architecture/store/test
@@ -129,7 +130,7 @@ route. Fo's focused provider targets identify named scope, not complete impact
 or proof of public candidate-B behavior.
 
 After the FPM-only route and its public gates pass, reproduce and repair the
-three current FFC failures to battle-test the integration. Then take the earliest
+selected current FFC failures to battle-test the integration. Then take the earliest
 unblocked compiler substrate slice. Read-only review and independent Fo source
 slices may continue in parallel. The Fo Gremlin discussion PR #146 is merged.
 Experimental agent scheduler PR #147 was abandoned and closed without merge.
@@ -139,8 +140,9 @@ the Fo-to-FFC handoff without replacing the full compiler roadmap.
 The controller records active issue(s), dependencies, declared file/API ownership,
 worker/model capacity, source generation and targeted verifier in the fo task
 state. The authoritative compiler roadmap remains below; the six failures in
-the dated checkpoint are historical evidence, while the three current failures
-are the immediate FFC repair target. Speed work must serve this sequence rather
+the dated checkpoint are historical evidence; reproduce the two CLASS(*)
+assumed-shape cases first, then PDT inheritance. Already-fixed cases give way
+to the next confirmed failure. Speed work must serve this sequence rather
 than postpone language support.
 
 ### Earlier Fo provider issue map (reference, not an FFC gate)
@@ -446,7 +448,7 @@ an unreliable driver. Required corpora must exist and have nonempty inventories.
 
 After the Fo resident/FPM-only route passes its named focused checks and actual
 candidate-B public behavior—including Fo #200—reproduce and repair the three
-current FFC failures. Then follow the phases below; independent ready slices may
+confirmed current FFC failures. Then follow the phases below; independent ready slices may
 run in parallel in disjoint worktrees. Respect provider/consumer
 and ABI dependencies rather than treating every open issue as simultaneously
 ready. Every phase ends with updated contracts, owned issue dispositions and a
