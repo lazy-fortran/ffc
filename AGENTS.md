@@ -1,19 +1,28 @@
 # ffc agent rules
 
+## Goals and architectural freedom
+
+Issues specify desired behavior, indispensable contracts and independent
+acceptance evidence. Make architectural decisions as soon as required and as
+late as possible. Implementing agents may simplify or replace internal designs;
+[shared principles](https://github.com/lazy-fortran/fo/blob/main/doc/GOAL_DRIVEN_DEVELOPMENT.md)
+apply. Substantially reduce maintained code through
+[Fo #205](https://github.com/lazy-fortran/fo/issues/205), without moving complexity
+between dependencies or weakening language support and useful oracles.
+
 ## Destination and first reads
 
 Implementation and focused verification are authorized under the workspace
-master plan. Queue ffc compiler feature work behind the fo enabling stage and
-the ffc project adapter in PLAN.md. Once those dependencies pass, take the
-earliest unblocked ffc roadmap item without waiting for another permission
-request. Read the workspace master PLAN.md/AGENTS.md when available; the
+master plan. Start the FFC pilot once its actual Fo/dispatcher blockers pass. The entire
+Fo feature or cleanup backlog is not a prerequisite. Take the earliest unblocked
+FFC goal without waiting for another permission request. Read the workspace master PLAN.md/AGENTS.md when available; the
 repository plan is independently readable.
 
 Make ffc compile, link and correctly execute all modern standard Fortran through
 Fortran 2023, including ISO parallel facilities. Read [PLAN.md](PLAN.md) for the
 project map, active stage, issue order and verifier. It is the only ffc roadmap.
 Read the [fo Gremlin plan](https://github.com/lazy-fortran/fo/blob/main/PLAN.md)
-for the provider engine. Complete its enabling stage before ffc semantic work.
+for the provider engine. Repair only actual consumer blockers before the pilot.
 Load affected contract/reference documents when their feature/ABI trigger fires.
 
 ## Gremlin mode and work ownership
@@ -61,14 +70,14 @@ and pinned receipts and valuable uncommitted work. Scratch lives under /var/tmp.
 Source → backend-neutral FortFront typed queries → ffc lowering/runtime ABI →
 LIRIC session C API through ISO_C_BINDING → object/executable. ffc owns Fortran
 semantics below the frontend boundary; LIRIC owns native backend emission.
-Keep clients on the two-procedure session_program_lowering facade and explicit
-module/submodule interfaces. Binding identity, not spelling, owns symbol lookup.
+Preserve supported public lowering and module/submodule behavior; internal
+facades and organization may evolve when required. Binding identity, not spelling, owns symbol lookup.
 No private FortFront-arena workaround, LLVM/MLIR/HLFIR revival or text-IR path.
 
 `app/` owns the CLI; `src/` the library; `test/` original named behavioral cases
 and their shared dispatcher. Keep fpm.toml library source at src/. fo derives
-SUBMODULE ancestry from source, never filename order/shims. Production .inc
-retirement is complete; preserve zero includes and the lowering-context ceiling.
+SUBMODULE ancestry from source, never filename order/shims. Avoid reintroducing duplicated implementation or source-order workarounds;
+internal representations remain open when independent correctness is preserved.
 
 ```bash
 export LIBRARY_PATH="$PWD/../liric/build"
@@ -84,8 +93,8 @@ direct fallback commands are only for diagnosing/fixing a broken fo workflow.
 ## Code, tests and contracts
 
 - Compiler sources use explicit typing, scope-top declarations, snake_case and
-  derived types ending in _t. Keep modules below 500 lines where practical (hard
-  cap 1000), procedures below 50 (hard cap 100); split cohesive services.
+  derived types ending in _t. Keep responsibilities cohesive and code readable;
+  arbitrary file/procedure limits are not architectural goals.
 - Fortran .and./.or. do not short-circuit. Split any guard protecting allocation,
   indexing, association or optional arguments into separate statements.
 - Add a source-level behavioral case, then run
@@ -97,8 +106,8 @@ direct fallback commands are only for diagnosing/fixing a broken fo workflow.
 - Update SUPPORT_CONTRACT and affected runtime/descriptor ABI docs with the
   semantic change. Native public LIRIC APIs are the default; missing provider
   contracts get atomic issues in the owning repository.
-- Run focused checks then the normal fo delivery pipeline; report existing
-  failures precisely. Inspect already completed regression receipts before
+- Run focused affected/reproducer checks and report current failures precisely.
+  Broad verification continues independently; never wait for CI while work remains. Inspect already completed regression receipts before
   promotion. Full exact-version suites/epochs are milestone/release gates.
 
 ## Communication and delivery
