@@ -161,6 +161,20 @@ conformance-test input closure defects, all repaired; no compiler defect or Fo
 Gremlin implementation defect has been confirmed. Continue bounded discovery;
 this is not full-suite verification.
 
+The next post-plan candidate used FFC base
+`27b84f4f6463f1a841022ac8b344752de92b71f8` plus the preserved character-prefix
+worktree patch SHA256
+`fe8ded3da0aedbb526135601778b194e8fa5b3aeaefb0997d89deb20b8de4218`. Pinned
+Fo driver SHA256
+`4db8ba18608c0375506cc5e10c3d14fa98fcd28e812b44f508dfc4e7c0547fa2` built
+generation `9012fa1f5b1cef4dd7c3c0ef19ff44e3311b3b1596ed60dd422805e47a8bdbbd`.
+Session `909369-1791230353-163739632` passed the five required cases and 36
+additional distinct cases: 41/41 test receipts passed, zero failed, and one
+in-flight case was cancelled on cooperative stop. The 509-case inventory has
+468 unknown cases remaining. This is a separate generation from the prior
+43-case sample; do not combine generation receipts into a full-suite claim.
+Continue bounded discovery on the promoted code.
+
 The historical 2026-10-02 maintained observation was 502 PASS/6 FAIL/508 names
 and a 919-file rejection gate with zero new rejections. These are exact old
 observations, not current complete green. Reproduce historical failures on the
