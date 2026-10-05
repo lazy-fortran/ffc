@@ -588,6 +588,10 @@ path = "scripts/conformance_gauntlet.sh"
 role = "test-fixture"
 
 [[extra.fo.inputs]]
+path = "scripts/compare_conformance_reports.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
 path = "scripts/classify_conformance_observations.sh"
 role = "test-fixture"
 

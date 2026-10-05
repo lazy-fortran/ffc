@@ -15,12 +15,14 @@ subroutine case_test_conformance_report_worktree()
     ! against a report from worktree B. The runner therefore records the
     ! worktree that produced a report, and the comparison tool refuses any
     ! cross-worktree pair instead of reporting a meaningless delta.
-    use conformance_temp_dir, only: make_temp_root, remove_temp_root
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root, &
+        write_report_test_corpus
     implicit none
     save
 
     character(len=*), parameter :: GAUNTLET = 'scripts/conformance_gauntlet.sh'
     character(len=*), parameter :: COMPARE = 'scripts/compare_conformance_reports.sh'
+    character(len=*), parameter :: CASE_FILE = 'ffc_report_worktree.f90'
     character(len=:), allocatable :: root, report, base, cand
     logical :: all_passed
 
@@ -31,10 +33,11 @@ subroutine case_test_conformance_report_worktree()
     base = root//'/base.jsonl'
     cand = root//'/cand.jsonl'
     all_passed = .true.
+    call write_report_test_corpus(root//'/fortfront')
 
     ! The runner records the absolute path of the checkout it ran from.
-    call check('timeout 300 bash '//GAUNTLET// &
-        ' --suite fortfront-f90 --file ast_coverage_control_flow.f90'// &
+    call check('FFC_FORTFRONT_DIR='//root//'/fortfront timeout 300 bash '// &
+        GAUNTLET//' --suite fortfront-f90 --file '//CASE_FILE// &
         ' --report '//report//' >/dev/null 2>&1', 0, &
         'gauntlet single-file run', all_passed)
     call check('grep -q ''"status":"SUMMARY"'' '//report// &

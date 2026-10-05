@@ -14,7 +14,7 @@ module conformance_temp_dir
     ! the atomic uniqueness guarantee: a name can only be claimed once.
     implicit none
     private
-    public :: make_temp_root, remove_temp_root
+    public :: make_temp_root, remove_temp_root, write_report_test_corpus
 
 contains
 
@@ -44,6 +44,37 @@ contains
         if (len_trim(root) == 0) return
         call execute_command_line('rm -rf '//quote(trim(root)))
     end subroutine remove_temp_root
+
+    subroutine write_report_test_corpus(fortfront_dir)
+        character(len=*), intent(in) :: fortfront_dir
+        character(len=:), allocatable :: suite_dir
+        integer :: exit_stat
+
+        suite_dir = trim(fortfront_dir)//'/examples/f90'
+        call execute_command_line('mkdir -p '//quote(suite_dir), &
+            exitstat=exit_stat)
+        if (exit_stat /= 0) error stop 'cannot create report test corpus'
+        call write_test_program(suite_dir//'/ffc_report_worktree.f90', &
+            'ffc_report_worktree')
+        call write_test_program(suite_dir//'/ffc_isolation_left.f90', &
+            'ffc_isolation_left')
+        call write_test_program(suite_dir//'/ffc_isolation_right.f90', &
+            'ffc_isolation_right')
+    end subroutine write_report_test_corpus
+
+    subroutine write_test_program(path, program_name)
+        character(len=*), intent(in) :: path, program_name
+        integer :: unit, io_stat
+
+        open(newunit=unit, file=path, status='replace', action='write', &
+            iostat=io_stat)
+        if (io_stat /= 0) error stop 'cannot write report test corpus source'
+        write(unit, '(a)') 'program '//trim(program_name)
+        write(unit, '(a)') '  implicit none'
+        write(unit, '(a)') '  print *, 1'
+        write(unit, '(a)') 'end program '//trim(program_name)
+        close(unit)
+    end subroutine write_test_program
 
     function temp_base() result(base)
         character(len=:), allocatable :: base

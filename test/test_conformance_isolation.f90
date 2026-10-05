@@ -15,7 +15,8 @@ subroutine case_test_conformance_isolation()
     ! Concurrent conformance runs (parallel `fo test`, several worktrees) must
     ! not be able to observe each other's artifacts, and must never measure
     ! another checkout's compiler.
-    use conformance_temp_dir, only: make_temp_root, remove_temp_root
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root, &
+        write_report_test_corpus
     implicit none
     save
 
@@ -25,6 +26,7 @@ subroutine case_test_conformance_isolation()
     print *, '=== conformance isolation test ==='
 
     root = make_temp_root('conformance_isolation')
+    call write_report_test_corpus(root//'/fortfront')
     passed = .true.
 
     if (.not. temp_roots_are_disjoint()) passed = .false.
@@ -125,18 +127,20 @@ contains
         right = root//'/run-right'
         call execute_command_line('mkdir -p '//left//' '//right)
         call execute_command_line( &
-            'TMPDIR='//left//' timeout 180 bash scripts/conformance_gauntlet.sh'// &
-            ' --suite fortfront-f90 --file ast_coverage_control_flow.f90'// &
+            'FFC_FORTFRONT_DIR='//root//'/fortfront TMPDIR='//left// &
+            ' timeout 180 bash scripts/conformance_gauntlet.sh'// &
+            ' --suite fortfront-f90 --file ffc_isolation_left.f90'// &
             ' > '//left//'/run.log 2>&1 & '// &
-            'TMPDIR='//right//' timeout 180 bash scripts/conformance_gauntlet.sh'// &
-            ' --suite fortfront-f90 --file ast_coverage_io_statements.f90'// &
+            'FFC_FORTFRONT_DIR='//root//'/fortfront TMPDIR='//right// &
+            ' timeout 180 bash scripts/conformance_gauntlet.sh'// &
+            ' --suite fortfront-f90 --file ffc_isolation_right.f90'// &
             ' > '//right//'/run.log 2>&1 & '//'wait')
 
         ok = .true.
-        call require_own_report(left, 'ast_coverage_control_flow.f90', &
-            'ast_coverage_io_statements.f90', ok)
-        call require_own_report(right, 'ast_coverage_io_statements.f90', &
-            'ast_coverage_control_flow.f90', ok)
+        call require_own_report(left, 'ffc_isolation_left.f90', &
+            'ffc_isolation_right.f90', ok)
+        call require_own_report(right, 'ffc_isolation_right.f90', &
+            'ffc_isolation_left.f90', ok)
         if (.not. ok) print *, 'FAIL: concurrent runs shared report artifacts'
     end function concurrent_runs_do_not_share_reports
 
