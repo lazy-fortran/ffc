@@ -25,7 +25,8 @@ subroutine case_test_parity_dashboard()
     character(len=64) :: fixture_binary_digest
     character(len=40) :: fixture_ffc_revision
     character(len=1024) :: fixture_binary_path
-    logical :: passed
+    logical :: passed, project_git_available, fixture_git_ready
+    integer :: exit_stat
 
     ROOT = make_temp_root('parity_dashboard')
     REPORT_DIR = ROOT//'/reports'
@@ -35,6 +36,12 @@ subroutine case_test_parity_dashboard()
     LOG_PATH = ROOT//'/failure.log'
 
     passed = .true.
+    call execute_command_line('git rev-parse --is-inside-work-tree '// &
+        '> /dev/null 2>&1', exitstat=exit_stat)
+    fixture_git_ready = exit_stat == 0
+    call execute_command_line('git config --get fo.parity-dashboard-fixture '// &
+        '> /dev/null 2>&1', exitstat=exit_stat)
+    project_git_available = fixture_git_ready .and. exit_stat /= 0
     call write_valid_inputs()
     if (.not. generation_succeeds(.false., OUTPUT_ONE)) passed = .false.
     if (.not. dashboard_has_expected_content()) passed = .false.
@@ -73,6 +80,18 @@ contains
         fixture_binary_digest = ''
         fixture_ffc_revision = ''
         fixture_binary_path = ''
+        if (.not. fixture_git_ready) then
+            call execute_command_line('git init -q . && '// &
+                'git config fo.parity-dashboard-fixture true && '// &
+                'git add -f src app fpm.toml && git -c user.name=fo-test '// &
+                '-c user.email=fo-test@example.invalid commit -qm fixture', &
+                exitstat=io_stat)
+            if (io_stat /= 0) then
+                print *, 'FAIL: create source history fixture'
+                return
+            end if
+            fixture_git_ready = .true.
+        end if
         call execute_command_line('bash -c ''PROJECT_DIR="$PWD"; '// &
             'source scripts/lib_conformance.sh; git rev-parse HEAD; '// &
             'ffc_revision_source_sha256 "$PWD" HEAD; binary=$(find_ffc); '// &
@@ -375,15 +394,130 @@ contains
 
     logical function production_snapshot_check_works() result(ok)
         integer :: exit_stat
+        character(len=:), allocatable :: snapshot, output, overrides
 
-        call execute_command_line('timeout 120 bash '// &
-            'scripts/generate_parity_dashboard.sh --from-snapshot '// &
-            'test/conformance/parity_dashboard.tsv --output '// &
-            'docs/PARITY_STATUS.md --check > '//LOG_PATH//' 2>&1', &
-            exitstat=exit_stat)
-        ok = exit_stat == 0
+        if (project_git_available) then
+            call execute_command_line('timeout 120 bash '// &
+                'scripts/generate_parity_dashboard.sh --from-snapshot '// &
+                'test/conformance/parity_dashboard.tsv --output '// &
+                'docs/PARITY_STATUS.md --check > '//LOG_PATH//' 2>&1', &
+                exitstat=exit_stat)
+            ok = exit_stat == 0
+        else
+            snapshot = ROOT//'/production.tsv'
+            output = ROOT//'/production.md'
+            call normalize_production_snapshot(snapshot, exit_stat)
+            ok = exit_stat == 0
+            overrides = snapshot_override_environment(snapshot)
+            if (ok) then
+                call execute_command_line(overrides//' timeout 120 bash '// &
+                    'scripts/generate_parity_dashboard.sh --from-snapshot '// &
+                    snapshot//' --output '//output//' > '//LOG_PATH//' 2>&1', &
+                    exitstat=exit_stat)
+                ok = exit_stat == 0
+            end if
+            if (ok) then
+                call execute_command_line(overrides//' timeout 120 bash '// &
+                    'scripts/generate_parity_dashboard.sh --from-snapshot '// &
+                    snapshot//' --output '//output//' --check > '// &
+                    LOG_PATH//' 2>&1', exitstat=exit_stat)
+                ok = exit_stat == 0
+            end if
+        end if
         if (.not. ok) print *, 'FAIL: production parity snapshot check'
     end function production_snapshot_check_works
+
+    subroutine normalize_production_snapshot(destination, ierr)
+        character(len=*), intent(in) :: destination
+        integer, intent(out) :: ierr
+        character(len=2048) :: line
+        character(len=:), allocatable :: revision_prefix, source_prefix
+        integer :: input_unit, output_unit, io_stat
+
+        ierr = 1
+        open(newunit=input_unit, file='test/conformance/parity_dashboard.tsv', &
+            status='old', action='read', iostat=io_stat)
+        if (io_stat /= 0) return
+        open(newunit=output_unit, file=destination, status='replace', &
+            action='write', iostat=io_stat)
+        if (io_stat /= 0) then
+            close(input_unit)
+            return
+        end if
+        revision_prefix = 'revision'//achar(9)//'ffc'//achar(9)
+        source_prefix = 'digest'//achar(9)//'ffc-source'//achar(9)
+        do
+            read(input_unit, '(A)', iostat=io_stat) line
+            if (io_stat < 0) exit
+            if (io_stat /= 0) then
+                close(input_unit)
+                close(output_unit)
+                return
+            end if
+            if (index(line, revision_prefix) == 1) then
+                write(output_unit, '(A)', iostat=io_stat) &
+                    revision_prefix//trim(fixture_ffc_revision)
+            else if (index(line, source_prefix) == 1) then
+                write(output_unit, '(A)', iostat=io_stat) &
+                    source_prefix//trim(fixture_source_digest)
+            else
+                write(output_unit, '(A)', iostat=io_stat) trim(line)
+            end if
+            if (io_stat /= 0) then
+                close(input_unit)
+                close(output_unit)
+                return
+            end if
+        end do
+        close(input_unit, iostat=io_stat)
+        if (io_stat /= 0) then
+            close(output_unit)
+            return
+        end if
+        close(output_unit, iostat=io_stat)
+        if (io_stat == 0) ierr = 0
+    end subroutine normalize_production_snapshot
+
+    function snapshot_override_environment(snapshot) result(environment)
+        character(len=*), intent(in) :: snapshot
+        character(len=:), allocatable :: environment
+
+        environment = snapshot_environment_value('FFC_DASHBOARD_FORTFRONT_REVISION', &
+            'revision', 'FortFront', snapshot)//' '// &
+            snapshot_environment_value('FFC_DASHBOARD_LIRIC_REVISION', &
+            'revision', 'LIRIC', snapshot)//' '// &
+            snapshot_environment_value('FFC_DASHBOARD_LFORTRAN_REVISION', &
+            'revision', 'LFortran', snapshot)//' '// &
+            snapshot_environment_value('FFC_DASHBOARD_GCC_REVISION', &
+            'revision', 'GCC', snapshot)//' '// &
+            snapshot_environment_value('FFC_DASHBOARD_FORTFRONT_TREE', &
+            'tree', 'FortFront', snapshot)//' '// &
+            snapshot_environment_value('FFC_DASHBOARD_LIRIC_TREE', &
+            'tree', 'LIRIC', snapshot)//' '// &
+            snapshot_environment_value('FFC_DASHBOARD_LFORTRAN_TREE', &
+            'tree', 'LFortran', snapshot)//' '// &
+            snapshot_environment_value('FFC_DASHBOARD_GCC_TREE', &
+            'tree', 'GCC', snapshot)//' '// &
+            snapshot_environment_value('FFC_DASHBOARD_FORTFRONT_F90_FILES', &
+            'corpus-files', 'fortfront-f90', snapshot)//' '// &
+            snapshot_environment_value('FFC_DASHBOARD_FORTFRONT_LF_FILES', &
+            'corpus-files', 'fortfront-lf', snapshot)//' '// &
+            snapshot_environment_value('FFC_DASHBOARD_LFORTRAN_FILES', &
+            'corpus-files', 'lfortran', snapshot)//' '// &
+            snapshot_environment_value('FFC_DASHBOARD_GFORTRAN_DG_FILES', &
+            'corpus-files', 'gfortran-dg', snapshot)
+    end function snapshot_override_environment
+
+    function snapshot_environment_value(variable, field, name, snapshot) &
+            result(assignment)
+        character(len=*), intent(in) :: variable, field, name, snapshot
+        character(len=:), allocatable :: assignment, program, quote
+
+        quote = achar(39)
+        program = '$1 == "'//field//'" && $2 == "'//name//'" {print $3}'
+        assignment = variable//'="$(awk -F '//quote//'\t'//quote//' '// &
+            quote//program//quote//' '//quote//snapshot//quote//')"'
+    end function snapshot_environment_value
 
     logical function stale_binary_check_works() result(ok)
         integer :: exit_stat

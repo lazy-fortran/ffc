@@ -35,3 +35,730 @@ role = "runtime-fixture"
 [[extra.fo.inputs]]
 path = "runtime/ffc_runtime.c"
 role = "runtime-fixture"
+
+# The conformance observation test runs these scripts in private views and
+# records the actual FFC source, runtime ABI, and oracle inputs in receipts.
+
+[[extra.fo.inputs]]
+path = "fpm.toml"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/ffc_array_descriptor.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/ffc_character_descriptor.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/ffc_cli_options.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/ffc_fortfront_queries.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/ffc_include_expansion.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/ffc_module_artefact.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/ffc_polymorphic_descriptor.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/ffc_runtime_link.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/ffc_runtime_source.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/ffc_strings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/ffc_test_support.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_common.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_complex_print_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_control_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_format_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_format_boz.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_format_e_en.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_integer_copy_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_io_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_io_emission_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_memory_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_memory_bindings_i8_i16.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_memory_bindings_narrow_int_arrays.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_memory_bindings_tail.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_procedure_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_real_print_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_real_print_bindings_tail.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_runtime_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/liric_session_timing_bindings.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_array_expr_types.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_lowering_diagnostics.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_lowering_ops.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_alloc_array_result.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_alloc_descriptor.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_allocatable.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_api.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_arguments.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_array_elements.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_array_shape.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_arrays.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_associate.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_assumed_shape_descriptor.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_assumed_shape_extent.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_block_concurrent.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_c_ptr.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_char_arrays.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_character.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_character_prefix.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_character_tail.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_cmp_typecheck.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_common.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_complex.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_complex_arrays.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_const_fold.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_control.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_cycles.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_data.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_declarations.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_deferred_char.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_derived_ctor.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_derived_module_ops.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_derived_type_ops.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_derived_types.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_do_while.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_enum.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_equivalence.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_expr_lowering.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_fmod.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_fmod_exporter.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_forall.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_functions.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_functions_tail.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_goto.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_inferred.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_inquire.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_integer.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_interface.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_internal_read.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_internal_write.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_internal_write_compound.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_intrinsics.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_intrinsics_extra.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_io_implied_do.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_io_typecheck.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_lazy_monomorph.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_literal_utils.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_logical_reduction.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_loop_targets.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_loops.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_merge.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_module_vars.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_namelist.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_open_close.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_pdt.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_pointer.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_polymorphic.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_print_boz.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_print_expr.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_print_ops.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_proc_dummy.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_read_al.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_read_ops.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reduction_expr.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_alloc.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_array_ctor.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_array_shape.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_checks.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_const_init.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_const_overflow.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_decl_conflict.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_generic.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_pointer.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_purity.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_result.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_storage.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_reject_text.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_runtime_alloc.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_save.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_save_static.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_scalar_allocatable.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_scalar_expr_kind.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_scalar_kind.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_select.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_statement_function.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_submodules.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_top.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_transfer.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_types.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_vector_subscript.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_where.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_program_lowering_write_ops.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "src/session_symbol_table.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "app/ffc.f90"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/conformance_gauntlet.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/classify_conformance_observations.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/lib_shell.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/lib_conformance.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/lib_conformance_oracles.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/lib_expected_manifest.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/lib_conformance_observation.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/conformance_action.py"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/conformance_source_snapshot.py"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/conformance_source_hash.py"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/conformance_observation.py"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "docs/RUNTIME_ABI.md"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/oracles/fortfront-lf/read_statement.lf.ref"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/oracles/fortfront-lf/read_statement.lf.stdin"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/extra_lfortran.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/conformance_check.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/validate_parity_report.awk"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/audit_manifest_owners.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance_epoch_lock_oracle.py"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance_shard_merge_oracle.py"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/generate_parity_dashboard.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/lib_parity_dashboard.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/fetch_corpora.sh"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "scripts/lock_conformance_epoch.py"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/parity_dashboard.tsv"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/parity_epoch.json"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "docs/PARITY_STATUS.md"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/fail_owners_fortfront_f90.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/fail_owners_fortfront_lf.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/fail_owners_gfortran_dg.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/fail_owners_lfortran.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/noref_fortfront_f90.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/noref_lfortran.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/owner_subsystems.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/scopes_fortfront_f90.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/scopes_gfortran_dg.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/scopes_lfortran.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/skip_fortfront_f90.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/skip_fortfront_lf.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/skip_gfortran_dg.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/skip_lfortran.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/xfail_fortfront_f90.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/xfail_fortfront_lf.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/xfail_gfortran_dg.txt"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+path = "test/conformance/xfail_lfortran.txt"
+role = "test-fixture"

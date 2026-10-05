@@ -30,6 +30,7 @@ subroutine case_test_conformance_sampling()
 
     root = make_temp_root('conformance_sampling')
     all_passed = .true.
+    call write_fortfront_fixture(root//'/fortfront')
 
     call check_sampled_report(root, all_passed)
     call check_sample_determinism(root, all_passed)
@@ -51,7 +52,8 @@ contains
         character(len=:), allocatable :: report
 
         report = work_dir//'/sampled.jsonl'
-        if (.not. run_shell('(timeout 300 bash '//GAUNTLET// &
+        if (.not. run_shell('(FFC_FORTFRONT_DIR='//root//'/fortfront '// &
+            'timeout 300 bash '//GAUNTLET// &
             ' --suite fortfront-f90 --sample 6 --seed 3 --report '// &
             report//' > '//work_dir//'/sampled.log 2>&1; '// &
             'status=$?; [ "$status" -le 1 ])')) then
@@ -100,11 +102,13 @@ contains
             ok = .false.
             return
         end if
-        call issue_bg('TMPDIR='//work_dir//'/t_seed3 timeout 300 '// &
+        call issue_bg(suite_environment()// &
+            'TMPDIR='//work_dir//'/t_seed3 timeout 300 '// &
             'bash '//GAUNTLET// &
             ' --suite fortfront-f90 --sample 6 --seed 3 --report '// &
             work_dir//'/repeat.jsonl', work_dir//'/repeat')
-        call issue_bg('TMPDIR='//work_dir//'/t_seed9 timeout 300 '// &
+        call issue_bg(suite_environment()// &
+            'TMPDIR='//work_dir//'/t_seed9 timeout 300 '// &
             'bash '//GAUNTLET// &
             ' --suite fortfront-f90 --sample 6 --seed 9 --report '// &
             work_dir//'/other_seed.jsonl', work_dir//'/other_seed')
@@ -209,7 +213,7 @@ contains
         character(len=*), intent(in) :: work_dir
         logical, intent(inout) :: ok
 
-        if (.not. run_shell('timeout 300 bash '//CHECK// &
+        if (.not. run_shell(suite_environment()//'timeout 300 bash '//CHECK// &
             ' --no-build --sample 40 --seed 5 --print-sample-plan > '// &
             work_dir//'/plan.log 2>&1')) then
             print *, 'FAIL: sample plan run did not succeed'
@@ -246,7 +250,8 @@ contains
             return
         end if
 
-        if (.not. run_shell(': > '//log_path//' && GFORTRAN_CACHE_TEST=baseline PATH='//shim_dir// &
+        if (.not. run_shell(': > '//log_path//' && '//suite_environment()// &
+            'GFORTRAN_CACHE_TEST=baseline PATH='//shim_dir// &
             ':$PATH timeout 600 bash '//GAUNTLET// &
             ' --suite fortfront-f90 --max-files 12 --ref-cache '//cache_dir// &
             ' --report '//work_dir//'/cache_first.jsonl > /dev/null 2>&1')) then
@@ -256,7 +261,8 @@ contains
         end if
         first_calls = count_lines(log_path)
 
-        if (.not. run_shell(': > '//log_path//' && GFORTRAN_CACHE_TEST=baseline PATH='//shim_dir// &
+        if (.not. run_shell(': > '//log_path//' && '//suite_environment()// &
+            'GFORTRAN_CACHE_TEST=baseline PATH='//shim_dir// &
             ':$PATH timeout 600 bash '//GAUNTLET// &
             ' --suite fortfront-f90 --max-files 12 --ref-cache '//cache_dir// &
             ' --report '//work_dir//'/cache_second.jsonl > /dev/null 2>&1')) &
@@ -281,7 +287,8 @@ contains
             ok = .false.
         end if
 
-        if (.not. run_shell(': > '//log_path//' && GFORTRAN_CACHE_TEST=changed PATH='//shim_dir// &
+        if (.not. run_shell(': > '//log_path//' && '//suite_environment()// &
+            'GFORTRAN_CACHE_TEST=changed PATH='//shim_dir// &
             ':$PATH timeout 600 bash '//GAUNTLET// &
             ' --suite fortfront-f90 --max-files 12 --ref-cache '//cache_dir// &
             ' --report '//work_dir//'/cache_changed.jsonl > /dev/null 2>&1')) then
@@ -291,7 +298,8 @@ contains
         end if
         changed_calls = count_lines(log_path)
 
-        if (.not. run_shell(': > '//log_path//' && GFORTRAN_CACHE_TEST=changed PATH='//shim_dir// &
+        if (.not. run_shell(': > '//log_path//' && '//suite_environment()// &
+            'GFORTRAN_CACHE_TEST=changed PATH='//shim_dir// &
             ':$PATH timeout 600 bash '//GAUNTLET// &
             ' --suite fortfront-f90 --max-files 12 --ref-cache '//cache_dir// &
             ' --report '//work_dir//'/cache_changed_repeat.jsonl > /dev/null 2>&1')) then
@@ -305,6 +313,34 @@ contains
             ok = .false.
         end if
     end subroutine check_reference_cache
+
+    subroutine write_fortfront_fixture(fortfront_dir)
+        character(len=*), intent(in) :: fortfront_dir
+        character(len=3) :: suffix
+        character(len=:), allocatable :: source_path, suite_dir
+        integer :: unit, i, status
+
+        suite_dir = trim(fortfront_dir)//'/examples/f90'
+        call execute_command_line('mkdir -p '//suite_dir, exitstat=status)
+        if (status /= 0) stop 2
+        do i = 1, 48
+            write(suffix, '(i3.3)') i
+            source_path = suite_dir//'/sample_'//suffix//'.f90'
+            open(newunit=unit, file=source_path, status='replace', &
+                action='write', iostat=status)
+            if (status /= 0) stop 2
+            write(unit, '(a)') 'program sample_'//suffix
+            write(unit, '(a)') 'print *, '//suffix
+            write(unit, '(a)') 'end program sample_'//suffix
+            close(unit)
+        end do
+    end subroutine write_fortfront_fixture
+
+    function suite_environment() result(prefix)
+        character(len=:), allocatable :: prefix
+
+        prefix = 'FFC_FORTFRONT_DIR='//root//'/fortfront '
+    end function suite_environment
 
     logical function run_shell(command) result(ok)
         character(len=*), intent(in) :: command

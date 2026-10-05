@@ -78,6 +78,26 @@ distinct cases; all 53 outcomes passed with zero failures. It was stopped with
 pilot sample, not full-suite verification. Continue current-failure discovery
 from this generation before moving to standalone FPM work.
 
+2026-10-05 follow-on evidence: on FFC base
+`682cdf2e4e962ec6aa41d5b93a3a89dda9ba910b`, pinned Fo driver SHA256
+`4db8ba18608c0375506cc5e10c3d14fa98fcd28e812b44f508dfc4e7c0547fa2` built
+generation `855a3748a2e10455cadb3b67ecefd9fe05dc536a31696d94e05cde2a3fa11708`.
+Session `593714-1791225341-736750343` passed all three required cases:
+`test_session_pdt_inheritance_compiler`, `test_parity_dashboard` and
+`test_conformance_epoch_lock`, then reached quiescence with zero failures.
+The production dashboard snapshot now matches current FortFront and LIRIC
+revision/tree provenance; corpus-file hashes were unchanged, so the recorded
+suite results were retained.
+
+A separate earlier generation, `a45f02dbf3c9d64bbe8e5d33731e664a37d42ce9e0559e668e72e0bfbb4cc94b`,
+completed 112 distinct ordinary cases plus its two gate cases with all 114
+receipts passing in session `546835-1791224294-328783100`. It included passes for
+`test_session_class_star_rank2_assumed_shape_compiler` and
+`test_session_pdt_constant_compiler`. This sample predates the dashboard
+provenance refresh and remains separate evidence. No current FFC compiler
+failure has been confirmed yet; continue bounded discovery on the latest
+generation.
+
 The historical 2026-10-02 maintained observation was 502 PASS/6 FAIL/508 names
 and a 919-file rejection gate with zero new rejections. These are exact old
 observations, not current complete green. Reproduce historical failures on the
