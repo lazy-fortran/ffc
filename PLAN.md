@@ -1,6 +1,6 @@
 # FFC compiler goals
 
-Updated 2026-10-04. This is the compiler delivery plan; issues specify observable
+Updated 2026-10-05. This is the compiler delivery plan; issues specify observable
 success. Apply [goals and architectural freedom](https://github.com/lazy-fortran/fo/blob/main/doc/GOAL_DRIVEN_DEVELOPMENT.md).
 Choose the smallest adequate design and revise it when evidence requires.
 Internal representations, module lists and phase/extraction recipes are open.
@@ -46,7 +46,7 @@ consumer blockers delay the FFC handoff, not the full Fo cleanup backlog.
    behavior. Consolidation/deletion should accompany delivery rather than become
    another upfront architecture pass.
 
-2026-10-05 pilot evidence: at FFC base
+2026-10-05 initial pilot evidence: at FFC base
 `3af3123b8342bc47554204c98667076d7813883e`, pinned Fo driver SHA256
 `d4c5eb11749481738910be9110a4d8a497c14144b8b33d265eea3f2ce2a91a7a` built
 generation `821fdb57b399ba60aca999654510c810b6c268f145c9c55a82416a656a20a87b`
@@ -55,9 +55,28 @@ completed 12 passes and failed `test_session_external_only_unit_compiler` at
 exit 90 before invoking FFC: its relative executable lookup cannot see app
 artifacts from the private Gremlin execution view. The named case passes in the
 normal checkout (0.27 s), so this is a Fo execution-view blocker rather than a
-confirmed compiler failure. The Fo repair is in an isolated worktree; 19 random
-cases remain untested. Resume with this named case and the required seeded
-12-case sample after verifying the combined Fo candidate.
+confirmed compiler failure.
+
+The execution-view blocker is resolved by Fo commit
+`b3a387f4990d724fc6ca67041c62d0dcd3f2563e`, promoted with plan update
+`100fcca4719a346748388e216ecda57fc13d06b8`. Candidate driver SHA256
+`e83f708b1874fe7b403e3f6cd23946920026241203ac8a22f838e90123ffd711` stages
+the direct app output in Gremlin's private test view. FFC declares the two
+runtime files consumed by its CMake/runtime tests in `fpm.toml`; the runtime
+archive test now passes its configured LIRIC build directory to CMake.
+
+The follow-up FFC candidate started from base
+`3ea3dd4da3770c4c2de8cc2be46ad0db5321af78`, built generation
+`a658abbfeeab98ea53730b88f4ffc257620dad8ab953dfa375c40b2dc9e81715`, and ran
+through Fo session `1289217-1791170558-274235797` on lane
+`ffc-798-final-candidate-20261005`. All five required cases passed:
+`test_session_external_only_unit_compiler`, `test_session_stop_code_compiler`,
+`test_runtime_archives`, `test_session_runtime_archive_compiler`, and
+`test_runtime_link_compiler`. The seeded lane also completed 48 additional
+distinct cases; all 53 outcomes passed with zero failures. It was stopped with
+456 of 509 inventory cases still unknown, so this is a green focused gate and
+pilot sample, not full-suite verification. Continue current-failure discovery
+from this generation before moving to standalone FPM work.
 
 The historical 2026-10-02 maintained observation was 502 PASS/6 FAIL/508 names
 and a 919-file rejection gate with zero new rejections. These are exact old

@@ -111,6 +111,7 @@ contains
 
         call run('rm -rf '//build_dir, stat)
         call run('cmake -S runtime -B '//build_dir// &
+                 ' -DLIRIC_BUILD_DIR="${LIRIC_BUILD_DIR:-${LIBRARY_PATH}}"'// &
                  ' > /tmp/ffc_runtime_376_cfg.log 2>&1 && cmake --build '// &
                  build_dir//' -j 3 > /tmp/ffc_runtime_376_build.log 2>&1', &
                  stat)

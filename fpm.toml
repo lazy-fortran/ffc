@@ -24,3 +24,14 @@ dispatcher = "test_ffc_suite"
 debug-info = "g0"
 pic = "true"
 link = "shared"
+
+# Gremlin's private execution views materialize project files named here.
+# These runtime files are consumed by the CMake/runtime tests, not by FPM's
+# source scanner.
+[[extra.fo.inputs]]
+path = "runtime/CMakeLists.txt"
+role = "runtime-fixture"
+
+[[extra.fo.inputs]]
+path = "runtime/ffc_runtime.c"
+role = "runtime-fixture"
