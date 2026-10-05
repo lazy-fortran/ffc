@@ -95,8 +95,21 @@ receipts passing in session `546835-1791224294-328783100`. It included passes fo
 `test_session_class_star_rank2_assumed_shape_compiler` and
 `test_session_pdt_constant_compiler`. This sample predates the dashboard
 provenance refresh and remains separate evidence. No current FFC compiler
-failure has been confirmed yet; continue bounded discovery on the latest
-generation.
+failure has been confirmed yet.
+
+2026-10-05 promoted-main discovery: FFC commit
+`958e4cb9000510ff62df61f7bfef5c18f3f94d18` plus the preserved worktree patch
+SHA256 `fe8ded3da0aedbb526135601778b194e8fa5b3aeaefb0997d89deb20b8de4218`
+built Fo generation
+`f4d90ca468d1df2245e0892d72efc36bad1cb95f123f94433c7411eb361e9142` with
+driver SHA256
+`4db8ba18608c0375506cc5e10c3d14fa98fcd28e812b44f508dfc4e7c0547fa2`.
+Session `617029-1791225994-179028879` passed the build, both required gate
+cases (`test_parity_dashboard`, `test_conformance_epoch_lock`) and 37 additional
+distinct cases: 39/39 test receipts passed, zero failed, with one in-flight case
+cancelled at cooperative stop. The 509-case inventory has 470 unknown cases
+remaining. This is current promoted-main discovery, not full-suite verification;
+continue bounded discovery before moving to standalone FPM work.
 
 The historical 2026-10-02 maintained observation was 502 PASS/6 FAIL/508 names
 and a 919-file rejection gate with zero new rejections. These are exact old
