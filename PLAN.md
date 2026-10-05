@@ -46,6 +46,19 @@ consumer blockers delay the FFC handoff, not the full Fo cleanup backlog.
    behavior. Consolidation/deletion should accompany delivery rather than become
    another upfront architecture pass.
 
+2026-10-05 pilot evidence: at FFC base
+`3af3123b8342bc47554204c98667076d7813883e`, pinned Fo driver SHA256
+`d4c5eb11749481738910be9110a4d8a497c14144b8b33d265eea3f2ce2a91a7a` built
+generation `821fdb57b399ba60aca999654510c810b6c268f145c9c55a82416a656a20a87b`
+and passed `test_session_stop_code_compiler` (gate 1/1). The early random sample
+completed 12 passes and failed `test_session_external_only_unit_compiler` at
+exit 90 before invoking FFC: its relative executable lookup cannot see app
+artifacts from the private Gremlin execution view. The named case passes in the
+normal checkout (0.27 s), so this is a Fo execution-view blocker rather than a
+confirmed compiler failure. The Fo repair is in an isolated worktree; 19 random
+cases remain untested. Resume with this named case and the required seeded
+12-case sample after verifying the combined Fo candidate.
+
 The historical 2026-10-02 maintained observation was 502 PASS/6 FAIL/508 names
 and a 919-file rejection gate with zero new rejections. These are exact old
 observations, not current complete green. Reproduce historical failures on the
