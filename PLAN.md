@@ -134,6 +134,33 @@ Session `740841-1791228145-245395678` passed all four required cases:
 with the local gate green and zero failures. Continue current-failure discovery
 from the promoted FFC candidate.
 
+The next current-generation failure was
+`test_conformance_flake_detection` in session
+`785003-1791228864-526493689` on generation
+`a2e745d9603d9cbd129e8059f990a0fef3d6c510c1735c1d24418e20e950c77f`. Its
+repeat-run fixture also assumed the absent FortFront corpus. FFC commit
+`2e68dce` gives it a generated local source and sets `FFC_FORTFRONT_DIR` for
+both repeated-run paths. On base `83af90a371fe1bfeb22615739be6ec2258b383e4`
+plus worktree patch SHA256
+`0d3c7ab4aa690620193c4402dbec68e5591b050360e6e28af0b9027c775ce88f`, pinned
+Fo driver SHA256
+`4db8ba18608c0375506cc5e10c3d14fa98fcd28e812b44f508dfc4e7c0547fa2` built
+generation `fdcbf6ea734c80ce04d661aa4b1dfe3eae1d9f3f73623fee571cb8e38d63433d`.
+Session `821459-1791229318-423056034` passed all five required cases: the
+three repaired conformance tests, parity and epoch-lock.
+
+After promotion, source base `2e68dce7099d7e1ca05a22b4f6f496e880589ebd` plus
+the preserved character-prefix worktree patch SHA256
+`fe8ded3da0aedbb526135601778b194e8fa5b3aeaefb0997d89deb20b8de4218` built
+generation `29a28a3a2f5928f69f21c1b4dc1d0d481cf1c9ef9b834dca29b6762958210ac4`.
+Session `861760-1791229714-077265582` passed all five gate cases and 38
+additional distinct cases: 43/43 receipts passed, zero failed, with one
+in-flight case cancelled at cooperative stop. The 509-case inventory has 466
+unknown cases remaining. The three confirmed failures to date were FFC
+conformance-test input closure defects, all repaired; no compiler defect or Fo
+Gremlin implementation defect has been confirmed. Continue bounded discovery;
+this is not full-suite verification.
+
 The historical 2026-10-02 maintained observation was 502 PASS/6 FAIL/508 names
 and a 919-file rejection gate with zero new rejections. These are exact old
 observations, not current complete green. Reproduce historical failures on the
