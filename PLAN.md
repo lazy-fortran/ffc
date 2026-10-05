@@ -111,6 +111,29 @@ cancelled at cooperative stop. The 509-case inventory has 470 unknown cases
 remaining. This is current promoted-main discovery, not full-suite verification;
 continue bounded discovery before moving to standalone FPM work.
 
+2026-10-05 Gremlin test-input repairs: session
+`641046-1791226584-288695610` on generation
+`6892a6e6d2010a59100317efa9d3c36ee1ad4b7f1b63045bfe79f211461920b3` found
+current failures in `test_conformance_report_worktree` and
+`test_conformance_isolation`; targeted session
+`671003-1791227142-066012299` reproduced both. The Fo execution view omitted
+FortFront's sibling `examples/f90` corpus, which those tests had assumed, and
+the worktree test also used an undeclared comparison script. These were FFC
+test-closure failures, not compiler or Fo defects. FFC commit
+`b68e807` adds a generated local corpus fixture and declares
+`scripts/compare_conformance_reports.sh` in `fpm.toml`.
+
+Before promotion, the exact worktree patch SHA256 was
+`1e6bfc0e19fb2fd7692cd7d169053c7dbcf470b3d01bd10f03b78d92446ef254` on base
+`c710c75aacc0a9a7fa0f475c3bf65f4b850da5cb`. Pinned Fo driver SHA256
+`4db8ba18608c0375506cc5e10c3d14fa98fcd28e812b44f508dfc4e7c0547fa2` built
+generation `bda0db1c79647553f1290c6e8ac2e55deb1d1b2b434985804672f1ddcedd315c`.
+Session `740841-1791228145-245395678` passed all four required cases:
+`test_conformance_report_worktree`, `test_conformance_isolation`,
+`test_parity_dashboard` and `test_conformance_epoch_lock`; it reached quiescence
+with the local gate green and zero failures. Continue current-failure discovery
+from the promoted FFC candidate.
+
 The historical 2026-10-02 maintained observation was 502 PASS/6 FAIL/508 names
 and a 919-file rejection gate with zero new rejections. These are exact old
 observations, not current complete green. Reproduce historical failures on the
