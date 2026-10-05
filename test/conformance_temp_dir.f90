@@ -60,6 +60,8 @@ contains
             'ffc_isolation_left')
         call write_test_program(suite_dir//'/ffc_isolation_right.f90', &
             'ffc_isolation_right')
+        call write_test_program(suite_dir//'/ffc_flake_detection.f90', &
+            'ffc_flake_detection')
     end subroutine write_report_test_corpus
 
     subroutine write_test_program(path, program_name)

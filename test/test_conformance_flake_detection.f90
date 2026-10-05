@@ -15,12 +15,13 @@ subroutine case_test_conformance_flake_detection()
     ! compiler wrapper that alternates between compiling and failing, so the
     ! same file is a PASS on one attempt and a FAIL on the next, and require
     ! the merged report to record it as FLAKY instead of taking one result.
-    use conformance_temp_dir, only: make_temp_root, remove_temp_root
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root, &
+        write_report_test_corpus
     implicit none
     save
 
     character(len=*), parameter :: SCRIPT = 'scripts/conformance_gauntlet.sh'
-    character(len=*), parameter :: CASE_FILE = 'api_pipeline_minimal_program.f90'
+    character(len=*), parameter :: CASE_FILE = 'ffc_flake_detection.f90'
     character(len=:), allocatable :: root, wrapper, counter
     character(len=:), allocatable :: flaky_report, stable_report
     logical :: all_passed
@@ -34,6 +35,7 @@ subroutine case_test_conformance_flake_detection()
     stable_report = root//'/stable.jsonl'
     all_passed = .true.
 
+    call write_report_test_corpus(root//'/fortfront')
     call write_alternating_wrapper(wrapper)
 
     ! A case that flips PASS/FAIL between attempts must be recorded FLAKY.
@@ -48,8 +50,9 @@ subroutine case_test_conformance_flake_detection()
     if (.not. file_contains(flaky_report, '"flaky":1')) all_passed = .false.
 
     ! The same case under the real compiler is stable and must not be flagged.
-    if (run_command('timeout 300 bash '//SCRIPT//' --suite fortfront-f90'// &
-                    ' --file '//CASE_FILE//' --repeat 3 --report '// &
+    if (run_command('FFC_FORTFRONT_DIR='//root//'/fortfront timeout 300 bash '// &
+                    SCRIPT//' --suite fortfront-f90 --file '//CASE_FILE// &
+                    ' --repeat 3 --report '// &
                     stable_report) /= 0) then
         print *, 'FAIL: repeated run of a stable case did not exit 0'
         all_passed = .false.
@@ -86,7 +89,8 @@ contains
         character(len=16) :: attempt_text
 
         write (attempt_text, '(i0)') attempts
-        command = 'export FLAKE_COUNTER='//counter//'; echo 0 > $FLAKE_COUNTER; '// &
+        command = 'export FFC_FORTFRONT_DIR='//root//'/fortfront; '// &
+                  'export FLAKE_COUNTER='//counter//'; echo 0 > $FLAKE_COUNTER; '// &
                   'export FLAKE_REAL_FFC=$(PROJECT_DIR=$PWD bash -c '// &
                   '". scripts/lib_conformance.sh; find_ffc"); '// &
                   'test -x "$FLAKE_REAL_FFC" || exit 2; '// &
