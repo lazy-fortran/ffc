@@ -26,24 +26,27 @@ extensions; promised compatibility modes retain their own scope.
 
 ## Current delivery
 
-Current focus: make Fo's resident Gremlin workflow fast and dependable on
-`main` before further FFC implementation. The latest FFC compiler/test code
-is at `983e0b3`; the latest
-six-case focused gate passed, while 503 of 509 inventory cases remain unknown.
-The same-generation follow-on session restarted a 516-node build and was
-stopped before testing. Fo `22f6dd3` removed the forced single compile worker;
-Fo `f551f5a` protects edited dependency checkouts during update, and
-Fo `4a4349a` fixes a compiler capability race. Fx `918fb94` repaired a
-concurrent same-key restore failure; Fo `43dcd04` now restores warm source
-actions in parallel. The installed driver SHA256 is
-`20574b184c203eadd03ea6ed66e42b7c9918100ac3085d9f828306d65c09dffa`.
+Current focus: keep Fo's resident Gremlin workflow fast and dependable on
+`main` for subsequent FFC work. The latest FFC compiler/test code is at
+`983e0b3`; no compiler implementation is assigned in this increment. Fo
+`22f6dd3` removed the forced single compile worker; `43dcd04` enabled warm
+parallel restoration; `78e3c5c` allowed source hashes to overlap; `3e2dad1`
+and `d4a2e82` removed syncs from temporary view and capture copies. FX
+`918fb94` fixed concurrent same-key restores, and `f12fc86` buffered lease
+snapshot writes. Installed Fo driver SHA256 is
+`a0e2dd52d4bf87e35ddedbcdcacecbfb5d77a2669002b7597ff818b8bbd1be05`.
 A fresh public Gremlin fixture observed overlapping compiler processes with
-`FO_JOBS=2` and passed its required case. The six-case FFC recheck with this
-driver reached 53/516 build nodes before it was stopped to repair two observed
-Fo speed bottlenecks: serialized source hashing on cache misses and per-file
-syncs while copying temporary Gremlin views. It produced no case outcomes.
-Recheck the same six cases after those scoped repairs before
-resuming compiler work. The unrelated character-prefix edit remains preserved.
+`FO_JOBS=2` and passed its required case. The exact FFC six-case gate passed
+6/6 with zero failures and `local_gate_green=true` in session
+`3046333-1791310754-498154325`, generation `cb0ca871`, on lane
+`ffc-final-a0e2-20261006`. Its source was FFC base `749f86c` plus the
+preserved character-prefix worktree patch SHA256
+`fe8ded3da0aedbb526135601778b194e8fa5b3aeaefb0997d89deb20b8de4218`.
+The owner was stopped cooperatively after the green receipt. This is a
+focused gate: 503 of 509 inventory cases remain
+unknown. The 516-action build was still slow because FX repeatedly parsed an
+approximately 97,000-row lease snapshot; owning-repository speed work is
+underway. The unrelated character-prefix edit remains preserved.
 
 1. Recheck the current FPM project and public shared test dispatcher through
    the fixed Fo driver, preserving original case names and avoiding duplicated
