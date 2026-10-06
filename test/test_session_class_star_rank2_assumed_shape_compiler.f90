@@ -10,7 +10,7 @@ module ffc_case_test_session_class_star_rank2_assumed_shape_compiler
 end module ffc_case_test_session_class_star_rank2_assumed_shape_compiler
 
 subroutine case_test_session_class_star_rank2_assumed_shape_compiler()
-    ! Differential behavioral oracle for the bounded rank-2 CLASS(*) array ABI.
+    ! Differential oracle for the bounded rank-1 through rank-4 CLASS(*) array ABI.
     ! Positive cases compare ffc output with gfortran; refusal cases first pass
     ! gfortran syntax checking and then require a named ffc diagnostic.
     use fortfront_compiler, only: compiler_frontend_options_t, &
@@ -20,11 +20,12 @@ subroutine case_test_session_class_star_rank2_assumed_shape_compiler()
     implicit none
     save
 
-    print *, '=== rank-2 CLASS(*) assumed-shape array test ==='
+    print *, '=== CLASS(*) assumed-shape array test ==='
     if (.not. test_integer_rank2()) stop 1
     if (.not. test_real8_rank2()) stop 1
     if (.not. test_real4_constructor()) stop 1
     if (.not. test_real_kind_dispatch()) stop 1
+    if (.not. test_real4_rank3_rank4()) stop 1
     if (.not. test_integer_rank3()) stop 1
     if (.not. test_integer_rank4()) stop 1
     if (.not. test_refusal_contract()) stop 1
@@ -157,6 +158,50 @@ contains
         test_real_kind_dispatch = run_differential(source, &
             '/var/tmp/ert/ffc_class_star_real_kind_dispatch')
     end function test_real_kind_dispatch
+
+    logical function test_real4_rank3_rank4()
+        character(len=*), parameter :: source = &
+            'program real4_rank3_rank4_main'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  real :: values3(2,3,2), values4(2,3,2,2)'//new_line('a')// &
+            '  values3(1,1,1) = 1.25'//new_line('a')// &
+            '  values3(2,2,1) = -2.5'//new_line('a')// &
+            '  values3(1,3,2) = 3.75'//new_line('a')// &
+            '  values4(1,1,1,1) = 4.25'//new_line('a')// &
+            '  values4(2,2,1,2) = -5.5'//new_line('a')// &
+            '  values4(1,3,2,2) = 6.75'//new_line('a')// &
+            '  call inspect3(values3)'//new_line('a')// &
+            '  call inspect4(values4)'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine inspect3(values)'//new_line('a')// &
+            '    class(*), intent(in) :: values(:,:,:)'//new_line('a')// &
+            '    select type (items => values)'//new_line('a')// &
+            '    type is (real)'//new_line('a')// &
+            '      print *, 3, size(items,1), size(items,2), '// &
+            'size(items,3), size(items)'//new_line('a')// &
+            '      print *, items(1,1,1), items(2,2,1), items(1,3,2)'// &
+            new_line('a')// &
+            '    class default'//new_line('a')// &
+            '      print *, -1'//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '  end subroutine inspect3'//new_line('a')// &
+            '  subroutine inspect4(values)'//new_line('a')// &
+            '    class(*), intent(in) :: values(:,:,:,:)'//new_line('a')// &
+            '    select type (items => values)'//new_line('a')// &
+            '    type is (real)'//new_line('a')// &
+            '      print *, 4, size(items,1), size(items,2), '// &
+            'size(items,3), size(items,4), size(items)'//new_line('a')// &
+            '      print *, items(1,1,1,1), items(2,2,1,2), '// &
+            'items(1,3,2,2)'//new_line('a')// &
+            '    class default'//new_line('a')// &
+            '      print *, -1'//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '  end subroutine inspect4'//new_line('a')// &
+            'end program real4_rank3_rank4_main'
+
+        test_real4_rank3_rank4 = run_differential(source, &
+            '/var/tmp/ert/ffc_class_star_real4_rank3_rank4')
+    end function test_real4_rank3_rank4
 
     logical function test_integer_rank3()
         character(len=*), parameter :: source = &
@@ -307,38 +352,38 @@ contains
         options%input_mode = INPUT_MODE_STANDARD
         call compile_frontend_from_string(source, frontend_result, options)
         if (.not. frontend_result%success()) then
-            print *, 'FAIL: FortFront rejected rank-2 CLASS(*) source: ', &
+            print *, 'FAIL: FortFront rejected CLASS(*) source: ', &
                 trim(frontend_result%diagnostic_text)
             return
         end if
         call lower_program_to_liric_exe(frontend_result%arena, &
             frontend_result%root_index, exe, error_msg)
         if (len_trim(error_msg) > 0) then
-            print *, 'FAIL: ffc rank-2 CLASS(*) lowering failed: ', trim(error_msg)
+            print *, 'FAIL: ffc CLASS(*) lowering failed: ', trim(error_msg)
             return
         end if
         call execute_command_line('gfortran -w '//src//' -o '//ref, &
             exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL: gfortran rejected rank-2 CLASS(*) source'
+            print *, 'FAIL: gfortran rejected CLASS(*) source'
             return
         end if
         call execute_command_line(exe//' > '//ffc_out//' 2>&1', &
             exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL: ffc rank-2 CLASS(*) executable failed'
+            print *, 'FAIL: ffc CLASS(*) executable failed'
             return
         end if
         call execute_command_line(ref//' > '//ref_out//' 2>&1', &
             exitstat=exit_stat)
         if (exit_stat /= 0) then
-            print *, 'FAIL: gfortran rank-2 CLASS(*) executable failed'
+            print *, 'FAIL: gfortran CLASS(*) executable failed'
             return
         end if
         call execute_command_line('diff '//ffc_out//' '//ref_out// &
             ' > /dev/null 2>&1', exitstat=status)
         if (status /= 0) then
-            print *, 'FAIL: rank-2 CLASS(*) output differs from gfortran'
+            print *, 'FAIL: CLASS(*) output differs from gfortran'
             call execute_command_line('diff '//ffc_out//' '//ref_out)
             return
         end if

@@ -207,6 +207,24 @@ scalar literal's actual kind from the shared literal-kind resolver. Continue
 bounded discovery; do not combine receipts from the superseded failing
 generations with the final green gate.
 
+2026-10-06 rank-3/rank-4 coverage extension: on FFC base
+`571b2d383eb9124f3b8d0c5df98c1114ebf72b4b`, class-star test patch SHA256
+`bc4d796c8b86861fe37bce9865235696d8020ac7e7ebc2cd7be3647127b5ba4f` plus
+the preserved unrelated character-prefix patch SHA256
+`fe8ded3da0aedbb526135601778b194e8fa5b3aeaefb0997d89deb20b8de4218` had
+combined worktree patch SHA256
+`ba6920a616c788694870f08e074c99607a25fc7deb60f4c79fcc6875a283ede4`.
+Pinned Fo driver SHA256
+`95222d18cff2b3dfe82dce41827ddcdae202465fe7680d0a9afca5db2a6c9280` built
+generation `ab3c07f9e67c44fc17055ec2f875d4af3fb5fb4af03732e88c7f461691b61932`.
+Session `2533658-1791303354-375876968` reached quiescence with all six required
+cases passing, including a gfortran differential for default-real rank-3 and
+rank-4 assumed-shape descriptors. The six case commands took 57.22 s in total;
+Fo reported 516 build nodes for the candidate generation, which dominated the
+wall time. This does not establish redundant work. The 509-case inventory is
+still incomplete: six cases passed and 503 remain unknown. Continue bounded
+current-generation discovery after promoting this verified increment.
+
 ## Ownership and contracts
 
 | Provider | Desired responsibility |
