@@ -222,8 +222,16 @@ cases passing, including a gfortran differential for default-real rank-3 and
 rank-4 assumed-shape descriptors. The six case commands took 57.22 s in total;
 Fo reported 516 build nodes for the candidate generation, which dominated the
 wall time. This does not establish redundant work. The 509-case inventory is
-still incomplete: six cases passed and 503 remain unknown. Continue bounded
-current-generation discovery after promoting this verified increment.
+still incomplete: six cases passed and 503 remain unknown. This verified
+increment was pushed to FFC `main` as commit `b2ef900`.
+
+Follow-on sample session `2828927-1791305007-708136295` used the same candidate
+generation with `input_changed=false`. Its build progress restarted at 0/516
+and reached 30/516 within about a minute; the owner was cooperatively stopped
+before any cases ran. This confirms expensive repeated graph work but does not
+distinguish cache restoration from compilation. The interrupted session adds
+no case outcomes. Measure restore/compile counts before attributing a Fo cache
+defect, then resume bounded discovery.
 
 ## Ownership and contracts
 
