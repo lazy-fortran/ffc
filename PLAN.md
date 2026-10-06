@@ -163,10 +163,11 @@ generation `29a28a3a2f5928f69f21c1b4dc1d0d481cf1c9ef9b834dca29b6762958210ac4`.
 Session `861760-1791229714-077265582` passed all five gate cases and 38
 additional distinct cases: 43/43 receipts passed, zero failed, with one
 in-flight case cancelled at cooperative stop. The 509-case inventory has 466
-unknown cases remaining. The three confirmed failures to date were FFC
-conformance-test input closure defects, all repaired; no compiler defect or Fo
-Gremlin implementation defect has been confirmed. Continue bounded discovery;
-this is not full-suite verification.
+unknown cases remaining. At this 2026-10-05 checkpoint, the three confirmed
+failures were FFC conformance-test input closure defects, all repaired; no
+compiler defect had yet been confirmed. The later 2026-10-06 pilot below
+confirmed and repaired two separate compiler defects. This checkpoint is not
+full-suite verification.
 
 The next post-plan candidate used FFC base
 `27b84f4f6463f1a841022ac8b344752de92b71f8` plus the preserved character-prefix
