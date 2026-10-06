@@ -35,7 +35,7 @@ contains
             '  integer :: code'//new_line('a')// &
             '  code = 0'//new_line('a')// &
             '  call dispatch(5, code)'//new_line('a')// &
-            '  call dispatch(1.5d0, code)'//new_line('a')// &
+            '  call dispatch(1.5, code)'//new_line('a')// &
             '  stop code'//new_line('a')// &
             'contains'//new_line('a')// &
             '  subroutine dispatch(node, code)'//new_line('a')// &

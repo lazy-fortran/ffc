@@ -208,7 +208,7 @@ contains
             '      class(*), intent(in) :: values(:)'//new_line('a')// &
             '    end subroutine inspect'//new_line('a')// &
             '  end interface'//new_line('a')// &
-            '  real :: values(2)'//new_line('a')// &
+            '  logical :: values(2)'//new_line('a')// &
             '  call inspect(values)'//new_line('a')// &
             'end program p'
         character(len=*), parameter :: section = &
@@ -244,7 +244,8 @@ contains
             'end program p'
 
         test_refusal_contract = &
-            expect_refusal(unsupported_kind, 'real(8)') .and. &
+            expect_refusal(unsupported_kind, &
+                'default integer, real, and real(8)') .and. &
             expect_refusal(section, 'sections') .and. &
             expect_refusal(allocatable, 'allocatable ownership') .and. &
             expect_refusal(ownership, 'pointer/target ownership')

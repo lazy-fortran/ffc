@@ -26,7 +26,7 @@ The descriptor is a 200-byte, 8-byte-aligned `bind(C)` record on supported
 | 16 | 4 | `element_type` | Element type code |
 | 20 | 4 | `rank` | Number of dimensions, 1 to 7 |
 | 24 | 4 | `flags` | Allocation, association, ownership, contiguity bits |
-| 28 | 4 | `reserved` | Zero; reserved for future ABI use |
+| 28 | 4 | `reserved` | Zero for ordinary arrays; intrinsic type id for a `class(*)` array view |
 | 32 | 168 | `dim(7)` | Per-dimension metadata, seven entries of 24 bytes |
 
 Each `dim` entry is an `array_dimension_t`:
@@ -43,6 +43,12 @@ not part of the value; they hold the null-state defaults.
 The descriptor is rank-agnostic and element-kind-agnostic. All extents,
 bounds, and strides are signed 64-bit values, so a stride may be negative and
 `base` need not be the lowest address in the array.
+
+For a `class(*)` assumed-shape array, the `reserved` word carries the
+compiler-private intrinsic type id used by `select type`; ordinary arrays keep
+it zero. Integer, default real, `real(8)`, and logical have distinct ids, so
+the default-real and `real(8)` guards remain distinguishable. This metadata
+uses the existing word and does not change descriptor size or alignment.
 
 ## Addressing
 

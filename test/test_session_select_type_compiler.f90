@@ -12,6 +12,7 @@ end module ffc_case_test_session_select_type_compiler
 subroutine case_test_session_select_type_compiler()
     use ffc_test_support, only: expect_exit_status, expect_output, &
         expect_output_matches_gfortran
+    use fortfront_compiler, only: INPUT_MODE_STANDARD
     implicit none
     save
 
@@ -25,6 +26,9 @@ subroutine case_test_session_select_type_compiler()
     if (.not. test_select_type_single_arm_does_not_match()) all_passed = .false.
     if (.not. test_select_type_two_arms_first_matches()) all_passed = .false.
     if (.not. test_select_type_two_arms_second_matches()) all_passed = .false.
+    if (.not. test_select_type_two_arms_real8_matches()) all_passed = .false.
+    if (.not. test_class_star_real_literal_kinds_match_gfortran()) &
+        all_passed = .false.
     if (.not. test_select_type_class_default_matches_neither()) all_passed = .false.
     if (.not. test_host_select_type_class_is()) all_passed = .false.
     if (.not. test_host_select_type_type_is()) all_passed = .false.
@@ -101,8 +105,42 @@ contains
 
     logical function test_select_type_two_arms_second_matches()
         test_select_type_two_arms_second_matches = expect_exit_status( &
-            two_arm_source('2.5d0'), 2, '/tmp/ffc_session_st_second_test')
+            two_arm_source('2.5'), 2, '/tmp/ffc_session_st_second_test', &
+            INPUT_MODE_STANDARD)
     end function test_select_type_two_arms_second_matches
+
+    logical function test_select_type_two_arms_real8_matches()
+        test_select_type_two_arms_real8_matches = expect_exit_status( &
+            two_arm_source('2.5d0'), 3, '/tmp/ffc_session_st_real8_test', &
+            INPUT_MODE_STANDARD)
+    end function test_select_type_two_arms_real8_matches
+
+    logical function test_class_star_real_literal_kinds_match_gfortran()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: default_kind, wide_kind'//new_line('a')// &
+            '  call probe(2.5, default_kind)'//new_line('a')// &
+            '  call probe(2.5d0, wide_kind)'//new_line('a')// &
+            '  print *, default_kind, wide_kind'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine probe(arg, result)'//new_line('a')// &
+            '    class(*), intent(in) :: arg'//new_line('a')// &
+            '    integer, intent(out) :: result'//new_line('a')// &
+            '    select type (x => arg)'//new_line('a')// &
+            '    type is (real)'//new_line('a')// &
+            '      result = 1000 + nint(x * 100.0)'//new_line('a')// &
+            '    type is (real(8))'//new_line('a')// &
+            '      result = 2000 + nint(x * 100.0d0)'//new_line('a')// &
+            '    class default'//new_line('a')// &
+            '      result = 9'//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '  end subroutine probe'//new_line('a')// &
+            'end program main'
+
+        test_class_star_real_literal_kinds_match_gfortran = &
+            expect_output_matches_gfortran(source, &
+                'class_star_real_literal_kinds')
+    end function test_class_star_real_literal_kinds_match_gfortran
 
     logical function test_select_type_class_default_matches_neither()
         test_select_type_class_default_matches_neither = expect_exit_status( &
@@ -203,7 +241,7 @@ contains
     end function test_host_select_type_extension
 
     function two_arm_source(actual) result(source)
-        ! integer arm -> 1, real arm -> 2, class default -> 9.
+        ! Integer -> 1, default real -> 2, real(8) -> 3, default -> 9.
         character(len=*), intent(in) :: actual
         character(len=:), allocatable :: source
 
@@ -222,6 +260,8 @@ contains
             '      out = 1'//new_line('a')// &
             '    type is (real)'//new_line('a')// &
             '      out = 2'//new_line('a')// &
+            '    type is (real(8))'//new_line('a')// &
+            '      out = 3'//new_line('a')// &
             '    class default'//new_line('a')// &
             '      out = 9'//new_line('a')// &
             '    end select'//new_line('a')// &

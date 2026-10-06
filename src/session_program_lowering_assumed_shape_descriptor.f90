@@ -666,12 +666,15 @@ contains
                     'only rank-1 through rank-4 whole-array actuals'
                 return
             end if
-            if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F64) then
+            if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
+                value_kind /= VALUE_F64) then
                 error_msg = 'class(*) assumed-shape lowering currently supports '// &
-                    'only default integer and real(8) whole-array actuals'
+                    'only default integer, real, and real(8) whole-array actuals'
                 return
             end if
-            if (value_kind == VALUE_F64) then
+            if (value_kind == VALUE_F32) then
+                class_star_type_id = int(TYPE_ID_REAL4, c_int32_t)
+            else if (value_kind == VALUE_F64) then
                 class_star_type_id = int(TYPE_ID_REAL, c_int32_t)
             else
                 class_star_type_id = int(TYPE_ID_INTEGER, c_int32_t)

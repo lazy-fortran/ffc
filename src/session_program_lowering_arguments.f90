@@ -1505,8 +1505,20 @@ contains
         integer :: value_kind
         integer(c_int64_t) :: type_id
 
-        value_kind = expression_value_kind(arena, node_index, context, VALUE_I32)
+        ! Literal suffixes determine the actual kind at a class(*) boundary;
+        ! using only the contextual default would misclassify 2.5d0 as real(4).
+        if (is_real_literal(arena, node_index)) then
+            value_kind = scalar_real_expr_kind(arena, node_index, context)
+        else if (context%lazy_mode) then
+            value_kind = expression_value_kind(arena, node_index, context, &
+                                               VALUE_F64)
+        else
+            value_kind = expression_value_kind(arena, node_index, context, &
+                                               VALUE_F32)
+        end if
         select case (value_kind)
+        case (VALUE_F32)
+            type_id = int(TYPE_ID_REAL4, c_int64_t)
         case (VALUE_F64)
             type_id = int(TYPE_ID_REAL, c_int64_t)
         case (VALUE_LOGICAL)

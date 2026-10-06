@@ -321,6 +321,13 @@ first, and only a dummy for which that fold fails takes the descriptor-driven
 runtime path. The visible procedure signature remains one descriptor pointer
 for each assumed-shape dummy in either case.
 
+For a `class(*)` array actual, the existing reserved descriptor word carries
+its intrinsic type identity: default integer, default real, `real(8)`, and
+logical use distinct ids. `select type` therefore distinguishes the two real
+kinds while narrowing the same borrowed array view. Ordinary array descriptors
+keep the reserved word zero; the descriptor layout and procedure signature do
+not change.
+
 This slice covers, for a rank-1 or rank-2 runtime-extent dummy: `size(a)`
 (no `dim`; rank-2 returns the product of both runtime extents), `size(a, d)`
 and `ubound(a, d)` for each dimension, element read and write `a(i)` / `a(i, j)`

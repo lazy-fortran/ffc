@@ -1102,7 +1102,7 @@ contains
         case (VALUE_I32)
             id = int(TYPE_ID_INTEGER, c_int64_t)
         case (VALUE_F32)
-            id = int(TYPE_ID_REAL, c_int64_t)
+            id = int(TYPE_ID_REAL4, c_int64_t)
         case (VALUE_F64)
             id = int(TYPE_ID_REAL, c_int64_t)
         case (VALUE_LOGICAL)
@@ -1148,7 +1148,7 @@ contains
         select case (trim(lowercase_text(type_name)))
         case ('integer')
             value_kind = VALUE_I32
-        case ('real')
+        case ('real', 'real(4)', 'real(kind=4)')
             value_kind = VALUE_F32
         case ('double precision', 'real(8)', 'real(kind=8)')
             value_kind = VALUE_F64
@@ -1675,7 +1675,10 @@ contains
         case ('integer')
             byte_size = 4
             type_id = TYPE_ID_INTEGER
-        case ('real', 'double precision')
+        case ('real', 'real(4)', 'real(kind=4)')
+            byte_size = 4
+            type_id = TYPE_ID_REAL4
+        case ('double precision', 'real(8)', 'real(kind=8)')
             byte_size = 8
             type_id = TYPE_ID_REAL
         case ('logical')

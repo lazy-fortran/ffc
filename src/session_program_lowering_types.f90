@@ -64,8 +64,11 @@ module session_program_lowering_types
     ! ids are fixed and disjoint from derived-type ids (a derived type's id is
     ! its 1-based table index, always small).
     integer, parameter, public :: TYPE_ID_INTEGER = 1000001
+    ! Preserve the original real id for real(8); default real needs a distinct
+    ! identity so SELECT TYPE can distinguish the two intrinsic kinds.
     integer, parameter, public :: TYPE_ID_REAL = 1000002
     integer, parameter, public :: TYPE_ID_LOGICAL = 1000003
+    integer, parameter, public :: TYPE_ID_REAL4 = 1000004
     ! Coarse intrinsic type classes used by the comparison operand
     ! type-mismatch check. Numeric groups integer/real/complex together.
     integer, parameter, public :: CMP_CLASS_UNKNOWN = 0

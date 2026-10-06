@@ -23,10 +23,12 @@ subroutine case_test_session_class_star_rank2_assumed_shape_compiler()
     print *, '=== rank-2 CLASS(*) assumed-shape array test ==='
     if (.not. test_integer_rank2()) stop 1
     if (.not. test_real8_rank2()) stop 1
+    if (.not. test_real4_constructor()) stop 1
+    if (.not. test_real_kind_dispatch()) stop 1
     if (.not. test_integer_rank3()) stop 1
     if (.not. test_integer_rank4()) stop 1
     if (.not. test_refusal_contract()) stop 1
-    print *, 'PASS: rank-1 through rank-4 CLASS(*) arrays preserve descriptor shape and narrowing'
+    print *, 'PASS: CLASS(*) arrays preserve shape, real kind, and narrowing'
 
 contains
 
@@ -97,6 +99,64 @@ contains
         test_real8_rank2 = run_differential(source, &
             '/var/tmp/ert/ffc_class_star_rank2_real8')
     end function test_real8_rank2
+
+    logical function test_real4_constructor()
+        character(len=*), parameter :: source = &
+            'program real4_constructor_main'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  call inspect([real :: 1.0, 2.0, 3.0])'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine inspect(values)'//new_line('a')// &
+            '    class(*), intent(in) :: values(:)'//new_line('a')// &
+            '    select type (items => values)'//new_line('a')// &
+            '    type is (real)'//new_line('a')// &
+            '      print *, size(items), items(1), items(2), items(3)'// &
+            new_line('a')// &
+            '    class default'//new_line('a')// &
+            '      print *, -1'//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '  end subroutine inspect'//new_line('a')// &
+            'end program real4_constructor_main'
+
+        test_real4_constructor = run_differential(source, &
+            '/var/tmp/ert/ffc_class_star_real4_constructor')
+    end function test_real4_constructor
+
+    logical function test_real_kind_dispatch()
+        character(len=*), parameter :: source = &
+            'program real_kind_dispatch_main'//new_line('a')// &
+            '  implicit none'//new_line('a')// &
+            '  real :: single(2,2)'//new_line('a')// &
+            '  real(8) :: double(2,2)'//new_line('a')// &
+            '  single(1,1) = 1.25'//new_line('a')// &
+            '  single(2,1) = -2.5'//new_line('a')// &
+            '  single(1,2) = 7.5'//new_line('a')// &
+            '  single(2,2) = 8.25'//new_line('a')// &
+            '  double(1,1) = 3.5d0'//new_line('a')// &
+            '  double(2,1) = -4.75d0'//new_line('a')// &
+            '  double(1,2) = 6.125d0'//new_line('a')// &
+            '  double(2,2) = 9.25d0'//new_line('a')// &
+            '  call inspect(single)'//new_line('a')// &
+            '  call inspect(double)'//new_line('a')// &
+            'contains'//new_line('a')// &
+            '  subroutine inspect(values)'//new_line('a')// &
+            '    class(*), intent(in) :: values(:,:)'//new_line('a')// &
+            '    select type (items => values)'//new_line('a')// &
+            '    type is (real)'//new_line('a')// &
+            '      print *, 4, size(items,1), size(items,2), '// &
+            'items(1,1), items(2,2)'//new_line('a')// &
+            '    type is (real(8))'//new_line('a')// &
+            '      print *, 8, size(items,1), size(items,2), '// &
+            'items(1,1), items(2,2)'//new_line('a')// &
+            '    class default'//new_line('a')// &
+            '      print *, -1'//new_line('a')// &
+            '    end select'//new_line('a')// &
+            '  end subroutine inspect'//new_line('a')// &
+            'end program real_kind_dispatch_main'
+
+        test_real_kind_dispatch = run_differential(source, &
+            '/var/tmp/ert/ffc_class_star_real_kind_dispatch')
+    end function test_real_kind_dispatch
 
     logical function test_integer_rank3()
         character(len=*), parameter :: source = &
@@ -169,7 +229,7 @@ contains
             '      class(*), intent(in) :: values(:,:)'//new_line('a')// &
             '    end subroutine inspect'//new_line('a')// &
             '  end interface'//new_line('a')// &
-            '  real :: values(2,2)'//new_line('a')// &
+            '  logical :: values(2,2)'//new_line('a')// &
             '  call inspect(values)'//new_line('a')// &
             'end program p'
         character(len=*), parameter :: section = &
@@ -216,7 +276,8 @@ contains
             '  call inspect(values)'//new_line('a')// &
             'end program p'
         test_refusal_contract = &
-            expect_refusal(unsupported_kind, 'default integer and real(8)') .and. &
+            expect_refusal(unsupported_kind, &
+                'default integer, real, and real(8)') .and. &
             expect_refusal(section, 'sections and non-array actuals') .and. &
             expect_refusal(allocatable, 'allocatable ownership') .and. &
             expect_refusal(pointer, 'pointer/target ownership') .and. &

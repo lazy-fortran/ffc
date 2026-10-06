@@ -36,6 +36,20 @@ role = "runtime-fixture"
 path = "runtime/ffc_runtime.c"
 role = "runtime-fixture"
 
+# The full corpus case reads these directories from the FortFront path
+# dependency. Gremlin materializes dependency-root fixtures under .fo-inputs.
+[[extra.fo.inputs]]
+root = "dependency:fortfront"
+path = "examples/f90"
+kind = "directory"
+role = "test-fixture"
+
+[[extra.fo.inputs]]
+root = "dependency:fortfront"
+path = "examples/lf"
+kind = "directory"
+role = "test-fixture"
+
 # The conformance observation test runs these scripts in private views and
 # records the actual FFC source, runtime ABI, and oracle inputs in receipts.
 

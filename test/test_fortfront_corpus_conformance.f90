@@ -28,8 +28,12 @@ subroutine case_test_fortfront_corpus_conformance()
     character(len=:), allocatable :: F90_LOG
     character(len=:), allocatable :: LF_LOG
     character(len=:), allocatable :: SYNTHETIC_XPASS_REPORT
+    character(len=:), allocatable :: FORTFRONT_ROOT
+    character(len=4096) :: execution_cwd
 
     integer :: failed
+    integer :: execution_cwd_length, env_status
+    logical :: private_f90, private_lf
 
     print *, '=== fortfront corpus conformance test ==='
 
@@ -40,6 +44,17 @@ subroutine case_test_fortfront_corpus_conformance()
     F90_LOG = ROOT//'/fortfront_f90_corpus.out'
     LF_LOG = ROOT//'/fortfront_lf_corpus.out'
     SYNTHETIC_XPASS_REPORT = ROOT//'/fortfront_synthetic_xpass.jsonl'
+    call get_environment_variable('FO_GREMLIN_EXECUTION_CWD', execution_cwd, &
+        length=execution_cwd_length, status=env_status)
+    if (env_status == 0 .and. execution_cwd_length > 0) then
+        FORTFRONT_ROOT = trim(execution_cwd(:execution_cwd_length))// &
+            '/.fo-inputs/dependency:fortfront'
+    else
+        FORTFRONT_ROOT = '.fo-inputs/dependency:fortfront'
+    end if
+    inquire(file=trim(FORTFRONT_ROOT)//'/examples/f90', exist=private_f90)
+    inquire(file=trim(FORTFRONT_ROOT)//'/examples/lf', exist=private_lf)
+    if (.not. (private_f90 .and. private_lf)) FORTFRONT_ROOT = '../fortfront'
 
     failed = 0
     call verify_xpass_rejection(failed)
@@ -68,7 +83,8 @@ contains
         write (timeout_text, '(I0)') RUN_TIMEOUT_SECONDS
         call execute_command_line('rm -f '//report//' '//log_path)
         selection = ROOT//'/'//suite//'.files'
-        cmd = 'bash '//SCRIPT//' --suite '//suite//' --list-files > '//selection
+        cmd = 'FFC_FORTFRONT_DIR='//trim(FORTFRONT_ROOT)//' bash '//SCRIPT// &
+            ' --suite '//suite//' --list-files > '//selection
         call execute_command_line(cmd, exitstat=exit_stat)
         expected_total = 0
         if (exit_stat == 0) then
@@ -90,7 +106,8 @@ contains
         end if
         ! Generous per-file timeout so a single slow compile under full-suite
         ! load is not a false failure (idle compiles are well under a second).
-        cmd = 'TMPDIR='//ROOT//' timeout '//trim(timeout_text)//' bash '//SCRIPT// &
+        cmd = 'FFC_FORTFRONT_DIR='//trim(FORTFRONT_ROOT)//' TMPDIR='//ROOT// &
+            ' timeout '//trim(timeout_text)//' bash '//SCRIPT// &
             ' --suite '//suite//' --report '//report// &
             ' --jobs '//trim(jobs_text)//' --timeout 30 > '//log_path//' 2>&1'
         call execute_command_line(cmd, exitstat=exit_stat)
