@@ -27,7 +27,8 @@ extensions; promised compatibility modes retain their own scope.
 ## Current delivery
 
 Current focus: make Fo's resident Gremlin workflow fast and dependable on
-`main` before further FFC implementation. FFC `main` is `983e0b3`; the latest
+`main` before further FFC implementation. The latest FFC compiler/test code
+is at `983e0b3`; the latest
 six-case focused gate passed, while 503 of 509 inventory cases remain unknown.
 The same-generation follow-on session restarted a 516-node build and was
 stopped before testing. Fo `22f6dd3` removed the forced single compile worker;
