@@ -33,12 +33,16 @@ six-case focused gate passed, while 503 of 509 inventory cases remain unknown.
 The same-generation follow-on session restarted a 516-node build and was
 stopped before testing. Fo `22f6dd3` removed the forced single compile worker;
 Fo `f551f5a` protects edited dependency checkouts during update, and
-Fo `4a4349a` fixes a compiler capability race. The installed driver SHA256 is
-`db82d20a89909136cb39a3d150e95327bc9d83cb418d895dd2255409fa11eb76`.
+Fo `4a4349a` fixes a compiler capability race. Fx `918fb94` repaired a
+concurrent same-key restore failure; Fo `43dcd04` now restores warm source
+actions in parallel. The installed driver SHA256 is
+`20574b184c203eadd03ea6ed66e42b7c9918100ac3085d9f828306d65c09dffa`.
 A fresh public Gremlin fixture observed overlapping compiler processes with
-`FO_JOBS=2` and passed its required case. Warm action restoration remains a
-Fo speed issue; parallel restoration exposed an Fx same-key restore race now
-under repair. Recheck the FFC consumer after that repair before
+`FO_JOBS=2` and passed its required case. The six-case FFC recheck with this
+driver reached 53/516 build nodes before it was stopped to repair two observed
+Fo speed bottlenecks: serialized source hashing on cache misses and per-file
+syncs while copying temporary Gremlin views. It produced no case outcomes.
+Recheck the same six cases after those scoped repairs before
 resuming compiler work. The unrelated character-prefix edit remains preserved.
 
 1. Recheck the current FPM project and public shared test dispatcher through
