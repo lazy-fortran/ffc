@@ -34,9 +34,10 @@ parallel restoration; `78e3c5c` allowed source hashes to overlap; `3e2dad1`
 and `d4a2e82` removed syncs from temporary view and capture copies. FX
 `918fb94` fixed concurrent same-key restores; `f12fc86` buffered lease
 snapshot writes; `92a59b8` indexed parsed lease rows; `165f9fe` added explicit
-ephemeral materialization for rebuildable outputs. Fo `f6eb7ac` uses it for
+ephemeral materialization for rebuildable outputs; `22a6530` caches validated
+same-process lease snapshots. Fo `f6eb7ac` uses ephemeral materialization for
 generation bundles. Installed Fo driver SHA256 is
-`0cacfdc8c5480c502525cc1a55cf1154ff2ebe06ef5303eb257c5b535a19adde`.
+`3ce5ca366981ba94e2de3b8a3adb308dc56052e6e7e002138c5549d9432c31a5`.
 A fresh public Gremlin fixture observed overlapping compiler processes with
 `FO_JOBS=2` and passed its required case. The preceding Fo driver SHA256
 `a0e2dd52d4bf87e35ddedbcdcacecbfb5d77a2669002b7597ff818b8bbd1be05`
@@ -48,13 +49,13 @@ preserved character-prefix worktree patch SHA256
 `fe8ded3da0aedbb526135601778b194e8fa5b3aeaefb0997d89deb20b8de4218`.
 The owner was stopped cooperatively after the green receipt. The final
 installed driver passed `test_session_class_star_rank2_assumed_shape_compiler`
-in a separate 1/1 consumer gate (session `3340448-1791312088-025739611`,
-generation `5889d05e`), then that owner was stopped. The six-case evidence and
+in a separate 1/1 consumer gate (session `3382726-1791313223-162516488`,
+generation `30dd180c`), then that owner was stopped. The six-case evidence and
 one-case final-driver recheck are separate generations. Full coverage remains
-open: 503 of 509 inventory cases are unknown. The 516-action warm build still
-spent minutes parsing an approximately 97,000-row FX lease snapshot; a scoped
-snapshot cache repair is being evaluated. The unrelated character-prefix edit
-remains preserved.
+open: 503 of 509 inventory cases are unknown. With the cache, the warm FFC
+build reached 291/516 actions at about 53 s; the preceding driver reached
+86/516 at a similar point. The unrelated character-prefix edit remains
+preserved.
 
 1. Recheck the current FPM project and public shared test dispatcher through
    the fixed Fo driver, preserving original case names and avoiding duplicated
