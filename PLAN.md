@@ -26,19 +26,25 @@ extensions; promised compatibility modes retain their own scope.
 
 ## Current delivery
 
-Use the actual resident Fo loop while improving it. Fo
-[#200](https://github.com/lazy-fortran/fo/issues/200) owns current gate/driver
-evidence; its initial four-case gate passed, then background coverage found
-current defects and correctly cleared readiness. Scoped repairs are active. Only reproduced FFC
-consumer blockers delay the FFC handoff, not the full Fo cleanup backlog.
+Current focus: make Fo's resident Gremlin workflow fast and dependable on
+`main` before further FFC implementation. FFC `main` is `983e0b3`; the latest
+six-case focused gate passed, while 503 of 509 inventory cases remain unknown.
+The same-generation follow-on session restarted a 516-node build and was
+stopped before testing. Fo `22f6dd3` removed the forced single compile worker;
+the installed driver SHA256 is
+`5bac5856a5e9425b804ec3a46f75708d8dfed195fa5fa79bd3cc755878e5b413`.
+A fresh public Gremlin fixture observed overlapping compiler processes with
+`FO_JOBS=2` and passed its required case. Warm action restoration remains a
+separate Fo speed issue. Recheck the FFC consumer after that repair before
+resuming compiler work. The unrelated character-prefix edit remains preserved.
 
-1. Make the current FPM project and public shared test dispatcher work reliably
-   through Gremlin, preserving original case names and avoiding duplicated
+1. Recheck the current FPM project and public shared test dispatcher through
+   the fixed Fo driver, preserving original case names and avoiding duplicated
    static test binaries. [#798](https://github.com/lazy-fortran/ffc/issues/798)
    owns the consumer goal.
-2. Reproduce and repair up to three confirmed current failures through that
-   loop. Two class-star real-kind compiler defects are now confirmed and
-   repaired; continue bounded current-generation discovery for another failure.
+2. After Fo is usable, resume bounded current-generation discovery and repair
+   the next confirmed current compiler failure. Two class-star real-kind
+   compiler defects are confirmed and repaired; no third failure is confirmed.
 3. Continue useful language-family increments and cross-feature repairs with
    focused gates and finite background coverage.
 4. Substantially reduce compiler/tool/test/documentation volume through
@@ -230,8 +236,10 @@ generation with `input_changed=false`. Its build progress restarted at 0/516
 and reached 30/516 within about a minute; the owner was cooperatively stopped
 before any cases ran. This confirms expensive repeated graph work but does not
 distinguish cache restoration from compilation. The interrupted session adds
-no case outcomes. Measure restore/compile counts before attributing a Fo cache
-defect, then resume bounded discovery.
+no case outcomes. Fo has since removed the forced `FO_JOBS=1` override, but
+this FFC generation has not yet been retested with the corrected driver. Measure
+its restore/compile split and recheck the six-case consumer gate before
+resuming bounded discovery.
 
 ## Ownership and contracts
 
