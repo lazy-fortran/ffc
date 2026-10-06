@@ -1,6 +1,6 @@
 # FFC compiler goals
 
-Updated 2026-10-05. This is the compiler delivery plan; issues specify observable
+Updated 2026-10-06. This is the compiler delivery plan; issues specify observable
 success. Apply [goals and architectural freedom](https://github.com/lazy-fortran/fo/blob/main/doc/GOAL_DRIVEN_DEVELOPMENT.md).
 Choose the smallest adequate design and revise it when evidence requires.
 Internal representations, module lists and phase/extraction recipes are open.
@@ -37,8 +37,8 @@ consumer blockers delay the FFC handoff, not the full Fo cleanup backlog.
    static test binaries. [#798](https://github.com/lazy-fortran/ffc/issues/798)
    owns the consumer goal.
 2. Reproduce and repair up to three confirmed current failures through that
-   loop. Historical CLASS(*) assumed-shape/PDT cases are starting candidates;
-   replace already repaired cases with the next actual failure.
+   loop. Two class-star real-kind compiler defects are now confirmed and
+   repaired; continue bounded current-generation discovery for another failure.
 3. Continue useful language-family increments and cross-feature repairs with
    focused gates and finite background coverage.
 4. Substantially reduce compiler/tool/test/documentation volume through
@@ -179,6 +179,33 @@ The historical 2026-10-02 maintained observation was 502 PASS/6 FAIL/508 names
 and a 919-file rejection gate with zero new rejections. These are exact old
 observations, not current complete green. Reproduce historical failures on the
 newest candidate before assigning their repair or changing their classification.
+
+2026-10-06 class-star real-kind repair: FFC base
+`cb7f53207a708d54b0ca22464fee1cee73cb72ce` plus owned worktree patch SHA256
+`1cd1c7614e928ebea37f0a0c66080fa4f0b3a0f279a03cddf74568d09bc6319b` and the
+preserved character-prefix test patch SHA256
+`fe8ded3da0aedbb526135601778b194e8fa5b3aeaefb0997d89deb20b8de4218` produced
+Fo generation `554b865b7733092988653852276897de6e1a2b07cbc7467bb46ff510886a2839`.
+Its exact combined worktree patch SHA256 was
+`585f2f43a9ef617df6a8ccae0207cd703cd8249e19e2141ff1c93ec90f614c34`; the
+character-prefix change is unrelated and remains unstaged. Pinned Fo driver
+SHA256 `c3e41b5bc5f6bfb5550832269092b69a53dedf47c62e21fa8fc1984153fc8b5d`
+passed the four required cases in session `2803218-1791240336-557229957`:
+`test_session_class_star_rank2_assumed_shape_compiler`,
+`test_session_class_star_assumed_shape_compiler`,
+`test_session_select_type_compiler`, and `test_fortfront_corpus_conformance`.
+The select-type case includes a gfortran differential for default-real and
+real(8) scalar actuals. The gate is green with zero failures; the 509-case
+inventory is not fully verified.
+
+The pilot reproduced two compiler defects: class-star assumed-shape lowering
+refused default-real array actuals such as the typed constructor in
+FortFront's `issue_2455_array_constructor_arg.f90`, and scalar class-star
+literal tagging confused default real with explicit `real(8)`. Lowering now
+assigns distinct intrinsic ids, accepts F32 array descriptors, and derives a
+scalar literal's actual kind from the shared literal-kind resolver. Continue
+bounded discovery; do not combine receipts from the superseded failing
+generations with the final green gate.
 
 ## Ownership and contracts
 
