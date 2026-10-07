@@ -1074,6 +1074,13 @@ contains
             if (len_trim(error_msg) > 0) return
             if (complex_kind_is_c8(kind_spec, context, reference_index)) then
                 value_kind = VALUE_C8
+            else if (len_trim(kind_spec) == 0) then
+                ! FortFront can leave a bare COMPLEX return type when RESULT
+                ! carries its explicit kind in the function body.
+                call result_var_scalar_kind(node, context, value_kind, &
+                                            derived_type_index, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (value_kind /= VALUE_C8) value_kind = VALUE_C4
             else
                 value_kind = VALUE_C4
             end if

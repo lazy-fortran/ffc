@@ -62,6 +62,29 @@ subroutine case_test_session_complex_function_result_compiler()
         'end program main', &
         'c8_result')) all_passed = .false.
 
+    ! Different contained functions may use the same RESULT name.  The second
+    ! function's explicit complex(8) body declaration controls its sret kind.
+    if (.not. matches_gfortran( &
+        'program main'//new_line('a')// &
+        '  complex :: a'//new_line('a')// &
+        '  complex(8) :: b'//new_line('a')// &
+        '  a = (3.0, 4.0)'//new_line('a')// &
+        '  b = (1.0d0, 2.0d0)'//new_line('a')// &
+        '  print *, id4(a), id8(b)'//new_line('a')// &
+        'contains'//new_line('a')// &
+        '  function id4(v) result(z)'//new_line('a')// &
+        '    complex, intent(in) :: v'//new_line('a')// &
+        '    complex :: z'//new_line('a')// &
+        '    z = v'//new_line('a')// &
+        '  end function id4'//new_line('a')// &
+        '  function id8(v) result(z)'//new_line('a')// &
+        '    complex(8), intent(in) :: v'//new_line('a')// &
+        '    complex(8) :: z'//new_line('a')// &
+        '    z = v'//new_line('a')// &
+        '  end function id8'//new_line('a')// &
+        'end program main', &
+        'two_complex_result_kinds')) all_passed = .false.
+
     if (.not. all_passed) stop 1
     print *, 'PASS: complex(4)/complex(8) function results lower through '// &
         'direct LIRIC session'

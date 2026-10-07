@@ -113,18 +113,34 @@ existing complex function-result case (2/2). Exact Fo driver SHA256
 `5d6ba22ff566db1a4a24c643aafcd5045f7153a9d951d9ab50707469643a53d7`
 passed both Gremlin cases in session `3211697-1791374303-960695420`,
 generation `521e206906983030fde1f626e385e2403bc2931cddeb36685e7a4b34da5f34f4`,
-with `local_gate_green=true` and zero failures. A separate explicit
-`RESULT(z)` declaration with a dummy argument produced `duplicate complex
-declaration: z`; reduce and repair that current defect next. The complete
-original corpus case and 509-case suite remain unverified.
+with `local_gate_green=true` and zero failures.
+
+2026-10-07 complex RESULT kind repair: on FFC base
+`7795172d937191a8693bcb50ca3a564e35d500e7`, two contained functions
+with the same RESULT name but different declared complex kinds caused FFC to
+reject the second with `duplicate complex declaration: z`; gfortran compiled
+and ran both. FortFront supplied a bare `COMPLEX` return type for the second
+function, so FFC now recovers the kind from its body result declaration. The
+source/test patch SHA256 was
+`da1bde5f3a8732e2a9aab30e1764de495fc091d9c1beca791bbcb82cab25725f`.
+The direct gfortran differential case and the affected ASSOCIATE case passed
+2/2 under Fo. Exact Fo driver SHA256
+`5d6ba22ff566db1a4a24c643aafcd5045f7153a9d951d9ab50707469643a53d7`
+passed both Gremlin cases in session `3250682-1791375003-372954126`,
+generation `0670496296a7d6240011dca58774a4b9656f6aec0bbb2bf8f1ca80256ba13e0c`,
+with `local_gate_green=true` and zero failures. The complete GCC
+`associate_79.f90` still fails in FFC on complex `SIN`; a six-line complex
+`SIN(z)` program reproduces `unsupported scalar intrinsic: sin` while gfortran
+runs it. Keep its corpus owner open for complex intrinsic lowering and complete
+the 509-case FFC suite later.
 
 1. Keep the FPM project and public shared test dispatcher working through Fo,
    preserving original case names and avoiding duplicated static test binaries.
    [#798](https://github.com/lazy-fortran/ffc/issues/798) owns this consumer goal.
 2. Continue bounded current-generation discovery. Two class-star real-kind
    defects, the complex-component KIND defect and the contained complex
-   function-result ASSOCIATE selector are repaired. Resolve the separate
-   explicit RESULT declaration rejection and verify the complete maintained
+   function-result ASSOCIATE selector and explicit complex RESULT kind are
+   repaired. Implement complex `SIN` and verify the complete maintained
    `associate_79.f90` case before closing its corpus owner.
 3. Continue useful language-family increments and cross-feature repairs with
    focused gates and finite background coverage.
