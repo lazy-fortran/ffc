@@ -49,18 +49,22 @@ and `local_gate_green=true` in session
 The earlier five-case receipt belongs to its own generation; these are not a
 single full-suite green. This generation has 505 of 509 cases untested.
 
-FortFront `e4c9fd8` has removed that broad facade and migrated its remaining
-test, example, app and benchmark callers to focused modules. Its full FPM test
-set compiled and its exact candidate passed seven focused Gremlin cases. FFC
-`0045ecf` passed `test_session_intrinsics_extra_compiler`,
+FortFront `8eced2d` also removed its internal AST facades and compatibility
+inheritance layer, retained the live indexed arena and declared example test
+inputs. All FortFront FPM test targets compiled; its exact Fo Gremlin candidate
+passed 13/13 focused cases. FFC `c9cfdfe` now imports the control AST nodes
+from their owning modules. Against that final FortFront candidate, isolated FFC
+session `1077304-1791367095-211589100` passed
+`test_session_intrinsics_extra_compiler`,
 `test_session_maxloc_minloc_rank234_compiler` and
-`test_session_stop_code_compiler` against that candidate under Fo driver SHA256
-`3510671d89c610075d759861f010e70952783eb19daacc25e294924240ccdd3e`.
-Session `756333-1791362181-980381546`, generation
-`26600e3118c9aa3dd440ed8baaa1936b4e3cdad4a7d081d00bea4ec68cba61e7`
-reached `local_gate_green=true` at 3/3 with zero failures. Full FFC coverage
-remains open. Resume bounded current-generation compiler discovery and repair
-the next confirmed failure through the resident Fo loop.
+`test_session_stop_code_compiler` (3/3, zero failures) in generation
+`f6e57e6851e4441e1e665f34a3ba2866014ef53f6ac02388917fe2946e97a50f`
+under exact Fo driver SHA256
+`faa5dd3cc2e53990bb92dff06e37bbe76264b8af1acf00c97c00aea0a8b5589c`.
+Full FFC coverage remains open. The unrelated primary-checkout
+character-prefix edit remains uncommitted and preserved. Resume bounded
+current-generation compiler discovery and repair the next confirmed failure
+through the resident Fo loop.
 
 1. Keep the FPM project and public shared test dispatcher working through Fo,
    preserving original case names and avoiding duplicated static test binaries.
