@@ -54,6 +54,34 @@ contains
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             vk = scalar_real_call_kind(arena, node, context)
+        type is (component_access_node)
+            ! %RE/%IM have the real kind of their complex base.  Derived
+            ! components already expose their declared value kind here.
+            if (allocated(node%component_name)) then
+                if (same_name(node%component_name, 're') .or. &
+                    same_name(node%component_name, 'im')) then
+                    if (is_identifier(arena, node%base_expr_index)) then
+                        call get_identifier_name(arena, node%base_expr_index, &
+                                                 id_name, id_err)
+                        if (len_trim(id_err) == 0) then
+                            symbol_index = resolve_symbol_at_node(context, &
+                                node%base_expr_index, id_name)
+                            if (symbol_index > 0) then
+                                select case (context%symbols(symbol_index)%value_kind)
+                                case (VALUE_C4)
+                                    vk = VALUE_F32
+                                    return
+                                case (VALUE_C8)
+                                    vk = VALUE_F64
+                                    return
+                                end select
+                            end if
+                        end if
+                    end if
+                end if
+            end if
+            vk = real_value_kind_of(derived_component_access_kind(arena, &
+                                                                   node, context))
         end select
     end procedure scalar_real_expr_kind
 

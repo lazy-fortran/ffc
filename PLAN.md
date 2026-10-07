@@ -78,15 +78,36 @@ input from the view's `TMPDIR`. Under Fo driver SHA256
 session `2361525-1791371872-652641592` passed both cases (2/2), with
 `local_gate_green=true`, zero failures, and generation
 `2b905e37f9470e67979828e754fad6019a54ac54bb3db3a508b70710c8b47645`.
-This is a focused gate, not a 509-case full-suite result. The third current
-compiler defect remains unconfirmed; continue bounded discovery.
+This is a focused gate, not a 509-case full-suite result.
+
+2026-10-07 third current compiler defect: on FFC base
+`8d82881aef812146f733c169558aebdcbfa1b74d`, a reduced program from
+the maintained `associate_79.f90` failure compiled and exited successfully
+with gfortran 16.2.1, while FFC rejected `kind(z%re)` with
+`kind argument is not a literal or named entity`. Plain `%re/%im` values
+compiled and ran, isolating the missing compile-time KIND query. The owned
+source/test patch SHA256 was
+`acce89526f0a58435d7ae80b0a4105f30af870ffd633cacab5501bed27e25159`.
+FFC now resolves real and imaginary complex components to their real kind and
+folds KIND over such components. The shared dispatcher case checks both
+complex(4) and complex(8), an ASSOCIATE alias and runtime values; gfortran's
+independent oracle exited 37 as expected. Direct `fo test --all
+test_session_associate_compiler` passed 1/1. Exact Fo driver SHA256
+`5d6ba22ff566db1a4a24c643aafcd5045f7153a9d951d9ab50707469643a53d7`
+passed the same focused case in Gremlin session
+`3175876-1791373469-238501054`, generation
+`ca23274aaddd064eec222e37e316a7fe5b5719e6328d25d7b20b5b2ab1a86803`,
+with `local_gate_green=true`, zero failures. The original corpus case also
+uses a complex function result as its selector, which the current direct
+session separately rejects; keep that broader corpus owner open. Full
+509-case coverage remains open.
 
 1. Keep the FPM project and public shared test dispatcher working through Fo,
    preserving original case names and avoiding duplicated static test binaries.
    [#798](https://github.com/lazy-fortran/ffc/issues/798) owns this consumer goal.
-2. Resume bounded current-generation discovery and repair the next confirmed
-   compiler failure. Two class-star real-kind defects are already repaired; no
-   third failure is confirmed.
+2. Continue bounded current-generation discovery. Two class-star real-kind
+   defects and the complex-component KIND defect are repaired. The maintained
+   `associate_79.f90` function-result selector remains open.
 3. Continue useful language-family increments and cross-feature repairs with
    focused gates and finite background coverage.
 4. Substantially reduce compiler/tool/test/documentation volume through

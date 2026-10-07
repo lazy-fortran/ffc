@@ -1674,6 +1674,13 @@ contains
         ! compile-time known even when its source is a variable.  KIND() can
         ! therefore fold the nested call without lowering a runtime value.
         select type (conversion => arena%entries(arg_index)%node)
+        type is (component_access_node)
+            k = scalar_real_expr_kind(arena, arg_index, context)
+            if (k == VALUE_F32 .or. k == VALUE_F64) then
+                constant_value = value_kind_number(int(k))
+                call set_empty(error_msg)
+                return
+            end if
         type is (call_or_subscript_node)
             if (same_name(conversion%name, 'float') .or. &
                 same_name(conversion%name, 'dfloat')) then

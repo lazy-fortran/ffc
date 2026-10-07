@@ -30,6 +30,7 @@ subroutine case_test_session_associate_compiler()
     if (.not. test_associate_real_expr_alias()) all_passed = .false.
     if (.not. test_associate_kind_constant_selector()) all_passed = .false.
     if (.not. test_associate_kind_constant_expression()) all_passed = .false.
+    if (.not. test_associate_complex_component_kind()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: associate constructs lower through direct LIRIC'
@@ -244,5 +245,30 @@ contains
             source, 9, &
             '/tmp/ffc_session_associate_kind_expr')
     end function test_associate_kind_constant_expression
+
+    logical function test_associate_complex_component_kind()
+        ! KIND of %RE/%IM is fixed by the complex kind, including through an
+        ! ASSOCIATE alias.  The values and kinds agree with gfortran.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'use, intrinsic :: iso_fortran_env, only: real32, real64'//new_line('a')// &
+            'implicit none'//new_line('a')// &
+            'complex(real32) :: w'//new_line('a')// &
+            'complex(real64) :: z'//new_line('a')// &
+            'w = cmplx(3.0_real32, 4.0_real32, kind=real32)'//new_line('a')// &
+            'z = cmplx(1.0_real64, 2.0_real64, kind=real64)'//new_line('a')// &
+            'if (kind(w%re) /= real32) stop 1'//new_line('a')// &
+            'if (kind(w%im) /= real32) stop 2'//new_line('a')// &
+            'if (kind(z%re) /= real64) stop 3'//new_line('a')// &
+            'associate (k => z)'//new_line('a')// &
+            '    if (kind(k%im) /= real64) stop 4'//new_line('a')// &
+            '    if (k%re /= 1.0_real64 .or. k%im /= 2.0_real64) stop 5'//new_line('a')// &
+            'end associate'//new_line('a')// &
+            'stop 37'//new_line('a')// &
+            'end program main'
+
+        test_associate_complex_component_kind = expect_exit_status( &
+            source, 37, '/tmp/ffc_session_associate_complex_kind')
+    end function test_associate_complex_component_kind
 
 end subroutine case_test_session_associate_compiler
