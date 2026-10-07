@@ -131,8 +131,9 @@ generation `0670496296a7d6240011dca58774a4b9656f6aec0bbb2bf8f1ca80256ba13e0c`,
 with `local_gate_green=true` and zero failures. The complete GCC
 `associate_79.f90` still fails in FFC on complex `SIN`; a six-line complex
 `SIN(z)` program reproduces `unsupported scalar intrinsic: sin` while gfortran
-runs it. Keep its corpus owner open for complex intrinsic lowering and complete
-the 509-case FFC suite later.
+runs it. [#803](https://github.com/lazy-fortran/ffc/issues/803) owns complex
+intrinsic lowering and the full corpus case; complete the 509-case FFC suite
+later.
 
 1. Keep the FPM project and public shared test dispatcher working through Fo,
    preserving original case names and avoiding duplicated static test binaries.
@@ -141,7 +142,7 @@ the 509-case FFC suite later.
    defects, the complex-component KIND defect and the contained complex
    function-result ASSOCIATE selector and explicit complex RESULT kind are
    repaired. Implement complex `SIN` and verify the complete maintained
-   `associate_79.f90` case before closing its corpus owner.
+   `associate_79.f90` case under [#803](https://github.com/lazy-fortran/ffc/issues/803).
 3. Continue useful language-family increments and cross-feature repairs with
    focused gates and finite background coverage.
 4. Substantially reduce compiler/tool/test/documentation volume through

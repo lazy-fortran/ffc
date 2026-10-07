@@ -5,7 +5,7 @@ achar_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pendin
 aliasing_dummy_5.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 alloc_comp_assign_3.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 arrayio_4.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
-associate_79.f90 # owner=lazy-fortran/ffc#455; reason=preserve kind constants in ASSOCIATE
+associate_79.f90 # owner=lazy-fortran/ffc#803; reason=lower scalar complex SIN
 bind_c_usage_21.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 bind_c_usage_29.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 binding_label_tests_38.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
