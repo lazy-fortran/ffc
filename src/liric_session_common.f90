@@ -36,7 +36,7 @@ module liric_session_common
     type, bind(c), public :: lr_session_config_t
         integer(c_int) :: mode = 0_c_int
         type(c_ptr) :: target = c_null_ptr
-        integer(c_int) :: backend = 0_c_int
+        integer(c_int) :: backend = 2_c_int
         integer(c_int) :: opt_level = 0_c_int
     end type lr_session_config_t
 

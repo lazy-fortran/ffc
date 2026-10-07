@@ -7,10 +7,6 @@
 #   <artifact_dir>/ffc-runtime-v2-copy-patch.lrarch
 #   <artifact_dir>/ffc-runtime-v2-llvm.lrarch   (only when LLVM is available)
 #
-# The LIRIC session backend `default` is an alias for copy-patch, so it has no
-# archive of its own; a loader asking for `default` selects the copy-patch
-# artifact.
-#
 # This project is deliberately standalone: ffc itself is an fpm project, and
 # this only produces data artifacts, never a library ffc links against.
 

@@ -141,7 +141,7 @@ contains
         ! An array COMMON member must alias the same LIRIC global across
         ! units: element GEP addresses off element_address, so
         ! rebind_common_symbol has to publish it there too, not just address
-        ! (session_program_lowering_common.inc).
+        ! (session_program_lowering_common).
         character(len=*), parameter :: source = &
             'program p'//new_line('a')// &
             '  implicit none'//new_line('a')// &
@@ -208,7 +208,7 @@ contains
         ! A BLOCK DATA whole-array DATA statement (DATA arr /v1, v2, v3/,
         ! no subscripts) initialises one value per element in declaration
         ! order; the object and value lists need not be the same length
-        ! (session_program_lowering_common.inc apply_block_data_statement).
+        ! (apply_block_data_statement).
         character(len=*), parameter :: source = &
             'program p'//new_line('a')// &
             '  implicit none'//new_line('a')// &

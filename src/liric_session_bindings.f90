@@ -12,7 +12,6 @@ module liric_session_bindings
     private
 
     integer(c_int), parameter, public :: LR_MODE_DIRECT = 0_c_int
-    integer(c_int), parameter, public :: LR_SESSION_BACKEND_DEFAULT = 0_c_int
     integer(c_int), parameter, public :: LR_OK = 0_c_int
     logical(c_bool), parameter, public :: c_false = .false.
     logical(c_bool), parameter, public :: c_true = .true.

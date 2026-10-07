@@ -71,7 +71,15 @@ contains
             return
         end if
         session_config = lr_session_config_t()
-        if (present(backend)) session_config%backend = int(backend, c_int)
+        if (present(backend)) then
+            select case (backend)
+            case (1, 2, 3)
+                session_config%backend = int(backend, c_int)
+            case default
+                error_msg = 'unsupported codegen backend'
+                return
+            end select
+        end if
         if (present(opt_level)) session_config%opt_level = int(opt_level, c_int)
         call liric_session_create(context%session, error_msg, session_config)
         if (len_trim(error_msg) > 0) return

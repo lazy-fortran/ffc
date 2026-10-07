@@ -5,13 +5,9 @@
 ! archives themselves are produced by runtime/CMakeLists.txt (#374); see
 ! docs/RUNTIME_ABI.md for the artifact names and the archive header format.
 !
-! Selection is strict and unconditional: the caller names the artifact
-! directory, and a missing archive, or one built for a different backend or
-! target, is an error rather than a fallback. #565 removed the environment
-! variable that used to make this opt-in, along with the inline-runtime path
-! it fell back to; ffc now links its runtime into every executable it emits
-! (see ffc_runtime_link), and this facility serves sessions that must resolve
-! runtime calls without a system linker.
+! Selection is strict: the caller names the artifact directory, and a missing
+! archive or one built for a different backend or target is an error. This
+! facility serves sessions that resolve runtime calls without a system linker.
 module liric_session_runtime_bindings
     use liric_session_common, only: liric_session_t, lr_error_t, LR_OK, &
         status_ok, require_open_session, set_empty
@@ -20,14 +16,13 @@ module liric_session_runtime_bindings
     implicit none
     private
 
-    public :: LR_SESSION_BACKEND_DEFAULT, LR_SESSION_BACKEND_ISEL, &
+    public :: LR_SESSION_BACKEND_ISEL, &
         LR_SESSION_BACKEND_COPY_PATCH, LR_SESSION_BACKEND_LLVM
     public :: runtime_archive_backend_name, runtime_archive_name, &
-        runtime_archive_path, effective_archive_backend
+        runtime_archive_path
     public :: install_runtime_archive
 
     ! Frozen LIRIC session backend enumerators (LIRIC #527 ABI freeze).
-    integer(c_int), parameter :: LR_SESSION_BACKEND_DEFAULT = 0_c_int
     integer(c_int), parameter :: LR_SESSION_BACKEND_ISEL = 1_c_int
     integer(c_int), parameter :: LR_SESSION_BACKEND_COPY_PATCH = 2_c_int
     integer(c_int), parameter :: LR_SESSION_BACKEND_LLVM = 3_c_int
@@ -50,26 +45,11 @@ module liric_session_runtime_bindings
 
 contains
 
-    ! Backend `default` is an alias for copy-patch and has no artifact of its
-    ! own, so it resolves to the copy-patch archive.
-    pure function effective_archive_backend(backend) result(resolved)
-        integer(c_int), intent(in) :: backend
-        integer(c_int) :: resolved
-
-        if (backend == LR_SESSION_BACKEND_DEFAULT) then
-            resolved = LR_SESSION_BACKEND_COPY_PATCH
-        else
-            resolved = backend
-        end if
-    end function effective_archive_backend
-
     pure function runtime_archive_backend_name(backend) result(name)
         integer(c_int), intent(in) :: backend
         character(len=:), allocatable :: name
-        integer(c_int) :: resolved
 
-        resolved = effective_archive_backend(backend)
-        select case (resolved)
+        select case (backend)
         case (LR_SESSION_BACKEND_ISEL)
             name = 'isel'
         case (LR_SESSION_BACKEND_COPY_PATCH)
@@ -187,7 +167,7 @@ contains
             error_msg = 'not a LIRIC runtime archive: '//path
             return
         end if
-        wanted = effective_archive_backend(backend)
+        wanted = backend
         recorded = le_u32(bytes, 13)
         if (recorded /= int(wanted)) then
             error_msg = 'runtime archive backend mismatch for '//path// &

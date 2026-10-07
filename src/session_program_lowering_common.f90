@@ -1,7 +1,5 @@
 submodule (session_program_lowering_impl) session_program_lowering_common
-    !! `session_program_lowering_common` procedures, moved out of `session_program_lowering_common.inc` so that this
-    !! unit has a name, a checked interface, and can be compiled, edited
-    !! and pointed at on its own instead of only inside its includer.
+    !! COMMON layout, initialization, and symbol binding procedures.
     implicit none
 
 contains
@@ -667,21 +665,6 @@ contains
             end if
         end do
     end function index_in_int_list
-
-    subroutine program_declaration_kind(arena, var_name, value_kind, error_msg)
-        ! Legacy wrapper: resolve a scalar COMMON variable's kind from a program
-        ! declaration. Used by equivalence code.
-        type(ast_arena_t), intent(in) :: arena
-        character(len=*), intent(in) :: var_name
-        integer, intent(out) :: value_kind
-        character(len=:), allocatable, intent(out) :: error_msg
-        logical :: dummy_is_array
-        integer :: dummy_array_size
-
-        call program_declaration_kind_full(arena, var_name, value_kind, &
-                                          dummy_is_array, dummy_array_size, &
-                                          error_msg)
-    end subroutine program_declaration_kind
 
     subroutine program_declaration_kind_full(arena, var_name, value_kind, &
                                            is_array, array_size, error_msg)

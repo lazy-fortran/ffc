@@ -17,7 +17,7 @@ module ffc_cli_options
         logical :: show_version = .false.
         logical :: show_help = .false.
         logical :: json_diagnostics = .false.
-        integer :: backend = 0
+        integer :: backend = 2
         integer :: opt_level = 0
     end type cli_options_t
 
@@ -71,8 +71,6 @@ contains
                 end if
                 i = i + 1
                 select case (trim(argv(i)))
-                case ('default')
-                    opts%backend = 0
                 case ('isel')
                     opts%backend = 1
                 case ('copy-patch')
@@ -81,7 +79,7 @@ contains
                     opts%backend = 3
                 case default
                     call set_error(opts, 'Unknown --backend value: '// &
-                        trim(argv(i))//' (expected default|isel|copy-patch|llvm)')
+                        trim(argv(i))//' (expected isel|copy-patch|llvm)')
                     return
                 end select
             case ('-O0')

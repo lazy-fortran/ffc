@@ -14,11 +14,10 @@ descriptor convention. The remaining legacy paths are migration work, not
 additional supported ABIs; each must be removed with an ownership/lifetime
 oracle when its issue closes.
 
-OPEN/CLOSE and file-unit WRITE lowering is implemented in the descendant
+OPEN/CLOSE and file-unit WRITE lowering uses
 `src/session_program_lowering_open_close.f90` with explicit interfaces in
-`session_program_lowering_impl`; the old textual include is not part of the
-compiler architecture. This move preserves the runtime ABI below, including
-the current `STATUS=` character-value contract and unit-number resolution.
+`session_program_lowering_impl`. The `STATUS=` character-value contract and
+unit-number resolution are described below.
 
 ## Stability Rule
 
@@ -792,10 +791,6 @@ collide. Within it the names are:
 `v2` is the artifact naming version. It is bumped when the artifact layout or
 the packaged payload contract changes, and is independent of the LIRIC archive
 format version recorded inside each file.
-
-The LIRIC session backend `default` is an alias for copy-patch and has no
-artifact of its own: a consumer asking for `default` selects
-`ffc-runtime-v2-copy-patch.lrarch`.
 
 The `llvm` artifact is produced only when the configuration opts in with
 `-DFFC_RUNTIME_ENABLE_LLVM=ON` and the LIRIC build exposes the LLVM backend, so

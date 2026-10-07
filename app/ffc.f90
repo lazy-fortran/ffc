@@ -333,7 +333,7 @@ contains
         print '(A)', '  -I <dir>      Add module/include search directory'
         print '(A)', '  <file>.o      Link input object (its directory is '// &
             'searched for .fmod)'
-        print '(A)', '  --backend <b> Codegen backend: default|isel|'// &
+        print '(A)', '  --backend <b> Codegen backend: isel|'// &
             'copy-patch|llvm'
         print '(A)', '  --json        Emit diagnostics as JSON'
         print '(A)', '  --version     Print version and exit'

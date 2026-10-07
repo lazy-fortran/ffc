@@ -7,13 +7,12 @@
 ! 42. That checks the archive was really loaded and resolved, not merely that
 ! a file was read.
 !
-! It also pins the selection contract: `default` selects the copy-patch
-! artifact, a missing archive and a backend-mismatched archive each report the
+! It also pins the selection contract: a missing archive and a
+! backend-mismatched archive each report the
 ! exact backend, and a blank artifact directory is an error.
 !
-! #565 removed the FFC_RUNTIME_ARCHIVE_DIR opt-in and the inline-runtime path
-! it used to fall back to, so the directory is now an explicit argument and
-! every failure to install a requested archive is loud.
+! The directory is an explicit argument and failure to install a requested
+! archive is reported.
 module ffc_case_test_session_runtime_archive_compiler
     implicit none
     private
@@ -30,8 +29,7 @@ subroutine case_test_session_runtime_archive_compiler()
         emit_ret_i32_operand, begin_i32_main, finish_and_emit_exe
     use liric_session_runtime_bindings, only: install_runtime_archive, &
         runtime_archive_name, runtime_archive_path, &
-        effective_archive_backend, &
-        LR_SESSION_BACKEND_DEFAULT, LR_SESSION_BACKEND_ISEL, &
+        LR_SESSION_BACKEND_ISEL, &
         LR_SESSION_BACKEND_COPY_PATCH
     use, intrinsic :: iso_c_binding, only: c_int
     implicit none
@@ -51,7 +49,6 @@ subroutine case_test_session_runtime_archive_compiler()
         call check_probe_runs(LR_SESSION_BACKEND_ISEL, 'isel', failures)
         call check_probe_runs(LR_SESSION_BACKEND_COPY_PATCH, 'copy-patch', &
                               failures)
-        call check_probe_runs(LR_SESSION_BACKEND_DEFAULT, 'default', failures)
         call check_missing_archive(failures)
         call check_backend_mismatch(failures)
     end if
@@ -74,7 +71,6 @@ contains
         if (cmd_stat /= 0) exit_stat = -1
     end subroutine run
 
-    ! `default` must resolve to the copy-patch artifact, not one of its own.
     subroutine check_names(nfail)
         integer, intent(inout) :: nfail
 
@@ -88,14 +84,8 @@ contains
             print *, 'FAIL: wrong copy-patch archive name'
             nfail = nfail + 1
         end if
-        if (runtime_archive_name(LR_SESSION_BACKEND_DEFAULT) /= &
-            'ffc-runtime-v2-copy-patch.lrarch') then
-            print *, 'FAIL: default backend does not alias copy-patch'
-            nfail = nfail + 1
-        end if
-        if (effective_archive_backend(LR_SESSION_BACKEND_DEFAULT) /= &
-            LR_SESSION_BACKEND_COPY_PATCH) then
-            print *, 'FAIL: default backend does not resolve to copy-patch'
+        if (len(runtime_archive_name(0_c_int)) /= 0) then
+            print *, 'FAIL: obsolete backend has an archive name'
             nfail = nfail + 1
         end if
         if (runtime_archive_path('/root', 'host', LR_SESSION_BACKEND_ISEL) /= &
@@ -265,8 +255,7 @@ contains
         call run('rm -rf '//bad_root, stat)
     end subroutine check_backend_mismatch
 
-    ! A blank artifact directory is a caller error, not a licence to skip
-    ! installation. The opt-out that used to live here is gone (#565).
+    ! A blank artifact directory is a caller error.
     subroutine check_blank_directory_is_an_error(nfail)
         integer, intent(inout) :: nfail
         type(liric_session_t) :: session
@@ -281,7 +270,7 @@ contains
             return
         end if
         if (install_runtime_archive(session, '   ', &
-                                    LR_SESSION_BACKEND_DEFAULT, 'host', &
+                                    LR_SESSION_BACKEND_COPY_PATCH, 'host', &
                                     error_msg)) then
             print *, 'FAIL: a blank archive directory was accepted'
             nfail = nfail + 1

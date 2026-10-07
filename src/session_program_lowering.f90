@@ -8899,12 +8899,6 @@ module session_program_lowering_impl
             integer, intent(out) :: array_size
             character(len=:), allocatable, intent(out) :: error_msg
         end subroutine program_declaration_kind_in_scope
-        module subroutine program_declaration_kind(arena, var_name, value_kind, error_msg)
-            type(ast_arena_t), intent(in) :: arena
-            character(len=*), intent(in) :: var_name
-            integer, intent(out) :: value_kind
-            character(len=:), allocatable, intent(out) :: error_msg
-        end subroutine program_declaration_kind
         module subroutine apply_block_data_statement(arena, &
                                                      idx, &
                                                      slots, &

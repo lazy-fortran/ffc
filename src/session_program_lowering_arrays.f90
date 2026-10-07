@@ -2117,10 +2117,9 @@ contains
         is_dummy = .false.
         if (index > 0) then
             if (context%symbols(index)%is_common_bound) then
-                ! COMMON was reached before this declaration in source order
-                ! (session_program_lowering_common.inc); rebind_common_symbol
-                ! already set shape and element_address from this same
-                ! declaration node, so this occurrence is a benign redeclare.
+                ! COMMON was reached before this declaration in source order.
+                ! rebind_common_symbol already set shape and element_address
+                ! from this declaration node, so this is a benign redeclare.
                 call set_empty(error_msg)
                 return
             end if

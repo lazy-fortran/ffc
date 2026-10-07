@@ -14,11 +14,11 @@ subroutine case_test_session_cli_backend()
     implicit none
     save
 
-    call check_default()
+    call check_implicit_backend()
     call check_named('isel', 1)
     call check_named('copy-patch', 2)
     call check_named('llvm', 3)
-    call check_named('default', 0)
+    call check_rejected_default()
     call check_unknown()
     call check_missing_value()
 
@@ -26,21 +26,33 @@ subroutine case_test_session_cli_backend()
 
 contains
 
-    subroutine check_default()
+    subroutine check_implicit_backend()
         type(cli_options_t) :: opts
         character(len=CLI_PATH_LEN) :: argv(1)
 
         argv(1) = 'test.f90'
         call parse_arguments(argv, opts)
         if (opts%error) then
-            print *, 'FAIL [default]: ', opts%error_message
+            print *, 'FAIL [implicit backend]: ', opts%error_message
             stop 1
         end if
-        if (opts%backend /= 0) then
-            print *, 'FAIL [default]: backend=', opts%backend
+        if (opts%backend /= 2) then
+            print *, 'FAIL [implicit backend]: backend=', opts%backend
             stop 1
         end if
-    end subroutine check_default
+    end subroutine check_implicit_backend
+
+    subroutine check_rejected_default()
+        type(cli_options_t) :: opts
+        character(len=CLI_PATH_LEN) :: argv(3)
+
+        argv = [character(len=CLI_PATH_LEN) :: 'test.f90', '--backend', 'default']
+        call parse_arguments(argv, opts)
+        if (.not. opts%error) then
+            print *, 'FAIL [default]: obsolete backend was accepted'
+            stop 1
+        end if
+    end subroutine check_rejected_default
 
     subroutine check_named(name, expected)
         character(len=*), intent(in) :: name
