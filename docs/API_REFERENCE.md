@@ -9,8 +9,10 @@ surface is intentionally small. The supported language contract is
 Use FortFront's compiler-facing API:
 
 ```fortran
-use fortfront, only: compiler_frontend_options_t, compiler_frontend_result_t, &
-                     compile_frontend_from_file, INPUT_MODE_STANDARD
+use fortfront_compiler, only: compiler_frontend_options_t, &
+                              compiler_frontend_result_t, &
+                              compile_frontend_from_file
+use fortfront_semantic, only: INPUT_MODE_STANDARD
 ```
 
 The frontend result owns:
