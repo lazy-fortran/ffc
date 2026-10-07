@@ -44,18 +44,22 @@ contains
 
     subroutine bind_associate_name(arena, assoc, association_index, scope_index, &
             context, error_msg)
+        use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         type(association_t), intent(in) :: assoc
         integer, intent(in) :: association_index
         integer, intent(in) :: scope_index
         type(lowering_context_t), intent(inout) :: context
         character(len=:), allocatable, intent(out) :: error_msg
-        integer :: value_kind, idx, src_idx
+        integer :: value_kind, idx, src_idx, i
         integer :: expression_symbol, expression_source, expression_extent
         integer :: expression_rank, expression_dim1, expression_dim2
         integer :: expression_dim3, expression_dim4
         character(len=:), allocatable :: sel_name, name_err
-        type(lr_operand_desc_t) :: value
+        type(lr_operand_desc_t) :: value, buffer, imag_address
+        type(lr_operand_desc_t), allocatable :: user_args(:), all_args(:)
+        integer, allocatable :: copyback_indices(:)
+        integer(c_int64_t) :: nbytes, im_offset
         type(array_expr_plan_t) :: expression_plan
         type(declaration_binding_t) :: binding
 
@@ -120,6 +124,50 @@ contains
                 call bind_associate_component(arena, sel, assoc%name, binding, &
                     context, error_msg)
                 return
+                type is (call_or_subscript_node)
+                if (is_contained_function_reference(sel, context)) then
+                    value_kind = contained_function_kind(context, sel%name)
+                    if (value_kind == VALUE_C4 .or. value_kind == VALUE_C8) then
+                        nbytes = 8_c_int64_t
+                        im_offset = 4_c_int64_t
+                        if (value_kind == VALUE_C8) then
+                            nbytes = 16_c_int64_t
+                            im_offset = 8_c_int64_t
+                        end if
+                        if (.not. emit_alloca_bytes(context%session, &
+                                i64_immediate(context%session, nbytes), buffer, &
+                                error_msg)) return
+                        if (allocated(sel%arg_indices)) then
+                            call prepare_reference_args(arena, sel%arg_indices, &
+                                context, VALUE_I32, sel%name, user_args, &
+                                copyback_indices, error_msg)
+                            if (len_trim(error_msg) > 0) return
+                        else
+                            allocate (user_args(0), copyback_indices(0))
+                        end if
+                        allocate (all_args(size(user_args) + 1))
+                        all_args(1) = buffer
+                        do i = 1, size(user_args)
+                            all_args(i + 1) = user_args(i)
+                        end do
+                        if (.not. emit_void_call(context%session, sel%name, &
+                                all_args, error_msg)) return
+                        call copy_back_reference_args(context, user_args, &
+                            copyback_indices, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                        if (.not. emit_ptr_offset(context%session, buffer, &
+                                im_offset, imag_address, error_msg)) return
+                        idx = associate_symbol_slot(context, binding)
+                        context%symbols(idx) = symbol_t()
+                        context%symbols(idx)%name = trim(assoc%name)
+                        context%symbols(idx)%value_kind = value_kind
+                        context%symbols(idx)%address = buffer
+                        context%symbols(idx)%element_address = imag_address
+                        context%symbols(idx)%has_address = .true.
+                        call attach_symbol_binding(context, idx, binding)
+                        return
+                    end if
+                end if
             end select
         end if
 

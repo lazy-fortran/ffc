@@ -31,6 +31,7 @@ subroutine case_test_session_associate_compiler()
     if (.not. test_associate_kind_constant_selector()) all_passed = .false.
     if (.not. test_associate_kind_constant_expression()) all_passed = .false.
     if (.not. test_associate_complex_component_kind()) all_passed = .false.
+    if (.not. test_associate_complex_function_result()) all_passed = .false.
 
     if (.not. all_passed) stop 1
     print *, 'PASS: associate constructs lower through direct LIRIC'
@@ -270,5 +271,39 @@ contains
         test_associate_complex_component_kind = expect_exit_status( &
             source, 37, '/tmp/ffc_session_associate_complex_kind')
     end function test_associate_complex_component_kind
+
+    logical function test_associate_complex_function_result()
+        ! A contained complex function returns through an sret buffer.  The
+        ! selector is evaluated once and both components remain available in
+        ! the associate scope, for either supported complex kind.
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            'use, intrinsic :: iso_fortran_env, only: real32, real64'//new_line('a')// &
+            'implicit none'//new_line('a')// &
+            'complex(real32) :: a'//new_line('a')// &
+            'complex(real64) :: b'//new_line('a')// &
+            'a = cmplx(3.0_real32, 4.0_real32, kind=real32)'//new_line('a')// &
+            'b = cmplx(1.0_real64, 2.0_real64, kind=real64)'//new_line('a')// &
+            'associate (x => id4(a), y => id8(b))'//new_line('a')// &
+            '    if (kind(x%re) /= real32 .or. kind(x%im) /= real32) stop 1'//new_line('a')// &
+            '    if (kind(y%re) /= real64 .or. kind(y%im) /= real64) stop 2'//new_line('a')// &
+            '    if (x%re /= 3.0_real32 .or. x%im /= 4.0_real32) stop 3'//new_line('a')// &
+            '    if (y%re /= 1.0_real64 .or. y%im /= 2.0_real64) stop 4'//new_line('a')// &
+            'end associate'//new_line('a')// &
+            'stop 37'//new_line('a')// &
+            'contains'//new_line('a')// &
+            'complex(real32) function id4(v)'//new_line('a')// &
+            '    complex(real32), intent(in) :: v'//new_line('a')// &
+            '    id4 = v'//new_line('a')// &
+            'end function id4'//new_line('a')// &
+            'complex(real64) function id8(v)'//new_line('a')// &
+            '    complex(real64), intent(in) :: v'//new_line('a')// &
+            '    id8 = v'//new_line('a')// &
+            'end function id8'//new_line('a')// &
+            'end program main'
+
+        test_associate_complex_function_result = expect_exit_status( &
+            source, 37, '/tmp/ffc_session_associate_complex_result')
+    end function test_associate_complex_function_result
 
 end subroutine case_test_session_associate_compiler

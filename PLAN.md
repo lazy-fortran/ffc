@@ -98,16 +98,34 @@ passed the same focused case in Gremlin session
 `3175876-1791373469-238501054`, generation
 `ca23274aaddd064eec222e37e316a7fe5b5719e6328d25d7b20b5b2ab1a86803`,
 with `local_gate_green=true`, zero failures. The original corpus case also
-uses a complex function result as its selector, which the current direct
-session separately rejects; keep that broader corpus owner open. Full
-509-case coverage remains open.
+uses a complex function result as its selector.
+
+2026-10-07 follow-on compiler repair: on FFC base
+`ad01eacacd2fb7917ed5f0f1e65cb29264b09f90`, an ASSOCIATE selector that
+called a contained complex function still failed with `unsupported scalar
+function call or array expression`. The source/test patch SHA256 was
+`3f188025ed2761b642181d6346eca86426feab507e8134e5a6db1bd68a809d14`.
+FFC now binds the function's complex result buffer to the associate name for
+both supported complex widths, with the existing reference-argument and
+copyback path. An exact two-width, two-function program exits 37 under both
+gfortran 16.2.1 and FFC. Direct Fo tests passed the ASSOCIATE case and the
+existing complex function-result case (2/2). Exact Fo driver SHA256
+`5d6ba22ff566db1a4a24c643aafcd5045f7153a9d951d9ab50707469643a53d7`
+passed both Gremlin cases in session `3211697-1791374303-960695420`,
+generation `521e206906983030fde1f626e385e2403bc2931cddeb36685e7a4b34da5f34f4`,
+with `local_gate_green=true` and zero failures. A separate explicit
+`RESULT(z)` declaration with a dummy argument produced `duplicate complex
+declaration: z`; reduce and repair that current defect next. The complete
+original corpus case and 509-case suite remain unverified.
 
 1. Keep the FPM project and public shared test dispatcher working through Fo,
    preserving original case names and avoiding duplicated static test binaries.
    [#798](https://github.com/lazy-fortran/ffc/issues/798) owns this consumer goal.
 2. Continue bounded current-generation discovery. Two class-star real-kind
-   defects and the complex-component KIND defect are repaired. The maintained
-   `associate_79.f90` function-result selector remains open.
+   defects, the complex-component KIND defect and the contained complex
+   function-result ASSOCIATE selector are repaired. Resolve the separate
+   explicit RESULT declaration rejection and verify the complete maintained
+   `associate_79.f90` case before closing its corpus owner.
 3. Continue useful language-family increments and cross-feature repairs with
    focused gates and finite background coverage.
 4. Substantially reduce compiler/tool/test/documentation volume through
