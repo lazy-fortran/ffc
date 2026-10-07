@@ -26,44 +26,31 @@ extensions; promised compatibility modes retain their own scope.
 
 ## Current delivery
 
-Current focus: keep Fo's resident Gremlin workflow fast and dependable on
-`main` for subsequent FFC work. The latest FFC compiler/test code is at
-`983e0b3`; no compiler implementation is assigned in this increment. Fo
-`22f6dd3` removed the forced single compile worker; `43dcd04` enabled warm
-parallel restoration; `78e3c5c` allowed source hashes to overlap; `3e2dad1`
-and `d4a2e82` removed syncs from temporary view and capture copies. FX
-`918fb94` fixed concurrent same-key restores; `f12fc86` buffered lease
-snapshot writes; `92a59b8` indexed parsed lease rows; `165f9fe` added explicit
-ephemeral materialization for rebuildable outputs; `22a6530` caches validated
-same-process lease snapshots. Fo `f6eb7ac` uses ephemeral materialization for
-generation bundles. Installed Fo driver SHA256 is
-`3ce5ca366981ba94e2de3b8a3adb308dc56052e6e7e002138c5549d9432c31a5`.
-A fresh public Gremlin fixture observed overlapping compiler processes with
-`FO_JOBS=2` and passed its required case. The preceding Fo driver SHA256
-`a0e2dd52d4bf87e35ddedbcdcacecbfb5d77a2669002b7597ff818b8bbd1be05`
-passed the exact FFC six-case gate 6/6 with zero failures and
-`local_gate_green=true` in session
-`3046333-1791310754-498154325`, generation `cb0ca871`, on lane
-`ffc-final-a0e2-20261006`. Its source was FFC base `749f86c` plus the
-preserved character-prefix worktree patch SHA256
-`fe8ded3da0aedbb526135601778b194e8fa5b3aeaefb0997d89deb20b8de4218`.
-The owner was stopped cooperatively after the green receipt. The final
-installed driver passed `test_session_class_star_rank2_assumed_shape_compiler`
-in a separate 1/1 consumer gate (session `3382726-1791313223-162516488`,
-generation `30dd180c`), then that owner was stopped. The six-case evidence and
-one-case final-driver recheck are separate generations. Full coverage remains
-open: 503 of 509 inventory cases are unknown. With the cache, the warm FFC
-build reached 291/516 actions at about 53 s; the preceding driver reached
-86/516 at a similar point. The unrelated character-prefix edit remains
-preserved.
+2026-10-07: FFC `55d5c1a` removes obsolete runtime shape tools, backend
+aliases and stale documentation while retaining the shared dispatcher and
+supported compiler behavior. Its task branch passed four focused cases. The
+exact combined main candidate, including the separately preserved
+character-prefix worktree edit, passed five focused cases with zero failures
+and `local_gate_green=true` in Fo Gremlin session
+`603216-1791358597-803198692`, generation
+`352ec69e45358f9d3a1dd20fcd432619f20cca34ad317bcdb68077c842201539`.
+The tested Fo driver SHA256 is
+`81c096068873c99e0211c1754ab2a122092c0df6817c8b1c4f325b669aa51105`.
+All 516 build actions passed. Full coverage remains open: 504 of 509 cases
+have no current-generation result. The unrelated character-prefix edit remains
+uncommitted and preserved.
 
-1. Recheck the current FPM project and public shared test dispatcher through
-   the fixed Fo driver, preserving original case names and avoiding duplicated
-   static test binaries. [#798](https://github.com/lazy-fortran/ffc/issues/798)
-   owns the consumer goal.
-2. After Fo is usable, resume bounded current-generation discovery and repair
-   the next confirmed current compiler failure. Two class-star real-kind
-   compiler defects are confirmed and repaired; no third failure is confirmed.
+Next, move FFC's remaining imports from FortFront's broad facade to its narrow
+modules, then remove that facade at its owner after FortFront's test/example
+callers have migrated. Resume bounded current-generation compiler discovery;
+repair the next confirmed compiler failure through the resident Fo loop.
+
+1. Keep the FPM project and public shared test dispatcher working through Fo,
+   preserving original case names and avoiding duplicated static test binaries.
+   [#798](https://github.com/lazy-fortran/ffc/issues/798) owns this consumer goal.
+2. Resume bounded current-generation discovery and repair the next confirmed
+   compiler failure. Two class-star real-kind defects are already repaired; no
+   third failure is confirmed.
 3. Continue useful language-family increments and cross-feature repairs with
    focused gates and finite background coverage.
 4. Substantially reduce compiler/tool/test/documentation volume through
