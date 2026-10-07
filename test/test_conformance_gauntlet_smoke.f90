@@ -10,7 +10,9 @@ module ffc_case_test_conformance_gauntlet_smoke
 end module ffc_case_test_conformance_gauntlet_smoke
 
 subroutine case_test_conformance_gauntlet_smoke()
-    use conformance_temp_dir, only: make_temp_root, remove_temp_root
+    use, intrinsic :: iso_c_binding, only: c_char, c_int, c_null_char
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root, &
+        fortfront_corpus_root
     implicit none
     save
 
@@ -37,11 +39,31 @@ subroutine case_test_conformance_gauntlet_smoke()
     character(len=:), allocatable :: UNDEFINED_MANIFEST
     character(len=:), allocatable :: UNLINKED_REPORT
     character(len=:), allocatable :: NOREF_NEGATIVE_REPORT
+    character(len=:), allocatable :: FORTFRONT_ROOT
 
     logical :: all_passed
     integer :: n_issued
+    integer(c_int) :: setenv_status
+
+    interface
+        integer(c_int) function c_setenv(name, value, overwrite) &
+                bind(C, name='setenv')
+            import :: c_char, c_int
+            character(kind=c_char), intent(in) :: name(*), value(*)
+            integer(c_int), value :: overwrite
+        end function c_setenv
+    end interface
 
     print *, '=== conformance gauntlet smoke test ==='
+
+    ! The Gauntlet children need an absolute path after some commands change
+    ! directory. Per-command synthetic corpus assignments still override it.
+    FORTFRONT_ROOT = fortfront_corpus_root()
+    if (FORTFRONT_ROOT /= '../fortfront') then
+        setenv_status = c_setenv('FFC_FORTFRONT_DIR'//c_null_char, &
+            FORTFRONT_ROOT//c_null_char, 1_c_int)
+        if (setenv_status /= 0) error stop 'cannot set private FortFront corpus'
+    end if
 
     ROOT = make_temp_root('gauntlet_smoke')
     ROOT_REPORT = ROOT//'/ffc_gauntlet_smoke_root.jsonl'

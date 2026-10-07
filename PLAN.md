@@ -66,6 +66,21 @@ character-prefix edit remains uncommitted and preserved. Resume bounded
 current-generation compiler discovery and repair the next confirmed failure
 through the resident Fo loop.
 
+2026-10-07 Gremlin pilot follow-up: a 32-case sample on FFC `1d07b80`
+reached 65 current-generation PASS receipts and one timeout in
+`test_conformance_gauntlet_smoke`. The case has a documented wall path longer
+than Fo's default 100-second cap. Raising the project wall cap to 240 seconds
+exposed a separate test-closure failure: the smoke and full FortFront corpus
+cases looked for a sibling checkout after Gremlin had materialized the declared
+corpus in its private execution view. Both cases now resolve that declared
+input from the view's `TMPDIR`. Under Fo driver SHA256
+`09d0e252eca6875bb3c3ffb435be1fbc04f7eeb0674421cf57198b4d5742b885`,
+session `2361525-1791371872-652641592` passed both cases (2/2), with
+`local_gate_green=true`, zero failures, and generation
+`2b905e37f9470e67979828e754fad6019a54ac54bb3db3a508b70710c8b47645`.
+This is a focused gate, not a 509-case full-suite result. The third current
+compiler defect remains unconfirmed; continue bounded discovery.
+
 1. Keep the FPM project and public shared test dispatcher working through Fo,
    preserving original case names and avoiding duplicated static test binaries.
    [#798](https://github.com/lazy-fortran/ffc/issues/798) owns this consumer goal.

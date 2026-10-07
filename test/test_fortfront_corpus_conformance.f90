@@ -10,7 +10,8 @@ module ffc_case_test_fortfront_corpus_conformance
 end module ffc_case_test_fortfront_corpus_conformance
 
 subroutine case_test_fortfront_corpus_conformance()
-    use conformance_temp_dir, only: make_temp_root, remove_temp_root
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root, &
+        fortfront_corpus_root
     implicit none
     save
 
@@ -29,11 +30,8 @@ subroutine case_test_fortfront_corpus_conformance()
     character(len=:), allocatable :: LF_LOG
     character(len=:), allocatable :: SYNTHETIC_XPASS_REPORT
     character(len=:), allocatable :: FORTFRONT_ROOT
-    character(len=4096) :: execution_cwd
 
     integer :: failed
-    integer :: execution_cwd_length, env_status
-    logical :: private_f90, private_lf
 
     print *, '=== fortfront corpus conformance test ==='
 
@@ -44,17 +42,7 @@ subroutine case_test_fortfront_corpus_conformance()
     F90_LOG = ROOT//'/fortfront_f90_corpus.out'
     LF_LOG = ROOT//'/fortfront_lf_corpus.out'
     SYNTHETIC_XPASS_REPORT = ROOT//'/fortfront_synthetic_xpass.jsonl'
-    call get_environment_variable('FO_GREMLIN_EXECUTION_CWD', execution_cwd, &
-        length=execution_cwd_length, status=env_status)
-    if (env_status == 0 .and. execution_cwd_length > 0) then
-        FORTFRONT_ROOT = trim(execution_cwd(:execution_cwd_length))// &
-            '/.fo-inputs/dependency:fortfront'
-    else
-        FORTFRONT_ROOT = '.fo-inputs/dependency:fortfront'
-    end if
-    inquire(file=trim(FORTFRONT_ROOT)//'/examples/f90', exist=private_f90)
-    inquire(file=trim(FORTFRONT_ROOT)//'/examples/lf', exist=private_lf)
-    if (.not. (private_f90 .and. private_lf)) FORTFRONT_ROOT = '../fortfront'
+    FORTFRONT_ROOT = fortfront_corpus_root()
 
     failed = 0
     call verify_xpass_rejection(failed)

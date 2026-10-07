@@ -15,6 +15,7 @@ module conformance_temp_dir
     implicit none
     private
     public :: make_temp_root, remove_temp_root, write_report_test_corpus
+    public :: fortfront_corpus_root
 
 contains
 
@@ -44,6 +45,22 @@ contains
         if (len_trim(root) == 0) return
         call execute_command_line('rm -rf '//quote(trim(root)))
     end subroutine remove_temp_root
+
+    function fortfront_corpus_root() result(root)
+        character(len=:), allocatable :: root
+        character(len=:), allocatable :: base, private_root
+        logical :: f90_exists, lf_exists
+
+        root = '../fortfront'
+        base = temp_base()
+        if (len(base) <= len('/.fo-tmp')) return
+        if (base(len(base) - 7:) /= '/.fo-tmp') return
+        private_root = base(:len(base) - 8)// &
+            '/.fo-inputs/dependency:fortfront'
+        inquire(file=private_root//'/examples/f90', exist=f90_exists)
+        inquire(file=private_root//'/examples/lf', exist=lf_exists)
+        if (f90_exists .and. lf_exists) root = private_root
+    end function fortfront_corpus_root
 
     subroutine write_report_test_corpus(fortfront_dir)
         character(len=*), intent(in) :: fortfront_dir

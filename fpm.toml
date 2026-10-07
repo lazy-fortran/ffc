@@ -18,6 +18,11 @@ source-form = "free"
 
 [extra.fo]
 dispatcher = "test_ffc_suite"
+# The conformance gauntlet smoke case runs bounded corpus walks in parallel;
+# its measured critical path is about 149 seconds. Keep the 10-second CPU
+# budget for ordinary tests while allowing this project's I/O-bound tests
+# enough wall time to finish.
+test-wall-timeout = 240
 # The default build profile emits no DWARF. 503 test executables carried
 # 0.74 GB of `.debug_*` sections no test run ever read; `fo test --debug`
 # and `fo test --asan` still get full `-g -fcheck=all -fbacktrace`.
