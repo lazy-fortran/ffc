@@ -29,7 +29,7 @@ module session_program_lowering_impl
     use ast_nodes_control, only: block_construct_node, where_stmt_node, &
         elsewhere_clause_t, goto_node, pause_node, &
         continue_node
-    use fortfront, only: assignment_node, ast_arena_t, &
+    use fortfront_ast, only: assignment_node, ast_arena_t, &
         call_or_subscript_node, case_block_node, &
         case_range_node, &
         case_default_node, declaration_node, do_loop_node, &
@@ -42,23 +42,21 @@ module session_program_lowering_impl
         error_stop_node, &
         subroutine_def_node, write_statement_node, &
         allocate_statement_node, deallocate_statement_node, &
-        where_node, forall_node, &
-        get_subroutine_call_arg_indices, &
+        where_node, forall_node, is_module_node, is_program_node
+    use fortfront_compiler, only: get_subroutine_call_arg_indices, &
         get_subroutine_call_name, is_subroutine_call_statement, &
         is_binary_op, get_binary_op_info, &
         is_literal, get_literal_info, &
         is_identifier, get_identifier_name, &
-        is_module_node, is_program_node, &
         declaration_binding_t, resolve_name_at_node, get_scope_bindings, &
         resolve_identifier_binding, BINDING_DECLARATION, &
         BINDING_DUMMY_ARGUMENT, BINDING_FUNCTION_RESULT, &
         BINDING_NAMED_CONSTANT, ASSOCIATION_DIRECT, ASSOCIATION_HOST, &
-        ASSOCIATION_USE, &
-        BINDING_ASSOCIATE_NAME, &
-        procedure_reassignment_call_query_t, &
-        query_procedure_reassignment_call, &
+        ASSOCIATION_USE, BINDING_ASSOCIATE_NAME, &
         get_alternate_return_label, get_return_selector, &
         is_alternate_return_dummy
+    use frontend_compiler_queries, only: procedure_reassignment_call_query_t, &
+        query_procedure_reassignment_call
     use ffc_runtime_link, only: ffc_runtime_link_input
     use ffc_polymorphic_descriptor, only: &
         POLYMORPHIC_DESCRIPTOR_DATA_OFFSET, &
@@ -260,10 +258,9 @@ module session_program_lowering_impl
     use fortfront_utils, only: get_node_as_function_def, &
         get_node_as_program, &
         get_node_as_subroutine_def, &
-        get_parent
+        get_parent, get_node_line, get_node_column
     use ast_nodes_data, only: mixed_construct_container_node, &
         multi_unit_container_node, submodule_node
-    use fortfront, only: get_node_line, get_node_column
     use session_program_lowering_types, only: lowering_context_t, &
         loop_cycle_state_t, loop_branch_target_t, &
         branch_result_t, symbol_t, declaration_record_t, &

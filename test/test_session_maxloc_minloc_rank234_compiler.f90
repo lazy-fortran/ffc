@@ -10,7 +10,7 @@ module ffc_case_test_session_maxloc_minloc_rank234_compiler
 end module ffc_case_test_session_maxloc_minloc_rank234_compiler
 
 subroutine case_test_session_maxloc_minloc_rank234_compiler()
-    use fortfront, only: compile_frontend_from_string, &
+    use fortfront_compiler, only: compile_frontend_from_string, &
         compiler_frontend_options_t, compiler_frontend_result_t
     use session_program_lowering, only: lower_program_to_liric_exe
     implicit none
