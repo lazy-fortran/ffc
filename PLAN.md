@@ -40,10 +40,18 @@ All 516 build actions passed. Full coverage remains open: 504 of 509 cases
 have no current-generation result. The unrelated character-prefix edit remains
 uncommitted and preserved.
 
-Next, move FFC's remaining imports from FortFront's broad facade to its narrow
-modules, then remove that facade at its owner after FortFront's test/example
-callers have migrated. Resume bounded current-generation compiler discovery;
-repair the next confirmed compiler failure through the resident Fo loop.
+FFC `3d28674` moved its four remaining imports from FortFront's broad facade
+to focused modules. Its exact combined candidate, including the separate
+character-prefix edit, passed four focused cases with zero current failures
+and `local_gate_green=true` in session
+`648587-1791359646-501616280`, generation
+`ca425a71386b3a45e0f8cef568a3c58775de086e1e17180547236df8e5a7c757`.
+The earlier five-case receipt belongs to its own generation; these are not a
+single full-suite green. This generation has 505 of 509 cases untested.
+
+Next, remove the now-unused broad facade at FortFront after its test, example,
+app and benchmark callers migrate. Resume bounded current-generation compiler
+discovery and repair the next confirmed failure through the resident Fo loop.
 
 1. Keep the FPM project and public shared test dispatcher working through Fo,
    preserving original case names and avoiding duplicated static test binaries.
