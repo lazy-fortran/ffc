@@ -9,7 +9,8 @@ module session_program_lowering_impl
     use ast_nodes_core, only: component_access_node, array_literal_node, &
         pointer_assignment_node, literal_node, &
         identifier_node, binary_op_node
-    use ast_nodes_transfer, only: nullify_node, entry_node
+    use ast_nodes_transfer, only: nullify_node, entry_node, goto_node, &
+        pause_node, continue_node
     use ast_nodes_data, only: declaration_node, parameter_declaration_node, &
         derived_type_node, module_node, &
         type_binding_node, block_data_node
@@ -25,10 +26,9 @@ module session_program_lowering_impl
         end_statement_node, intrinsic_statement_node
     use ast_nodes_conditional, only: select_type_node, select_rank_node, &
         rank_block_node
-    use ast_nodes_associate, only: associate_node, association_t
-    use ast_nodes_control, only: block_construct_node, where_stmt_node, &
-        elsewhere_clause_t, goto_node, pause_node, &
-        continue_node
+    use ast_nodes_associate, only: associate_node, association_t, &
+        block_construct_node
+    use ast_nodes_array, only: where_stmt_node, elsewhere_clause_t
     use fortfront_ast, only: assignment_node, ast_arena_t, &
         call_or_subscript_node, case_block_node, &
         case_range_node, &
