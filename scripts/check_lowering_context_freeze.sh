@@ -18,7 +18,8 @@
 # known anchor, the gate fails instead of comparing an empty set against itself.
 # Every gate in this repo that compares "current" to "recorded" needs one, and
 # this file had none before.
-set -uo pipefail
+set -euo pipefail
+export LC_ALL=C
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SRC="$ROOT/src/session_program_lowering_types.f90"
@@ -50,8 +51,11 @@ if [ ! -f "$ALLOW" ]; then
     exit 1
 fi
 
-current="$(mktemp)"; trap 'rm -f "$current"' EXIT
+current="$(mktemp)"
+allowed="$(mktemp)"
+trap 'rm -f "$current" "$allowed"' EXIT
 extract_fields > "$current"
+sort -u "$ALLOW" > "$allowed"
 
 count=$(wc -l < "$current")
 
@@ -70,8 +74,8 @@ if [ "$count" -lt 50 ]; then
 fi
 [ "$fail" -eq 0 ] || exit 1
 
-added=$(comm -13 "$ALLOW" "$current")
-removed=$(comm -23 "$ALLOW" "$current")
+added=$(comm -13 "$allowed" "$current")
+removed=$(comm -23 "$allowed" "$current")
 
 if [ -n "$added" ]; then
     echo "FAIL: lowering_context_t gained $(echo "$added" | wc -l) field(s);"

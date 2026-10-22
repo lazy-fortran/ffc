@@ -334,12 +334,18 @@ contains
             write(unit, '(a)') 'end program sample_'//suffix
             close(unit)
         end do
+        call execute_command_line('mkdir -p '//root//'/lfortran && '// &
+            'cp -R '//suite_dir//' '//root//'/lfortran/integration_tests && '// &
+            'cp -R '//suite_dir//' '//root//'/gfortran-dg', exitstat=status)
+        if (status /= 0) stop 2
     end subroutine write_fortfront_fixture
 
     function suite_environment() result(prefix)
         character(len=:), allocatable :: prefix
 
-        prefix = 'FFC_FORTFRONT_DIR='//root//'/fortfront '
+        prefix = 'FFC_FORTFRONT_DIR='//root//'/fortfront '// &
+            'FFC_LFORTRAN_DIR='//root//'/lfortran '// &
+            'FFC_GFORTRAN_DG_DIR='//root//'/gfortran-dg '
     end function suite_environment
 
     logical function run_shell(command) result(ok)
