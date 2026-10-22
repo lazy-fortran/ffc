@@ -6,7 +6,6 @@ allocate_31.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pe
 any_01.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 associate_14.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 class_procedure_args_01.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
-cmd_01.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 derived_types_03.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 derived_types_121.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 derived_types_140.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage

@@ -40,6 +40,7 @@ operator_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pen
 pointer_array_6.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pointer_array_8.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pointer_intent_8.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
+pr100551.f90 # owner=lazy-fortran/ffc#579; reason=INT actual to CLASS(*) dummy is misclassified as a real(4) function call
 pr102332.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 pr106946.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 pr107821.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage

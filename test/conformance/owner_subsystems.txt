@@ -23,6 +23,7 @@ owner=lazy-fortran/ffc#579 procedures
 owner=lazy-fortran/ffc#581 diagnostics
 owner=lazy-fortran/ffc#584 modules-scope
 owner=lazy-fortran/ffc#628 io-runtime
+owner=lazy-fortran/ffc#803 intrinsics
 owner=lazy-fortran/fortfront#2883 diagnostics
 owner=lazy-fortran/fortfront#2897 diagnostics
 owner=lazy-fortran/fortfront#2951 diagnostics
