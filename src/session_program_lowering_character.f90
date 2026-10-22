@@ -1324,7 +1324,6 @@ contains
         ! bytes at other's current length. Aliasing the source pointer would
         ! make str observe later changes to other, and would leave str
         ! dangling once other's storage is released.
-        use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: value_index
         type(lowering_context_t), intent(inout) :: context
@@ -1332,10 +1331,7 @@ contains
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: src_name
         integer :: src_index
-        integer :: fixed_len
-        type(lr_operand_desc_t) :: data_ptr, len_i32, len_i64, buf
-        type(lr_operand_desc_t) :: width_i32, width_i64, bytes, null_pos
-        type(lr_operand_desc_t) :: source_fits, copy_length, copy_length64
+        type(lr_operand_desc_t) :: data_ptr, len_i32
 
         call get_identifier_name(arena, value_index, src_name, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -1358,6 +1354,24 @@ contains
         call char_length_operands(context, src_index, data_ptr, len_i32, &
                                   error_msg)
         if (len_trim(error_msg) > 0) return
+        call store_deferred_character_copy(context, symbol_index, data_ptr, &
+                                           len_i32, error_msg)
+    end subroutine lower_deferred_identifier_assignment
+
+    subroutine store_deferred_character_copy(context, symbol_index, data_ptr, &
+                                             len_i32, error_msg)
+        ! Descriptor-backed destinations share assignment width and ownership
+        ! rules for whole variables and substring views. Copy before releasing
+        ! the old storage so overlapping sources remain valid.
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(in) :: symbol_index
+        type(lr_operand_desc_t), intent(in) :: data_ptr, len_i32
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: fixed_len
+        type(lr_operand_desc_t) :: len_i64, buf
+        type(lr_operand_desc_t) :: width_i32, width_i64, bytes, null_pos
+        type(lr_operand_desc_t) :: source_fits, copy_length, copy_length64
+
         fixed_len = context%symbols(symbol_index)%character_length
         if (fixed_len > 0) then
             ! A fixed-width destination pads or truncates ON ASSIGNMENT
@@ -1433,7 +1447,7 @@ contains
         context%symbols(symbol_index)%value = buf
         context%symbols(symbol_index)%has_character_value = .true.
         call set_empty(error_msg)
-    end subroutine lower_deferred_identifier_assignment
+    end subroutine store_deferred_character_copy
 
     subroutine copy_character_bytes_to_owned(context, src_data, len_i64, buf, &
                                              error_msg)
@@ -2469,39 +2483,20 @@ contains
 
     subroutine lower_deferred_char_view_assignment(arena, value_index, context, &
                                                    symbol_index, error_msg)
-        ! str = other(l:u), where str is character(len=:), allocatable. The
-        ! right-hand side is a borrowed view into another variable's storage,
-        ! so the destination takes its own copy at the view's length. The copy
-        ! is made before the destination releases the block it held, which is
-        ! what keeps `s = s(2:4)` correct.
+        ! Copy a substring into a descriptor-backed destination, preserving
+        ! its declared width when fixed and adopting the view length otherwise.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: value_index
         type(lowering_context_t), intent(inout) :: context
         integer, intent(in) :: symbol_index
         character(len=:), allocatable, intent(out) :: error_msg
-        type(lr_operand_desc_t) :: data_ptr, len_i32, len_i64, buf
+        type(lr_operand_desc_t) :: data_ptr, len_i32
 
         call substring_operands(arena, value_index, context, data_ptr, len_i32, &
                                 error_msg)
         if (len_trim(error_msg) > 0) return
-        if (.not. emit_liric_i32_to_i64(context%session, len_i32, len_i64, &
-                error_msg)) return
-
-        call copy_character_bytes_to_owned(context, data_ptr, len_i64, buf, &
-                                           error_msg)
-        if (len_trim(error_msg) > 0) return
-        call release_owned_character_storage(context, symbol_index, error_msg)
-        if (len_trim(error_msg) > 0) return
-        if (.not. emit_ptr_store(context%session, buf, &
-                context%symbols(symbol_index)%deferred_data, error_msg)) return
-        if (.not. emit_i64_store(context%session, len_i64, &
-                context%symbols(symbol_index)%deferred_length, error_msg)) return
-        call set_character_storage(context, symbol_index, len_i64, &
-                                   LOWERING_CHARACTER_STORAGE_OWNED, error_msg)
-        if (len_trim(error_msg) > 0) return
-        context%symbols(symbol_index)%value = buf
-        context%symbols(symbol_index)%has_character_value = .true.
-        call set_empty(error_msg)
+        call store_deferred_character_copy(context, symbol_index, data_ptr, &
+                                           len_i32, error_msg)
     end subroutine lower_deferred_char_view_assignment
 
     subroutine lower_character_substring_assignment(arena, node, context, error_msg)
