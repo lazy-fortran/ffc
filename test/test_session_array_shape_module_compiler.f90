@@ -17,12 +17,15 @@ subroutine case_test_session_array_shape_module_compiler()
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
     use session_program_lowering, only: lower_program_to_liric_exe
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
     save
 
+    character(len=:), allocatable :: scratch_root
     logical :: all_passed
 
     print *, '=== array-shape module compiler test ==='
+    scratch_root = make_temp_root('array_shape_module')
     all_passed = matches_gfortran( &
         'program main'//new_line('a')// &
         '  integer :: a(3,2)'//new_line('a')// &
@@ -48,6 +51,7 @@ subroutine case_test_session_array_shape_module_compiler()
         'end program main', 'shape_contract')
 
     if (.not. all_passed) stop 1
+    call remove_temp_root(scratch_root)
     print *, 'PASS: array-shape module matches gfortran'
 
 contains
@@ -62,7 +66,7 @@ contains
         integer :: unit, exit_stat, status
 
         matches_gfortran = .false.
-        base = '/var/tmp/ert/ffc_array_shape_'//trim(stem)
+        base = scratch_root//'/'//trim(stem)
         src = base//'.f90'
         exe = base//'.ffc'
         ref = base//'.gf'

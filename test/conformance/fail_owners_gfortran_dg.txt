@@ -1,7 +1,6 @@
 # Current full-epoch FAIL owners for gfortran-dg.
 # Untriaged failures remain FAIL; ownership does not reclassify them as XFAIL.
 # Format: path # owner=ORG/REPO#N; reason=text
-achar_2.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 aliasing_dummy_5.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage
 alloc_comp_assign_3.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence
 arrayio_4.f90 # owner=lazy-fortran/ffc#540; reason=fresh full-epoch failure pending triage; retained as FAIL-owner evidence

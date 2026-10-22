@@ -19,21 +19,11 @@ subroutine case_test_session_array_section_descriptor_compiler()
         INPUT_MODE_STANDARD
     use ffc_test_support, only: expect_error_contains, expect_stderr_and_exit
     use session_program_lowering, only: lower_program_to_liric_exe
-    use iso_c_binding, only: c_int
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
     save
 
-    interface
-        function ffc_getpid() bind(C, name='getpid') result(pid)
-            import c_int
-            integer(c_int) :: pid
-        end function ffc_getpid
-    end interface
-
-    character(len=:), allocatable :: artifact_root
-    character(len=64) :: process_tag
-    integer(c_int) :: process_id
-    integer :: clock_count
+    character(len=:), allocatable :: artifact_root, scratch_root
 
     character(len=*), parameter :: source = &
         'program main'//new_line('a')// &
@@ -193,10 +183,8 @@ subroutine case_test_session_array_section_descriptor_compiler()
         '  end subroutine inspect'//new_line('a')// &
         'end program main'
 
-    process_id = ffc_getpid()
-    call system_clock(clock_count)
-    write (process_tag, '(I0,"_",I0)') process_id, clock_count
-    artifact_root = '/var/tmp/ert/ffc_array_section_descriptor_'//trim(process_tag)
+    scratch_root = make_temp_root('array_section_descriptor')
+    artifact_root = scratch_root//'/case'
 
     print *, '=== array-section descriptor/view compiler test ==='
     if (.not. matches_gfortran()) stop 1
@@ -238,6 +226,7 @@ subroutine case_test_session_array_section_descriptor_compiler()
         stop 1
     end if
     call cleanup_artifact(trim(artifact_root)//'_rank_refused')
+    call remove_temp_root(scratch_root)
     print *, 'PASS: rank-1 strided section descriptor view matches gfortran'
 
 contains

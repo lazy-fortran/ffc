@@ -15,7 +15,9 @@ subroutine case_test_fortfront_corpus_conformance()
     implicit none
     save
 
-    integer, parameter :: RUN_TIMEOUT_SECONDS = 180
+    ! A complete serial walk on four CPUs exceeds the old 180-second bound.
+    ! Keep each suite bounded without truncating the selected corpus.
+    integer, parameter :: RUN_TIMEOUT_SECONDS = 600
     ! Shard width for the corpus walker: the per-file ffc/gfortran spawns are
     ! independent and the suite spent 250s walking them one at a time.
     ! FFC_CORPUS_JOBS overrides it; the default keeps 16 concurrent compiles.

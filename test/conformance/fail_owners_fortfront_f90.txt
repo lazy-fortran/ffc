@@ -1,3 +1,4 @@
 # Current full-epoch FAIL owners for fortfront-f90.
 # Untriaged failures remain FAIL; ownership does not reclassify them as XFAIL.
 # Format: path # owner=ORG/REPO#N; reason=text
+select_rank_nested.f90 # owner=lazy-fortran/ffc#458; reason=RANK inquiry rejects assumed-rank REAL dummy actual in nested SELECT RANK

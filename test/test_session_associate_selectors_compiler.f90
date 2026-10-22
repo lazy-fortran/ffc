@@ -11,13 +11,16 @@ end module ffc_case_test_session_associate_selectors_compiler
 
 subroutine case_test_session_associate_selectors_compiler()
     use ffc_test_support, only: expect_error_contains, expect_exit_status
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     implicit none
     save
 
+    character(len=:), allocatable :: scratch_root
     logical :: all_passed
 
     print *, '=== direct session associate array/component selector compiler test ==='
 
+    scratch_root = make_temp_root('associate_selectors')
     all_passed = .true.
     if (.not. test_associate_array_section_read()) all_passed = .false.
     if (.not. test_associate_array_section_write()) all_passed = .false.
@@ -29,6 +32,7 @@ subroutine case_test_session_associate_selectors_compiler()
     if (.not. test_nested_associate_local_dummy()) all_passed = .false.
 
     if (.not. all_passed) stop 1
+    call remove_temp_root(scratch_root)
     print *, 'PASS: associate array-section and component selectors lower ' // &
         'through direct LIRIC'
 
@@ -203,7 +207,7 @@ contains
             'end program main'
 
         test_nested_associate_local_dummy = expect_exit_status( &
-            source, 42, '/var/tmp/ert/ffc_session_nested_associate_dummy')
+            source, 42, scratch_root//'/nested_associate_dummy')
     end function test_nested_associate_local_dummy
 
 end subroutine case_test_session_associate_selectors_compiler

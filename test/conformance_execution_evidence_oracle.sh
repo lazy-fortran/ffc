@@ -25,6 +25,7 @@ for fixture in compile_failure compile_timeout compile_signal runtime_failure \
         runtime_timeout runtime_signal runtime_exit_124 runtime_exit_137; do
     printf 'print 1\n' > "$suite_root/$fixture.lf"
 done
+printf 'print 1\n' > "$suite_root/compile_override.lf"
 
 printf '%s\n' \
     '#!/usr/bin/env bash' \
@@ -38,6 +39,7 @@ printf '%s\n' \
     '    compile_failure.lf) exit 7 ;;' \
     '    compile_timeout.lf) sleep 10; exit 0 ;;' \
     '    compile_signal.lf) kill -SEGV $$ ;;' \
+    '    compile_override.lf) sleep 2; body="exit 0" ;;' \
     '    runtime_failure.lf) body="exit 23" ;;' \
     '    runtime_timeout.lf) body="sleep 10" ;;' \
     '    runtime_signal.lf) body="kill -SEGV \$\$" ;;' \
@@ -50,6 +52,7 @@ printf '%s\n' \
 chmod +x "$compiler"
 
 status=0
+FFC_COMPILE_TIMEOUT=1 \
 FFC_FORTFRONT_DIR="$fortfront" \
 FFC_XFAIL_MANIFEST="$empty_manifest" \
 FFC_SKIP_MANIFEST="$empty_manifest" \
@@ -199,4 +202,29 @@ timeout_index = next(
 )
 wrong_termination[timeout_index]["ffc_run_termination"] = "exit"
 validator_rejects(wrong_termination, "inconsistent termination evidence")
+PY
+
+# A compile may take longer than the runtime limit during a full regeneration.
+if ! FFC_COMPILE_TIMEOUT=4 \
+FFC_FORTFRONT_DIR="$fortfront" \
+FFC_XFAIL_MANIFEST="$empty_manifest" \
+FFC_SKIP_MANIFEST="$empty_manifest" \
+FFC_NOREF_MANIFEST="$empty_manifest" \
+bash "$project_dir/scripts/conformance_gauntlet.sh" \
+    --suite fortfront-lf --file compile_override.lf --jobs 1 \
+    --ffc "$compiler" --timeout 1 --report "$scratch/override.jsonl" \
+    > "$scratch/override.log" 2>&1; then
+    cat "$scratch/override.log" >&2
+    exit 1
+fi
+python3 - "$scratch/override.jsonl" <<'PY'
+import json
+import sys
+
+rows = [json.loads(line) for line in open(sys.argv[1])]
+case = next(row for row in rows if row.get("file") == "compile_override.lf")
+assert case["ffc_compile_exit"] == 0
+assert case["ffc_compile_termination"] == "exit"
+assert case["ffc_run_exit"] == 0
+assert case["ffc_run_termination"] == "exit"
 PY

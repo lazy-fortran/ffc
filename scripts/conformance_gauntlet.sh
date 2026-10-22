@@ -771,7 +771,8 @@ git_revision() {
 }
 
 # Setup
-export FFC_COMPILE_TIMEOUT="$TIMEOUT"
+# Compilation and execution have separate budgets during full regenerations.
+export FFC_COMPILE_TIMEOUT="${FFC_COMPILE_TIMEOUT:-$TIMEOUT}"
 REFERENCE_COMPILER=$(gfortran --version 2>/dev/null | head -1)
 [ -n "$REFERENCE_COMPILER" ] || REFERENCE_COMPILER="unknown"
 REFERENCE_COMPILER_PATH=$(command -v gfortran 2>/dev/null || true)

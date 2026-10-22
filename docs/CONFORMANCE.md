@@ -737,6 +737,12 @@ scripts/generate_parity_dashboard.sh \
     --from-snapshot test/conformance/parity_dashboard.tsv --check
 ```
 
+CI checks out FortFront and LIRIC at the revisions recorded in the generated
+snapshot, so upstream branch movement cannot silently change its corpus or
+frontend. To advance either dependency, run the full regeneration above against
+the intended checkout and commit the generated dashboard and snapshot together.
+Keep the complete corpus, including newly added files, in that measurement.
+
 ### Three constraints that are not obvious
 
 Each of these has broken `main` or produced a wrong measurement.
