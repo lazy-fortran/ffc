@@ -269,6 +269,9 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             call lower_f32_call(arena, node, context, value, error_msg)
+        type is (component_access_node)
+            call lower_derived_component_load(arena, node, context, value, &
+                                              error_msg)
         class default
             error_msg = 'ffc direct-session lowering only supports real(4) expressions'
         end select
@@ -405,6 +408,8 @@
                         is_f32 = is_real_dot_product(arena, node, context, VALUE_F32)
                 end if
             end if
+        type is (component_access_node)
+            is_f32 = component_access_value_kind(arena, node, context) == VALUE_F32
         end select
     end function is_f32_expression
 
@@ -490,6 +495,9 @@
         select type (node => arena%entries(node_index)%node)
         type is (call_or_subscript_node)
             call lower_f64_call(arena, node, context, value, error_msg)
+        type is (component_access_node)
+            call lower_derived_component_load(arena, node, context, value, &
+                                              error_msg)
         class default
             error_msg = 'ffc direct-session lowering only supports real expressions'
         end select
@@ -669,6 +677,8 @@
             else
                 is_f64 = is_f64_intrinsic_expression(arena, node, context)
             end if
+        type is (component_access_node)
+            is_f64 = component_access_value_kind(arena, node, context) == VALUE_F64
         end select
     end function is_f64_expression
 

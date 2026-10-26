@@ -1340,3 +1340,4 @@ contains
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_diagnostics.inc'
 end module session_program_lowering
+! ffc-rebuild-nonce 28197-18672

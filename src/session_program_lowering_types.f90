@@ -197,6 +197,11 @@ module session_program_lowering_types
         logical, allocatable :: component_has_default(:)
         integer(c_int64_t), allocatable :: component_default_value(:)
         integer, allocatable :: component_array_size(:)
+        ! Value kind per component: VALUE_I32, VALUE_F32, VALUE_F64, VALUE_DERIVED.
+        integer, allocatable :: component_value_kind(:)
+        ! For VALUE_DERIVED components: index into context%derived_types of the
+        ! nested type.  Zero for all other kinds.
+        integer, allocatable :: component_nested_type_index(:)
         integer :: binding_count = 0
         character(len=64), allocatable :: binding_method_names(:)
         character(len=64), allocatable :: binding_target_names(:)

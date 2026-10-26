@@ -190,25 +190,32 @@
         ! 'd'/'D' exponent, or a _8 / _real64 / _c_double / _c_long_double kind
         ! suffix.  A bare literal such as "2.5" or "3.0e0" is default real (f32).
         character(len=*), intent(in) :: text
-        character(len=:), allocatable :: lo
-        integer :: uscore, dpos
+        character(len=:), allocatable :: lo, suffix
+        integer :: i, n, dpos
 
         lo = lowercase_text(trim(text))
+        n = len_trim(lo)
         ! d/D exponent marks a double-precision literal.
         dpos = scan(lo, 'd')
         if (dpos > 0) then
             literal_is_f64 = .true.
             return
         end if
-        ! Explicit kind suffix after underscore.
-        uscore = scan(lo, '_', back=.true.)
-        if (uscore > 1) then
-            select case (lo(uscore + 1:))
-            case ('8', 'real64', 'c_double', 'c_long_double')
-                literal_is_f64 = .true.
-                return
-            end select
-        end if
+        ! Explicit kind suffix: find the first underscore preceded by a digit,
+        ! dot, or exponent letter. Everything from that underscore onward is the
+        ! kind specifier (e.g. _8, _real64, _c_double, _c_long_double).
+        do i = 2, n
+            if (lo(i:i) == '_' .and. &
+                scan(lo(i - 1:i - 1), '0123456789.') > 0) then
+                suffix = lo(i + 1:)
+                select case (trim(suffix))
+                case ('8', 'real64', 'c_double', 'c_long_double')
+                    literal_is_f64 = .true.
+                    return
+                end select
+                exit
+            end if
+        end do
         literal_is_f64 = .false.
     end function literal_is_f64
 
@@ -217,19 +224,20 @@
         real(c_double), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         character(len=:), allocatable :: clean
-        integer :: io_stat, uscore
+        integer :: io_stat, i, n
 
-        ! Strip trailing kind suffix (_8, _dp, _real64, etc.) which Fortran
-        ! internal reads do not accept.
+        ! Strip trailing kind suffix (_8, _dp, _real64, _c_double, etc.).
+        ! Scan forward for the first underscore that follows a digit, dot, or
+        ! exponent letter; that marks the start of the kind suffix.
         clean = trim(text)
-        uscore = scan(clean, '_', back=.true.)
-        if (uscore > 1) then
-            ! Only strip if the underscore follows a digit, dot, or exponent
-            ! letter, not if it is part of the numeric value itself.
-            if (scan(clean(uscore - 1:uscore - 1), '0123456789.dDeE') > 0) then
-                clean = clean(1:uscore - 1)
+        n = len_trim(clean)
+        do i = 2, n
+            if (clean(i:i) == '_' .and. &
+                scan(clean(i - 1:i - 1), '0123456789.dDeE') > 0) then
+                clean = clean(1:i - 1)
+                exit
             end if
-        end if
+        end do
 
         read (clean, *, iostat=io_stat) value
         if (io_stat == 0) then

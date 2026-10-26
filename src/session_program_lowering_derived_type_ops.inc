@@ -1,30 +1,162 @@
-    integer function total_component_slots(context, type_index)
-        ! Total i32 slots for a derived instance: scalar components take one
-        ! slot, array components take their element count.
+    recursive integer function total_component_slots(context, type_index) &
+        result(nslots)
+        ! Total i32 slots for a derived instance.  Each component contributes:
+        !   VALUE_F64  / nested-type with f64 root: 2 * array_size slots
+        !   VALUE_DERIVED (nested):  array_size * total_component_slots(nested)
+        !   all other kinds:         1 * array_size slots
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
-        integer :: c
+        integer :: c, nidx, ck
 
-        total_component_slots = 0
+        nslots = 0
         do c = 1, context%derived_types(type_index)%component_count
-            total_component_slots = total_component_slots + &
-                context%derived_types(type_index)%component_array_size(c)
+            ck = VALUE_I32
+            if (allocated(context%derived_types(type_index)%component_value_kind)) &
+                ck = context%derived_types(type_index)%component_value_kind(c)
+            select case (ck)
+            case (VALUE_F64)
+                nslots = nslots + &
+                    2 * context%derived_types(type_index)%component_array_size(c)
+            case (VALUE_DERIVED)
+                nidx = 0
+                if (allocated(context%derived_types(type_index)% &
+                               component_nested_type_index)) &
+                    nidx = context%derived_types(type_index)% &
+                               component_nested_type_index(c)
+                if (nidx > 0) then
+                    nslots = nslots + &
+                        context%derived_types(type_index)%component_array_size(c) * &
+                        total_component_slots(context, nidx)
+                end if
+            case default
+                nslots = nslots + &
+                    context%derived_types(type_index)%component_array_size(c)
+            end select
         end do
     end function total_component_slots
 
     integer function component_start_slot(context, type_index, comp_index)
-        ! Starting slot of component comp_index = sum of the sizes before it.
+        ! Starting i32 slot of component comp_index = sum of slot counts of
+        ! preceding components (mirroring total_component_slots per component).
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         integer, intent(in) :: comp_index
-        integer :: c
+        integer :: c, ck, nidx
 
         component_start_slot = 0
         do c = 1, comp_index - 1
-            component_start_slot = component_start_slot + &
-                context%derived_types(type_index)%component_array_size(c)
+            ck = VALUE_I32
+            if (allocated(context%derived_types(type_index)%component_value_kind)) &
+                ck = context%derived_types(type_index)%component_value_kind(c)
+            select case (ck)
+            case (VALUE_F64)
+                component_start_slot = component_start_slot + &
+                    2 * context%derived_types(type_index)%component_array_size(c)
+            case (VALUE_DERIVED)
+                nidx = 0
+                if (allocated(context%derived_types(type_index)% &
+                               component_nested_type_index)) &
+                    nidx = context%derived_types(type_index)% &
+                               component_nested_type_index(c)
+                if (nidx > 0) then
+                    component_start_slot = component_start_slot + &
+                        context%derived_types(type_index)%component_array_size(c) * &
+                        total_component_slots(context, nidx)
+                end if
+            case default
+                component_start_slot = component_start_slot + &
+                    context%derived_types(type_index)%component_array_size(c)
+            end select
         end do
     end function component_start_slot
+
+    integer function derived_component_kind(context, type_index, comp_index)
+        ! Returns the VALUE_* kind of component comp_index of type type_index.
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(in) :: type_index, comp_index
+
+        derived_component_kind = VALUE_I32
+        if (type_index <= 0 .or. type_index > context%derived_type_count) return
+        if (comp_index <= 0) return
+        if (.not. allocated(context%derived_types(type_index)%component_value_kind)) &
+            return
+        if (comp_index > size(context%derived_types(type_index)%component_value_kind)) &
+            return
+        derived_component_kind = &
+            context%derived_types(type_index)%component_value_kind(comp_index)
+    end function derived_component_kind
+
+    integer function component_access_value_kind(arena, node, context) &
+        result(vk)
+        ! Return the VALUE_* kind of the leaf component in a component_access_node
+        ! chain (e.g. obj%inner%value -> kind of 'value').
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: sym_idx, ti, ci
+        character(len=:), allocatable :: id_name, err
+
+        vk = VALUE_I32
+        if (.not. allocated(node%component_name)) return
+        ! Resolve the outermost base to find the derived type.
+        call resolve_derived_base_ids(arena, node%base_expr_index, context, &
+                                      sym_idx, ti, err)
+        if (len_trim(err) > 0 .or. sym_idx <= 0 .or. ti <= 0) return
+        ci = find_derived_component(context, ti, node%component_name)
+        if (ci <= 0) return
+        vk = derived_component_kind(context, ti, ci)
+    end function component_access_value_kind
+
+    recursive subroutine resolve_derived_base_ids(arena, base_index, context, &
+                                        symbol_index, type_index, error_msg)
+        ! Walk a (possibly chained) base expression to find the derived type
+        ! that owns the final component.  For 'obj' returns (obj_sym, obj_type).
+        ! For 'obj%inner' returns (obj_sym, inner_type).
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: base_index
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: symbol_index
+        integer, intent(out) :: type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: parent_sym, parent_ti, comp_idx, nested_ti
+        character(len=:), allocatable :: id_name
+
+        symbol_index = 0
+        type_index = 0
+        call set_empty(error_msg)
+        if (.not. node_exists(arena, base_index)) return
+
+        if (is_identifier(arena, base_index)) then
+            call get_identifier_name(arena, base_index, id_name, error_msg)
+            if (len_trim(error_msg) > 0) return
+            symbol_index = find_symbol(context, id_name)
+            if (symbol_index <= 0) return
+            type_index = context%symbols(symbol_index)%derived_type_index
+            return
+        end if
+
+        select type (base => arena%entries(base_index)%node)
+        type is (component_access_node)
+            call resolve_derived_base_ids(arena, base%base_expr_index, context, &
+                                          parent_sym, parent_ti, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (parent_sym <= 0 .or. parent_ti <= 0) return
+            if (.not. allocated(base%component_name)) return
+            comp_idx = find_derived_component(context, parent_ti, &
+                                              base%component_name)
+            if (comp_idx <= 0) return
+            nested_ti = 0
+            if (allocated(context%derived_types(parent_ti)% &
+                          component_nested_type_index)) &
+                nested_ti = context%derived_types(parent_ti)% &
+                            component_nested_type_index(comp_idx)
+            if (nested_ti <= 0) return
+            symbol_index = parent_sym
+            type_index = nested_ti
+        class default
+            return
+        end select
+    end subroutine resolve_derived_base_ids
 
     subroutine init_derived_component_defaults(context, symbol_index, &
                                                type_index, error_msg)
@@ -592,21 +724,43 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: component_address
+        integer :: comp_kind
 
-        call lower_i32_expression(arena, node%value_index, context, value, &
-                                  error_msg)
-        if (len_trim(error_msg) > 0) return
-
+        comp_kind = component_access_value_kind(arena, target, context)
         call lower_derived_component_address(arena, target, context, &
                                              component_address, error_msg, &
                                              'derived type component assignment target')
         if (len_trim(error_msg) > 0) return
 
-        if (.not. emit_i32_store(context%session, value, component_address, &
-                                                 error_msg)) then
-            error_msg = 'component_store: '//error_msg
-            return
-        end if
+        select case (comp_kind)
+        case (VALUE_F32)
+            call lower_f32_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f32_store(context%session, value, &
+                                           component_address, error_msg)) then
+                error_msg = 'f32_component_store: '//error_msg
+                return
+            end if
+        case (VALUE_F64)
+            call lower_f64_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_f64_store(context%session, value, &
+                                           component_address, error_msg)) then
+                error_msg = 'f64_component_store: '//error_msg
+                return
+            end if
+        case default
+            call lower_i32_expression(arena, node%value_index, context, value, &
+                                      error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_store(context%session, value, component_address, &
+                                     error_msg)) then
+                error_msg = 'component_store: '//error_msg
+                return
+            end if
+        end select
         call set_empty(error_msg)
     end subroutine lower_derived_component_assignment
 
@@ -617,17 +771,34 @@
         type(lr_operand_desc_t), intent(out) :: value
         character(len=:), allocatable, intent(out) :: error_msg
         type(lr_operand_desc_t) :: component_address
+        integer :: comp_kind
 
+        comp_kind = component_access_value_kind(arena, node, context)
         call lower_derived_component_address(arena, node, context, &
                                              component_address, error_msg, &
                                              'derived type component expression')
         if (len_trim(error_msg) > 0) return
 
-        if (.not. emit_i32_load(context%session, component_address, value, &
-                                                error_msg)) then
-            error_msg = 'component_load: '//error_msg
-            return
-        end if
+        select case (comp_kind)
+        case (VALUE_F32)
+            if (.not. emit_liric_f32_load(context%session, component_address, &
+                                          value, error_msg)) then
+                error_msg = 'f32_component_load: '//error_msg
+                return
+            end if
+        case (VALUE_F64)
+            if (.not. emit_liric_f64_load(context%session, component_address, &
+                                          value, error_msg)) then
+                error_msg = 'f64_component_load: '//error_msg
+                return
+            end if
+        case default
+            if (.not. emit_i32_load(context%session, component_address, value, &
+                                    error_msg)) then
+                error_msg = 'component_load: '//error_msg
+                return
+            end if
+        end select
         call set_empty(error_msg)
     end subroutine lower_derived_component_load
 
@@ -756,6 +927,13 @@
             if (.not. emit_i32_binary(context%session, LR_OP_MUL, zero_based, &
                     i32_immediate(context%session, int(slots, c_int64_t)), &
                     element_base, error_msg)) return
+        type is (component_access_node)
+            ! Nested access: obj%inner%value.  Resolve the parent component to
+            ! find its starting slot; the result type is the nested type.
+            call resolve_nested_component_base(arena, base, context, &
+                                               symbol_index, type_index, &
+                                               element_base, error_msg)
+            return
         class default
             error_msg = 'nested component access is not supported'
             return
@@ -768,6 +946,68 @@
         type_index = context%symbols(symbol_index)%derived_type_index
         call set_empty(error_msg)
     end subroutine resolve_component_base
+
+    subroutine resolve_nested_component_base(arena, node, context, &
+                                             symbol_index, type_index, &
+                                             element_base, error_msg)
+        ! Resolve a component_access_node that itself is the base of another
+        ! access, i.e. handle obj%inner in obj%inner%value.  Returns the root
+        ! symbol (obj), the inner type index, and the slot offset of the inner
+        ! component as element_base.
+        type(ast_arena_t), intent(in) :: arena
+        type(component_access_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        integer, intent(out) :: symbol_index
+        integer, intent(out) :: type_index
+        type(lr_operand_desc_t), intent(out) :: element_base
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: parent_type_index, comp_idx, nested_ti, start_slot
+        type(lr_operand_desc_t) :: parent_base
+
+        symbol_index = 0
+        type_index = 0
+        call resolve_component_base(arena, node%base_expr_index, context, &
+                                    symbol_index, parent_type_index, &
+                                    parent_base, error_msg)
+        if (len_trim(error_msg) > 0) return
+        if (symbol_index <= 0 .or. parent_type_index <= 0) then
+            error_msg = 'could not resolve parent in nested component access'
+            return
+        end if
+        if (.not. allocated(node%component_name)) then
+            error_msg = 'nested component access missing component name'
+            return
+        end if
+        comp_idx = find_derived_component(context, parent_type_index, &
+                                          node%component_name)
+        if (comp_idx <= 0) then
+            error_msg = 'component not found in parent type: '// &
+                        trim(node%component_name)
+            return
+        end if
+        if (derived_component_kind(context, parent_type_index, comp_idx) &
+            /= VALUE_DERIVED) then
+            error_msg = 'nested access base component is not a derived type: '// &
+                        trim(node%component_name)
+            return
+        end if
+        nested_ti = 0
+        if (allocated(context%derived_types(parent_type_index)% &
+                      component_nested_type_index)) &
+            nested_ti = context%derived_types(parent_type_index)% &
+                        component_nested_type_index(comp_idx)
+        if (nested_ti <= 0) then
+            error_msg = 'no nested type index for component: '// &
+                        trim(node%component_name)
+            return
+        end if
+        start_slot = component_start_slot(context, parent_type_index, comp_idx)
+        if (.not. emit_i32_binary(context%session, LR_OP_ADD, parent_base, &
+                i32_immediate(context%session, int(start_slot, c_int64_t)), &
+                element_base, error_msg)) return
+        type_index = nested_ti
+        call set_empty(error_msg)
+    end subroutine resolve_nested_component_base
 
     subroutine lower_derived_component_address(arena, node, context, &
                                                component_address, error_msg, &

@@ -214,6 +214,23 @@
                     return
                 end if
             end if
+        type is (component_access_node)
+            if (is_f32_expression(arena, node_index, context)) then
+                call lower_f32_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f32(context%session, &
+                                               value, error_msg)) return
+                return
+            end if
+            if (is_f64_expression(arena, node_index, context)) then
+                call lower_f64_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f64(context%session, &
+                                               value, error_msg)) return
+                return
+            end if
         end select
         end if
 
@@ -441,6 +458,23 @@
             end if
             if (is_char_expr_call(arena, node_index)) then
                 call lower_print_char_expr(arena, node_index, context, error_msg)
+                return
+            end if
+        type is (component_access_node)
+            if (is_f32_expression(arena, node_index, context)) then
+                call lower_f32_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f32_value(context%session, &
+                                                     value, error_msg)) return
+                return
+            end if
+            if (is_f64_expression(arena, node_index, context)) then
+                call lower_f64_expression(arena, node_index, context, value, &
+                                          error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_print_f64_value(context%session, &
+                                                     value, error_msg)) return
                 return
             end if
         end select
