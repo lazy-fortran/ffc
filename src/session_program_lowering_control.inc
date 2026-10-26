@@ -240,3 +240,74 @@
         same_operand = lhs%kind == rhs%kind .and. lhs%payload == rhs%payload &
                        .and. lhs%global_offset == rhs%global_offset
     end function same_operand
+
+    subroutine lower_pause(node, context, error_msg)
+        ! Lower a PAUSE statement to match gfortran behaviour:
+        !   fprintf(stderr, "PAUSE <msg>\n")
+        !   fprintf(stderr, "To resume execution, type go. ...")
+        ! When stdin is at EOF (normal test environment), getchar() returns -1
+        ! and the program terminates via exit(0), flushing stdout buffers.
+        type(pause_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer(c_int32_t) :: msg_gid, hint_gid
+        type(lr_operand_desc_t) :: msg_ptr, hint_ptr
+        type(lr_operand_desc_t) :: fd2, zero
+        type(lr_operand_desc_t) :: dargs(2)
+        character(len=:), allocatable :: pause_line
+        character(len=64) :: mgn, hgn
+
+        ! Build "PAUSE <msg>\n" or "PAUSE \n" for bare PAUSE.
+        ! pause_message is stored with surrounding quotes from the lexer;
+        ! strip them before embedding in the PAUSE output line.
+        if (allocated(node%pause_message) .and. &
+            len_trim(node%pause_message) > 0) then
+            block
+                character(len=:), allocatable :: raw, inner
+                raw = trim(node%pause_message)
+                if (len(raw) >= 2 .and. &
+                    ((raw(1:1) == '"' .and. raw(len(raw):len(raw)) == '"') .or. &
+                     (raw(1:1) == "'" .and. raw(len(raw):len(raw)) == "'"))) then
+                    inner = raw(2:len(raw)-1)
+                else
+                    inner = raw
+                end if
+                pause_line = 'PAUSE ' // inner // achar(10)
+            end block
+        else
+            pause_line = 'PAUSE ' // achar(10)
+        end if
+
+        context%string_literal_count = context%string_literal_count + 1
+        write (mgn, '(A,I0)') '.ffc.pause.msg.', context%string_literal_count
+        call create_printf_format_global(context%session, trim(mgn), &
+                                         pause_line, msg_gid, error_msg)
+        if (len_trim(error_msg) > 0) return
+        msg_ptr = printf_format_ptr(context%session, msg_gid)
+
+        context%string_literal_count = context%string_literal_count + 1
+        write (hgn, '(A,I0)') '.ffc.pause.hint.', context%string_literal_count
+        call create_printf_format_global(context%session, trim(hgn), &
+            'To resume execution, type go.  Other input will terminate' // &
+            ' the job.' // achar(10), hint_gid, error_msg)
+        if (len_trim(error_msg) > 0) return
+        hint_ptr = printf_format_ptr(context%session, hint_gid)
+
+        ! dprintf(2, "PAUSE <msg>\n") — writes PAUSE line to stderr fd.
+        fd2 = i32_immediate(context%session, 2_c_int64_t)
+        dargs(1) = fd2
+        dargs(2) = msg_ptr
+        if (.not. emit_dprintf(context%session, dargs, error_msg)) return
+
+        ! dprintf(2, "To resume...\n") — writes resume hint to stderr fd.
+        dargs(2) = hint_ptr
+        if (.not. emit_dprintf(context%session, dargs, error_msg)) return
+
+        ! exit(0): terminates the program, flushing stdout buffers.
+        ! This matches gfortran behaviour when stdin yields EOF at a PAUSE.
+        zero = i32_immediate(context%session, 0_c_int64_t)
+        if (.not. emit_void_call(context%session, 'exit', [zero], error_msg)) &
+            return
+
+        call set_empty(error_msg)
+    end subroutine lower_pause

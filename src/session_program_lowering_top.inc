@@ -445,6 +445,11 @@
                 end if
                 context%current_block_terminated = .true.
             end if
+        type is (pause_node)
+            call lower_pause(node, context, error_msg)
+            if (len_trim(error_msg) == 0) then
+                context%current_block_terminated = .true.
+            end if
         type is (exit_node)
             if (.not. context%in_counted_do) then
                 call unsupported_feature_error('exit statement', node%line, &

@@ -59,7 +59,7 @@ module liric_session_bindings
     public :: lr_type_i32_s, lr_type_i64_s, lr_type_f32_s, lr_type_f64_s, &
               lr_type_ptr_s, lr_type_i8_s, lr_type_i16_s, lr_type_array_s, lr_type_void_s
     public :: lr_session_emit, lr_session_vreg, lr_session_param, &
-              lr_session_intern, lr_session_global
+              lr_session_intern, lr_session_global, lr_session_global_extern
     public :: status_ok, clear_liric_error, set_empty, require_open_session, &
               to_c_chars, liric_session_error_message
     public :: destroy, is_open, begin_i32_main, begin_i32_function, &
@@ -233,6 +233,15 @@ module liric_session_bindings
             integer(c_size_t), value :: init_size
             integer(c_int32_t) :: global_id
         end function lr_session_global
+
+        function lr_session_global_extern(handle, name, typ) &
+                result(global_id) bind(c)
+            import :: c_char, c_int32_t, c_ptr
+            type(c_ptr), value :: handle
+            character(kind=c_char), intent(in) :: name(*)
+            type(c_ptr), value :: typ
+            integer(c_int32_t) :: global_id
+        end function lr_session_global_extern
     end interface
 
 contains

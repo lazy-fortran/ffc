@@ -6,7 +6,7 @@ module session_program_lowering
                                 range_expression_node
     use ast_nodes_core, only: component_access_node, array_literal_node, &
                               pointer_assignment_node, literal_node
-    use ast_nodes_transfer, only: nullify_node
+    use ast_nodes_transfer, only: nullify_node, pause_node
     use ast_nodes_data, only: derived_type_node, type_binding_node
     use ast_nodes_io, only: open_statement_node, close_statement_node
     use ast_nodes_misc, only: use_statement_node, interface_block_node, &
@@ -49,7 +49,8 @@ module session_program_lowering
                                        i32_immediate, i32_vreg, lr_operand_desc_t, &
                                        lr_type_i32_s, lr_type_ptr_s, lr_type_i64_s, &
                                        lr_type_array_s, &
-                                       lr_session_global, lr_session_intern, &
+                                       lr_session_global, lr_session_global_extern, &
+                                       lr_session_intern, &
                                        lr_session_emit, lr_inst_desc_t, lr_error_t, &
                                        clear_liric_error, status_ok, to_c_chars, &
                                        LR_OP_ADD, LR_OP_SREM, LR_OP_SUB, &
@@ -112,7 +113,7 @@ use liric_session_format_bindings, only: LR_OP_FSUB, &
                                                  synthesize_get_arg_helper, &
                                                  emit_get_arg_call, emit_snprintf, &
                                                  emit_sscanf, emit_scanf, &
-                                                 emit_fprintf
+                                                 emit_fprintf, emit_dprintf
     use liric_session_complex_print_bindings, only: synthesize_complex4_printer, &
                                                     synthesize_complex8_printer, &
                                                     emit_complex4_print_call, &
@@ -1340,3 +1341,4 @@ contains
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_diagnostics.inc'
 end module session_program_lowering
+! ffc-rebuild-nonce 41091-15616
