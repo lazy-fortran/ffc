@@ -202,7 +202,16 @@
         value_kind = VALUE_I32
         derived_type_index = 0
         call set_empty(error_msg)
-        if (.not. allocated(node%return_type)) return
+        if (.not. allocated(node%return_type)) then
+            call result_var_value_kind_from_body(node, context, value_kind, &
+                                                 derived_type_index, error_msg)
+            return
+        end if
+        if (len_trim(node%return_type) == 0) then
+            call result_var_value_kind_from_body(node, context, value_kind, &
+                                                 derived_type_index, error_msg)
+            return
+        end if
 
         ! Split "real(kind)" into base and kind_spec; double precision has none.
         paren = index(node%return_type, '(')
@@ -310,6 +319,59 @@
             end select
         end do
     end function result_var_derived_type
+
+    subroutine result_var_value_kind_from_body(node, context, value_kind, &
+                                               derived_type_index, error_msg)
+        ! Infer function result value_kind from the body declaration of the
+        ! result variable when return_type is absent or empty. Mirrors
+        ! declaration_value_kind for the result variable declaration.
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: value_kind
+        integer, intent(out) :: derived_type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: result_name
+        logical :: matched
+        integer :: i, k
+
+        value_kind = VALUE_I32
+        derived_type_index = 0
+        call set_empty(error_msg)
+        result_name = trim(node%name)
+        if (allocated(node%result_variable)) then
+            if (len_trim(node%result_variable) > 0) &
+                result_name = trim(node%result_variable)
+        end if
+        if (.not. allocated(node%body_indices)) return
+        do i = 1, size(node%body_indices)
+            if (.not. node_exists(context%arena, node%body_indices(i))) cycle
+            select type (decl => context%arena%entries(node%body_indices(i))%node)
+            type is (declaration_node)
+                matched = .false.
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == result_name) matched = .true.
+                end if
+                if (.not. matched .and. decl%is_multi_declaration .and. &
+                    allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == result_name) then
+                            matched = .true.
+                            exit
+                        end if
+                    end do
+                end if
+                if (matched) then
+                    call declaration_value_kind(decl, value_kind, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                    if (value_kind == VALUE_DERIVED) then
+                        derived_type_index = declaration_derived_type_index( &
+                                             context, decl)
+                    end if
+                    return
+                end if
+            end select
+        end do
+    end subroutine result_var_value_kind_from_body
 
     subroutine copy_internal_function_names(source, destination)
         type(lowering_context_t), intent(in) :: source
@@ -481,11 +543,10 @@
     end subroutine lower_one_internal_function
 
     subroutine lower_module_procedures(arena, root_index, context, error_msg)
-        ! Emit module-defined procedures (of a module+program unit) under their
-        ! mangled symbol __<module>_MOD_<name> (#119). A procedure with nested
-        ! internal procedures is not lowered (skipped, never reached unless it
-        ! is also unsupported elsewhere); module-only units are handled by
-        ! lower_module_unit's diagnostic.
+        ! Emit module-defined procedures under their mangled symbol
+        ! __<module>_MOD_<name> (#119). Handles both program+module units and
+        ! module-only units. A procedure with nested internal procedures is
+        ! not lowered (skipped, never reached unless also unsupported elsewhere).
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: root_index
         type(lowering_context_t), intent(inout) :: context
@@ -496,7 +557,23 @@
 
         call set_empty(error_msg)
         node_type = get_node_type_at(arena, root_index)
-        if (node_type == 'module_node' .or. node_type == 'module') return
+        if (node_type == 'module_node' .or. node_type == 'module') then
+            ! Module-only unit: lower its procedures directly.
+            call get_module_body_info(arena, root_index, mod_name, &
+                                      decl_indices, proc_indices, ff_error)
+            if (len_trim(ff_error) > 0) then
+                error_msg = ff_error
+                return
+            end if
+            if (size(proc_indices) == 0) return
+            do p = 1, size(proc_indices)
+                call lower_one_module_procedure(arena, proc_indices(p), &
+                                                trim(mod_name), context, &
+                                                error_msg)
+                if (len_trim(error_msg) > 0) return
+            end do
+            return
+        end if
         call get_program_body_info(arena, root_index, prog_name, body_indices, &
                                    ff_error)
         if (len_trim(ff_error) > 0) then
