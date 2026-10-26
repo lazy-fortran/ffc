@@ -290,11 +290,13 @@ contains
             call declaration_value_kind(node, value_kind, error_msg)
             if (len_trim(error_msg) > 0) return
             if (value_kind /= VALUE_I32 .and. value_kind /= VALUE_F32 .and. &
-                value_kind /= VALUE_F64) then
+                value_kind /= VALUE_F64 .and. value_kind /= VALUE_CHARACTER .and. &
+                value_kind /= VALUE_LOGICAL) then
                 call unsupported_feature_error('array declaration', node%line, &
                                                node%column, &
                                                'ffc direct-session lowering only '// &
-                                               'supports integer and real arrays', &
+                                               'supports integer, real, character, '// &
+                                               'and logical arrays', &
                                                error_msg)
                 return
             end if
@@ -1340,3 +1342,4 @@ contains
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_diagnostics.inc'
 end module session_program_lowering
+! ffc-rebuild-nonce 48332-15907

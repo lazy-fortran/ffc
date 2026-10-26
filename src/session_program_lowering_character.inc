@@ -41,10 +41,62 @@
                 return
             end if
         end if
-        call declaration_character_length(node, character_length, error_msg)
+        call resolve_character_length_with_context(node, context, &
+                                                   character_length, error_msg)
         if (len_trim(error_msg) > 0) return
         call define_character_symbol(context, name, character_length, error_msg)
     end subroutine define_declared_character_symbol
+
+    subroutine resolve_character_length_with_context(node, context, &
+                                                     character_length, error_msg)
+        ! Like declaration_character_length but also resolves integer parameter names.
+        type(declaration_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: character_length
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: id_name
+        character(len=:), allocatable :: inner_text
+        integer :: sym_idx
+
+        call declaration_character_length(node, character_length, error_msg)
+        if (len_trim(error_msg) == 0) return
+        ! Try to extract an identifier and resolve it as an integer parameter.
+        call extract_char_length_inner(node%type_name, inner_text)
+        if (.not. allocated(inner_text)) return
+        id_name = adjustl(inner_text)
+        if (len_trim(id_name) == 0) return
+        sym_idx = find_symbol(context, trim(id_name))
+        if (sym_idx <= 0) return
+        if (.not. context%symbols(sym_idx)%has_i32_constant) return
+        character_length = int(context%symbols(sym_idx)%i32_constant)
+        if (character_length <= 0) then
+            call unsupported_feature_error('character length declaration', &
+                node%line, node%column, &
+                'character length parameter must be positive', error_msg)
+            return
+        end if
+        call set_empty(error_msg)
+    end subroutine resolve_character_length_with_context
+
+    subroutine extract_char_length_inner(type_name, inner_text)
+        ! Extract the inner text from character(N) or character(len=N).
+        character(len=*), intent(in) :: type_name
+        character(len=:), allocatable, intent(out) :: inner_text
+        character(len=:), allocatable :: lowered
+        integer :: open_pos, close_pos, len_pos, start_pos
+
+        lowered = lowercase_text(type_name)
+        open_pos = index(lowered, '(')
+        close_pos = index(lowered, ')')
+        if (open_pos <= 0 .or. close_pos <= open_pos) return
+        len_pos = index(lowered(open_pos:close_pos), 'len=')
+        if (len_pos > 0) then
+            start_pos = open_pos + len_pos - 1 + len('len=')
+        else
+            start_pos = open_pos + 1
+        end if
+        inner_text = adjustl(lowered(start_pos:close_pos - 1))
+    end subroutine extract_char_length_inner
 
     subroutine declaration_character_length(node, character_length, error_msg)
         type(declaration_node), intent(in) :: node
@@ -297,19 +349,29 @@
 
         len_pos = index(lowered, 'len=')
         if (len_pos <= 0) then
-            error_msg = 'only character(len=N) declarations are supported'
-            return
+            ! Positional form: character(N) — N is between the parens.
+            start_pos = index(lowered, '(')
+            if (start_pos <= 0) then
+                error_msg = 'malformed character type declaration'
+                return
+            end if
+            close_pos = index(lowered(start_pos:), ')')
+            if (close_pos <= 0) then
+                error_msg = 'character length declaration is missing ")"'
+                return
+            end if
+            close_pos = start_pos + close_pos - 2
+            length_text = adjustl(lowered(start_pos + 1:close_pos))
+        else
+            start_pos = len_pos + len('len=')
+            close_pos = index(lowered(start_pos:), ')')
+            if (close_pos <= 0) then
+                error_msg = 'character length declaration is missing ")"'
+                return
+            end if
+            close_pos = start_pos + close_pos - 2
+            length_text = adjustl(lowered(start_pos:close_pos))
         end if
-
-        start_pos = len_pos + len('len=')
-        close_pos = index(lowered(start_pos:), ')')
-        if (close_pos <= 0) then
-            error_msg = 'character length declaration is missing ")"'
-            return
-        end if
-
-        close_pos = start_pos + close_pos - 2
-        length_text = adjustl(lowered(start_pos:close_pos))
         if (trim(length_text) == ':' .or. trim(length_text) == '*') then
             character_length = -1
             call set_empty(error_msg)

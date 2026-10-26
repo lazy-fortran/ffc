@@ -294,6 +294,23 @@
                 error_msg = 'decl_f64_array['//trim(name)//']: '//error_msg
                 return
             end if
+        case (VALUE_CHARACTER)
+            block
+                integer :: char_len
+                integer(c_int64_t) :: total_bytes
+                call resolve_character_length_with_context(node, context, &
+                                                           char_len, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (char_len <= 0) char_len = 1
+                context%symbols(index)%character_length = char_len
+                total_bytes = int(array_size, c_int64_t) * int(char_len, c_int64_t)
+                if (.not. emit_alloca_bytes(context%session, &
+                        i64_immediate(context%session, total_bytes), &
+                        context%symbols(index)%element_address, error_msg)) then
+                    error_msg = 'decl_char_array['//trim(name)//']: '//error_msg
+                    return
+                end if
+            end block
         case default
             if (.not. emit_i32_array_alloca(context%session, array_size, &
                     context%symbols(index)%element_address, error_msg)) then
@@ -346,6 +363,11 @@
             return
         end if
         vk = context%symbols(symbol_index)%value_kind
+        if (vk == VALUE_CHARACTER) then
+            call lower_char_array_constructor(arena, flat, symbol_index, &
+                                              context, error_msg)
+            return
+        end if
         do i = 1, n
             if (vk == VALUE_F32) then
                 call lower_f32_expression(arena, flat(i), context, value, error_msg)
@@ -361,6 +383,56 @@
         end do
         call set_empty(error_msg)
     end subroutine lower_array_constructor_assignment
+
+    subroutine lower_char_array_constructor(arena, flat, symbol_index, &
+                                            context, error_msg)
+        ! Store character literal elements of an array constructor into the flat
+        ! byte buffer allocated for a character array. Each element occupies
+        ! char_len bytes; literals are padded/truncated to fit.
+        type(ast_arena_t), intent(in) :: arena
+        integer, intent(in) :: flat(:)
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: i, char_len
+        integer(c_int64_t) :: char_offset
+        character(len=:), allocatable :: lit_value, lit_type, literal_text
+        character(len=64) :: string_name
+        type(lr_operand_desc_t) :: src_ptr, dest_ptr
+
+        char_len = context%symbols(symbol_index)%character_length
+        if (char_len <= 0) char_len = 1
+        do i = 1, size(flat)
+            if (.not. node_exists(arena, flat(i))) then
+                error_msg = 'character array constructor element does not '// &
+                            'reference an AST node'
+                return
+            end if
+            if (.not. is_literal(arena, flat(i))) then
+                call unsupported_feature_error('character array constructor', &
+                    0, 0, 'only string literal elements are supported', error_msg)
+                return
+            end if
+            call get_literal_info(arena, flat(i), lit_value, lit_type, error_msg)
+            if (len_trim(error_msg) > 0) return
+            call strip_literal_quotes(lit_value, literal_text)
+            call normalize_character_literal(literal_text, char_len)
+            context%string_literal_count = context%string_literal_count + 1
+            write (string_name, '(A,I0)') '.ffc.caarr.', &
+                context%string_literal_count
+            call materialize_liric_string(context%session, trim(string_name), &
+                                          literal_text, src_ptr, error_msg)
+            if (len_trim(error_msg) > 0) return
+            char_offset = int(i - 1, c_int64_t) * int(char_len, c_int64_t)
+            if (.not. emit_ptr_offset(context%session, &
+                    context%symbols(symbol_index)%element_address, &
+                    char_offset, dest_ptr, error_msg)) return
+            if (.not. emit_memcpy(context%session, dest_ptr, src_ptr, &
+                    i64_immediate(context%session, int(char_len, c_int64_t)), &
+                    error_msg)) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_char_array_constructor
 
     recursive subroutine flatten_constructor_elements(arena, indices, flat, error_msg)
         !! Collect the leaf element indices of a (possibly nested) array
