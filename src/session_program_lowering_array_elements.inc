@@ -534,11 +534,9 @@
                 return
             end if
             if (.not. context%symbols(symbol_index)%is_array) then
-                call unsupported_feature_error('whole-array expression', &
-                                               get_node_line(arena, node_index), &
-                                               get_node_column(arena, node_index), &
-                                               'whole-array arithmetic requires array '// &
-                                               'operands', error_msg)
+                ! Scalar variable used in array expression: broadcast its value.
+                call lower_i32_expression(arena, node_index, context, value, &
+                                          error_msg)
                 return
             end if
             call ensure_array_shapes_match(context, target_symbol_index, &
@@ -547,6 +545,12 @@
             call load_array_linear_element(context, symbol_index, &
                                            int(linear_index, c_int64_t), value, &
                                            error_msg)
+            return
+        end if
+
+        ! Scalar literal operand in array arithmetic (e.g. arr * 3).
+        if (is_literal(arena, node_index)) then
+            call lower_i32_expression(arena, node_index, context, value, error_msg)
             return
         end if
 

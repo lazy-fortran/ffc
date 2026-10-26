@@ -411,6 +411,14 @@
                         context%symbols(symbol_index)%value, error_msg)) return
                     return
                 end if
+                ! Whole integer array in a multi-item print list: expand inline.
+                if (context%symbols(symbol_index)%is_array .and. &
+                    context%symbols(symbol_index)%value_kind == VALUE_I32 .and. &
+                    .not. context%symbols(symbol_index)%is_allocatable) then
+                    call lower_print_whole_i32_array_value(symbol_index, context, &
+                                                           error_msg)
+                    return
+                end if
             end if
         else
 
@@ -438,6 +446,13 @@
                         error_msg)
                     return
                 end if
+                if (is_contained_i32_function(context, node%name) .and. &
+                    is_contained_elemental_function(context, arena, node%name)) then
+                    call lower_print_elemental_i32_array_value(arena, node, &
+                                                               context, error_msg)
+                    if (len_trim(error_msg) == 0) return
+                    call set_empty(error_msg)
+                end if
             end if
             if (is_char_expr_call(arena, node_index)) then
                 call lower_print_char_expr(arena, node_index, context, error_msg)
@@ -452,6 +467,93 @@
                                              context%i32_print_format_id, value, &
                                              error_msg)) return
     end subroutine lower_print_expression_value
+
+    subroutine lower_print_whole_i32_array_value(symbol_index, context, error_msg)
+        ! Print all elements of a fixed-size rank-1 i32 array inline in a
+        ! multi-item print list. The caller (lower_print) has already emitted
+        ! one leading space, so element 0 needs no extra space; elements 1..n-1
+        ! each get a space before them.
+        integer, intent(in) :: symbol_index
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: value
+        integer(c_int64_t) :: k, n
+
+        n = int(context%symbols(symbol_index)%array_size, c_int64_t)
+        do k = 0_c_int64_t, n - 1_c_int64_t
+            if (k > 0_c_int64_t) then
+                if (.not. emit_liric_print_space(context%session, error_msg)) return
+            end if
+            call load_array_linear_element(context, symbol_index, k, value, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_liric_print_i32_value(context%session, &
+                                                 context%i32_print_format_id, &
+                                                 value, error_msg)) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_print_whole_i32_array_value
+
+    subroutine lower_print_elemental_i32_array_value(arena, node, context, error_msg)
+        ! Print the result of an elemental i32 function applied to a rank-1 i32
+        ! array argument in a multi-item print list. Expands elementwise: loads
+        ! element k, passes it as a scalar argument, and prints the result.
+        ! The caller has already emitted one leading space, so element 0 needs
+        ! no extra space; elements 1..n-1 each get a space.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        character(len=:), allocatable, intent(out) :: error_msg
+        type(lr_operand_desc_t) :: elem_val, scalar_arg, result_val
+        integer :: arg_sym
+        character(len=:), allocatable :: arg_name
+        integer(c_int64_t) :: k, n
+
+        if (.not. allocated(node%arg_indices)) then
+            error_msg = 'elemental call has no arguments'
+            return
+        end if
+        if (size(node%arg_indices) /= 1) then
+            error_msg = 'elemental print expansion only supports one array argument'
+            return
+        end if
+        if (.not. is_identifier(arena, node%arg_indices(1))) then
+            error_msg = 'elemental print expansion requires an identifier argument'
+            return
+        end if
+        call get_identifier_name(arena, node%arg_indices(1), arg_name, error_msg)
+        if (len_trim(error_msg) > 0) return
+        arg_sym = find_symbol(context, arg_name)
+        if (arg_sym <= 0) then
+            error_msg = 'elemental argument was not declared: '//trim(arg_name)
+            return
+        end if
+        if (.not. context%symbols(arg_sym)%is_array) then
+            error_msg = 'elemental print expansion requires an array argument'
+            return
+        end if
+        if (context%symbols(arg_sym)%value_kind /= VALUE_I32) then
+            error_msg = 'elemental print expansion only supports i32 arrays'
+            return
+        end if
+        n = int(context%symbols(arg_sym)%array_size, c_int64_t)
+        do k = 0_c_int64_t, n - 1_c_int64_t
+            call load_array_linear_element(context, arg_sym, k, elem_val, error_msg)
+            if (len_trim(error_msg) > 0) return
+            if (.not. emit_i32_alloca(context%session, scalar_arg, error_msg)) return
+            if (.not. emit_i32_store(context%session, elem_val, scalar_arg, error_msg)) &
+                return
+            if (.not. emit_i32_call(context%session, &
+                                    call_emit_name(arena, node%name), &
+                                    [scalar_arg], result_val, error_msg)) return
+            if (k > 0_c_int64_t) then
+                if (.not. emit_liric_print_space(context%session, error_msg)) return
+            end if
+            if (.not. emit_liric_print_i32_value(context%session, &
+                                                 context%i32_print_format_id, &
+                                                 result_val, error_msg)) return
+        end do
+        call set_empty(error_msg)
+    end subroutine lower_print_elemental_i32_array_value
 
     subroutine lower_print_char_expr(arena, node_index, context, error_msg)
         ! Print a character expression (e.g. trim(s)). The list-directed

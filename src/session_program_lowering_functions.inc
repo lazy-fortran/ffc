@@ -360,6 +360,32 @@
             contained_function_kind(context, name) == VALUE_I32
     end function is_contained_i32_function
 
+    logical function is_contained_elemental_function(context, arena, name)
+        ! True when name is a contained function with the elemental prefix.
+        type(lowering_context_t), intent(in) :: context
+        type(ast_arena_t), intent(in) :: arena
+        character(len=*), intent(in) :: name
+        integer :: i, j, fn_node_idx
+        type(function_def_node), pointer :: fn_node
+
+        is_contained_elemental_function = .false.
+        do i = 1, context%function_count
+            if (.not. same_name(context%function_names(i), name)) cycle
+            fn_node_idx = context%function_node_indices(i)
+            if (fn_node_idx <= 0) return
+            fn_node => get_node_as_function_def(arena, fn_node_idx)
+            if (.not. associated(fn_node)) return
+            if (.not. allocated(fn_node%prefix_keywords)) return
+            do j = 1, size(fn_node%prefix_keywords)
+                if (trim(fn_node%prefix_keywords(j)) == 'elemental') then
+                    is_contained_elemental_function = .true.
+                    return
+                end if
+            end do
+            return
+        end do
+    end function is_contained_elemental_function
+
     logical function is_contained_f32_function(context, name)
         type(lowering_context_t), intent(in) :: context
         character(len=*), intent(in) :: name
