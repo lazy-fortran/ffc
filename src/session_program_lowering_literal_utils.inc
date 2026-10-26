@@ -30,6 +30,38 @@
         end do
     end function is_f64_intrinsic_expression
 
+    logical function is_f32_intrinsic_expression(arena, node, context) &
+        result(is_f32)
+        ! True when node is a call to a known libm-equivalent intrinsic and
+        ! all its arguments are f32 (not f64). Mirrors lower_f32_call which
+        ! dispatches to lower_f32_intrinsic_call for the same intrinsic set.
+        type(ast_arena_t), intent(in) :: arena
+        type(call_or_subscript_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer :: i
+        integer :: intrinsic_id
+
+        is_f32 = .false.
+        if (.not. allocated(node%name)) return
+        intrinsic_id = f64_intrinsic_id(node%name)
+        if (intrinsic_id == F64_INTRINSIC_NONE) return
+        ! real() / dble() always return f64; exclude them here.
+        if (intrinsic_id == F64_INTRINSIC_REAL) return
+        if (same_name(node%name, 'dble')) return
+        if (.not. allocated(node%arg_indices)) return
+        ! All args must be f32 (none may be f64) for the result to be f32.
+        do i = 1, size(node%arg_indices)
+            if (is_f64_expression(arena, node%arg_indices(i), context)) return
+        end do
+        ! At least one arg should exist and be expressible as f32.
+        do i = 1, size(node%arg_indices)
+            if (is_f32_expression(arena, node%arg_indices(i), context)) then
+                is_f32 = .true.
+                return
+            end if
+        end do
+    end function is_f32_intrinsic_expression
+
     logical function is_real_array_reduction(arena, node, context, vk) result(ok)
         !! True when node is a sum/product/maxval/minval call whose first
         !! argument is a fixed-size array of value kind vk.

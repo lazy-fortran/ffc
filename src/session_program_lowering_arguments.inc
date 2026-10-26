@@ -276,6 +276,21 @@
             return
         end if
 
+        ! Keyword argument (name=value): lower the RHS value directly.
+        select type (kw => arena%entries(node_index)%node)
+        type is (assignment_node)
+            if (kw%is_keyword_argument .and. kw%value_index > 0) then
+                value_kind = expression_value_kind(arena, kw%value_index, &
+                                                   context, default_kind)
+                call lower_expression_by_kind(arena, kw%value_index, context, &
+                                              value_kind, value, error_msg)
+                if (len_trim(error_msg) > 0) return
+                call make_reference_argument(context, value_kind, value, arg, &
+                                             error_msg)
+                return
+            end if
+        end select
+
         if (is_identifier(arena, node_index)) then
             call prepare_identifier_reference_arg(arena, node_index, context, &
                                                   arg, copyback_index, handled, &

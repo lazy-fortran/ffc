@@ -249,6 +249,16 @@
                 error_msg = 'real identifier was not declared: '//trim(id_name)
                 return
             end if
+            ! Implicit integer-to-real(4) conversion.
+            if (context%symbols(symbol_index)%value_kind == VALUE_I32 .or. &
+                context%symbols(symbol_index)%value_kind == VALUE_I8 .or. &
+                context%symbols(symbol_index)%value_kind == VALUE_I16) then
+                call lower_i32_expression(arena, node_index, context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_to_f32(context%session, lhs, value, &
+                                                 error_msg)) return
+                return
+            end if
             if (context%symbols(symbol_index)%value_kind /= VALUE_F32) then
                 error_msg = 'real(4) expression used non-f32 identifier: '// &
                             trim(id_name)
@@ -403,6 +413,8 @@
                         is_f32 = is_real_array_reduction(arena, node, context, VALUE_F32)
                     if (.not. is_f32) &
                         is_f32 = is_real_dot_product(arena, node, context, VALUE_F32)
+                    if (.not. is_f32) &
+                        is_f32 = is_f32_intrinsic_expression(arena, node, context)
                 end if
             end if
         end select
@@ -468,6 +480,16 @@
             symbol_index = find_symbol(context, id_name)
             if (symbol_index <= 0) then
                 error_msg = 'real identifier was not declared: '//trim(id_name)
+                return
+            end if
+            ! Implicit integer-to-real(8) conversion.
+            if (context%symbols(symbol_index)%value_kind == VALUE_I32 .or. &
+                context%symbols(symbol_index)%value_kind == VALUE_I8 .or. &
+                context%symbols(symbol_index)%value_kind == VALUE_I16) then
+                call lower_i32_expression(arena, node_index, context, lhs, error_msg)
+                if (len_trim(error_msg) > 0) return
+                if (.not. emit_liric_i32_to_f64(context%session, lhs, value, &
+                                                 error_msg)) return
                 return
             end if
             if (context%symbols(symbol_index)%value_kind /= VALUE_F64) then
