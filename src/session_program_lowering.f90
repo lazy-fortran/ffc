@@ -13,7 +13,8 @@ module session_program_lowering
                               module_procedure_node, &
                               visibility_statement_node, data_statement_node, &
                               complex_literal_node
-    use ast_nodes_conditional, only: select_type_node, type_guard_block_node
+    use ast_nodes_conditional, only: select_type_node, type_guard_block_node, &
+                                     elseif_wrapper_t
     use ast_nodes_associate, only: associate_node, association_t
     use ast_nodes_control, only: block_construct_node, where_stmt_node, &
                                  elsewhere_clause_t
@@ -22,7 +23,7 @@ module session_program_lowering
                          case_range_node, &
                          case_default_node, declaration_node, do_loop_node, &
                          do_while_node, cycle_node, exit_node, function_def_node, &
-                         if_node, &
+                         goto_node, if_node, &
                          parameter_declaration_node, &
                          print_statement_node, program_node, read_statement_node, &
                          module_node, &
@@ -1340,3 +1341,4 @@ contains
     include 'session_program_lowering_select.inc'
     include 'session_program_lowering_diagnostics.inc'
 end module session_program_lowering
+! ffc-rebuild-nonce 94307-3190

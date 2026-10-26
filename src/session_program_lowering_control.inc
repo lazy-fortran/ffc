@@ -23,6 +23,15 @@
             return
         end if
 
+        ! When elseif_blocks are present (e.g. from arithmetic IF lowering),
+        ! delegate to the chain lowerer.
+        if (allocated(node%elseif_blocks)) then
+            if (size(node%elseif_blocks) > 0) then
+                call lower_if_elseif_chain(arena, node, context, value, error_msg)
+                return
+            end if
+        end if
+
         call lower_i1_condition(arena, node%condition_index, context, &
                                 condition, error_msg)
         if (len_trim(error_msg) > 0) return
@@ -93,6 +102,135 @@
             call set_empty(error_msg)
         end if
     end subroutine lower_if
+
+    ! Lower an if/elseif.../else chain (arithmetic IF and structured ELSEIF).
+    ! Emits a sequence of condition checks; each check either branches to its
+    ! own then-body or to the next check block.  All non-terminated paths jump
+    ! to a common merge block.
+    subroutine lower_if_elseif_chain(arena, node, context, value, error_msg)
+        type(ast_arena_t), intent(in) :: arena
+        type(if_node), intent(in) :: node
+        type(lowering_context_t), intent(inout) :: context
+        type(lr_operand_desc_t), intent(out) :: value
+        character(len=:), allocatable, intent(out) :: error_msg
+        integer :: n_ei, i, j
+        integer(c_int32_t) :: merge_block, then_block, next_check_block
+        type(lr_operand_desc_t) :: condition
+        type(symbol_t), allocatable :: saved_symbols(:)
+        integer :: saved_symbol_count
+        type(branch_result_t), allocatable :: branch_results(:)
+        integer :: n_branches
+        logical :: all_terminated
+
+        call set_empty(error_msg)
+        value = i32_immediate(context%session, 0_c_int64_t)
+
+        n_ei = size(node%elseif_blocks)
+        n_branches = n_ei + 2   ! then + each elseif + else
+
+        allocate(saved_symbols(context%symbol_count))
+        do i = 1, context%symbol_count
+            saved_symbols(i) = context%symbols(i)
+        end do
+        saved_symbol_count = context%symbol_count
+        allocate(branch_results(n_branches))
+
+        merge_block = create_liric_block(context%session)
+
+        ! --- IF condition ---
+        call lower_i1_condition(arena, node%condition_index, context, condition, &
+                                error_msg)
+        if (len_trim(error_msg) > 0) return
+
+        then_block = create_liric_block(context%session)
+        if (n_ei > 0) then
+            next_check_block = create_liric_block(context%session)
+        else
+            next_check_block = create_liric_block(context%session)
+        end if
+        if (.not. emit_liric_condbr(context%session, condition, then_block, &
+                                    next_check_block, error_msg)) return
+
+        call lower_if_branch(arena, node%then_body_indices, then_block, &
+                             merge_block, context, value, branch_results(1), &
+                             error_msg)
+        if (len_trim(error_msg) > 0) return
+        do j = 1, saved_symbol_count
+            context%symbols(j) = saved_symbols(j)
+        end do
+        context%symbol_count = saved_symbol_count
+
+        ! --- ELSEIF blocks ---
+        do i = 1, n_ei
+            if (.not. set_liric_block(context%session, next_check_block, &
+                                      error_msg)) return
+            context%current_block_id = next_check_block
+            context%current_block_terminated = .false.
+
+            call lower_i1_condition(arena, node%elseif_blocks(i)%condition_index, &
+                                    context, condition, error_msg)
+            if (len_trim(error_msg) > 0) return
+
+            then_block = create_liric_block(context%session)
+            if (i < n_ei) then
+                next_check_block = create_liric_block(context%session)
+            else
+                ! Last elseif: the false branch is the else block.
+                next_check_block = create_liric_block(context%session)
+            end if
+            if (.not. emit_liric_condbr(context%session, condition, then_block, &
+                                        next_check_block, error_msg)) return
+
+            call lower_if_branch(arena, node%elseif_blocks(i)%body_indices, &
+                                 then_block, merge_block, context, value, &
+                                 branch_results(i + 1), error_msg)
+            if (len_trim(error_msg) > 0) return
+            do j = 1, saved_symbol_count
+                context%symbols(j) = saved_symbols(j)
+            end do
+            context%symbol_count = saved_symbol_count
+        end do
+
+        ! --- ELSE / final else block ---
+        if (allocated(node%else_body_indices)) then
+            call lower_if_branch(arena, node%else_body_indices, next_check_block, &
+                                 merge_block, context, value, &
+                                 branch_results(n_branches), error_msg)
+        else
+            block
+                integer :: empty(0)
+                call lower_if_branch(arena, empty, next_check_block, &
+                                     merge_block, context, value, &
+                                     branch_results(n_branches), error_msg)
+            end block
+        end if
+        if (len_trim(error_msg) > 0) return
+        do j = 1, saved_symbol_count
+            context%symbols(j) = saved_symbols(j)
+        end do
+        context%symbol_count = saved_symbol_count
+        deallocate(saved_symbols)
+
+        ! Check if all branches terminated.
+        all_terminated = .true.
+        do i = 1, n_branches
+            if (.not. branch_results(i)%terminated) then
+                all_terminated = .false.
+                exit
+            end if
+        end do
+
+        if (all_terminated) then
+            context%current_block_terminated = .true.
+            call set_empty(error_msg)
+            return
+        end if
+
+        if (.not. set_liric_block(context%session, merge_block, error_msg)) return
+        context%current_block_id = merge_block
+        context%current_block_terminated = .false.
+        call set_empty(error_msg)
+    end subroutine lower_if_elseif_chain
 
     subroutine lower_if_branch(arena, node_indices, block_id, merge_block, &
                                context, value, result, error_msg)

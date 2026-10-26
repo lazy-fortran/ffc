@@ -212,6 +212,8 @@
         has_executable_statements = .false.
         has_nested_program = .false.
         call set_empty(error_msg)
+        write(0,*) 'DEBUG lower_program_return: node_type=', &
+                   get_node_type_at(arena, root_index)
         if (get_node_type_at(arena, root_index) == 'program_node' .or. &
             get_node_type_at(arena, root_index) == 'program') then
             call get_program_body_info(arena, root_index, &
@@ -229,6 +231,11 @@
                     exit
                 end if
             end do
+            ! Pre-allocate LIRIC blocks for all statement labels at this level
+            ! so that forward GOTO references resolve before we emit any code.
+            write(0,*) 'DEBUG lower_program_return: calling collect_goto_labels, n=', &
+                       size(body_indices)
+            call collect_goto_labels(arena, body_indices, context)
             ! Process body elements
             do i = 1, size(body_indices)
                 if (is_internal_procedure_entry(arena, body_indices(i))) cycle
@@ -245,10 +252,30 @@
                     end if
                     cycle
                 end if
+                ! If this statement carries a label, close the current block
+                ! and switch to the pre-allocated labeled block.
+                if (node_exists(arena, body_indices(i))) then
+                    if (allocated(arena%entries(body_indices(i))%node%stmt_label)) &
+                    then
+                        if (len_trim(arena%entries(body_indices(i))%node% &
+                                     stmt_label) > 0) then
+                            call enter_labeled_block(arena, body_indices(i), &
+                                                     context, error_msg)
+                            if (len_trim(error_msg) > 0) return
+                        else if (context%current_block_terminated) then
+                            ! Dead code after a GOTO/return; skip until label.
+                            cycle
+                        end if
+                    else if (context%current_block_terminated) then
+                        ! Dead code after a GOTO/return; skip until label.
+                        cycle
+                    end if
+                else if (context%current_block_terminated) then
+                    cycle
+                end if
                 call lower_statement(arena, body_indices(i), context, &
                                      value, error_msg)
                 if (len_trim(error_msg) > 0) return
-                if (context%current_block_terminated) return
                 has_executable_statements = .true.
             end do
         else if (get_node_type_at(arena, root_index) == 'module_node' .or. &
@@ -473,6 +500,13 @@
                                     error_msg)) return
             context%current_block_terminated = .true.
             context%current_block_exited_loop = .true.
+        type is (goto_node)
+            call lower_goto(node, context, error_msg)
+            if (len_trim(error_msg) == 0) then
+                if (.not. context%current_block_terminated) then
+                    context%current_block_terminated = .false.
+                end if
+            end if
         type is (if_node)
             call lower_if(arena, node, context, value, error_msg)
         type is (do_loop_node)
@@ -544,6 +578,7 @@
         end select
     end subroutine unsupported_statement_node
     include 'session_program_lowering_control.inc'
+    include 'session_program_lowering_goto.inc'
     include 'session_program_lowering_associate.inc'
     include 'session_program_lowering_loops.inc'
     include 'session_program_lowering_do_while.inc'
@@ -561,20 +596,42 @@
         logical, intent(out) :: terminated
         character(len=:), allocatable, intent(out) :: error_msg
         integer :: i
+        logical :: has_label
         terminated = .false.
         value = i32_immediate(context%session, 0_c_int64_t)
         call set_empty(error_msg)
+        ! Pre-allocate LIRIC blocks for all statement labels in this list so
+        ! forward GOTO references are always valid.
+        call collect_goto_labels(arena, node_indices, context)
         do i = 1, size(node_indices)
             ! A nested procedure definition (an internal procedure of the unit
             ! whose body this is) is lowered separately, not as an in-body
             ! statement. Skip it here so a procedure that contains internals is
             ! lowered the same way a program-contained procedure is.
             if (is_internal_procedure_entry(arena, node_indices(i))) cycle
+            ! If this statement carries a label, close the current block and
+            ! switch to the pre-allocated labeled block (even if terminated).
+            has_label = .false.
+            if (node_exists(arena, node_indices(i))) then
+                if (allocated(arena%entries(node_indices(i))%node%stmt_label)) then
+                    if (len_trim(arena%entries(node_indices(i))%node%stmt_label) > 0) &
+                        has_label = .true.
+                end if
+            end if
+            if (has_label) then
+                call enter_labeled_block(arena, node_indices(i), context, error_msg)
+                if (len_trim(error_msg) > 0) return
+            else if (context%current_block_terminated) then
+                ! Dead code after a GOTO/stop/return; skip non-labeled statements.
+                cycle
+            end if
             call lower_statement(arena, node_indices(i), context, value, error_msg)
             if (len_trim(error_msg) > 0) return
             if (context%current_block_terminated) then
                 terminated = .true.
-                return
+                ! Don't return yet: continue scanning for labeled statements.
             end if
         end do
+        ! If the last statement terminated, propagate that state.
+        if (context%current_block_terminated) terminated = .true.
     end subroutine lower_statement_list

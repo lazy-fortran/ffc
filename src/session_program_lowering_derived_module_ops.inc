@@ -860,12 +860,29 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
         context%current_block_terminated = .false.
 
         if (.not. allocated(program%body_indices)) return
+        call collect_goto_labels(arena, program%body_indices, context)
         do i = 1, size(program%body_indices)
             if (is_internal_procedure_entry(arena, program%body_indices(i))) cycle
+            if (node_exists(arena, program%body_indices(i))) then
+                if (allocated(arena%entries(program%body_indices(i))%node% &
+                              stmt_label)) then
+                    if (len_trim(arena%entries(program%body_indices(i))%node% &
+                                 stmt_label) > 0) then
+                        call enter_labeled_block(arena, program%body_indices(i), &
+                                                 context, error_msg)
+                        if (len_trim(error_msg) > 0) return
+                    else if (context%current_block_terminated) then
+                        cycle
+                    end if
+                else if (context%current_block_terminated) then
+                    cycle
+                end if
+            else if (context%current_block_terminated) then
+                cycle
+            end if
             call lower_statement(arena, program%body_indices(i), context, &
                                  value, error_msg)
             if (len_trim(error_msg) > 0) return
-            if (context%current_block_terminated) return
         end do
     end subroutine lower_program_body
 
