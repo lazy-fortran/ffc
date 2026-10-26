@@ -7,9 +7,11 @@ import argparse
 from contextlib import ExitStack
 import os
 from pathlib import Path
+import resource
 import signal
 import subprocess
 import sys
+import time
 
 
 def write_metadata(path: Path, exit_status: int, termination: str, signum: int) -> None:
@@ -74,6 +76,8 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--metadata", type=Path, required=True)
     result.add_argument("--append", action="store_true")
     result.add_argument("--stdin", type=Path)
+    result.add_argument("--metrics", type=Path)
+    result.add_argument("--metric-label")
     result.add_argument("command", nargs=argparse.REMAINDER)
     return result
 
@@ -86,7 +90,20 @@ def main() -> int:
         parser().error("missing command")
     if args.timeout <= 0:
         parser().error("timeout must be positive")
-    return run(args)
+    if (args.metrics is None) != (args.metric_label is None):
+        parser().error("--metrics and --metric-label must be used together")
+    started = time.monotonic()
+    try:
+        return run(args)
+    finally:
+        if args.metrics is not None:
+            elapsed = time.monotonic() - started
+            peak_rss = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+            # Darwin reports bytes; Linux and the other BSDs report kilobytes.
+            if sys.platform == "darwin":
+                peak_rss /= 1024
+            with args.metrics.open("a", encoding="utf-8") as metrics:
+                metrics.write(f"{args.metric_label}\t{elapsed:.6f}\t{int(peak_rss)}\n")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib_shell.sh"
+ffc_require_bash "$@" || exit 1
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 source "$SCRIPT_DIR/lib_expected_manifest.sh"
 source "$SCRIPT_DIR/lib_conformance_observation.sh"

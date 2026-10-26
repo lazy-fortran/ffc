@@ -91,17 +91,22 @@ mkdir -p "$TMPDIR"
 scripts/conformance_gauntlet.sh --suite SUITE [OPTIONS]
 ```
 
+The harness requires Bash 4.3 or newer. On macOS its entry points also search
+the standard Homebrew locations when the system Bash is older; `FFC_BASH`
+can name another installed Bash executable.
+
 Options:
 
 | Flag | Description |
 |---|---|
 | `--suite SUITE` | Required. One of `fortfront-f90`, `fortfront-lf`, `lfortran`, `gfortran-dg` |
-| `--ffc PATH` | Path to the `ffc` binary. Auto-discovered from `build/` or `PATH` if omitted. |
+| `--ffc PATH` | Path to the `ffc` binary. Defaults to the newest executable in this checkout's `build/`. |
 | `--report PATH` | JSONL report path. Defaults to `$TMPDIR/ffc_gauntlet_<suite>.jsonl`. |
 | `--observations PATH` | Expectation-neutral JSONL observation path. Defaults to `<report stem>.observations.jsonl`. |
 | `--file PATH` | Select one suite-relative file. Repeat to select more files. |
 | `--files-from PATH` | Read suite-relative files from a list. Repeat to read more lists. |
 | `--max-files N` | Only test the first N files. Use for smoke runs. |
+| `--list-files` | Print the full suite's sorted relative paths without resolving a compiler. Fails if the corpus is missing. |
 | `--timeout N` | Per-file timeout in seconds. Default: 5. |
 | `--sample N` | Measure a deterministic random subset of N files. Marks the report sampled and `full_run` false. |
 | `--seed S` | Seed for `--sample`. Default: 0. The same seed over the same corpus selects the same files. |
@@ -118,7 +123,7 @@ Full run (all files, explicit ffc path):
 
 ```bash
 scripts/conformance_gauntlet.sh --suite fortfront-f90 \
-    --ffc "$(find build -name ffc -type f -executable | head -1)"
+    --ffc build/fo/bin/ffc
 ```
 
 ### Reclassifying without another corpus run
