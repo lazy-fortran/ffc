@@ -309,6 +309,15 @@ unsupported and retain their existing diagnostics.
 | Runtime reductions | Rank-1 through rank-4 runtime automatic arrays or assumed-shape dummies support scalar `sum(a)`, `product(a)`, `maxval(a)`, and `minval(a)` over default integer, `real`, or `real(8)` elements. Scalar `norm2(a)` also supports rank-1 through rank-4 runtime automatic arrays and assumed-shape real or `real(8)` dummies. A logical runtime mask supports scalar `count(a)`, `any(a)`, and `all(a)` through rank 4 for both automatic arrays and assumed-shape dummies. The lowering multiplies all available runtime extents and walks the contiguous column-major element count; typed identities match gfortran for empty runtime extents. Rank-5-and-higher reductions, non-default integer kinds, array-valued function masks and DIM forms remain explicit refusals with operation-specific diagnostics. The independent gfortran differential and refusal oracles are `test_session_runtime_count_compiler`, `test_session_runtime_any_all_compiler`, `test_session_runtime_extreme_compiler`, `test_session_runtime_norm2_compiler`, and `test_session_runtime_product_compiler`. |
 | Runtime multi-retained sections | A runtime-bounded scalar broadcast into a rank-1 through rank-4 section, including multiple retained dimensions such as `a(2:n,1:m) = value`, computes the live section extent and column-major coordinates from the runtime descriptor. Array-valued RHS forms and unsupported noncontiguous or ambiguous sections remain explicit refusals. The independent gfortran differential oracle is `test_session_runtime_array_section_multidim_compiler`. |
 
+List-directed `print *, (object, ..., i=lo, hi[, step])` and stdout
+`write(*, *)` preserve every object's order and recurse through nested I/O
+implied-do lists when bounds and strides fold at compile time. Formatted
+multiple-object and nested I/O implied-do lists are explicit refusals: their
+iterator requires format reversion that the current formatted helper does not
+implement. Other READ/WRITE implied-do routes retain their existing refusals.
+`test_session_io_implied_do_print_compiler` compares the supported objects
+byte-for-byte with gfortran and checks the formatted refusal boundary.
+
 The older compile-time-only assumed-shape section sentence in the Arrays row is
 superseded for rank-1 sections of fixed, contiguous intrinsic rank-1 parents by
 the descriptor-view boundary: compile-time or runtime bounds, including a

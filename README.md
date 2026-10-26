@@ -468,6 +468,10 @@ and general NAMELIST writing remain unsupported. Internal `read (buf, *)
 value` (list-directed) and `write (buf, fmt) value` with a compound literal
 format (`I`/`A` descriptors) are supported. `inquire` covers `exist=`,
 `size=`, and `iostat=` on `file=` and `unit=`, plus `opened=` on `unit=`.
+List-directed `print` and stdout `write` accept ordered multiple-object and
+nested I/O implied-do lists with compile-time bounds and strides. Formatted
+multiple-object or nested implied-do lists are explicitly refused until format
+reversion across their iterator is implemented.
 `FILE=` accepts character variables and expressions, trims trailing blanks,
 and preserves the source value. Invalid programs are
 rejected during lowering: an integer `SELECT CASE` with overlapping
