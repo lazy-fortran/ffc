@@ -9,7 +9,9 @@
         type(lr_operand_desc_t) :: value
         integer :: param_count
         logical :: terminated
+        logical :: function_opened
         character(len=:), allocatable :: emit_name
+        character(len=:), allocatable :: cleanup_err
 
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session subroutine requires a name'
@@ -39,27 +41,40 @@
         else
             emit_name = procedure_emit_name(node%name, node%bind_c_clause)
         end if
+        function_opened = .false.
         if (.not. begin_void_subroutine(context%session, emit_name, param_count, &
                                                         error_msg)) return
+        function_opened = .true.
 
         call define_reference_parameters(arena, node%param_indices, context, &
                                          error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (len_trim(error_msg) > 0) goto 900
 
         if (allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
                                       terminated, error_msg)
-            if (len_trim(error_msg) > 0) return
+            if (len_trim(error_msg) > 0) goto 900
         end if
 
         if (.not. context%current_block_terminated) then
-            if (.not. emit_ret_void(context%session, error_msg)) return
+            if (.not. emit_ret_void(context%session, error_msg)) goto 900
         end if
-        if (.not. finish_function(context%session, error_msg)) return
+        if (.not. finish_function(context%session, error_msg)) goto 900
 
         parent_context%session = context%session
         parent_context%string_literal_count = context%string_literal_count
         call set_empty(error_msg)
+        return
+
+900     continue
+        ! Error recovery: close any open function so the LIRIC session stays valid.
+        if (function_opened) then
+            if (.not. context%current_block_terminated) then
+                if (emit_ret_void(context%session, cleanup_err)) continue
+            end if
+            if (finish_function(context%session, cleanup_err)) continue
+            parent_context%session = context%session
+        end if
     end subroutine lower_void_subroutine
 
     logical function dummy_is_character(arena, body_indices, param_name)

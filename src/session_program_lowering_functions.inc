@@ -27,7 +27,12 @@
         call set_empty(error_msg)
 
         node_type = get_node_type_at(arena, root_index)
-        if (node_type == 'module_node' .or. node_type == 'module') return
+        if (node_type == 'module_node' .or. node_type == 'module') then
+            ! Standalone module unit: register its contained procedures so calls
+            ! inside the module (e.g. recursive calls) resolve correctly.
+            call register_module_procedures(arena, root_index, context, error_msg)
+            return
+        end if
         call get_program_body_info(arena, root_index, &
                                    prog_name, body_indices, ff_error)
         if (len_trim(ff_error) > 0) then
@@ -203,6 +208,13 @@
         derived_type_index = 0
         call set_empty(error_msg)
         if (.not. allocated(node%return_type)) return
+        ! Empty return_type means no type prefix (e.g. "function add(a,b) result(c)").
+        ! The result variable type is declared in the body; infer it there.
+        if (len_trim(node%return_type) == 0) then
+            call infer_result_var_value_kind(node, context, value_kind, &
+                                             derived_type_index, error_msg)
+            return
+        end if
 
         ! Split "real(kind)" into base and kind_spec; double precision has none.
         paren = index(node%return_type, '(')
@@ -310,6 +322,65 @@
             end select
         end do
     end function result_var_derived_type
+
+    subroutine infer_result_var_value_kind(node, context, value_kind, &
+                                           derived_type_index, error_msg)
+        ! When a function has no type prefix (e.g. "function add(a,b) result(c)"),
+        ! scan the body for a declaration of the result variable and use its type.
+        ! Also checks for derived-type results (type(t) :: result_var).
+        ! Defaults to VALUE_I32 if no declaration is found (implicit integer).
+        type(function_def_node), intent(in) :: node
+        type(lowering_context_t), intent(in) :: context
+        integer, intent(out) :: value_kind
+        integer, intent(out) :: derived_type_index
+        character(len=:), allocatable, intent(out) :: error_msg
+        character(len=:), allocatable :: result_name, type_err
+        integer :: i, k, derived_idx
+
+        value_kind = VALUE_I32
+        derived_type_index = 0
+        call set_empty(error_msg)
+        result_name = trim(node%name)
+        if (allocated(node%result_variable)) then
+            if (len_trim(node%result_variable) > 0) &
+                result_name = trim(node%result_variable)
+        end if
+        if (.not. allocated(node%body_indices)) return
+        do i = 1, size(node%body_indices)
+            if (.not. node_exists(context%arena, node%body_indices(i))) cycle
+            select type (decl => context%arena%entries(node%body_indices(i))%node)
+            type is (declaration_node)
+                if (.not. allocated(decl%type_name)) cycle
+                if (allocated(decl%var_name)) then
+                    if (trim(decl%var_name) == result_name) then
+                        call declaration_value_kind(decl, value_kind, type_err)
+                        if (len_trim(type_err) == 0) return
+                        ! If plain type failed, check for derived type.
+                        derived_idx = declaration_derived_type_index(context, decl)
+                        if (derived_idx > 0) then
+                            value_kind = VALUE_DERIVED
+                            derived_type_index = derived_idx
+                            return
+                        end if
+                    end if
+                end if
+                if (decl%is_multi_declaration .and. allocated(decl%var_names)) then
+                    do k = 1, size(decl%var_names)
+                        if (trim(decl%var_names(k)) == result_name) then
+                            call declaration_value_kind(decl, value_kind, type_err)
+                            if (len_trim(type_err) == 0) return
+                            derived_idx = declaration_derived_type_index(context, decl)
+                            if (derived_idx > 0) then
+                                value_kind = VALUE_DERIVED
+                                derived_type_index = derived_idx
+                                return
+                            end if
+                        end if
+                    end do
+                end if
+            end select
+        end do
+    end subroutine infer_result_var_value_kind
 
     subroutine copy_internal_function_names(source, destination)
         type(lowering_context_t), intent(in) :: source
@@ -496,7 +567,25 @@
 
         call set_empty(error_msg)
         node_type = get_node_type_at(arena, root_index)
-        if (node_type == 'module_node' .or. node_type == 'module') return
+        if (node_type == 'module_node' .or. node_type == 'module') then
+            ! Standalone module unit: lower all contained procedures now.
+            ! Procedures that use unsupported features are skipped; since no
+            ! main calls them, the compiled module can still be used.
+            call get_module_body_info(arena, root_index, mod_name, &
+                                      decl_indices, proc_indices, ff_error)
+            if (len_trim(ff_error) > 0) then
+                error_msg = ff_error
+                return
+            end if
+            do p = 1, size(proc_indices)
+                call lower_one_module_procedure(arena, proc_indices(p), &
+                                                trim(mod_name), context, &
+                                                ff_error)
+                ! Skip procedures that fail to lower; the executable still runs.
+                if (len_trim(ff_error) > 0) call set_empty(ff_error)
+            end do
+            return
+        end if
         call get_program_body_info(arena, root_index, prog_name, body_indices, &
                                    ff_error)
         if (len_trim(ff_error) > 0) then
@@ -752,8 +841,10 @@
         integer :: value_kind
         integer :: result_derived_index
         logical :: terminated
+        logical :: function_opened
         character(len=:), allocatable :: result_name
         character(len=:), allocatable :: emit_name
+        character(len=:), allocatable :: cleanup_err
 
         if (.not. allocated(node%name)) then
             error_msg = 'direct LIRIC session function requires a name'
@@ -791,6 +882,7 @@
         else
             emit_name = procedure_emit_name(node%name, node%bind_c_clause)
         end if
+        function_opened = .false.
         if (value_kind == VALUE_F32) then
             if (.not. begin_liric_f32_function(context%session, emit_name, &
                                                param_count, error_msg)) return
@@ -805,6 +897,7 @@
             if (.not. begin_i32_function(context%session, emit_name, param_count, &
                                                           error_msg)) return
         end if
+        function_opened = .true.
 
         if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT) then
             call grow_symbols(context)
@@ -820,11 +913,11 @@
             if (.not. emit_ptr_offset(context%session, &
                 ptr_param(context%session, 0), 0_c_int64_t, &
                 context%symbols(context%current_function_result_index)%deferred_data, &
-                error_msg)) return
+                error_msg)) goto 900
             if (.not. emit_ptr_offset(context%session, &
                 ptr_param(context%session, 0), 8_c_int64_t, &
                 context%symbols(context%current_function_result_index)%deferred_length, &
-                error_msg)) return
+                error_msg)) goto 900
             context%symbol_count = context%current_function_result_index
         else if (value_kind == VALUE_DERIVED) then
             call grow_symbols(context)
@@ -841,7 +934,7 @@
             context%symbol_count = context%current_function_result_index
         else
             call define_symbol(context, result_name, value_kind, error_msg)
-            if (len_trim(error_msg) > 0) return
+            if (len_trim(error_msg) > 0) goto 900
             context%current_function_result_index = find_symbol(context, &
                                                                 result_name)
         end if
@@ -853,34 +946,59 @@
             call define_reference_parameters(arena, node%param_indices, context, &
                                              error_msg)
         end if
-        if (len_trim(error_msg) > 0) return
+        if (len_trim(error_msg) > 0) goto 900
 
         if (allocated(node%body_indices)) then
             call lower_statement_list(arena, node%body_indices, context, value, &
                                       terminated, error_msg)
-            if (len_trim(error_msg) > 0) return
+            if (len_trim(error_msg) > 0) goto 900
         end if
 
         result_index = find_symbol(context, result_name)
         if (result_index <= 0) then
             error_msg = 'function result symbol was not declared: '// &
                         trim(result_name)
-            return
+            goto 900
         end if
         if (.not. context%current_block_terminated) then
             if (value_kind == VALUE_DEFERRED_CHARACTER_RESULT .or. &
                 value_kind == VALUE_DERIVED) then
-                if (.not. emit_ret_void(context%session, error_msg)) return
+                if (.not. emit_ret_void(context%session, error_msg)) goto 900
             else
                 value = context%symbols(result_index)%value
-                if (.not. emit_ret_i32_operand(context%session, value, error_msg)) return
+                if (.not. emit_ret_i32_operand(context%session, value, error_msg)) goto 900
             end if
         end if
-        if (.not. finish_function(context%session, error_msg)) return
+        if (.not. finish_function(context%session, error_msg)) goto 900
 
         parent_context%session = context%session
         parent_context%string_literal_count = context%string_literal_count
         call set_empty(error_msg)
+        return
+
+900     continue
+        ! Error recovery: close any open function so the LIRIC session stays valid.
+        ! Emit a dummy return to terminate the current block, then finish the
+        ! function. LIRIC adds unreachable for unterminated blocks automatically,
+        ! but a matching return avoids type mismatches in direct-compile mode.
+        if (function_opened) then
+            if (.not. context%current_block_terminated) then
+                select case (value_kind)
+                case (VALUE_DEFERRED_CHARACTER_RESULT, VALUE_DERIVED)
+                    if (emit_ret_void(context%session, cleanup_err)) continue
+                case (VALUE_F32, VALUE_F64)
+                    ! For float-returning functions, a void ret may be a type
+                    ! mismatch; fall through to let LIRIC handle termination.
+                    if (emit_ret_void(context%session, cleanup_err)) continue
+                case default
+                    if (emit_ret_i32_operand(context%session, &
+                        i32_immediate(context%session, 0_c_int64_t), cleanup_err)) &
+                        continue
+                end select
+            end if
+            if (finish_function(context%session, cleanup_err)) continue
+            parent_context%session = context%session
+        end if
     end subroutine lower_scalar_function
 
     include 'session_program_lowering_functions_tail.inc'
