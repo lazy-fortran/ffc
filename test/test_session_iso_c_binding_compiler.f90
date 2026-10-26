@@ -10,6 +10,7 @@ module ffc_case_test_session_iso_c_binding_compiler
 end module ffc_case_test_session_iso_c_binding_compiler
 
 subroutine case_test_session_iso_c_binding_compiler()
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     use ffc_test_support, only: expect_exit_status, expect_error_contains, &
         expect_exe_has_symbol
     implicit none
@@ -243,10 +244,22 @@ contains
             '    my_add = a + b'//new_line('a')// &
             '  end function my_add'//new_line('a')// &
             'end program main'
+        character(len=:), allocatable :: root, object_path
 
+        root = make_temp_root('bindc_symbol')
+        object_path = root//'/named.o'
         test_internal_function_bind_c_emits_named_symbol = &
-            expect_exe_has_symbol(source, '/tmp/ffc_session_bindc_sym_test', &
-            'my_add')
+            expect_exe_has_symbol(source, object_path, 'my_add', &
+            defined_only=.true.)
+        if (.not. test_internal_function_bind_c_emits_named_symbol) return
+        ! Nearby names and a second ABI prefix must not match the definition.
+        if (expect_exe_has_symbol(source, object_path, 'my_ad')) &
+            test_internal_function_bind_c_emits_named_symbol = .false.
+        if (expect_exe_has_symbol(source, object_path, 'my_add_extra')) &
+            test_internal_function_bind_c_emits_named_symbol = .false.
+        if (expect_exe_has_symbol(source, object_path, '_my_add')) &
+            test_internal_function_bind_c_emits_named_symbol = .false.
+        call remove_temp_root(root)
     end function test_internal_function_bind_c_emits_named_symbol
 
     logical function test_internal_bind_c_function_is_callable()

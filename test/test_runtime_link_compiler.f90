@@ -36,6 +36,7 @@ module ffc_case_test_runtime_link_compiler
 end module ffc_case_test_runtime_link_compiler
 
 subroutine case_test_runtime_link_compiler()
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     use ffc_runtime_link, only: ffc_runtime_link_input, FFC_RUNTIME_SYMBOLS
     use ffc_runtime_source, only: ffc_runtime_source_text
     use liric_session_bindings, only: liric_session_t, liric_session_create, &
@@ -46,11 +47,13 @@ subroutine case_test_runtime_link_compiler()
     implicit none
     save
 
-    character(len=*), parameter :: WORK = '/tmp/ffc_runtime_link_565'
+    character(len=:), allocatable :: work
+    logical :: macho_symbols
     integer :: failures
 
     failures = 0
-    call run_quiet('rm -rf '//WORK//' && mkdir -p '//WORK)
+    work = make_temp_root('runtime_link_565')
+    macho_symbols = status_of('test "$(uname -s)" = Darwin') == 0
 
     print *, '=== runtime link tests (#565) ==='
 
@@ -66,25 +69,28 @@ subroutine case_test_runtime_link_compiler()
         print *, 'FAIL: ', failures, ' runtime link check(s) failed'
         stop 1
     end if
+    call remove_temp_root(work)
     print *, 'PASS: runtime link'
 
 contains
 
-    subroutine run_quiet(command)
-        character(len=*), intent(in) :: command
-        integer :: exit_stat, cmd_stat
+    function runtime_symbol_name(symbol) result(native_name)
+        character(len=*), intent(in) :: symbol
+        character(len=:), allocatable :: native_name
 
-        call execute_command_line(command, exitstat=exit_stat, &
-                                  cmdstat=cmd_stat)
-    end subroutine run_quiet
+        native_name = trim(symbol)
+        ! Mach-O prefixes every C external name with an additional underscore.
+        if (macho_symbols) native_name = '_'//native_name
+    end function runtime_symbol_name
 
     ! Runs a command and returns its exit status without aborting the test
     ! when the command fails.
     integer function status_of(command) result(status)
         character(len=*), intent(in) :: command
-        character(len=*), parameter :: rc_file = WORK//'/rc'
+        character(len=:), allocatable :: rc_file
         integer :: unit, ios, exit_stat, cmd_stat
 
+        rc_file = work//'/rc'
         status = -1
         call execute_command_line('{ '//command//' ; } > /dev/null 2>&1; '// &
                                   'echo $? > '//rc_file, exitstat=exit_stat, &
@@ -172,10 +178,11 @@ contains
     ! rather than inheriting the driver's default.
     subroutine check_runtime_builds_under_a_strict_c_driver(nfail)
         integer, intent(inout) :: nfail
-        character(len=*), parameter :: obj = WORK//'/strict.o'
+        character(len=:), allocatable :: obj
         character(len=:), allocatable :: link_input, error_msg
         integer :: status
 
+        obj = work//'/strict.o'
         call ffc_runtime_link_input(link_input, error_msg)
         if (len_trim(error_msg) > 0) then
             print *, 'FAIL: runtime link input: ', trim(error_msg)
@@ -195,11 +202,13 @@ contains
     subroutine check_declared_symbols_are_defined(nfail)
         integer, intent(inout) :: nfail
         character(len=:), allocatable :: link_input, error_msg, symbols
-        character(len=*), parameter :: obj = WORK//'/runtime.o'
-        character(len=*), parameter :: nm_out = WORK//'/runtime.nm'
+        character(len=:), allocatable :: obj
+        character(len=:), allocatable :: nm_out
         logical :: ok
         integer :: i, status
 
+        obj = work//'/runtime.o'
+        nm_out = work//'/runtime.nm'
         call ffc_runtime_link_input(link_input, error_msg)
         if (len_trim(error_msg) > 0) then
             print *, 'FAIL: runtime link input: ', trim(error_msg)
@@ -226,7 +235,7 @@ contains
             return
         end if
         do i = 1, size(FFC_RUNTIME_SYMBOLS)
-            if (index(symbols, ' '//trim(FFC_RUNTIME_SYMBOLS(i))// &
+            if (index(symbols, ' '//runtime_symbol_name(FFC_RUNTIME_SYMBOLS(i))// &
                       new_line('a')) == 0) then
                 print *, 'FAIL: the runtime does not define declared ', &
                     'symbol ', trim(FFC_RUNTIME_SYMBOLS(i))
@@ -283,10 +292,11 @@ contains
 
     subroutine check_probe_runs_with_runtime(nfail)
         integer, intent(inout) :: nfail
-        character(len=*), parameter :: exe = WORK//'/probe_linked'
+        character(len=:), allocatable :: exe
         logical :: emitted
         integer :: status
 
+        exe = work//'/probe_linked'
         call emit_probe_exe(.true., exe, emitted)
         if (.not. emitted) then
             print *, 'FAIL: could not emit the probe executable'
@@ -305,10 +315,11 @@ contains
     ! still links, and the binary dies at run time instead.
     subroutine check_probe_fails_without_runtime(nfail)
         integer, intent(inout) :: nfail
-        character(len=*), parameter :: exe = WORK//'/probe_unlinked'
+        character(len=:), allocatable :: exe
         logical :: emitted
         integer :: status
 
+        exe = work//'/probe_unlinked'
         call emit_probe_exe(.false., exe, emitted)
         if (.not. emitted) return
         status = status_of(exe)
@@ -322,12 +333,14 @@ contains
     ! The end-to-end guarantee: an ordinary compile links the runtime.
     subroutine check_emitted_executable_carries_runtime(nfail)
         integer, intent(inout) :: nfail
-        character(len=*), parameter :: exe = WORK//'/hello'
-        character(len=*), parameter :: nm_out = WORK//'/hello.nm'
+        character(len=:), allocatable :: exe
+        character(len=:), allocatable :: nm_out
         character(len=:), allocatable :: error_msg, symbols
         logical :: ok
         integer :: i, status
 
+        exe = work//'/hello'
+        nm_out = work//'/hello.nm'
         call compile_to_exe( &
             'program main'//new_line('a')// &
             '    integer :: value'//new_line('a')// &
@@ -360,7 +373,7 @@ contains
             return
         end if
         do i = 1, size(FFC_RUNTIME_SYMBOLS)
-            if (index(symbols, ' '//trim(FFC_RUNTIME_SYMBOLS(i))// &
+            if (index(symbols, ' '//runtime_symbol_name(FFC_RUNTIME_SYMBOLS(i))// &
                       new_line('a')) == 0) then
                 print *, 'FAIL: the emitted executable does not carry ', &
                     'runtime symbol ', trim(FFC_RUNTIME_SYMBOLS(i))

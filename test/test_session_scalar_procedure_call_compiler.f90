@@ -10,6 +10,7 @@ module ffc_case_test_session_scalar_procedure_call_compiler
 end module ffc_case_test_session_scalar_procedure_call_compiler
 
 subroutine case_test_session_scalar_procedure_call_compiler()
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     use ffc_test_support, only: expect_error_contains, expect_exit_status, &
                                 expect_exe_has_symbol
     implicit none
@@ -188,13 +189,22 @@ contains
             '  end interface'//new_line('a')// &
             '  stop missing_body(1)'//new_line('a')// &
             'end program main'
+        character(len=:), allocatable :: root, object_path
 
+        root = make_temp_root('external_symbol')
+        object_path = root//'/missing.o'
         test_host_interface_is_external = expect_exe_has_symbol( &
-            source, '/tmp/ffc_session_scalar_proc_missing.o', 'missing_body')
+            source, object_path, 'missing_body')
         if (.not. test_host_interface_is_external) return
+        ! The object references this name but does not provide its body.
+        if (expect_exe_has_symbol(source, object_path, 'missing_body', &
+                defined_only=.true.)) then
+            test_host_interface_is_external = .false.
+            return
+        end if
         test_host_interface_is_external = expect_error_contains( &
-            source, 'linker failed', &
-            '/tmp/ffc_session_scalar_proc_missing')
+            source, 'linker failed', root//'/missing')
+        call remove_temp_root(root)
     end function test_host_interface_is_external
 
 end subroutine case_test_session_scalar_procedure_call_compiler

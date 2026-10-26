@@ -14,6 +14,7 @@ subroutine case_test_session_allocatable_rank4_compiler()
     ! Positive behavior is compared with an independently compiled gfortran
     ! executable; negative cases pin the deliberately narrow owner contract.
     use ffc_test_support, only: expect_error_contains
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
@@ -21,8 +22,11 @@ subroutine case_test_session_allocatable_rank4_compiler()
     implicit none
     save
 
+    character(len=:), allocatable :: root
+
     logical :: all_passed
 
+    root = make_temp_root('alloc_rank4_owner')
     print *, '=== direct session rank-4 allocatable owner test ==='
     all_passed = .true.
     if (.not. test_runtime_lifecycle_and_dummy()) all_passed = .false.
@@ -35,6 +39,7 @@ subroutine case_test_session_allocatable_rank4_compiler()
     if (.not. test_target_rejected()) all_passed = .false.
     if (.not. test_alias_rejected()) all_passed = .false.
     if (.not. all_passed) stop 1
+    call remove_temp_root(root)
     print *, 'PASS: rank-4 intrinsic allocatable owners lower through LIRIC'
 
 contains
@@ -141,7 +146,7 @@ contains
 
         test_rank5_rejected = expect_error_contains(source, &
             'rank-1 through rank-4 allocatables', &
-            '/tmp/ffc_alloc_rank4_rank5_reject')
+            root//'/ffc_alloc_rank4_rank5_reject')
     end function test_rank5_rejected
 
     logical function test_derived_lowers()
@@ -172,7 +177,7 @@ contains
         test_polymorphic_rejected = expect_error_contains(source, &
             'rank-4 allocatables support only integer, real, '// &
             'and logical element kinds', &
-            '/tmp/ffc_alloc_rank4_polymorphic_reject')
+            root//'/ffc_alloc_rank4_polymorphic_reject')
     end function test_polymorphic_rejected
 
     logical function test_unsupported_kind_rejected()
@@ -183,7 +188,7 @@ contains
 
         test_unsupported_kind_rejected = expect_error_contains(source, &
             'rank-4 allocatables support only integer, real, and logical', &
-            '/tmp/ffc_alloc_rank4_kind_reject')
+            root//'/ffc_alloc_rank4_kind_reject')
     end function test_unsupported_kind_rejected
 
     logical function test_pointer_lowers()
@@ -213,7 +218,7 @@ contains
             'direct LIRIC session supports rank-1 through rank-4 '// &
             'fixed-size integer, '// &
             'real, logical, and complex pointer/target arrays only', &
-            '/tmp/ffc_alloc_rank4_target_reject')
+            root//'/ffc_alloc_rank4_target_reject')
     end function test_target_rejected
 
     logical function test_alias_rejected()
@@ -228,7 +233,7 @@ contains
 
         test_alias_rejected = expect_error_contains(source, &
             'allocatable array aliases are not supported', &
-            '/tmp/ffc_alloc_rank4_alias_reject')
+            root//'/ffc_alloc_rank4_alias_reject')
     end function test_alias_rejected
 
     logical function matches_gfortran(source, stem)
@@ -242,7 +247,7 @@ contains
         integer :: unit, exit_stat, status
 
         matches_gfortran = .false.
-        base = '/var/tmp/ert/ffc_alloc_rank4_owner_'//trim(stem)
+        base = root//'/'//trim(stem)
         src = base//'.f90'
         exe = base//'.ffc'
         ref = base//'.gf'

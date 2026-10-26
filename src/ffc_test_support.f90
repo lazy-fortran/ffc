@@ -180,16 +180,19 @@ contains
         ok = .true.
     end function expect_eof_stderr_and_exit
 
-    logical function expect_exe_has_symbol(source, object_path, symbol) result(ok)
-        ! Compiles source to an object file and checks it defines the named
-        ! symbol (via nm), used to verify bind(c, name="...") emission.
+    logical function expect_exe_has_symbol(source, object_path, symbol, &
+            defined_only) result(ok)
+        ! Check an exact symbol name in an emitted object, including external
+        ! references unless the caller explicitly requires a definition.
         character(len=*), intent(in) :: source
         character(len=*), intent(in) :: object_path
         character(len=*), intent(in) :: symbol
+        logical, intent(in), optional :: defined_only
         character(len=:), allocatable :: error_msg
         type(compiler_frontend_options_t) :: options
         type(compiler_frontend_result_t) :: frontend_result
         integer :: stat, cmd_stat
+        logical :: require_definition
 
         ok = .false.
         options = compiler_frontend_options_t()
@@ -211,8 +214,10 @@ contains
             return
         end if
 
-        call execute_command_line('nm '//object_path//' | grep -qw '//symbol, &
-            exitstat=stat, cmdstat=cmd_stat)
+        require_definition = .false.
+        if (present(defined_only)) require_definition = defined_only
+        call find_native_object_symbol(object_path, symbol, require_definition, &
+            stat, cmd_stat)
         call execute_command_line('rm -f '//object_path)
         if (cmd_stat /= 0) then
             print *, 'FAIL: could not run nm on ', object_path
@@ -224,6 +229,27 @@ contains
         end if
         ok = .true.
     end function expect_exe_has_symbol
+
+    subroutine find_native_object_symbol(object_path, symbol, defined_only, &
+            stat, cmd_stat)
+        character(len=*), intent(in) :: object_path, symbol
+        logical, intent(in) :: defined_only
+        integer, intent(out) :: stat, cmd_stat
+        character(len=:), allocatable :: native_symbol, nm_flags
+
+        native_symbol = trim(symbol)
+        call execute_command_line('test "$(uname -s)" = Darwin', &
+            exitstat=stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0) return
+        ! Mach-O adds one underscore to every external C ABI symbol.
+        if (stat == 0) native_symbol = '_'//native_symbol
+        nm_flags = ' -P'
+        if (defined_only) nm_flags = nm_flags//' --defined-only'
+        call execute_command_line('nm'//nm_flags//' '//object_path// &
+            ' | awk ''$1 == "'//native_symbol// &
+            '" {found = 1} END {exit !found}''', &
+            exitstat=stat, cmdstat=cmd_stat)
+    end subroutine find_native_object_symbol
 
     logical function expect_exit_status(source, expected, exe_path, input_mode) &
             result(ok)

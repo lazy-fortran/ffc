@@ -14,6 +14,7 @@ subroutine case_test_session_alloc_rank2_component_compiler()
     ! The positive case is compared against a separately compiled gfortran
     ! executable; the negative cases lock the deliberately narrow contract.
     use ffc_test_support, only: expect_error_contains
+    use conformance_temp_dir, only: make_temp_root, remove_temp_root
     use fortfront_compiler, only: compiler_frontend_options_t, &
         compiler_frontend_result_t, compile_frontend_from_string, &
         INPUT_MODE_STANDARD
@@ -21,8 +22,11 @@ subroutine case_test_session_alloc_rank2_component_compiler()
     implicit none
     save
 
+    character(len=:), allocatable :: root
+
     logical :: all_passed
 
+    root = make_temp_root('alloc_rank2_component')
     print *, '=== direct session rank-2 allocatable component test ==='
     all_passed = .true.
     if (.not. test_runtime_lifecycle()) all_passed = .false.
@@ -33,6 +37,7 @@ subroutine case_test_session_alloc_rank2_component_compiler()
     if (.not. test_unsupported_kind_rejected()) all_passed = .false.
     if (.not. test_rank5_rejected()) all_passed = .false.
     if (.not. all_passed) stop 1
+    call remove_temp_root(root)
     print *, 'PASS: rank-2 intrinsic allocatable components lower through LIRIC'
 
 contains
@@ -170,7 +175,7 @@ contains
 
         test_actual_argument_rejected = expect_error_contains(source, &
             'passing a rank-2 allocatable component as an actual argument', &
-            '/tmp/ffc_alloc_rank2_component_actual_reject')
+            root//'/ffc_alloc_rank2_component_actual_reject')
     end function test_actual_argument_rejected
 
     logical function test_alias_rejected()
@@ -187,7 +192,7 @@ contains
 
         test_alias_rejected = expect_error_contains(source, &
             'rank-2 allocatable array component aliases are not supported', &
-            '/tmp/ffc_alloc_rank2_component_alias_reject')
+            root//'/ffc_alloc_rank2_component_alias_reject')
     end function test_alias_rejected
 
     logical function test_unsupported_kind_rejected()
@@ -200,7 +205,7 @@ contains
 
         test_unsupported_kind_rejected = expect_error_contains(source, &
             'only integer, real, and logical allocatable array components', &
-            '/tmp/ffc_alloc_rank2_component_kind_reject')
+            root//'/ffc_alloc_rank2_component_kind_reject')
     end function test_unsupported_kind_rejected
 
     logical function test_rank5_rejected()
@@ -213,7 +218,7 @@ contains
 
         test_rank5_rejected = expect_error_contains(source, &
             'rank-1 through rank-4 intrinsic allocatable components', &
-            '/tmp/ffc_alloc_rank2_component_rank5_reject')
+            root//'/ffc_alloc_rank2_component_rank5_reject')
     end function test_rank5_rejected
 
     logical function matches_gfortran(source, stem)
@@ -227,7 +232,7 @@ contains
         integer :: unit, exit_stat, status
 
         matches_gfortran = .false.
-        base = '/var/tmp/ert/ffc_alloc_rank2_component_'//trim(stem)
+        base = root//'/'//trim(stem)
         src = base//'.f90'
         exe = base//'.ffc'
         ref = base//'.gf'
