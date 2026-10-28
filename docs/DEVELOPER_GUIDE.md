@@ -51,6 +51,28 @@ LIBRARY_PATH=/path/to/liric/build fo test
   update `docs/RUNTIME_ABI.md` in the same change.
 - Never `git add .` or `git add -A`. Stage paths explicitly.
 
+## Source layout
+
+- `app/ffc.f90`: command-line entry point.
+- `src/`: lowering, LIRIC bindings and CLI options (discovered by fpm).
+- `runtime/`: the C runtime library used by compiled programs.
+- `test/`: behavioural test cases. fo keeps each file name as its test name and
+  runs every case through one dispatcher executable in a fresh process.
+  `python3 tools/make_suite_cases.py --apply` registers new test programs.
+- `scripts/`: conformance, corpus and benchmark tooling.
+
+## Coding conventions
+
+- Free-form Fortran 2003 or later, no implicit typing, declarations at the top
+  of each scope.
+- Modules under 500 lines (hard limit 1000) and procedures under 50 lines (hard
+  limit 100). Split growing lowering code into modules or submodules with
+  explicit interfaces; do not add production `include` fragments.
+- `snake_case` names; derived type names end in `_t`.
+- A newly supported construct comes with a change under
+  `src/session_program_lowering_*`, a behavioural test under `test/` and an
+  update of `docs/SUPPORT_CONTRACT.md` in the same commit.
+
 ## `lowering_context_t` field freeze
 
 `lowering_context_t` (`src/session_program_lowering_types.f90`) is the state
