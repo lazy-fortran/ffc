@@ -1,0 +1,160 @@
+name: nightly
+
+# Slow jobs run here once a night on main instead of in the merge queue. A
+# failing job bisects its own command between its last green nightly and this
+# commit; the report job files or updates one issue labelled nightly-failure,
+# and the next green run of those jobs closes it.
+run-name: >-
+  ${{ inputs.jobs && format('nightly: jobs {0}', inputs.jobs) || 'nightly: all jobs' }}
+
+on:
+  schedule:
+    - cron: "7 1 * * *"
+  workflow_dispatch:
+    inputs:
+      jobs:
+        description: Comma-separated jobs to run, tests and/or lint (empty runs all)
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: [self-hosted, itp-ubuntu24]
+    outputs:
+      jobs: ${{ steps.plan.outputs.jobs }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        env:
+          JOBS: ${{ inputs.jobs }}
+        run: python3 scripts/nightly_triage.py plan --jobs "$JOBS"
+
+  tests:
+    name: Nightly tests
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'tests')
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        working-directory: ffc
+    env:
+      LIBRARY_PATH: ${{ github.workspace }}/liric/build
+      LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
+    steps:
+      - name: Checkout ffc
+        uses: actions/checkout@v4
+        with:
+          path: ffc
+          fetch-depth: 0
+
+      - uses: ./ffc/.github/actions/ffc-setup
+
+      - name: Run all ffc tests (fo test --all)
+        id: run
+        run: python3 scripts/nightly_triage.py run tests
+
+      - name: Bisect the failure
+        if: failure() && steps.run.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/nightly_triage.py bisect tests --out "$RUNNER_TEMP/bisect.json"
+
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.run.outcome == 'failure'
+        with:
+          name: nightly-bisect-tests
+          path: ${{ runner.temp }}/bisect.json
+          if-no-files-found: ignore
+
+  lint:
+    name: Nightly lint
+    needs: plan
+    if: contains(fromJSON(needs.plan.outputs.jobs), 'lint')
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: read
+    defaults:
+      run:
+        working-directory: ffc
+    env:
+      LIBRARY_PATH: ${{ github.workspace }}/liric/build
+      LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
+    steps:
+      - name: Checkout ffc
+        uses: actions/checkout@v4
+        with:
+          path: ffc
+          fetch-depth: 0
+
+      - uses: ./ffc/.github/actions/ffc-setup
+
+      - name: Lint (fo lint)
+        id: run
+        run: python3 scripts/nightly_triage.py run lint
+
+      - name: Bisect the failure
+        if: failure() && steps.run.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/nightly_triage.py bisect lint --out "$RUNNER_TEMP/bisect.json"
+
+      - uses: actions/upload-artifact@v4
+        if: failure() && steps.run.outcome == 'failure'
+        with:
+          name: nightly-bisect-lint
+          path: ${{ runner.temp }}/bisect.json
+          if-no-files-found: ignore
+
+  report:
+    name: Report the failure
+    needs: [plan, tests, lint]
+    if: failure()
+    runs-on: [self-hosted, itp-ubuntu24]
+    permissions:
+      actions: read
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: nightly-bisect-*
+          path: bisect
+      - name: File or update the nightly-failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/nightly_triage.py report --results bisect
+
+  close:
+    name: Close the nightly-failure issue
+    needs: [plan, tests, lint]
+    if: >-
+      always() && needs.plan.result == 'success'
+      && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: [self-hosted, itp-ubuntu24]
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Close the issue once its jobs pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+          JOBS: ${{ inputs.jobs }}
+        run: python3 scripts/nightly_triage.py success --jobs "$JOBS"

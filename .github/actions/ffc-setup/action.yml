@@ -1,0 +1,61 @@
+name: ffc setup
+description: >-
+  Check out fortfront, liric and fo next to the ffc checkout, install the
+  GCC 14 toolchain, fpm and fo, and build liric.
+runs:
+  using: composite
+  steps:
+    - name: Checkout fortfront (sibling path)
+      uses: actions/checkout@v4
+      with:
+        repository: lazy-fortran/fortfront
+        path: fortfront
+
+    - name: Checkout liric
+      uses: actions/checkout@v4
+      with:
+        repository: krystophny/liric
+        path: liric
+
+    - name: Checkout fo
+      uses: actions/checkout@v4
+      with:
+        repository: lazy-fortran/fo
+        path: fo
+
+    - name: Install build tools
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gfortran-14 gcc-14 g++-14 cmake ninja-build curl
+        sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
+        sudo update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-14 100
+        gcc --version | head -1
+        gfortran --version | head -1
+
+    - name: Install fpm
+      shell: bash
+      run: |
+        sudo curl -L -o /usr/local/bin/fpm \
+          https://github.com/fortran-lang/fpm/releases/download/v0.13.0/fpm-0.13.0-linux-x86_64-gcc-12
+        sudo chmod +x /usr/local/bin/fpm
+        fpm --version
+
+    - name: Install fo onto PATH
+      shell: bash
+      working-directory: fo
+      run: |
+        fpm install --prefix "$HOME/.local"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+    - name: Build liric
+      shell: bash
+      working-directory: liric
+      env:
+        CC: gcc-14
+        CXX: g++-14
+      run: |
+        cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        cmake --build build -j"$(nproc)"
+        ls -la build/libliric.a

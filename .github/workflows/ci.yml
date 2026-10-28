@@ -15,8 +15,11 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # The full `fo test --all` run (about 8 minutes) and `fo lint` (20 to 45
+  # minutes) run in nightly.yml; the merge queue builds ffc and runs the gates
+  # and pinned corpus buckets below.
   build-test:
-    name: build + fpm test
+    name: build + fast gates
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ffc
@@ -71,56 +74,7 @@ jobs:
           path: ${{ github.workspace }}/gcc
           key: corpus-v1-${{ runner.os }}-gcc-gfortran-dg-${{ steps.corpus_pins.outputs.gcc_sha }}
 
-      - name: Checkout fortfront (sibling path)
-        uses: actions/checkout@v4
-        with:
-          repository: lazy-fortran/fortfront
-          path: fortfront
-
-      - name: Checkout liric
-        uses: actions/checkout@v4
-        with:
-          repository: krystophny/liric
-          path: liric
-
-      - name: Checkout fo
-        uses: actions/checkout@v4
-        with:
-          repository: lazy-fortran/fo
-          path: fo
-
-      - name: Install build tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y gfortran-14 gcc-14 g++-14 cmake ninja-build curl
-          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-14 100
-          sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-14 100
-          sudo update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-14 100
-          gcc --version | head -1
-          gfortran --version | head -1
-
-      - name: Install fpm
-        run: |
-          sudo curl -L -o /usr/local/bin/fpm \
-            https://github.com/fortran-lang/fpm/releases/download/v0.13.0/fpm-0.13.0-linux-x86_64-gcc-12
-          sudo chmod +x /usr/local/bin/fpm
-          fpm --version
-
-      - name: Install fo onto PATH
-        working-directory: fo
-        run: |
-          fpm install --prefix "$HOME/.local"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
-      - name: Build liric
-        working-directory: liric
-        env:
-          CC: gcc-14
-          CXX: g++-14
-        run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-          cmake --build build -j"$(nproc)"
-          ls -la build/libliric.a
+      - uses: ./ffc/.github/actions/ffc-setup
 
       - name: Build ffc
         id: build_ffc
@@ -129,28 +83,6 @@ jobs:
           LIBRARY_PATH: ${{ github.workspace }}/liric/build
           LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
         run: fo build
-
-      - name: Run ffc tests
-        working-directory: ffc
-        env:
-          LIBRARY_PATH: ${{ github.workspace }}/liric/build
-          LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
-        run: |
-          set +e
-          timeout --verbose --signal=TERM --kill-after=30s 30m \
-            fo test --all 2>&1 | tee "$RUNNER_TEMP/ffc-fo-test.log"
-          status=${PIPESTATUS[0]}
-          set -e
-
-          if [ "$status" -eq 124 ]; then
-            echo "::error::fo test exceeded 30 minutes"
-            echo "Last visible test marker:"
-            grep -E '=== ' "$RUNNER_TEMP/ffc-fo-test.log" | tail -1 || true
-            echo "Process tree at timeout:"
-            ps -eo pid,ppid,pgid,stat,etime,args --forest || true
-          fi
-
-          exit "$status"
 
       - name: No DT_TEXTREL gate
         if: ${{ always() && steps.build_ffc.outcome == 'success' }}
@@ -216,37 +148,6 @@ jobs:
           scripts/conformance_check.sh --no-build --suite gfortran-dg \
             --files-from test/conformance/ci_gfortran_dg.txt
 
-      # Runs last, and after "Build ffc" for two reasons. The compiler half of
-      # `fo lint` re-compiles each source with -fsyntax-only against the module
-      # directories under build/, so without a prior build it silently reports
-      # almost nothing; and putting it after the test and corpus steps keeps a
-      # lint failure from cancelling their result.
-      - name: Lint (fo)
-        if: ${{ always() && steps.build_ffc.outcome == 'success' }}
-        working-directory: ffc
-        env:
-          LIBRARY_PATH: ${{ github.workspace }}/liric/build
-          LIRIC_BUILD_DIR: ${{ github.workspace }}/liric/build
-        run: |
-          set -euo pipefail
-          # `fo lint` exits 1 on any finding, so capture the report first and
-          # decide below which half of it gates.
-          fo lint --json > "$RUNNER_TEMP/fo-lint.json" || true
-          jq -r '.unused_imports[]? | "\(.file):\(.line): unused import \(.module)::\(.symbol)"' \
-            "$RUNNER_TEMP/fo-lint.json"
-          jq -r '.warnings[] | "\(.file):\(.line):\(.column): \(.message)"' \
-            "$RUNNER_TEMP/fo-lint.json"
-          unused=$(jq '.unused_imports | length' "$RUNNER_TEMP/fo-lint.json")
-          warnings=$(jq '.warnings | length' "$RUNNER_TEMP/fo-lint.json")
-          echo "unused imports: $unused, compiler warnings: $warnings"
-          # Blocking: main carries no unused imports, so a new one is a
-          # regression and fails here.
-          # Not blocking yet: the compiler warnings are pre-existing debt
-          # (27 on main, tracked in issue #475). They are printed above. Once
-          # they are cleared this whole step collapses into a plain `fo lint`,
-          # whose exit status already covers both halves.
-          test "$unused" -eq 0
-
   # `fo fmt --check` only reads sources: it needs neither fortfront, nor liric,
   # nor a build. Its own job therefore starts reporting within a minute or two,
   # and a formatting failure never pre-empts the build and test results.
@@ -293,5 +194,9 @@ jobs:
       - name: Check changed-file formatting
         working-directory: ffc
         run: scripts/check_changed_format.sh
+
+      - name: Test the nightly triage logic
+        working-directory: ffc
+        run: python3 scripts/test_nightly_triage.py
     if: >-
       github.event_name == 'merge_group' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && github.actor != 'github-merge-queue[bot]')
