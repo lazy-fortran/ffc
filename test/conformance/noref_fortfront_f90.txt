@@ -12,6 +12,8 @@
 #                                branches in independent processor streams.
 issue_104_if_condition_identifiers.f90 # noref=undefined-runtime-value; reason=branches on undefined identifiers
 issue_2349_data_implied_do.f90 # noref=undefined-runtime-value; reason=prints partially initialized DATA storage
+control_flow_associate_construct.f90 # noref=undefined-runtime-value; reason=prints x + y of never-defined arrays
+issue_1960_pointer_assignment_if.f90 # noref=undefined-runtime-value; reason=ASSOCIATED on a pointer whose association status is undefined
 undefined_var_segfault.f90 # noref=undefined-runtime-value; reason=reads an undefined variable
 external_tool_example.f90 # noref=missing-external-definition; reason=uses FortFront modules defined outside this suite
 library_usage_ast_node_position.f90 # noref=missing-external-definition; reason=uses FortFront modules defined outside this suite
