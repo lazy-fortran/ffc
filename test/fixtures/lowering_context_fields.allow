@@ -16,8 +16,6 @@ current_block_id
 current_block_terminated
 current_declaration_index
 current_function_result_index
-current_loop_exit_block
-current_loop_latch_block
 current_proc_bind_c
 current_proc_node_index
 declaration_collection_complete
@@ -32,6 +30,7 @@ explicit_decl_count
 explicit_decl_names
 external_procedure_count
 external_procedures
+fmod_imported_names
 forall_body_statement_index
 forall_snapshot_address
 forall_snapshot_reads
@@ -64,6 +63,7 @@ loop_cycles
 loop_exit_blocks
 loop_exit_count
 loop_exit_values
+loop_target
 module_export_count
 module_exports
 namelist_group_count

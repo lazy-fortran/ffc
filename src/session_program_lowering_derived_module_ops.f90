@@ -27,7 +27,7 @@ contains
     end subroutine component_base_name
 
     subroutine lower_derived_whole_assignment_diagnostic(arena, node, context, &
-                                                         symbol_index, error_msg)
+            symbol_index, error_msg)
         type(ast_arena_t), intent(in) :: arena
         type(assignment_node), intent(in) :: node
         type(lowering_context_t), intent(in) :: context
@@ -37,22 +37,22 @@ contains
 
         type_index = context%symbols(symbol_index)%derived_type_index
         if (is_derived_constructor_call(arena, node%value_index, context, &
-                                        type_index)) then
+            type_index)) then
             call unsupported_feature_error('derived type constructor', &
-                                           node%line, node%column, &
-                                           'direct LIRIC session does not '// &
-                                           'support derived type constructors', &
-                                           error_msg)
+                node%line, node%column, &
+                'direct LIRIC session does not '// &
+                'support derived type constructors', &
+                error_msg)
             return
         end if
         call unsupported_feature_error('derived type assignment', &
-                                       node%line, node%column, &
-                                       'direct LIRIC session only supports '// &
-                                       'component assignment', error_msg)
+            node%line, node%column, &
+            'direct LIRIC session only supports '// &
+            'component assignment', error_msg)
     end subroutine lower_derived_whole_assignment_diagnostic
 
     logical function is_derived_constructor_call(arena, node_index, context, &
-                                                 type_index)
+            type_index)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         type(lowering_context_t), intent(in) :: context
@@ -61,7 +61,7 @@ contains
         is_derived_constructor_call = .false.
         if (.not. node_exists(arena, node_index)) return
         select type (node => arena%entries(node_index)%node)
-        type is (call_or_subscript_node)
+            type is (call_or_subscript_node)
             if (allocated(node%name)) then
                 is_derived_constructor_call = &
                     same_name(node%name, context%derived_types(type_index)%name)
@@ -87,7 +87,7 @@ contains
             logical :: is_pdt
 
             call pdt_declaration_instance(context%arena, context, node, &
-                                          instance_name, is_pdt, pdt_error)
+                instance_name, is_pdt, pdt_error)
             if (is_pdt .and. len_trim(pdt_error) == 0) &
                 type_index = find_derived_type(context, instance_name)
         end block
@@ -224,7 +224,7 @@ contains
                 if (len_trim(identity) > 0) then
                     if (len_trim(context%derived_types(i)%canonical_identity) == 0) cycle
                     if (.not. same_name(context%derived_types(i)%canonical_identity, &
-                                        identity)) cycle
+                        identity)) cycle
                 end if
             end if
             type_index = i
@@ -249,7 +249,7 @@ contains
     end function find_derived_type_identity
 
     subroutine register_derived_type_alias(context, alias_name, type_index, &
-                                           error_msg)
+            error_msg)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: alias_name
         integer, intent(in) :: type_index
@@ -294,7 +294,7 @@ contains
     end subroutine register_derived_type_alias
 
     integer function find_derived_component(context, type_index, name) &
-        result(component_index)
+            result(component_index)
         type(lowering_context_t), intent(in) :: context
         integer, intent(in) :: type_index
         character(len=*), intent(in) :: name
@@ -304,7 +304,7 @@ contains
         if (type_index <= 0 .or. type_index > context%derived_type_count) return
         do i = 1, context%derived_types(type_index)%component_count
             if (same_name(context%derived_types(type_index)%component_names(i), &
-                          name)) then
+                name)) then
                 component_index = i
                 return
             end if
@@ -366,16 +366,16 @@ contains
         end do
 
         call import_module_constants(arena, export_idx, use_node, context, &
-                                     error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
         call import_module_variables(arena, export_idx, use_node, context, &
-                                     error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
         call import_module_namelists(arena, export_idx, use_node, context, &
-                                     error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
         call validate_use_only_names(arena, export_idx, use_node, context, &
-                                     error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
         call import_use_renames(arena, export_idx, use_node, context, error_msg)
     end subroutine import_module_derived_types
@@ -387,7 +387,7 @@ contains
 
         seen = .false.
         if (.not. allocated(context%fmod_imported_names)) return
-        do k = 1, context%fmod_imported_count
+        do k = 1, size(context%fmod_imported_names)
             if (same_name(context%fmod_imported_names(k), module_name)) then
                 seen = .true.
                 return
@@ -398,28 +398,18 @@ contains
     subroutine record_fmod_module_imported(context, module_name)
         type(lowering_context_t), intent(inout) :: context
         character(len=*), intent(in) :: module_name
-        character(len=64), allocatable :: bigger(:)
-        integer :: n
+        character(len=64) :: entry
 
+        entry = trim(module_name)
         if (.not. allocated(context%fmod_imported_names)) then
-            allocate(context%fmod_imported_names(16))
-            context%fmod_imported_names = ''
-            context%fmod_imported_count = 0
+            context%fmod_imported_names = [entry]
+        else
+            context%fmod_imported_names = [context%fmod_imported_names, entry]
         end if
-        n = context%fmod_imported_count + 1
-        if (n > size(context%fmod_imported_names)) then
-            allocate(bigger(2 * size(context%fmod_imported_names)))
-            bigger = ''
-            bigger(1:context%fmod_imported_count) = &
-                context%fmod_imported_names(1:context%fmod_imported_count)
-            call move_alloc(bigger, context%fmod_imported_names)
-        end if
-        context%fmod_imported_names(n) = trim(module_name)
-        context%fmod_imported_count = n
     end subroutine record_fmod_module_imported
 
     recursive subroutine import_module_from_fmod(use_node, context, error_msg, &
-                                                 tolerate_missing)
+            tolerate_missing)
         ! Resolve `use <module>` against a .fmod on the include path. Intrinsic
         ! modules are a no-op; an unresolved non-intrinsic module is an error.
         type(use_statement_node), intent(in) :: use_node
@@ -520,28 +510,28 @@ contains
         if (allocated(info%parameters)) then
             do i = 1, size(info%parameters)
                 call import_fmod_parameter(use_node, info%parameters(i), &
-                                           context, error_msg)
+                    context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         end if
         if (allocated(info%variables)) then
             do i = 1, size(info%variables)
                 call import_fmod_variable(use_node, info%variables(i), &
-                                          context, error_msg)
+                    context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         end if
         if (allocated(info%procedures)) then
             do i = 1, size(info%procedures)
                 call import_fmod_procedure(use_node, name, info%procedures(i), &
-                                           context, error_msg)
+                    context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         end if
         if (allocated(info%generics)) then
             do i = 1, size(info%generics)
                 call import_fmod_generic(use_node, name, info%generics(i), info, &
-                                         context, error_msg)
+                    context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         end if
@@ -566,13 +556,13 @@ contains
         if (.not. allocated(info%derived_types)) return
         do i = 1, size(info%derived_types)
             if (.not. fmod_derived_type_dependencies_available(info%derived_types(i), &
-                                                               context) .and. &
+                context) .and. &
                 .not. allocated(use_node%only_list)) cycle
             call resolve_fmod_import_name(use_node, trim(info%derived_types(i)%name), &
-                                          local_name, imported)
+                local_name, imported)
             if (.not. imported) local_name = trim(info%derived_types(i)%name)
             call import_fmod_derived_type(use_node, info%derived_types(i), &
-                                          context, error_msg, local_name)
+                context, error_msg, local_name)
             if (len_trim(error_msg) > 0) return
         end do
     end subroutine import_fmod_derived_types
@@ -596,7 +586,7 @@ contains
                 return
             end if
             if (find_derived_type_identity(context, trim( &
-                    dtype%components(i)%type_identity)) <= 0) then
+                dtype%components(i)%type_identity)) <= 0) then
                 available = .false.
                 return
             end if
@@ -604,7 +594,7 @@ contains
     end function fmod_derived_type_dependencies_available
 
     subroutine import_fmod_derived_type(use_node, dtype, context, error_msg, &
-                                        local_name)
+            local_name)
         ! Reconstruct one derived type's layout from its artefact record.
         type(use_statement_node), intent(in) :: use_node
         type(fmod_derived_type_t), intent(in) :: dtype
@@ -643,9 +633,9 @@ contains
         canonical_index = find_derived_type_identity(context, canonical_identity)
         if (canonical_index > 0) then
             if (.not. same_name(registered_name, context%derived_types( &
-                    canonical_index)%name)) then
+                canonical_index)%name)) then
                 call register_derived_type_alias(context, registered_name, &
-                                                 canonical_index, error_msg)
+                    canonical_index, error_msg)
             end if
             return
         end if
@@ -701,7 +691,7 @@ contains
                     return
                 end if
                 if ((comp%is_pointer .and. (comp%is_allocatable .or. &
-                                            comp%is_alloc_array)) .or. &
+                    comp%is_alloc_array)) .or. &
                     (comp%is_allocatable .and. comp%is_alloc_array)) then
                     error_msg = 'corrupt .fmod derived layout: component '// &
                         trim(comp%name)//' of '//trim(dtype%name)// &
@@ -748,7 +738,7 @@ contains
                     return
                 end if
                 slot_product = int(comp%elem_count, c_int64_t) * &
-                               int(comp%slot_width, c_int64_t)
+                    int(comp%slot_width, c_int64_t)
                 if (comp%slot_count < 1 .or. comp%elem_count < 1 .or. &
                     comp%slot_width < 1 .or. &
                     int(comp%slot_count, c_int64_t) /= slot_product) then
@@ -771,7 +761,7 @@ contains
                     if (allocated(comp%type_identity)) then
                         if (len_trim(comp%type_identity) > 0) nested = &
                             find_derived_type_identity(context, &
-                                                       trim(comp%type_identity))
+                            trim(comp%type_identity))
                     end if
                     if (nested <= 0) then
                         error_msg = 'unknown component identity for '// &
@@ -789,7 +779,7 @@ contains
                     comp_char_length=comp%char_length, &
                     is_alloc_array=comp%is_alloc_array, &
                     alloc_rank=merge(max(1, comp%alloc_rank), 0, &
-                                     comp%is_alloc_array), &
+                    comp%is_alloc_array), &
                     is_pointer=comp%is_pointer)
                 if (len_trim(error_msg) > 0) then
                     context%derived_type_count = type_index_new - 1
@@ -804,66 +794,66 @@ contains
         ! more specific corruption diagnostic (unknown nested type, bad
         ! offsets, or inconsistent slot counts) useful for malformed artefacts,
         ! while still rejecting schema-14 records before they are promoted.
-            if (.not. allocated(dtype%canonical_identity)) then
-                error_msg = 'malformed .fmod derived type "'//trim(dtype%name)// &
-                    '": missing canonical identity'
-                context%derived_type_count = type_index_new - 1
-                return
-            end if
-            if (len_trim(dtype%canonical_identity) == 0) then
-                error_msg = 'malformed .fmod derived type "'//trim(dtype%name)// &
-                    '": missing canonical identity'
-                context%derived_type_count = type_index_new - 1
-                return
-            end if
-            if (allocated(dtype%parent_name)) then
-                if (len_trim(dtype%parent_name) > 0) then
-                    if (.not. allocated(dtype%parent_identity)) then
-                        error_msg = 'malformed .fmod derived type "'// &
-                            trim(dtype%name)//'": missing parent identity'
-                        context%derived_type_count = type_index_new - 1
-                        return
-                    end if
-                    if (len_trim(dtype%parent_identity) == 0) then
-                        error_msg = 'malformed .fmod derived type "'// &
-                            trim(dtype%name)//'": missing parent identity'
-                        context%derived_type_count = type_index_new - 1
-                        return
-                    end if
-                    if (find_derived_type_identity(context, trim( &
-                            dtype%parent_identity)) <= 0) then
-                        error_msg = 'unknown parent identity for '//trim(dtype%name)
-                        context%derived_type_count = type_index_new - 1
-                        return
-                    end if
+        if (.not. allocated(dtype%canonical_identity)) then
+            error_msg = 'malformed .fmod derived type "'//trim(dtype%name)// &
+                '": missing canonical identity'
+            context%derived_type_count = type_index_new - 1
+            return
+        end if
+        if (len_trim(dtype%canonical_identity) == 0) then
+            error_msg = 'malformed .fmod derived type "'//trim(dtype%name)// &
+                '": missing canonical identity'
+            context%derived_type_count = type_index_new - 1
+            return
+        end if
+        if (allocated(dtype%parent_name)) then
+            if (len_trim(dtype%parent_name) > 0) then
+                if (.not. allocated(dtype%parent_identity)) then
+                    error_msg = 'malformed .fmod derived type "'// &
+                        trim(dtype%name)//'": missing parent identity'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                if (len_trim(dtype%parent_identity) == 0) then
+                    error_msg = 'malformed .fmod derived type "'// &
+                        trim(dtype%name)//'": missing parent identity'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                if (find_derived_type_identity(context, trim( &
+                    dtype%parent_identity)) <= 0) then
+                    error_msg = 'unknown parent identity for '//trim(dtype%name)
+                    context%derived_type_count = type_index_new - 1
+                    return
                 end if
             end if
-            if (allocated(dtype%components)) then
-                do k = 1, size(dtype%components)
-                    if (trim(dtype%components(k)%kind) /= 'derived') cycle
-                    if (.not. allocated(dtype%components(k)%type_identity)) then
-                        error_msg = 'malformed .fmod derived type "'// &
-                            trim(dtype%name)//'": missing component identity'
-                        context%derived_type_count = type_index_new - 1
-                        return
-                    end if
-                    if (len_trim(dtype%components(k)%type_identity) == 0) then
-                        error_msg = 'malformed .fmod derived type "'// &
-                            trim(dtype%name)//'": missing component identity'
-                        context%derived_type_count = type_index_new - 1
-                        return
-                    end if
-                    if (find_derived_type_identity(context, trim( &
-                            dtype%components(k)%type_identity)) <= 0) then
-                        error_msg = 'unknown component identity for '// &
-                            trim(dtype%components(k)%name)//' of '//trim(dtype%name)// &
-                            ' (unknown derived type "'// &
-                            trim(dtype%components(k)%type_name)//'")'
-                        context%derived_type_count = type_index_new - 1
-                        return
-                    end if
-                end do
-            end if
+        end if
+        if (allocated(dtype%components)) then
+            do k = 1, size(dtype%components)
+                if (trim(dtype%components(k)%kind) /= 'derived') cycle
+                if (.not. allocated(dtype%components(k)%type_identity)) then
+                    error_msg = 'malformed .fmod derived type "'// &
+                        trim(dtype%name)//'": missing component identity'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                if (len_trim(dtype%components(k)%type_identity) == 0) then
+                    error_msg = 'malformed .fmod derived type "'// &
+                        trim(dtype%name)//'": missing component identity'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+                if (find_derived_type_identity(context, trim( &
+                    dtype%components(k)%type_identity)) <= 0) then
+                    error_msg = 'unknown component identity for '// &
+                        trim(dtype%components(k)%name)//' of '//trim(dtype%name)// &
+                        ' (unknown derived type "'// &
+                        trim(dtype%components(k)%type_name)//'")'
+                    context%derived_type_count = type_index_new - 1
+                    return
+                end if
+            end do
+        end if
         if (allocated(dtype%bindings)) then
             if (size(dtype%bindings) > 0) then
                 context%derived_types(type_index_new)%binding_count = &
@@ -894,7 +884,7 @@ contains
         end if
         if (.not. same_name(registered_name, canonical_name)) then
             call register_derived_type_alias(context, registered_name, &
-                                             type_index_new, error_msg)
+                type_index_new, error_msg)
         end if
     end subroutine import_fmod_derived_type
 
@@ -917,7 +907,7 @@ contains
     end function integer64_text
 
     subroutine import_fmod_generic(use_node, module_name, gen, info, context, &
-                                   error_msg)
+            error_msg)
         ! Register a use-associated generic interface so a call to its generic
         ! name resolves to the matching specific and links against the module
         ! object. Importing the generic also force-imports its specifics (they
@@ -939,7 +929,7 @@ contains
         if (.not. allocated(gen%name)) return
         if (len_trim(gen%name) == 0) return
         call resolve_fmod_import_name(use_node, trim(gen%name), local_name, &
-                                      imported)
+            imported)
         if (.not. imported) return
         if (.not. allocated(gen%specifics)) return
         if (find_generic(context, trim(local_name)) > 0) return
@@ -970,14 +960,14 @@ contains
             ext_idx = external_procedure_index(context, trim(token))
             if (ext_idx <= 0) cycle
             call add_generic_specific_from_external(context, next, trim(token), &
-                                                    ext_idx)
+                ext_idx)
         end do
         if (context%generics(next)%specific_count > 0) &
             context%generic_count = next
     end subroutine import_fmod_generic
 
- subroutine add_generic_specific_from_external(context, generic_idx, name, &
-                                                   ext_idx)
+    subroutine add_generic_specific_from_external(context, generic_idx, name, &
+            ext_idx)
         ! Append a specific to a generic entry, taking its signature and
         ! return kinds from an already-registered external procedure rather
         ! than from an AST node (the specific was imported from a .fmod, #284).
@@ -1003,7 +993,7 @@ contains
         context%generics(generic_idx)%specific_arg_kinds(:, sc) = VALUE_I32
         context%generics(generic_idx)%specific_arg_ranks(:, sc) = 0
         do j = 1, min(context%external_procedures(ext_idx)%arg_count, &
-            MAX_PROC_ARGS)
+                MAX_PROC_ARGS)
             context%generics(generic_idx)%specific_arg_kinds(j, sc) = &
                 context%external_procedures(ext_idx)%arg_value_kinds(j)
             context%generics(generic_idx)%specific_arg_ranks(j, sc) = &
@@ -1012,7 +1002,7 @@ contains
     end subroutine add_generic_specific_from_external
 
     subroutine import_fmod_procedure(use_node, module_name, proc, context, &
-                                     error_msg, force)
+            error_msg, force)
         ! Register a separately compiled procedure from a .fmod. Module
         ! procedures use __<module>_MOD_<name>; public plain INTERFACE
         ! procedures retain their unmangled external symbol (#284). The
@@ -1052,7 +1042,7 @@ contains
             imported = .true.
         else
             call resolve_fmod_import_name(use_node, trim(proc%name), &
-                                          local_name, imported)
+                local_name, imported)
         end if
         if (.not. imported) return
         if (external_procedure_index(context, trim(local_name)) > 0) return
@@ -1084,22 +1074,22 @@ contains
         if (len_trim(error_msg) > 0) return
         call parse_fmod_arg_names(proc, arg_names)
         call parse_fmod_arg_flags(proc%arg_optionals, proc%nargs, arg_optionals, &
-                                  error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
         call parse_fmod_arg_flags(proc%arg_values, proc%nargs, arg_values, &
-                                  error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
         call parse_fmod_arg_opaque(proc, arg_opaque)
         call parse_fmod_arg_classes(proc, arg_class)
         call parse_fmod_arg_class_types(proc, arg_class_types)
         call parse_fmod_arg_class_type_identities(proc, &
-                                                  arg_class_type_identities)
+            arg_class_type_identities)
         call parse_fmod_arg_intents(proc, arg_intents)
         call parse_fmod_arg_integers(proc%arg_ranks, proc%nargs, arg_ranks, &
-                                     error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
         call parse_fmod_arg_integers(proc%arg_extents, proc%nargs, arg_extents, &
-                                     error_msg)
+            error_msg)
         if (len_trim(error_msg) > 0) return
         if (any(arg_ranks < 0) .or. any(arg_ranks > ARRAY_MAX_RANK)) then
             error_msg = 'malformed .fmod rank metadata'
@@ -1120,17 +1110,17 @@ contains
             mangled = module_procedure_mangled(module_name, trim(proc%name))
         end if
         call add_external_procedure(context, trim(local_name), mangled, &
-                                    return_kind, proc%nargs, .not. proc%external_binding, &
-                                    arg_kinds, &
-                                    arg_names, arg_optionals, arg_values, &
-                                    arg_intents, arg_ranks, arg_extents, &
-                                    is_bind_c=proc%external_binding, &
-                                    arg_opaque=arg_opaque, &
-                                    arg_class=arg_class, &
-                                    arg_class_types=arg_class_types, &
-                                    arg_class_type_identities= &
-                                        arg_class_type_identities, &
-                                    require_class_type_identities=.true.)
+            return_kind, proc%nargs, .not. proc%external_binding, &
+            arg_kinds, &
+            arg_names, arg_optionals, arg_values, &
+            arg_intents, arg_ranks, arg_extents, &
+            is_bind_c=proc%external_binding, &
+            arg_opaque=arg_opaque, &
+            arg_class=arg_class, &
+            arg_class_types=arg_class_types, &
+            arg_class_type_identities= &
+            arg_class_type_identities, &
+            require_class_type_identities=.true.)
     end subroutine import_fmod_procedure
 
     subroutine validate_fmod_procedure_metadata(proc, error_msg)
@@ -1185,7 +1175,7 @@ contains
             end if
         end if
         call validate_fmod_flag_tokens(proc%arg_classes, proc%nargs, &
-                                        trim(proc%name), error_msg)
+            trim(proc%name), error_msg)
         if (len_trim(error_msg) > 0) return
         call parse_fmod_arg_classes(proc, classes)
         call parse_fmod_arg_class_types(proc, class_types)
@@ -1575,7 +1565,7 @@ contains
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
             select type (node => arena%entries(n)%node)
-            type is (module_node)
+                type is (module_node)
                 if (allocated(node%name)) then
                     if (lowercase_text(node%name) == module_lowered) then
                         module_defined_in_unit = .true.
@@ -1592,11 +1582,11 @@ contains
 
         lowered = lowercase_text(name)
         is_intrinsic_module = lowered == 'iso_c_binding' .or. &
-                              lowered == 'iso_fortran_env' .or. &
-                              lowered == 'ieee_arithmetic' .or. &
-                              lowered == 'ieee_exceptions' .or. &
-                              lowered == 'ieee_features' .or. &
-                              lowered == 'omp_lib'
+            lowered == 'iso_fortran_env' .or. &
+            lowered == 'ieee_arithmetic' .or. &
+            lowered == 'ieee_exceptions' .or. &
+            lowered == 'ieee_features' .or. &
+            lowered == 'omp_lib'
     end function is_intrinsic_module
 
     function find_fmod_on_path(context, name) result(path)
@@ -1638,7 +1628,7 @@ contains
         if (.not. allocated(param%name)) return
         if (len_trim(param%name) == 0) return
         call resolve_fmod_import_name(use_node, trim(param%name), local_name, &
-                                      imported)
+            imported)
         if (.not. imported) return
         ! Only integer named constants are importable today.
         if (.not. allocated(param%kind)) return
@@ -1652,26 +1642,26 @@ contains
         if (len_trim(param%value) == 0) return
         if (.not. parse_strict_int64(param%value, constant_value)) then
             error_msg = 'malformed integer value in .fmod for parameter '// &
-                        trim(param%name)
+                trim(param%name)
             return
         end if
         call check_use_rename_collision(context, trim(local_name), &
-                                        trim(use_node%module_name), &
-                                        trim(param%name), existing_idx, &
-                                        rebind, error_msg)
+            trim(use_node%module_name), &
+            trim(param%name), existing_idx, &
+            rebind, error_msg)
         if (len_trim(error_msg) > 0) return
         call use_import_symbol_slot(context, existing_idx, rebind, index, skip)
         if (skip) return
         context%symbols(index)%name = trim(local_name)
         context%symbols(index)%value_kind = VALUE_I32
         context%symbols(index)%value = i32_immediate(context%session, &
-                                                      constant_value)
+            constant_value)
         context%symbols(index)%is_parameter = .true.
         context%symbols(index)%has_i32_constant = .true.
         context%symbols(index)%i32_constant = constant_value
         call record_use_rename_source(context, index, &
-                                      trim(use_node%module_name), &
-                                      trim(param%name))
+            trim(use_node%module_name), &
+            trim(param%name))
     end subroutine import_fmod_parameter
 
     subroutine import_fmod_variable(use_node, var, context, error_msg)
@@ -1697,14 +1687,14 @@ contains
         if (.not. allocated(var%name)) return
         if (len_trim(var%name) == 0) return
         call resolve_fmod_import_name(use_node, trim(var%name), local_name, &
-                                      imported)
+            imported)
         if (.not. imported) return
         value_kind = value_kind_of_token(trim(var%kind))
         if (value_kind == 0) return
         call check_use_rename_collision(context, trim(local_name), &
-                                        trim(use_node%module_name), &
-                                        trim(var%name), existing_idx, rebind, &
-                                        error_msg)
+            trim(use_node%module_name), &
+            trim(var%name), existing_idx, rebind, &
+            error_msg)
         if (len_trim(error_msg) > 0) return
         if (existing_idx > 0) then
             if (.not. rebind) return
@@ -1732,13 +1722,13 @@ contains
         context%symbols(sym_idx)%address%typ = lr_type_ptr_s(context%session%handle)
         context%symbols(sym_idx)%address%global_offset = 0_c_int64_t
         call record_use_rename_source(context, sym_idx, &
-                                      trim(use_node%module_name), &
-                                      trim(var%name))
+            trim(use_node%module_name), &
+            trim(var%name))
     end subroutine import_fmod_variable
 
     subroutine check_use_rename_collision(context, local_name, module_name, &
-                                          remote_name, existing_idx, rebind, &
-                                          error_msg)
+            remote_name, existing_idx, rebind, &
+            error_msg)
         ! Classify a USE import of module_name::remote_name under local_name
         ! against the symbols already registered in this unit.
         !   existing_idx == 0                 the local name is free.
@@ -1769,15 +1759,15 @@ contains
         if (.not. allocated(context%symbols(existing_idx)%use_rename_remote)) &
             return
         if (same_name(context%symbols(existing_idx)%use_rename_module, &
-                      module_name)) then
+            module_name)) then
             if (same_name(context%symbols(existing_idx)%use_rename_remote, &
-                          remote_name)) return
+                remote_name)) return
         end if
         error_msg = 'ambiguous use rename local name: '//trim(local_name)
     end subroutine check_use_rename_collision
 
     subroutine use_import_symbol_slot(context, existing_idx, rebind, sym_idx, &
-                                      skip)
+            skip)
         ! Pick the symbol table slot a USE import writes into: the adopted
         ! existing slot, or a fresh one. skip = .true. when the same binding is
         ! already imported and nothing must be written.
@@ -1804,7 +1794,7 @@ contains
     end subroutine use_import_symbol_slot
 
     subroutine record_use_rename_source(context, sym_idx, module_name, &
-                                        remote_name)
+            remote_name)
         ! Remember the remote binding a renamed local symbol came from so a
         ! later import of the same binding is recognised as a repeat.
         type(lowering_context_t), intent(inout) :: context
@@ -1852,39 +1842,39 @@ contains
                 if (.not. node_exists(arena, param_idx)) cycle
                 if (.not. is_declaration_node(arena, param_idx)) cycle
                 call get_declaration_var_name(arena, param_idx, decl_name, &
-                                               error_msg)
+                    error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (.not. same_name(decl_name, use_node%rename_list(i + 1)%s)) &
                     cycle
                 call get_declaration_type_name(arena, param_idx, decl_type_name, &
-                                               error_msg)
+                    error_msg)
                 if (len_trim(error_msg) > 0) return
                 line = get_node_line(arena, param_idx)
                 column = get_node_column(arena, param_idx)
                 call type_name_value_kind(decl_type_name, line, column, &
-                                          value_kind, error_msg)
+                    value_kind, error_msg)
                 if (len_trim(error_msg) > 0) return
                 if (value_kind /= VALUE_I32) then
                     call unsupported_feature_error('renamed parameter', line, &
-                                                   column, 'direct LIRIC '// &
-                                                   'session only supports '// &
-                                                   'integer scalar parameters', &
-                                                   error_msg)
+                        column, 'direct LIRIC '// &
+                        'session only supports '// &
+                        'integer scalar parameters', &
+                        error_msg)
                     return
                 end if
                 if (.not. get_declaration_has_initializer(arena, param_idx)) then
                     error_msg = 'renamed parameter has no initializer: '// &
-                                trim(decl_name)
+                        trim(decl_name)
                     return
                 end if
                 init_index = get_declaration_initializer_index(arena, param_idx)
                 if (init_index <= 0) then
                     error_msg = 'renamed parameter has no initializer: '// &
-                                trim(decl_name)
+                        trim(decl_name)
                     return
                 end if
                 call eval_i32_constant(context%arena, init_index, context, &
-                                       constant_value, error_msg)
+                    constant_value, error_msg)
                 if (len_trim(error_msg) > 0) return
                 call check_use_rename_collision(context, &
                     trim(use_node%rename_list(i)%s), &
@@ -1893,7 +1883,7 @@ contains
                     rebind, error_msg)
                 if (len_trim(error_msg) > 0) return
                 call use_import_symbol_slot(context, existing_idx, rebind, &
-                                            symbol_idx, skip)
+                    symbol_idx, skip)
                 if (skip) then
                     found = .true.
                     exit
@@ -1901,7 +1891,7 @@ contains
                 context%symbols(symbol_idx)%name = trim(use_node%rename_list(i)%s)
                 context%symbols(symbol_idx)%value_kind = VALUE_I32
                 context%symbols(symbol_idx)%value = i32_immediate(context%session, &
-                                                                  constant_value)
+                    constant_value)
                 context%symbols(symbol_idx)%is_parameter = .true.
                 context%symbols(symbol_idx)%has_i32_constant = .true.
                 context%symbols(symbol_idx)%i32_constant = constant_value
@@ -1934,7 +1924,7 @@ contains
     end subroutine import_use_renames
 
     subroutine import_renamed_variable(arena, export_idx, remote_name, &
-                                       local_name, context, found, error_msg)
+            local_name, context, found, error_msg)
         ! Bind an exported module variable to a local name (#274). Mirrors
         ! bind_one_module_variable but interns the global under remote_name and
         ! registers the symbol under local_name.
@@ -1961,7 +1951,7 @@ contains
             if (len_trim(name_err) > 0) cycle
             if (.not. same_name(var_name, remote_name)) cycle
             call module_variable_kind(arena, var_idx, value_kind, status, &
-                                      context, error_msg)
+                context, error_msg)
             if (status /= MODVAR_OK) then
                 call set_empty(error_msg)
                 return
@@ -1987,13 +1977,13 @@ contains
             end if
             if (value_kind == VALUE_DERIVED) then
                 call bind_one_derived_module_variable(arena, var_idx, local_name, &
-                                                      global_id, context, error_msg)
+                    global_id, context, error_msg)
                 if (len_trim(error_msg) > 0) return
                 found = .true.
                 return
             end if
             call use_import_symbol_slot(context, existing_idx, rebind, &
-                                        sym_idx, skip)
+                sym_idx, skip)
             if (skip) then
                 found = .true.
                 return
@@ -2016,7 +2006,7 @@ contains
     end subroutine import_renamed_variable
 
     subroutine import_renamed_procedure(arena, module_name, remote_name, &
-                                        local_name, context, found, error_msg)
+            local_name, context, found, error_msg)
         ! Alias an exported module procedure under a local name (#274). The
         ! procedure node is already in the function table from
         ! register_module_procedures; this adds a second entry sharing the same
@@ -2042,7 +2032,7 @@ contains
     end subroutine import_renamed_procedure
 
     subroutine import_renamed_parameter(decl, local_name, value_kind, context, &
-                                        error_msg)
+            error_msg)
         type(declaration_node), intent(in) :: decl
         character(len=*), intent(in) :: local_name
         integer, intent(in) :: value_kind
@@ -2066,14 +2056,14 @@ contains
             return
         end if
         call eval_i32_constant(context%arena, decl%initializer_index, context, &
-                               constant_value, error_msg)
+            constant_value, error_msg)
         if (len_trim(error_msg) > 0) return
         call grow_symbols(context)
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(local_name)
         context%symbols(index)%value_kind = VALUE_I32
         context%symbols(index)%value = i32_immediate(context%session, &
-                                                     constant_value)
+            constant_value)
         context%symbols(index)%is_parameter = .true.
         context%symbols(index)%has_i32_constant = .true.
         context%symbols(index)%i32_constant = constant_value
@@ -2101,7 +2091,7 @@ contains
     end function use_only_wants
 
     subroutine resolve_fmod_import_name(use_node, remote_name, local_name, &
-                                        imported)
+            imported)
         ! Resolve the local spelling of a .fmod export. A rename maps the
         ! remote export to its local name; an ONLY list admits unrenamed names
         ! only when they are explicitly listed. A renamed remote name is not
@@ -2231,7 +2221,7 @@ contains
     end function fmod_exports_name
 
     subroutine validate_use_only_names(arena, export_idx, use_node, context, &
-                                       error_msg)
+            error_msg)
         ! Every name in only: must be a symbol the module actually exports.
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: export_idx
@@ -2245,7 +2235,7 @@ contains
         if (.not. allocated(use_node%only_list)) return
         do i = 1, size(use_node%only_list)
             if (.not. module_exports_name(arena, export_idx, context, &
-                                          use_node%only_list(i)%s)) then
+                use_node%only_list(i)%s)) then
                 error_msg = 'use only: name is not exported by module '// &
                     trim(use_node%module_name)//': '// &
                     trim(use_node%only_list(i)%s)
@@ -2266,11 +2256,11 @@ contains
         module_exports_name = .false.
         do i = 1, context%module_exports(export_idx)%derived_type_count
             if (.not. is_derived_type_node(arena, &
-                    context%module_exports(export_idx)%derived_type_indices(i))) cycle
+                context%module_exports(export_idx)%derived_type_indices(i))) cycle
             call get_derived_type_name(arena, &
-                                       context%module_exports(export_idx)% &
-                                           derived_type_indices(i), &
-                                       derived_name, error_msg)
+                context%module_exports(export_idx)% &
+                derived_type_indices(i), &
+                derived_name, error_msg)
             if (len_trim(error_msg) > 0) cycle
             if (same_name(derived_name, name)) then
                 module_exports_name = .true.
@@ -2279,11 +2269,11 @@ contains
         end do
         do i = 1, context%module_exports(export_idx)%parameter_count
             if (.not. is_declaration_node(arena, &
-                    context%module_exports(export_idx)%parameter_indices(i))) cycle
+                context%module_exports(export_idx)%parameter_indices(i))) cycle
             call get_declaration_var_name(arena, &
-                                          context%module_exports(export_idx)% &
-                                              parameter_indices(i), &
-                                          decl_name, error_msg)
+                context%module_exports(export_idx)% &
+                parameter_indices(i), &
+                decl_name, error_msg)
             if (len_trim(error_msg) > 0) cycle
             if (same_name(decl_name, name)) then
                 module_exports_name = .true.
@@ -2292,11 +2282,11 @@ contains
         end do
         do i = 1, context%module_exports(export_idx)%variable_count
             if (.not. is_declaration_node(arena, &
-                    context%module_exports(export_idx)%variable_indices(i))) cycle
+                context%module_exports(export_idx)%variable_indices(i))) cycle
             call get_declaration_var_name(arena, &
-                                          context%module_exports(export_idx)% &
-                                              variable_indices(i), &
-                                          decl_name, error_msg)
+                context%module_exports(export_idx)% &
+                variable_indices(i), &
+                decl_name, error_msg)
             if (len_trim(error_msg) > 0) cycle
             if (same_name(decl_name, name)) then
                 module_exports_name = .true.
@@ -2315,7 +2305,7 @@ contains
         ! so `use m, only: operator(/)` is validated by the same ownership rule
         ! as a named generic.
         if (module_exports_operator(arena, &
-                context%module_exports(export_idx)%module_name, name)) then
+            context%module_exports(export_idx)%module_name, name)) then
             module_exports_name = .true.
             return
         end if
@@ -2324,7 +2314,7 @@ contains
         ! itself (#263). A USE-only of a contained function or subroutine is a
         ! valid export.
         if (module_exports_procedure(arena, &
-                context%module_exports(export_idx)%module_name, name)) then
+            context%module_exports(export_idx)%module_name, name)) then
             module_exports_name = .true.
             return
         end if
@@ -2353,17 +2343,17 @@ contains
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
             select type (mod_node => arena%entries(n)%node)
-            type is (module_node)
+                type is (module_node)
                 if (.not. allocated(mod_node%name)) cycle
                 if (.not. same_name(mod_node%name, module_name)) cycle
                 if (module_symbol_is_private(arena, mod_node, requested)) return
                 if (.not. allocated(mod_node%declaration_indices)) return
                 do d = 1, size(mod_node%declaration_indices)
                     if (.not. node_exists(arena, &
-                            mod_node%declaration_indices(d))) cycle
+                        mod_node%declaration_indices(d))) cycle
                     select type (block => &
                             arena%entries(mod_node%declaration_indices(d))%node)
-                    type is (interface_block_node)
+                        type is (interface_block_node)
                         if (.not. allocated(block%kind)) cycle
                         if (trim(lowercase_text(block%kind)) /= 'operator') cycle
                         if (.not. allocated(block%operator)) cycle
@@ -2430,7 +2420,7 @@ contains
         do n = 1, arena%size
             if (.not. node_exists(arena, n)) cycle
             select type (node => arena%entries(n)%node)
-            type is (module_node)
+                type is (module_node)
                 if (.not. allocated(node%name)) cycle
                 if (lowercase_text(node%name) /= module_lowered) cycle
                 if (allocated(node%procedure_indices)) then
@@ -2463,13 +2453,13 @@ contains
         do d = 1, size(mod_node%declaration_indices)
             if (.not. node_exists(arena, mod_node%declaration_indices(d))) cycle
             select type (iblock => &
-                arena%entries(mod_node%declaration_indices(d))%node)
-            type is (interface_block_node)
+                    arena%entries(mod_node%declaration_indices(d))%node)
+                type is (interface_block_node)
                 if (iblock%is_abstract) cycle
                 if (.not. allocated(iblock%procedure_indices)) cycle
                 do p = 1, size(iblock%procedure_indices)
                     if (procedure_node_named(arena, iblock%procedure_indices(p), &
-                                             name)) then
+                        name)) then
                         module_declares_interface_procedure = .true.
                         return
                     end if
@@ -2492,9 +2482,9 @@ contains
             if (.not. node_exists(arena, idx)) cycle
             proc_name = ''
             select type (proc => arena%entries(idx)%node)
-            type is (function_def_node)
+                type is (function_def_node)
                 if (allocated(proc%name)) proc_name = proc%name
-            type is (subroutine_def_node)
+                type is (subroutine_def_node)
                 if (allocated(proc%name)) proc_name = proc%name
             end select
             if (len_trim(proc_name) == 0) cycle
@@ -2506,7 +2496,7 @@ contains
     end function module_procedure_named
 
     subroutine import_module_constants(arena, export_idx, use_node, context, &
-                                       error_msg)
+            error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: export_idx
         type(use_statement_node), intent(in) :: use_node
@@ -2533,45 +2523,45 @@ contains
             if (.not. use_only_wants(use_node, trim(decl_name))) cycle
             if (find_symbol_compat(context, decl_name) > 0) cycle
             call get_declaration_type_name(arena, param_idx, decl_type_name, &
-                                           error_msg)
+                error_msg)
             if (len_trim(error_msg) > 0) return
             line = get_node_line(arena, param_idx)
             column = get_node_column(arena, param_idx)
             call type_name_value_kind(decl_type_name, line, column, value_kind, &
-                                      error_msg, context, param_idx)
+                error_msg, context, param_idx)
             if (len_trim(error_msg) > 0) return
             if (.not. get_declaration_has_initializer(arena, param_idx)) then
                 error_msg = 'parameter requires a compile-time initializer: '// &
-                            trim(decl_name)
+                    trim(decl_name)
                 return
             end if
             init_index = get_declaration_initializer_index(arena, param_idx)
             if (init_index <= 0) then
                 error_msg = 'parameter requires a compile-time initializer: '// &
-                            trim(decl_name)
+                    trim(decl_name)
                 return
             end if
             if (value_kind /= VALUE_I32) then
                 select type (decl_node => arena%entries(param_idx)%node)
-                type is (declaration_node)
+                    type is (declaration_node)
                     call lower_nonint_constant_declaration(decl_node, context, &
-                                                           value_kind, error_msg)
+                        value_kind, error_msg)
                 class default
                     error_msg = 'module parameter declaration is not a declaration: '// &
-                                trim(decl_name)
+                        trim(decl_name)
                 end select
                 if (len_trim(error_msg) > 0) return
                 cycle
             end if
             call eval_i32_constant(context%arena, init_index, context, &
-                                   constant_value, error_msg)
+                constant_value, error_msg)
             if (len_trim(error_msg) > 0) return
             call grow_symbols(context)
             symbol_idx = context%symbol_count + 1
             context%symbols(symbol_idx)%name = trim(decl_name)
             context%symbols(symbol_idx)%value_kind = VALUE_I32
             context%symbols(symbol_idx)%value = i32_immediate(context%session, &
-                                                              constant_value)
+                constant_value)
             context%symbols(symbol_idx)%is_parameter = .true.
             context%symbols(symbol_idx)%has_i32_constant = .true.
             context%symbols(symbol_idx)%i32_constant = constant_value
@@ -2580,7 +2570,7 @@ contains
     end subroutine import_module_constants
 
     subroutine import_module_variables(arena, export_idx, use_node, context, &
-                                       error_msg)
+            error_msg)
         ! Import module-level variables from an in-unit module into the calling
         ! program's symbol table (#263). Each supported scalar variable binds to
         ! the shared global as an addressed reference, honouring use, only:.
@@ -2596,7 +2586,7 @@ contains
             var_idx = context%module_exports(export_idx)%variable_indices(i)
             if (.not. node_exists(arena, var_idx)) cycle
             call module_variable_kind(arena, var_idx, value_kind, status, &
-                                      context, error_msg)
+                context, error_msg)
             ! An unsupported module variable already failed in
             ! lower_module_variables; the using unit just skips it here.
             if (status /= MODVAR_OK) then
@@ -2620,7 +2610,7 @@ contains
     end subroutine import_module_variables
 
     subroutine import_module_namelists(arena, export_idx, use_node, context, &
-                                       error_msg)
+            error_msg)
         ! Import NAMELIST group metadata for a same-unit, plain USE.  The
         ! witness relies on the module group being visible before its program
         ! declaration extends the same group; separate .fmod metadata is kept
@@ -2638,7 +2628,7 @@ contains
             nml_idx = context%module_exports(export_idx)%namelist_indices(i)
             if (.not. node_exists(arena, nml_idx)) cycle
             select type (node => arena%entries(nml_idx)%node)
-            type is (namelist_statement_node)
+                type is (namelist_statement_node)
                 call record_namelist_group(node, context, error_msg)
                 if (len_trim(error_msg) > 0) return
             end select
@@ -2659,7 +2649,7 @@ contains
             return
         end if
 
-      call grow_derived_types(context)
+        call grow_derived_types(context)
 
         type_index_new = context%derived_type_count + 1
 
@@ -2671,8 +2661,8 @@ contains
         context%derived_type_count = type_index_new
     end subroutine add_derived_type_from_arena
 
-subroutine import_derived_type_from_arena(arena, type_index, context, &
-        type_index_new, error_msg)
+    subroutine import_derived_type_from_arena(arena, type_index, context, &
+            type_index_new, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: type_index
         type(lowering_context_t), intent(inout) :: context
@@ -2698,7 +2688,7 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
     end subroutine import_derived_type_from_arena
 
     subroutine collect_derived_components_via_arena(arena, type_index, &
-        context, type_index_new, error_msg)
+            context, type_index_new, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: type_index
         type(lowering_context_t), intent(inout) :: context
@@ -2726,7 +2716,7 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
     end subroutine collect_derived_components_via_arena
 
     subroutine collect_derived_components_from_context_arena(arena, type_index, &
-        context, type_index_new, error_msg)
+            context, type_index_new, error_msg)
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: type_index
         type(lowering_context_t), intent(inout) :: context
@@ -2754,9 +2744,9 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
         if (allocated(component_indices)) then
             do i = 1, size(component_indices)
                 call collect_component_declaration(component_indices(i), &
-                                                   parent_line, parent_column, &
-                                                   context, type_index_new, &
-                                                   error_msg)
+                    parent_line, parent_column, &
+                    context, type_index_new, &
+                    error_msg)
                 if (len_trim(error_msg) > 0) return
             end do
         end if
@@ -2778,7 +2768,7 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
         do i = 1, size(program%body_indices)
             if (is_internal_procedure_entry(arena, program%body_indices(i))) cycle
             call lower_statement(arena, program%body_indices(i), context, &
-                                 value, error_msg)
+                value, error_msg)
             if (len_trim(error_msg) > 0) return
             if (context%current_block_terminated) return
         end do
@@ -2796,7 +2786,7 @@ subroutine import_derived_type_from_arena(arena, type_index, context, &
         do i = 1, arena%size
             if (.not. allocated(arena%entries(i)%node)) cycle
             select type (node => arena%entries(i)%node)
-            type is (module_node)
+                type is (module_node)
                 if (.not. allocated(node%name)) cycle
                 if (lowercase_text(node%name) == module_lowered) then
                     module_index = i
