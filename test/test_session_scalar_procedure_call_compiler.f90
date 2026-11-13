@@ -190,7 +190,8 @@ contains
             'end program main'
 
         test_host_interface_is_external = expect_exe_has_symbol( &
-            source, '/tmp/ffc_session_scalar_proc_missing.o', 'missing_body')
+            source, '/tmp/ffc_session_scalar_proc_missing.o', 'missing_body', &
+            defined=.false.)
         if (.not. test_host_interface_is_external) return
         test_host_interface_is_external = expect_error_contains( &
             source, 'linker failed', &

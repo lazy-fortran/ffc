@@ -14,13 +14,14 @@ subroutine case_test_session_inquire_file_expression_compiler()
     implicit none
     save
     character(len=4096) :: scratch
-    character(len=:), allocatable :: path, source
+    character(len=:), allocatable :: path, path_expression, source
     integer :: unit, status
     logical :: ok, spelling_exists
 
     call get_environment_variable('TMPDIR', scratch, status=status)
     if (status /= 0 .or. len_trim(scratch) == 0) scratch = '.'
     path = trim(scratch)//'/ffc_inquire_value,part.dat'
+    path_expression = source_literal(path)
     inquire (file='ffc_inquire_probe', exist=spelling_exists)
     if (spelling_exists) stop 'test requires no file named ffc_inquire_probe'
     open (newunit=unit, file=path, status='replace', access='stream', &
@@ -33,20 +34,20 @@ subroutine case_test_session_inquire_file_expression_compiler()
         '  character(len=512) :: ffc_inquire_probe, saved'//new_line('a')// &
         '  integer :: n, ios'//new_line('a')// &
         '  logical :: ex'//new_line('a')// &
-        "  ffc_inquire_probe = '"//path//"'"//new_line('a')// &
+        '  ffc_inquire_probe = '//path_expression//new_line('a')// &
         '  saved = ffc_inquire_probe'//new_line('a')// &
         '  inquire(file=ffc_inquire_probe, exist=ex, size=n, iostat=ios)'// &
         new_line('a')// &
         '  if (.not. ex .or. n /= 7 .or. ios /= 0) error stop 1'//new_line('a')// &
         '  if (ffc_inquire_probe /= saved) error stop 2'//new_line('a')// &
-        "  ffc_inquire_probe = '"//path//".missing'"//new_line('a')// &
+        '  ffc_inquire_probe = '//path_expression//'//".missing"'//new_line('a')// &
         '  inquire(file=ffc_inquire_probe, exist=ex)'//new_line('a')// &
         '  if (ex) error stop 3'//new_line('a')// &
-        "  ffc_inquire_probe = '"//path//"'"//new_line('a')// &
+        '  ffc_inquire_probe = '//path_expression//new_line('a')// &
         '  inquire(file=ffc_inquire_probe//"", exist=ex, size=n)'// &
         new_line('a')// &
         '  if (.not. ex .or. n /= 7) error stop 4'//new_line('a')// &
-        "  inquire(file='"//path//"', exist=ex, size=n)"//new_line('a')// &
+        '  inquire(file='//path_expression//', exist=ex, size=n)'//new_line('a')// &
         '  if (.not. ex .or. n /= 7) error stop 5'//new_line('a')// &
         '  print *, "ok"'//new_line('a')// &
         'end program main'
@@ -55,4 +56,27 @@ subroutine case_test_session_inquire_file_expression_compiler()
     close (unit, status='delete')
     if (.not. ok) stop 1
     print *, 'PASS: INQUIRE FILE evaluates and trims character expressions'
+
+contains
+
+    function source_literal(value) result(expression)
+        character(len=*), intent(in) :: value
+        character(len=:), allocatable :: expression
+        integer :: i
+
+        ! Keep generated Fortran within the standard free-form line width.
+        expression = "'"
+        do i = 1, len(value)
+            if (i > 1 .and. mod(i - 1, 40) == 0) then
+                expression = expression//"'// &"//new_line('a')//"    '"
+            end if
+            if (value(i:i) == "'") then
+                expression = expression//"''"
+            else
+                expression = expression//value(i:i)
+            end if
+        end do
+        expression = expression//"'"
+    end function source_literal
+
 end subroutine case_test_session_inquire_file_expression_compiler

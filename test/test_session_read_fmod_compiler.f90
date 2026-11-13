@@ -844,7 +844,7 @@ contains
         type(module_info_t) :: old_info
         character(len=:), allocatable :: error_msg
         character(len=8) :: schema_text
-        integer :: schema_version
+        integer :: schema_version, command_status
 
         ok = .false.
         call execute_command_line('rm -rf '//dir//'; mkdir -p '//dir)
@@ -886,8 +886,10 @@ contains
 
         do schema_version = 11, 13
             write (schema_text, '(I0)') schema_version
-            call execute_command_line("sed -i 's/^fmod_schema = .*/fmod_schema = "// &
-                trim(schema_text)//"/' "//legacy_path)
+            call execute_command_line("sed -i.bak 's/^fmod_schema = .*/"// &
+                'fmod_schema = '//trim(schema_text)//"/' "//legacy_path, &
+                exitstat=command_status)
+            if (command_status /= 0) return
             call read_fmod(legacy_path, old_info, error_msg)
             if (index(error_msg, 'schema version') == 0) then
                 print *, 'FAIL: old .fmod schema was not rejected: ', schema_version
@@ -895,8 +897,9 @@ contains
             end if
         end do
 
-        call execute_command_line("sed -i 's/^fmod_schema = .*/"// &
-            "fmod_schema = 99999/' "//dir//'/m.fmod')
+        call execute_command_line("sed -i.bak 's/^fmod_schema = .*/"// &
+            "fmod_schema = 99999/' "//dir//'/m.fmod', exitstat=command_status)
+        if (command_status /= 0) return
         call compile_with_include(source, dir//'/future', dir, error_msg)
         if (index(error_msg, 'schema version') == 0) then
             print *, 'FAIL: future .fmod schema was not rejected: ', &
@@ -904,8 +907,9 @@ contains
             return
         end if
 
-        call execute_command_line("sed -i '/^fmod_schema = /d' "// &
-            dir//'/m.fmod')
+        call execute_command_line("sed -i.bak '/^fmod_schema = /d' "// &
+            dir//'/m.fmod', exitstat=command_status)
+        if (command_status /= 0) return
         call compile_with_include(source, dir//'/stale', dir, error_msg)
         if (index(error_msg, 'schema version') == 0) then
             print *, 'FAIL: unversioned .fmod was not rejected: ', &
@@ -1340,7 +1344,7 @@ contains
     end function test_fmod_rejects_malformed_numeric_headers
 
     function signature_fixture(schema, nargs, ranks, extents, optionals, values) &
-        result(text)
+            result(text)
         character(len=*), intent(in) :: schema, nargs, ranks, extents
         character(len=*), intent(in), optional :: optionals, values
         character(len=:), allocatable :: text

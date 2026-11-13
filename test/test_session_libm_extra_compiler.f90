@@ -10,7 +10,7 @@ module ffc_case_test_session_libm_extra_compiler
 end module ffc_case_test_session_libm_extra_compiler
 
 subroutine case_test_session_libm_extra_compiler()
-    use ffc_test_support, only: expect_output
+    use ffc_test_support, only: expect_output, expect_output_matches_gfortran
     implicit none
     save
 
@@ -68,9 +68,14 @@ contains
     end function test_tanh_zero
 
     logical function test_asin_one()
-        ! asin of a default real lowers to asinf and matches gfortran at runtime
-        test_asin_one = check('asin(1.0)', '   1.57079637    ', &
-            '/tmp/ffc_session_asin_test')
+        ! Compare runtime libm calls rather than a folded decimal constant.
+        test_asin_one = expect_output_matches_gfortran( &
+            'program main'//new_line('a')// &
+            'real :: input, actual'//new_line('a')// &
+            'input = 1.0'//new_line('a')// &
+            'actual = asin(input)'//new_line('a')// &
+            'print *, actual'//new_line('a')// &
+            'end program main', 'runtime_asin_one')
     end function test_asin_one
 
     logical function test_acos_one()

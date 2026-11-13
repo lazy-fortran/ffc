@@ -180,16 +180,20 @@ contains
         ok = .true.
     end function expect_eof_stderr_and_exit
 
-    logical function expect_exe_has_symbol(source, object_path, symbol) result(ok)
-        ! Compiles source to an object file and checks it defines the named
-        ! symbol (via nm), used to verify bind(c, name="...") emission.
+    logical function expect_exe_has_symbol(source, object_path, symbol, defined) &
+            result(ok)
         character(len=*), intent(in) :: source
         character(len=*), intent(in) :: object_path
         character(len=*), intent(in) :: symbol
-        character(len=:), allocatable :: error_msg
+        logical, intent(in), optional :: defined
+        character(len=:), allocatable :: error_msg, inspect_path, object_format
+        character(len=:), allocatable :: native_symbol
+        character(len=1024) :: line, name
+        character(len=1) :: kind
         type(compiler_frontend_options_t) :: options
         type(compiler_frontend_result_t) :: frontend_result
-        integer :: stat, cmd_stat
+        integer :: stat, cmd_stat, unit, io_stat
+        logical :: require_definition, symbol_defined
 
         ok = .false.
         options = compiler_frontend_options_t()
@@ -211,18 +215,65 @@ contains
             return
         end if
 
-        call execute_command_line('nm '//object_path//' | grep -qw '//symbol, &
+        inspect_path = object_path//'.symbols'
+        call execute_command_line('file -b '//object_path//' > '//inspect_path, &
+            exitstat=stat, cmdstat=cmd_stat)
+        if (cmd_stat /= 0 .or. stat /= 0) then
+            print *, 'FAIL: could not identify object format: ', object_path
+            call execute_command_line('rm -f '//object_path//' '//inspect_path)
+            return
+        end if
+        object_format = read_text_file(inspect_path)
+        native_symbol = symbol
+        ! Mach-O adds one underscore to the linkage name.
+        if (index(object_format, 'Mach-O') == 1) then
+            native_symbol = '_'//symbol
+        else if (index(object_format, 'ELF') /= 1) then
+            print *, 'FAIL: unsupported object format: ', trim(object_format)
+            call execute_command_line('rm -f '//object_path//' '//inspect_path)
+            return
+        end if
+        require_definition = .true.
+        if (present(defined)) require_definition = defined
+
+        call execute_command_line('nm -P '//object_path//' > '//inspect_path, &
             exitstat=stat, cmdstat=cmd_stat)
         call execute_command_line('rm -f '//object_path)
-        if (cmd_stat /= 0) then
+        if (cmd_stat /= 0 .or. stat /= 0) then
             print *, 'FAIL: could not run nm on ', object_path
+            call execute_command_line('rm -f '//inspect_path)
             return
         end if
-        if (stat /= 0) then
+        open (newunit=unit, file=inspect_path, status='old', action='read', &
+            iostat=io_stat)
+        if (io_stat == 0) then
+            do
+                read (unit, '(A)', iostat=io_stat) line
+                if (io_stat /= 0) exit
+                read (line, *, iostat=io_stat) name, kind
+                if (io_stat /= 0) cycle
+                if (trim(name) /= native_symbol) cycle
+                select case (kind)
+                case ('U', 'w', 'v')
+                    symbol_defined = .false.
+                case ('A', 'a', 'B', 'b', 'C', 'c', 'D', 'd', 'G', 'g', &
+                        'I', 'i', 'N', 'n', 'R', 'r', 'S', 's', 'T', 't', &
+                        'u', 'V', 'W')
+                    symbol_defined = .true.
+                case default
+                    cycle
+                end select
+                if (symbol_defined .eqv. require_definition) then
+                    ok = .true.
+                    exit
+                end if
+            end do
+            close (unit)
+        end if
+        call execute_command_line('rm -f '//inspect_path)
+        if (.not. ok) then
             print *, 'FAIL: symbol not found in object: ', symbol
-            return
         end if
-        ok = .true.
     end function expect_exe_has_symbol
 
     logical function expect_exit_status(source, expected, exe_path, input_mode) &
