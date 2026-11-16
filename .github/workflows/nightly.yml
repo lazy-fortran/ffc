@@ -1,24 +1,21 @@
 name: nightly
 
-# Slow jobs run here once a night on main instead of in the merge queue. A
-# failing job bisects its own command between its last green nightly and this
-# commit; the report job files or updates one issue labelled nightly-failure,
+# Extended validation runs in the merge queue. A failing job bisects its
+# command after retesting the queue base; the report job files or updates
+# one issue per target branch labelled nightly-failure,
 # and the next green run of those jobs closes it.
-run-name: >-
-  ${{ inputs.jobs && format('nightly: jobs {0}', inputs.jobs) || 'nightly: all jobs' }}
+run-name: extended validation
 
 on:
-  schedule:
-    - cron: "7 1 * * *"
-  workflow_dispatch:
-    inputs:
-      jobs:
-        description: Comma-separated jobs to run, tests and/or lint (empty runs all)
-        required: false
-        default: ""
-
+  merge_group:
+    types: [checks_requested]
+  pull_request:
 permissions:
   contents: read
+
+env:
+  TRIAGE_BASE_REF: ${{ github.event.merge_group.base_ref }}
+  TRIAGE_BASE_SHA: ${{ github.event.merge_group.base_sha }}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -26,6 +23,7 @@ concurrency:
 
 jobs:
   plan:
+    if: github.event_name == 'merge_group'
     name: Plan
     runs-on: [self-hosted, itp-ubuntu24]
     outputs:
@@ -34,13 +32,15 @@ jobs:
       - uses: actions/checkout@v4
       - id: plan
         env:
-          JOBS: ${{ inputs.jobs }}
+          JOBS: ""
         run: python3 scripts/nightly_triage.py plan --jobs "$JOBS"
 
   tests:
     name: Nightly tests
     needs: plan
-    if: contains(fromJSON(needs.plan.outputs.jobs), 'tests')
+    if: >-
+      github.event_name == 'merge_group' &&
+      (contains(fromJSON(needs.plan.outputs.jobs), 'tests'))
     runs-on: ubuntu-latest
     timeout-minutes: 360
     permissions:
@@ -82,7 +82,9 @@ jobs:
   lint:
     name: Nightly lint
     needs: plan
-    if: contains(fromJSON(needs.plan.outputs.jobs), 'lint')
+    if: >-
+      github.event_name == 'merge_group' &&
+      (contains(fromJSON(needs.plan.outputs.jobs), 'lint'))
     runs-on: ubuntu-latest
     timeout-minutes: 360
     permissions:
@@ -124,7 +126,9 @@ jobs:
   report:
     name: Report the failure
     needs: [plan, tests, lint]
-    if: failure()
+    if: >-
+      github.event_name == 'merge_group' &&
+      (failure())
     runs-on: [self-hosted, itp-ubuntu24]
     permissions:
       actions: read
@@ -145,8 +149,8 @@ jobs:
     name: Close the nightly-failure issue
     needs: [plan, tests, lint]
     if: >-
-      always() && needs.plan.result == 'success'
-      && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+      github.event_name == 'merge_group' &&
+      (always() && needs.plan.result == 'success' && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled'))
     runs-on: [self-hosted, itp-ubuntu24]
     permissions:
       contents: read
@@ -156,5 +160,5 @@ jobs:
       - name: Close the issue once its jobs pass
         env:
           GH_TOKEN: ${{ github.token }}
-          JOBS: ${{ inputs.jobs }}
+          JOBS: ""
         run: python3 scripts/nightly_triage.py success --jobs "$JOBS"

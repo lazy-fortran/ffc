@@ -5,8 +5,8 @@ Subcommands, run inside GitHub Actions:
 
   plan      turn the dispatch input into the list of jobs to run
   run       run one job's command in the current checkout
-  bisect    after `run` failed: find the last green nightly that ran the job,
-            rerun the job there and bisect the range; write the result as JSON
+  bisect    after `run` failed: retest the queue base (or last green nightly)
+            and bisect the range; write the result as JSON
   step      one `git bisect run` step: the job's command, exit 0 good, 1 bad
   report    file or update the issue labelled nightly-failure
   success   close that issue once every job it records has passed again
@@ -129,10 +129,14 @@ def job_line(job, url, result, server, repo):
         return f"- {name}: failed before its command ran, so it was not bisected."
     good, bad = result.get("good"), result["bad"]
     if not good:
-        text = "no earlier green nightly ran this job, so the commit range is unknown"
+        if result.get("base"):
+            text = "no passing queue base was established, so the commit range is unknown"
+        else:
+            text = "no earlier green nightly ran this job, so the commit range is unknown"
     else:
+        baseline = "retested queue base" if result.get("base") else "last green nightly"
         text = (f"commit range {good}..{bad} ({result['commits']} commits since its "
-                f"last green nightly, [compare]({server}/{repo}/compare/{good}...{bad}))")
+                f"{baseline}, [compare]({server}/{repo}/compare/{good}...{bad}))")
     culprit = result.get("culprit")
     if culprit:
         via = f" from #{result['pull']}" if result.get("pull") else ""
@@ -173,6 +177,21 @@ def git(*args, check=True):
 
 def env(name):
     return os.environ[name]
+
+
+def triage_context():
+    """Keep queue reports on their target branch and retest its actual base."""
+    ref = os.environ.get("TRIAGE_BASE_REF", "")
+    sha = os.environ.get("TRIAGE_BASE_SHA", "")
+    if not ref and not sha:
+        if os.environ.get("GITHUB_EVENT_NAME") == "merge_group":
+            raise ValueError("merge_group triage requires its base ref and SHA")
+        return env("GITHUB_REF_NAME"), None
+    if (not ref.startswith("refs/heads/") or not re.fullmatch(r"[0-9a-fA-F]{40}", sha)
+            or subprocess.run(["git", "check-ref-format", ref],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode):
+        raise ValueError("TRIAGE_BASE_REF and TRIAGE_BASE_SHA must name a branch and commit")
+    return ref[len("refs/heads/"):], sha
 
 
 def run_command(job):
@@ -227,22 +246,31 @@ def bisect(good, bad, job):
 
 
 def cmd_bisect(args):
+    branch, base = triage_context()
     repo, run_id = env("GITHUB_REPOSITORY"), int(env("GITHUB_RUN_ID"))
-    branch, bad = env("GITHUB_REF_NAME"), env("GITHUB_SHA")
-    runs = gh("run", "list", "--repo", repo, "--workflow", WORKFLOW, "--branch",
-              branch, "--limit", "100", "--json",
-              "databaseId,headSha,conclusion,displayTitle")
-    green = last_green(runs, args.job, run_id)
+    bad = env("GITHUB_SHA")
+    if base:
+        good = base
+    else:
+        runs = gh("run", "list", "--repo", repo, "--workflow", WORKFLOW, "--branch",
+                  branch, "--limit", "100", "--json",
+                  "databaseId,headSha,conclusion,displayTitle")
+        green = last_green(runs, args.job, run_id)
+        good = green["headSha"] if green else None
     result = {"job": args.job, "bad": bad, "good": None, "commits": 0,
               "culprit": None, "pull": None, "note": None}
-    good = green["headSha"] if green else None
+    if base:
+        result["base"] = base
     if good:
-        result["good"] = good
+        if not base:
+            result["good"] = good
         if good == bad:
-            result["note"] = ("No commit since its last green nightly, so the "
+            result["note"] = ("The queue base equals the failed commit; bisection skipped"
+                              if base else "No commit since its last green nightly, so the "
                               "failure is not from a code change")
         elif subprocess.run(["git", "merge-base", "--is-ancestor", good, bad]).returncode:
-            result["note"] = "The last green commit is not an ancestor; bisection skipped"
+            name = "queue base" if base else "last green commit"
+            result["note"] = f"The {name} is not an ancestor; bisection skipped"
         else:
             result["commits"] = int(git("rev-list", "--count", f"{good}..{bad}"))
             try:
@@ -251,19 +279,23 @@ def cmd_bisect(args):
                 culprit = None
                 result["note"] = f"Bisection did not complete ({error.cmd[:3]})"
             if culprit:
+                result["good"] = good
                 result["culprit"] = culprit
                 pulls = gh("api", f"repos/{repo}/commits/{culprit['sha']}/pulls")
                 result["pull"] = pulls[0]["number"] if pulls else None
             elif not result["note"]:
-                result["note"] = ("The job also fails at its last green commit when "
+                result["note"] = ("The job also fails when rerun at the queue base; "
+                                  "no passing baseline was established" if base else
+                                  "The job also fails at its last green commit when "
                                   "rerun, so no commit in the range caused it")
     print(json.dumps(result, indent=2))
     Path(args.out).write_text(json.dumps(result))
 
 
 def cmd_report(args):
+    branch, _ = triage_context()
     repo, run_id = env("GITHUB_REPOSITORY"), int(env("GITHUB_RUN_ID"))
-    server, branch, bad = env("GITHUB_SERVER_URL"), env("GITHUB_REF_NAME"), env("GITHUB_SHA")
+    server, bad = env("GITHUB_SERVER_URL"), env("GITHUB_SHA")
     jobs = gh("api", "--paginate", f"repos/{repo}/actions/runs/{run_id}/jobs",
               "--jq", ".jobs[]", json_output=False)
     jobs = [json.loads(line) for line in jobs.splitlines() if line.strip()]
@@ -291,7 +323,8 @@ def cmd_report(args):
 
 
 def cmd_success(args):
-    repo, branch = env("GITHUB_REPOSITORY"), env("GITHUB_REF_NAME")
+    branch, _ = triage_context()
+    repo = env("GITHUB_REPOSITORY")
     number = open_issue(repo, branch)
     if not number:
         return
