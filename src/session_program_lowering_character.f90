@@ -59,7 +59,7 @@ contains
         integer :: symbol_index, bounds_index, lower_index, upper_index
         integer :: base_index, i
         type(lr_operand_desc_t) :: base_data, base_len, lower_i32, upper_i32
-        type(lr_operand_desc_t) :: zero_based, span
+        type(lr_operand_desc_t) :: zero_based, span, has_characters
         type(lr_operand_desc_t) :: view_buffer
         logical :: keep_view
 
@@ -76,31 +76,34 @@ contains
         base_index = 0
         lower_index = -1
         upper_index = -1
+        symbol_index = 0
         select type (n => arena%entries(node_index)%node)
         type is (array_slice_node)
             base_index = n%array_index
-            select type (base => arena%entries(base_index)%node)
-            type is (call_or_subscript_node)
-                if (.not. allocated(base%name)) then
-                    error_msg = 'substring base has no designator name'
+            bounds_index = n%bounds_indices(1)
+            if (.not. is_character_literal(arena, base_index) .or. keep_view) then
+                select type (base => arena%entries(base_index)%node)
+                type is (call_or_subscript_node)
+                    if (.not. allocated(base%name)) then
+                        error_msg = 'substring base has no designator name'
+                        return
+                    end if
+                    base_name = base%name
+                class default
+                    call identifier_name(arena, base_index, base_name, error_msg)
+                    if (len_trim(error_msg) > 0) return
+                end select
+                symbol_index = find_symbol_compat(context, base_name)
+                if (symbol_index <= 0) then
+                    error_msg = 'substring base was not declared: '//trim(base_name)
                     return
                 end if
-                base_name = base%name
-            class default
-                call identifier_name(arena, base_index, base_name, error_msg)
-                if (len_trim(error_msg) > 0) return
-            end select
-            bounds_index = n%bounds_indices(1)
+            end if
         class default
             error_msg = 'expected a substring reference'
             return
         end select
 
-        symbol_index = find_symbol_compat(context, base_name)
-        if (symbol_index <= 0) then
-            error_msg = 'substring base was not declared: '//trim(base_name)
-            return
-        end if
         ! Resolve the complete base designator.  Resolving only its spelling
         ! would address c's first element rather than the selected c(i).
         call char_expr_operands(arena, base_index, context, base_data, base_len, &
@@ -133,10 +136,12 @@ contains
             return
         end select
 
-        call reject_constant_substring_overrun(arena, context, symbol_index, &
-                                               lower_index, upper_index, &
-                                               error_msg)
-        if (len_trim(error_msg) > 0) return
+        if (symbol_index > 0) then
+            call reject_constant_substring_overrun(arena, context, symbol_index, &
+                                                   lower_index, upper_index, &
+                                                   error_msg)
+            if (len_trim(error_msg) > 0) return
+        end if
 
         if (lower_index > 0) then
             call lower_i32_expression(arena, lower_index, context, lower_i32, &
@@ -161,7 +166,12 @@ contains
 
         if (.not. emit_i32_binary(context%session, LR_OP_SUB, upper_i32, &
                 zero_based, span, error_msg)) return
-        length = span
+        if (.not. emit_liric_i32_icmp(context%session, LR_CMP_SGE, upper_i32, &
+                lower_i32, has_characters, error_msg)) return
+        call select_value(context, has_characters, span, &
+                          i32_immediate(context%session, 0_c_int64_t), &
+                          length, error_msg)
+        if (len_trim(error_msg) > 0) return
         if (.not. keep_view) then
             call materialize_character_view(context, data_ptr, length, &
                                             view_buffer, error_msg)
@@ -1029,7 +1039,7 @@ contains
             error_msg = 'duplicate character declaration: '//trim(name)
             return
         end if
-       call grow_symbols(context)
+        call grow_symbols(context)
         if (character_length <= 0) then
             call define_deferred_character_symbol(context, name, error_msg)
             return
@@ -1090,12 +1100,12 @@ contains
             return
         end if
 
-       ! A contained character result is a transferred descriptor, not an
-       ! ordinary character expression temporary. Handle it before the broad
-       ! character-expression classifier below: that classifier also reports
-       ! contained calls so they can be used by print/len/concatenation, but
-       ! assignment to a deferred destination must adopt the returned storage
-       ! instead of rebinding to it and releasing it at statement end.
+        ! A contained character result is a transferred descriptor, not an
+        ! ordinary character expression temporary. Handle it before the broad
+        ! character-expression classifier below: that classifier also reports
+        ! contained calls so they can be used by print/len/concatenation, but
+        ! assignment to a deferred destination must adopt the returned storage
+        ! instead of rebinding to it and releasing it at statement end.
         if (context%symbols(symbol_index)%is_deferred_character) then
             if (node_exists(arena, node%value_index)) then
                 select type (val => arena%entries(node%value_index)%node)
@@ -1163,7 +1173,7 @@ contains
                     return
                 end if
             else if (is_character_substring(arena, node%value_index, context)) &
-                then
+                    then
                 ! Deferred target receives a substring view: intrinsic
                 ! assignment copies the view's bytes at the view's length, so
                 ! the target never aliases its parent's storage.
@@ -1622,7 +1632,7 @@ contains
             error_msg = 'duplicate character declaration: '//trim(name)
             return
         end if
-     call grow_symbols(context)
+        call grow_symbols(context)
 
         index = context%symbol_count + 1
         context%symbols(index)%name = trim(name)
@@ -2420,7 +2430,7 @@ contains
     subroutine reject_constant_substring_overrun(arena, context, symbol_index, &
                                                  lower_index, upper_index, &
                                                  error_msg)
-        ! Reject s(l:u) whose constant bounds fall outside a parent of known
+        ! Reject nonempty s(l:u) whose bounds fall outside a parent of known
         ! declared width. Only a fixed-length parent has a compile-time width;
         ! a deferred-length parent's length is a run-time value, so nothing is
         ! decidable here and the substring is accepted. Non-constant bounds are
@@ -2443,42 +2453,63 @@ contains
 
         call constant_i64_value(arena, lower_index, lower_value, lower_known)
         call constant_i64_value(arena, upper_index, upper_value, upper_known)
-
-        if (lower_known) then
-            if (lower_value < 1_c_int64_t) then
-                error_msg = 'substring start index is below the string length'
-                return
-            end if
+        if (lower_index <= 0) then
+            lower_value = 1_c_int64_t
+            lower_known = .true.
         end if
-        if (upper_known) then
-            if (upper_value > int(declared_length, c_int64_t)) then
-                error_msg = 'substring end index exceeds the string length'
-                return
-            end if
+        if (upper_index <= 0) then
+            upper_value = int(declared_length, c_int64_t)
+            upper_known = .true.
+        end if
+        ! An unknown opposite bound can make the substring empty.
+        if (.not. lower_known .or. .not. upper_known) return
+        if (lower_value > upper_value) return
+        if (lower_value < 1_c_int64_t) then
+            error_msg = 'substring start index is below the string length'
+            return
+        end if
+        if (upper_value > int(declared_length, c_int64_t)) then
+            error_msg = 'substring end index exceeds the string length'
+            return
         end if
     end subroutine reject_constant_substring_overrun
 
     subroutine constant_i64_value(arena, node_index, value, is_known)
-        ! Fold a substring bound to a compile-time integer when it is a plain
-        ! integer literal. Anything else is a run-time expression.
+        ! Keep unknown expressions on the runtime bounds path.
         use, intrinsic :: iso_c_binding, only: c_int64_t
         type(ast_arena_t), intent(in) :: arena
         integer, intent(in) :: node_index
         integer(c_int64_t), intent(out) :: value
         logical, intent(out) :: is_known
-        character(len=:), allocatable :: lit_value, lit_type, lit_err
-        integer :: ios
+        character(len=:), allocatable :: lit_value, lit_type, lit_err, op
+        integer :: ios, literal_index, left_index, right_index, line, column
+        logical :: negate
 
         value = 0_c_int64_t
         is_known = .false.
         if (node_index <= 0) return
         if (.not. node_exists(arena, node_index)) return
-        if (.not. is_literal(arena, node_index)) return
-        call get_literal_info(arena, node_index, lit_value, lit_type, lit_err)
+        literal_index = node_index
+        negate = .false.
+        if (is_binary_op(arena, node_index)) then
+            call get_binary_op_info(arena, node_index, op, left_index, &
+                                    right_index, line, column, lit_err)
+            if (len_trim(lit_err) > 0) return
+            if (op /= '-') return
+            if (.not. is_literal(arena, left_index)) return
+            call get_literal_info(arena, left_index, lit_value, lit_type, lit_err)
+            if (len_trim(lit_err) > 0) return
+            if (trim(lit_value) /= '0') return
+            literal_index = right_index
+            negate = .true.
+        end if
+        if (.not. is_literal(arena, literal_index)) return
+        call get_literal_info(arena, literal_index, lit_value, lit_type, lit_err)
         if (len_trim(lit_err) > 0) return
         if (verify(trim(adjustl(lit_value)), '0123456789') /= 0) return
         read (lit_value, *, iostat=ios) value
         is_known = ios == 0
+        if (is_known .and. negate) value = -value
     end subroutine constant_i64_value
 
     subroutine lower_deferred_char_view_assignment(arena, value_index, context, &

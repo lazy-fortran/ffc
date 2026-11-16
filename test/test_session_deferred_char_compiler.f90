@@ -11,7 +11,7 @@ end module ffc_case_test_session_deferred_char_compiler
 
 subroutine case_test_session_deferred_char_compiler()
     use ffc_test_support, only: expect_output, expect_exit_status, &
-        expect_no_leaks, expect_error_contains
+        expect_no_leaks, expect_error_contains, expect_output_matches_gfortran
     implicit none
     save
 
@@ -51,6 +51,7 @@ subroutine case_test_session_deferred_char_compiler()
     if (.not. test_substring_of_deferred_character()) all_passed = .false.
     if (.not. test_substring_of_fixed_character()) all_passed = .false.
     if (.not. test_substring_with_runtime_bounds()) all_passed = .false.
+    if (.not. test_substring_of_literal()) all_passed = .false.
     if (.not. test_substring_assigned_and_concatenated()) all_passed = .false.
     if (.not. test_substring_does_not_leak()) all_passed = .false.
     if (.not. test_substring_constant_bound_past_end_is_rejected()) &
@@ -211,6 +212,40 @@ contains
             '           7'//new_line('a'), &
             '/tmp/ffc_session_substring_runtime_test')
     end function test_substring_with_runtime_bounds
+
+    logical function test_substring_of_literal()
+        character(len=*), parameter :: source = &
+            'program main'//new_line('a')// &
+            '  integer :: n'//new_line('a')// &
+            '  character(len=6) :: text'//new_line('a')// &
+            '  n = 3'//new_line('a')// &
+            '  text = "abcdef"'//new_line('a')// &
+            '  print *, "abcdef"(n:n)'//new_line('a')// &
+            '  print *, "abcdef"(2:4)'//new_line('a')// &
+            '  print *, "abcdef"(1+1:2*2)'//new_line('a')// &
+            '  print *, len("abcdef"(n:n))'//new_line('a')// &
+            '  print *, "abcdef"(n:n)//"Z"'//new_line('a')// &
+            '  print *, text(2:4)'//new_line('a')// &
+            '  print *, "abcdef"(:n)'//new_line('a')// &
+            '  print *, "abcdef"(n:)'//new_line('a')// &
+            '  print *, "["//"abcdef"(n:1)//"]"'//new_line('a')// &
+            '  print *, len("abcdef"(n:1))'//new_line('a')// &
+            '  print *, "["//text(n:1)//"]"'//new_line('a')// &
+            '  print *, len(text(n:1))'//new_line('a')// &
+            '  print *, "["//text(0:-1)//"]"'//new_line('a')// &
+            '  n = 2'//new_line('a')// &
+            '  print *, "abcdef"(n:n)'//new_line('a')// &
+            '  n = -2'//new_line('a')// &
+            '  print *, "["//text(-1:n)//"]"'//new_line('a')// &
+            '  print *, "["//"abcdef"(-1:n)//"]"'//new_line('a')// &
+            '  n = 12'//new_line('a')// &
+            '  print *, "["//text(n:10)//"]"'//new_line('a')// &
+            '  print *, "["//"abcdef"(n:10)//"]"'//new_line('a')// &
+            'end program main'
+
+        test_substring_of_literal = expect_output_matches_gfortran( &
+            source, 'literal_substring_3018')
+    end function test_substring_of_literal
 
     logical function test_substring_assigned_and_concatenated()
         ! A substring is a character expression: it can be assigned to a

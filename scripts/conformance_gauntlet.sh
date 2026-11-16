@@ -284,12 +284,12 @@ dg_has_nonempty_options() {
         if [ -n "$normalized" ]; then
             return 0
         fi
-    done < <(sed -n 's/.*dg-\(add-\)\?options\([^}]*\)}.*/\2/p' "$source")
+    done < <(sed -En 's/.*dg-(add-)?options([^}]*)}.*/\2/p' "$source")
     return 1
 }
 
 dg_do_mode() {
-    sed -n 's/.*dg-do[[:space:]]\+\([[:alnum:]_-]\+\).*/\1/p' "$1" | head -1
+    sed -En 's/.*dg-do[[:space:]]+([[:alnum:]_-]+).*/\1/p' "$1" | head -1
 }
 
 # A dg-error directive marked { xfail ... } records an error gfortran is not
